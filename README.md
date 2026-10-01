@@ -40,8 +40,9 @@ Typography pairs **Alexandria** (display, headings, numerals) with **IBM Plex Sa
 │  · AI answer        │  · "View Report"                              ├───────────────────────────────────────┤
 │  · business analysis│                                              │  Companies Overview                   │
 │  · investment opp.  ├──────────────────────────────────────────────┤  · health pills                       │
-│  · important alerts │  Support Requests                            │  · mini sparklines                    │
-│  · projection       │  company · type · date · dept · status        │  · revenue + growth                   │
+├─────────────────────┤  Support Requests                            │  · mini sparklines                    │
+│  AI Insights        │  company · type · date · dept · status        │  · revenue + growth                   │
+│  · 4 observations   │                                              │                                       │
 └─────────────────────┴──────────────────────────────────────────────┴───────────────────────────────────────┘
 ```
 
@@ -58,6 +59,9 @@ Typography pairs **Alexandria** (display, headings, numerals) with **IBM Plex Sa
 - **Companies Overview** — health/status indicators with small trend charts.
 - **Support Requests** — business development, marketing, design and accounting/financial
   support requests with company, type, date, responsible department and status.
+- **AI Insights** — its own labeled section listing four concise observations with confidence
+  levels: revenue up vs. last month, one company needing management attention, a detected
+  business opportunity, and financial data needing review.
 - **Group Structure** — the Holding rendered as the central entity with subsidiary cards
   connected beneath it.
 
