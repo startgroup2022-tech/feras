@@ -14,6 +14,13 @@ venv/
 .env
 .env.*
 
+# Runtime attachment storage (metadata lives in the DB, files do not belong in git)
+.uploads/
+uploads/
+
+# Generated delivery bundle (regenerate from frontend/; not source)
+safir-holding-2027.zip
+
 # Agent/editor scratch
 .agent_tmp/
 .obs/

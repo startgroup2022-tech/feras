@@ -85,6 +85,122 @@ def _financial_totals(db: Session, user: User, year: int, month: int) -> tuple[D
     )
 
 
+def previous_period(year: int, month: int) -> tuple[int, int]:
+    """The calendar month before ``(year, month)``."""
+    return (year - 1, 12) if month == 1 else (year, month - 1)
+
+
+def _pct_change(current: Decimal, previous: Decimal) -> float | None:
+    """Percentage change, or ``None`` when there is no baseline to compare to.
+
+    Returning ``None`` rather than 0 matters: "no previous data" and "flat" are
+    different statements, and the UI must be able to tell them apart.
+    """
+    if previous == 0:
+        return None
+    return round(float((current - previous) / previous * 100), 1)
+
+
+def _change_vs_previous(db: Session, user: User, year: int, month: int) -> dict:
+    prev_year, prev_month = previous_period(year, month)
+    current = _financial_totals(db, user, year, month)
+    previous = _financial_totals(db, user, prev_year, prev_month)
+    return {
+        "previous_year": prev_year,
+        "previous_month": prev_month,
+        "revenue_previous": previous[0],
+        "expenses_previous": previous[1],
+        "net_previous": previous[2],
+        "revenue_pct": _pct_change(current[0], previous[0]),
+        "expenses_pct": _pct_change(current[1], previous[1]),
+        "net_pct": _pct_change(current[2], previous[2]),
+    }
+
+
+def _company_performance(db: Session, user: User, year: int, month: int) -> list[dict]:
+    """Per-company figures for the period, for the reports/overview cards.
+
+    Includes companies with no report (``has_report`` false) so the UI can show
+    a proper "awaiting report" state instead of omitting them.
+    """
+    prev_year, prev_month = previous_period(year, month)
+
+    stmt = (
+        select(Company, MonthlyReport, MonthlyReportFinancialReview)
+        .select_from(Company)
+        .outerjoin(
+            MonthlyReport,
+            (MonthlyReport.company_id == Company.id)
+            & (MonthlyReport.period_year == year)
+            & (MonthlyReport.period_month == month),
+        )
+        .outerjoin(
+            MonthlyReportFinancialReview,
+            (MonthlyReportFinancialReview.report_id == MonthlyReport.id)
+            & (
+                MonthlyReportFinancialReview.status
+                == FinancialReviewStatus.APPROVED.value
+            ),
+        )
+        .order_by(Company.name_en)
+    )
+    stmt = _scoped(stmt, Company.id, user)
+    rows = list(db.execute(stmt).all())
+
+    # Previous-month revenue per company, for the growth indicator.
+    prev_stmt = select(
+        MonthlyReport.company_id, MonthlyReport.revenue
+    ).where(
+        MonthlyReport.period_year == prev_year,
+        MonthlyReport.period_month == prev_month,
+    )
+    prev_stmt = _scoped(prev_stmt, MonthlyReport.company_id, user)
+    previous_revenue = {cid: rev for cid, rev in db.execute(prev_stmt)}
+
+    payload = []
+    for company, report, review in rows:
+        revenue = (
+            review.verified_revenue
+            if review and review.verified_revenue is not None
+            else (report.revenue if report else None)
+        )
+        expenses = (
+            review.verified_expenses
+            if review and review.verified_expenses is not None
+            else (report.expenses if report else None)
+        )
+        net = (
+            review.verified_net_result
+            if review and review.verified_net_result is not None
+            else (report.net_result if report else None)
+        )
+        prior = previous_revenue.get(company.id)
+        growth = (
+            _pct_change(Decimal(revenue), Decimal(prior))
+            if revenue is not None and prior is not None
+            else None
+        )
+        payload.append(
+            {
+                "id": company.id,
+                "code": company.code,
+                "name_ar": company.name_ar,
+                "name_en": company.name_en,
+                "sector": company.sector,
+                "health": company.health,
+                "report_status": report.status if report else None,
+                "has_report": report is not None,
+                "revenue": revenue,
+                "expenses": expenses,
+                "net_result": net,
+                "outstanding_receivables": report.outstanding_receivables if report else None,
+                "revenue_pct": growth,
+                "last_update": report.updated_at if report else None,
+            }
+        )
+    return payload
+
+
 def _attention_rows(db: Session, user: User, year: int, month: int):
     """Companies flagged on health, or that reported major problems this period.
 
@@ -173,6 +289,8 @@ def build_dashboard(
 
     missing = reports_repo.companies_missing_report(user, year, month)
     attention = attention_payload(db, user, year, month)
+    performance = _company_performance(db, user, year, month)
+    change = _change_vs_previous(db, user, year, month)
 
     kpis = {
         "companies_count": companies_repo.count_for_user(user) if company_id is None else 1,
@@ -193,6 +311,8 @@ def build_dashboard(
         "period_month": month,
         "kpis": kpis,
         "companies": companies,
+        "companies_performance": performance,
+        "change_vs_previous": change,
         "companies_missing_report": missing,
         "companies_requiring_attention": attention,
     }

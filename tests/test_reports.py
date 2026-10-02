@@ -283,3 +283,115 @@ def test_negative_revenue_is_rejected(client, world, auth):
     )
 
     assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Phase 2: attachments
+# --------------------------------------------------------------------------
+PDF = ("application/pdf", b"%PDF-1.4 test")
+
+
+def _upload(client, auth, report_id, name="report.pdf", content_type="application/pdf", data=b"%PDF-1.4"):
+    return client.post(
+        f"/api/v1/monthly-reports/{report_id}/attachments",
+        headers=auth,
+        files={"file": (name, data, content_type)},
+    )
+
+
+def test_manager_uploads_an_attachment(client, world, auth, tmp_path, monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    response = _upload(
+        client, auth(world["alpha_mgr"]), world["alpha_report"].id, data=PDF[1]
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["original_filename"] == "report.pdf"
+    assert body["content_type"] == "application/pdf"
+
+
+def test_attachment_appears_on_the_report(client, world, auth, tmp_path, monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    _upload(client, auth(world["alpha_mgr"]), world["alpha_report"].id, data=PDF[1])
+
+    body = client.get(
+        f"/api/v1/monthly-reports/{world['alpha_report'].id}",
+        headers=auth(world["alpha_mgr"]),
+    ).json()
+    assert len(body["attachments"]) == 1
+
+
+def test_disallowed_content_type_is_rejected(client, world, auth, tmp_path, monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    response = _upload(
+        client,
+        auth(world["alpha_mgr"]),
+        world["alpha_report"].id,
+        name="evil.exe",
+        content_type="application/x-msdownload",
+        data=b"MZ",
+    )
+    assert response.status_code == 422
+
+
+def test_manager_cannot_attach_to_another_companys_report(
+    client, world, auth, tmp_path, monkeypatch
+):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    response = _upload(
+        client, auth(world["beta_mgr"]), world["alpha_report"].id, data=PDF[1]
+    )
+    # Out-of-scope is reported as not found (IDOR protection).
+    assert response.status_code == 404
+
+
+def test_reviewed_report_rejects_new_attachments(
+    client, world, auth, db, tmp_path, monkeypatch
+):
+    from backend.core.config import settings
+    from backend.db.models.report import MonthlyReport
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    report = db.get(MonthlyReport, world["alpha_report"].id)
+    report.status = ReportStatus.REVIEWED.value
+    db.add(report)
+    db.commit()
+
+    response = _upload(
+        client, auth(world["alpha_mgr"]), world["alpha_report"].id, data=PDF[1]
+    )
+    assert response.status_code == 409
+
+
+def test_delete_attachment(client, world, auth, tmp_path, monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    created = _upload(
+        client, auth(world["alpha_mgr"]), world["alpha_report"].id, data=PDF[1]
+    ).json()
+
+    response = client.delete(
+        f"/api/v1/monthly-reports/{world['alpha_report'].id}/attachments/{created['id']}",
+        headers=auth(world["alpha_mgr"]),
+    )
+    assert response.status_code == 204
+
+
+def test_storage_key_cannot_escape_upload_root(tmp_path, monkeypatch):
+    from backend.core import storage
+    from backend.core.config import settings
+    from backend.core.errors import ValidationError
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    with pytest.raises(ValidationError):
+        storage.resolve_stored_path("../../etc/passwd")
+

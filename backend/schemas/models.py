@@ -22,7 +22,12 @@ from pydantic import (
     model_validator,
 )
 
-from backend.db.models.enums import SupportCategory, SupportStatus
+from backend.db.models.enums import (
+    CompanyHealth,
+    CompanyStatus,
+    SupportCategory,
+    SupportStatus,
+)
 
 # Deliberately syntax-only. Public email validators reject reserved/internal
 # TLDs (``.local``, private zones) outright, which would make it impossible to
@@ -102,6 +107,22 @@ class CreateUserRequest(BaseModel):
     company_ids: list[int] = Field(default_factory=list)
 
 
+class UpdateUserRequest(BaseModel):
+    """Partial update. Every field is optional; omitted fields are untouched."""
+
+    full_name_ar: str | None = Field(default=None, min_length=1, max_length=180)
+    full_name_en: str | None = Field(default=None, max_length=180)
+    role_code: str | None = Field(default=None, min_length=2, max_length=40)
+    is_active: bool | None = None
+
+
+class CompanyAccessRequest(BaseModel):
+    company_id: int
+    can_read: bool = True
+    can_write: bool = True
+    is_primary: bool = False
+
+
 # --------------------------------------------------------------------------
 # companies
 # --------------------------------------------------------------------------
@@ -124,6 +145,37 @@ class CompanyCreateRequest(BaseModel):
     name_en: str = Field(min_length=1, max_length=180)
     sector: str | None = Field(default=None, max_length=120)
     contact_email: InternalEmail | None = None
+
+
+class CompanyUpdateRequest(BaseModel):
+    """Partial update of a subsidiary's descriptive fields."""
+
+    name_ar: str | None = Field(default=None, min_length=1, max_length=180)
+    name_en: str | None = Field(default=None, min_length=1, max_length=180)
+    sector: str | None = Field(default=None, max_length=120)
+    health: str | None = Field(default=None, max_length=20)
+    status: str | None = Field(default=None, max_length=20)
+    contact_email: InternalEmail | None = None
+
+    @field_validator("health")
+    @classmethod
+    def _valid_health(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {h.value for h in CompanyHealth}
+        if value not in allowed:
+            raise ValueError(f"health must be one of {sorted(allowed)}")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in CompanyStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
 
 
 # --------------------------------------------------------------------------
@@ -183,6 +235,16 @@ class FinancialReviewOut(BaseModel):
     reviewed_at: datetime | None
 
 
+class AttachmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    original_filename: str
+    content_type: str | None
+    size_bytes: int | None
+    created_at: datetime
+
+
 class MonthlyReportOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -209,6 +271,7 @@ class MonthlyReportOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     financial_review: FinancialReviewOut | None = None
+    attachments: list[AttachmentOut] = []
 
 
 class FinancialReviewRequest(BaseModel):
@@ -247,6 +310,11 @@ class SupportRequestCreateRequest(BaseModel):
 
 class SupportRequestStatusRequest(BaseModel):
     status: SupportStatus
+
+
+class SupportAssignRequest(BaseModel):
+    assigned_to_id: int | None = None
+    responsible_department: str | None = Field(default=None, max_length=120)
 
 
 class SupportCommentRequest(BaseModel):
@@ -312,6 +380,38 @@ class AttentionCompanyOut(BaseModel):
     support_required: str | None = None
 
 
+class CompanyPerformanceOut(BaseModel):
+    """Per-company figures for the dashboard report/overview cards."""
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    sector: str | None = None
+    health: str
+    report_status: str | None = None
+    has_report: bool
+    revenue: Decimal | None = None
+    expenses: Decimal | None = None
+    net_result: Decimal | None = None
+    outstanding_receivables: Decimal | None = None
+    revenue_pct: float | None = None
+    last_update: datetime | None = None
+
+
+class PeriodChangeOut(BaseModel):
+    """Month-over-month change for the group totals."""
+
+    previous_year: int
+    previous_month: int
+    revenue_previous: Decimal
+    expenses_previous: Decimal
+    net_previous: Decimal
+    revenue_pct: float | None = None
+    expenses_pct: float | None = None
+    net_pct: float | None = None
+
+
 class DashboardResponse(BaseModel):
     scope: str  # "holding" | "company"
     company_id: int | None
@@ -319,6 +419,8 @@ class DashboardResponse(BaseModel):
     period_month: int
     kpis: DashboardKpis
     companies: list[CompanyOut] = []
+    companies_performance: list[CompanyPerformanceOut] = []
+    change_vs_previous: PeriodChangeOut | None = None
     companies_missing_report: list[CompanyOut] = []
     companies_requiring_attention: list[AttentionCompanyOut] = []
 
@@ -357,4 +459,17 @@ class AIAskResponse(BaseModel):
     answer: str
     grounded_on_company_ids: list[int]
     provider: str
+    grounded: bool = True
+    ungrounded_numbers: list[str] = []
     message: AIMessageOut
+
+
+class AIInsightOut(BaseModel):
+    key: str
+    kind: str
+    title_ar: str
+    title_en: str
+    detail_ar: str
+    detail_en: str
+    tone: str
+    metric: str | None = None

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from backend.db.models.enums import CompanyHealth
+
 USERS = "/api/v1/users"
 COMPANIES = "/api/v1/companies"
 
@@ -271,3 +273,122 @@ def test_manager_cannot_sync_the_rbac_catalogue(client, auth, make_user):
     manager = make_user("mgr@corp.sa", "company_manager")
 
     assert client.post("/api/v1/rbac/sync", headers=auth(manager)).status_code == 403
+
+
+# --------------------------------------------------------------------------
+# Phase 2: administration endpoints
+# --------------------------------------------------------------------------
+def test_owner_lists_users(client, world, auth):
+    response = client.get("/api/v1/users", headers=auth(world["owner"]))
+    assert response.status_code == 200
+    assert len(response.json()) == 4
+
+
+def test_update_user_role_and_names(client, world, auth):
+    response = client.patch(
+        f"/api/v1/users/{world['alpha_mgr'].id}",
+        headers=auth(world["owner"]),
+        json={"full_name_en": "Alpha Manager", "role_code": "marketing"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["role_code"] == "marketing"
+    assert response.json()["full_name_en"] == "Alpha Manager"
+
+
+def test_update_user_rejects_unknown_role(client, world, auth):
+    response = client.patch(
+        f"/api/v1/users/{world['alpha_mgr'].id}",
+        headers=auth(world["owner"]),
+        json={"role_code": "wizard"},
+    )
+    assert response.status_code == 422
+
+
+def test_admin_cannot_deactivate_self(client, world, auth):
+    response = client.patch(
+        f"/api/v1/users/{world['owner'].id}",
+        headers=auth(world["owner"]),
+        json={"is_active": False},
+    )
+    assert response.status_code == 422
+
+
+def test_grant_and_revoke_company_access(client, world, auth, make_company):
+    gamma = make_company("GAMMA", "شركة جاما")
+    target = world["alpha_mgr"]
+
+    granted = client.post(
+        f"/api/v1/users/{target.id}/company-access",
+        headers=auth(world["owner"]),
+        json={"company_id": gamma.id, "can_write": False},
+    )
+    assert granted.status_code == 200, granted.text
+    assert gamma.id in granted.json()["company_ids"]
+
+    revoked = client.delete(
+        f"/api/v1/users/{target.id}/company-access/{gamma.id}",
+        headers=auth(world["owner"]),
+    )
+    assert revoked.status_code == 200
+    assert gamma.id not in revoked.json()["company_ids"]
+
+
+def test_grant_access_is_idempotent(client, world, auth):
+    target = world["alpha_mgr"]
+    for _ in range(2):
+        response = client.post(
+            f"/api/v1/users/{target.id}/company-access",
+            headers=auth(world["owner"]),
+            json={"company_id": world["alpha"].id, "can_write": True},
+        )
+        assert response.status_code == 200
+    assert response.json()["company_ids"].count(world["alpha"].id) == 1
+
+
+def test_grant_access_requires_permission(client, world, auth):
+    response = client.post(
+        f"/api/v1/users/{world['alpha_mgr'].id}/company-access",
+        headers=auth(world["alpha_mgr"]),
+        json={"company_id": world["beta"].id},
+    )
+    assert response.status_code == 403
+
+
+def test_update_company_health_and_sector(client, world, auth):
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"health": CompanyHealth.ATTENTION.value, "sector": "Retail"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["health"] == CompanyHealth.ATTENTION.value
+    assert response.json()["sector"] == "Retail"
+
+
+def test_update_company_rejects_invalid_health(client, world, auth):
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"health": "on-fire"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_company_requires_permission(client, world, auth):
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["alpha_mgr"]),
+        json={"sector": "Retail"},
+    )
+    assert response.status_code == 403
+
+
+def test_user_update_is_audited(client, world, auth, db):
+    from backend.db.models.ai import AuditLog
+
+    client.patch(
+        f"/api/v1/users/{world['alpha_mgr'].id}",
+        headers=auth(world["owner"]),
+        json={"full_name_en": "Renamed"},
+    )
+    assert "user.updated" in [row.action for row in db.query(AuditLog).all()]

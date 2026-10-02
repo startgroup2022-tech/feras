@@ -10,6 +10,7 @@ from backend.rbac.authorization import require_any_permission
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import SupportRequestRepository
 from backend.schemas import (
+    SupportAssignRequest,
     SupportCommentOut,
     SupportCommentRequest,
     SupportRequestCreateRequest,
@@ -83,6 +84,27 @@ def change_status(
         user=user,
         request_id=request_id,
         new_status=payload.status.value,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return SupportRequestOut(**support_service.serialise(updated))
+
+
+@router.patch("/{request_id}/assign", response_model=SupportRequestOut)
+def assign_request(
+    request_id: int,
+    payload: SupportAssignRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> SupportRequestOut:
+    ctx = audit_service.request_context(request)
+    updated = support_service.assign_request(
+        db,
+        user=user,
+        request_id=request_id,
+        assigned_to_id=payload.assigned_to_id,
+        responsible_department=payload.responsible_department,
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )

@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
-from typing import Protocol
 
 from sqlalchemy.orm import Session
 
+from backend.ai import AIAnswer, AIProvider, find_ungrounded, get_provider
+from backend.ai.base import ProviderError
 from backend.core.config import settings
 from backend.core.errors import NotFoundError
 from backend.db.models.audit_actions import AuditAction
@@ -43,95 +44,6 @@ from backend.repositories.scoped import (
     SupportRequestRepository,
 )
 from backend.services import audit_service, dashboard_service
-
-
-class AIProvider(Protocol):
-    """Interface every AI backend must implement."""
-
-    name: str
-
-    def answer(self, *, question: str, context: dict) -> str: ...
-
-
-class NullProvider:
-    """Deterministic provider used until a real model is configured.
-
-    It answers from the context payload only. Because the context was already
-    scope-filtered, this provider cannot leak another company's data even if the
-    question explicitly asks about it.
-    """
-
-    name = "none"
-
-    def answer(self, *, question: str, context: dict) -> str:
-        kpis = context.get("kpis", {})
-        scope = context.get("scope")
-        companies = context.get("companies", [])
-        missing = context.get("companies_missing_report", [])
-        attention = context.get("companies_requiring_attention", [])
-        period = context.get("period", {})
-
-        def money(value) -> str:
-            return f"{Decimal(str(value or 0)):,.0f}"
-
-        if scope == "company":
-            name_ar = companies[0]["name_ar"] if companies else ""
-            net = Decimal(str(kpis.get("total_net_result") or 0))
-            lines = [
-                f"ملخص أداء {name_ar} لشهر {period.get('month')}/{period.get('year')}:",
-                f"الإيرادات {money(kpis.get('total_revenue'))}، "
-                f"المصروفات {money(kpis.get('total_expenses'))}، "
-                f"صافي النتيجة {money(net)}.",
-            ]
-            status = context.get("report_status")
-            lines.append(
-                "حالة التقرير الشهري: " + (status or "لم يُرسل بعد") + "."
-            )
-            if context.get("major_problems"):
-                lines.append(f"تحديات مذكورة في التقرير: {context['major_problems']}.")
-            if context.get("support_required"):
-                lines.append(f"الدعم المطلوب من المقر: {context['support_required']}.")
-            lines.append(
-                f"طلبات الدعم المفتوحة: {kpis.get('open_support_requests', 0)}."
-            )
-            lines.append("هذا ملخص مبني على البيانات المسجلة فعلياً في النظام.")
-            return " ".join(lines)
-
-        lines = [
-            f"ملخص أداء المجموعة لشهر {period.get('month')}/{period.get('year')}:",
-            f"عدد الشركات {kpis.get('companies_count', 0)}، "
-            f"واستلمنا تقارير {kpis.get('reports_submitted', 0)} شركة.",
-            f"إجمالي الإيرادات {money(kpis.get('total_revenue'))}، "
-            f"وإجمالي المصروفات {money(kpis.get('total_expenses'))}، "
-            f"بصافي نتائج {money(kpis.get('total_net_result'))}.",
-        ]
-        if missing:
-            names = "، ".join(c["name_ar"] for c in missing)
-            lines.append(f"شركات لم ترسل التقرير الشهري: {names}.")
-        if attention:
-            detail = "؛ ".join(
-                f"{c['name_ar']} ({c['reason']})" for c in attention if c.get("reason")
-            )
-            if detail:
-                lines.append(f"شركات تحتاج متابعة: {detail}.")
-            else:
-                lines.append(f"عدد الشركات التي تحتاج متابعة: {len(attention)}.")
-        lines.append(
-            f"طلبات الدعم المفتوحة لدى المقر: {kpis.get('open_support_requests', 0)}."
-        )
-        pending = kpis.get("pending_financial_reviews", 0)
-        if pending:
-            lines.append(
-                f"هناك {pending} تقريراً بانتظار المراجعة المالية من المحاسب."
-            )
-        lines.append("جميع الأرقام أعلاه مستخرجة مباشرة من قاعدة بيانات النظام.")
-        return " ".join(lines)
-
-
-def get_provider() -> AIProvider:
-    """Select the configured provider. Real providers arrive in Phase 2."""
-    # Future: match settings.AI_PROVIDER -> OpenAIChatProvider(...) etc.
-    return NullProvider()
 
 
 # --------------------------------------------------------------------------
@@ -162,6 +74,10 @@ def build_holding_context(db: Session, user: User, year: int, month: int) -> dic
             _company_payload(c) for c in data["companies_missing_report"]
         ],
         "companies_requiring_attention": data["companies_requiring_attention"],
+        "change_vs_previous": {
+            k: (float(v) if isinstance(v, Decimal) else v)
+            for k, v in data["change_vs_previous"].items()
+        },
     }
 
 
@@ -254,7 +170,18 @@ def ask(
     db.commit()
 
     provider = get_provider()
-    answer = provider.answer(question=question, context=context)
+    try:
+        result: AIAnswer = provider.answer(question=question, context=context)
+    except ProviderError:
+        # A configured-but-unreachable provider degrades to the deterministic
+        # answer rather than failing the request: the executive still gets a
+        # grounded summary, and the audit record shows which provider was used.
+        from backend.ai.providers import NullProvider
+
+        result = NullProvider().answer(question=question, context=context)
+
+    # Verify the answer against the scoped context before it reaches the user.
+    ungrounded = find_ungrounded(result.text, context)
 
     grounded = context.get("grounded_on_company_ids") or [
         c["id"] for c in context.get("companies", [])
@@ -262,9 +189,9 @@ def ask(
     message = AIMessage(
         conversation_id=conversation.id,
         role="assistant",
-        content=answer,
+        content=result.text,
         context_company_ids=json.dumps(grounded),
-        model=settings.AI_MODEL or provider.name,
+        model=settings.AI_MODEL or result.provider,
     )
     db.add(message)
     db.commit()
@@ -279,16 +206,23 @@ def ask(
         company_id=company_id,
         ip_address=ip_address,
         user_agent=user_agent,
-        metadata={"scope": scope, "grounded_on": grounded},
+        metadata={
+            "scope": scope,
+            "grounded_on": grounded,
+            "provider": result.provider,
+            "grounded": result.grounded and not ungrounded,
+        },
     )
 
     return {
         "conversation_id": conversation.id,
         "scope": scope,
         "company_id": company_id,
-        "answer": answer,
+        "answer": result.text,
         "grounded_on_company_ids": grounded,
-        "provider": provider.name,
+        "provider": result.provider,
+        "grounded": not ungrounded,
+        "ungrounded_numbers": ungrounded,
         "message": message,
     }
 

@@ -72,13 +72,56 @@ reports, users per role, support requests). Each test module owns its own
 scenario; do not widen `world` for a single test — build the extra rows locally.
 
 Suites: `test_auth`, `test_isolation`, `test_rbac`, `test_reports`, `test_support`,
-`test_dashboard`, `test_ai`, `test_admin`, `test_schemas`.
+`test_dashboard`, `test_ai`, `test_admin`, `test_schemas`, `test_ai_providers`,
+`test_insights`.
 
-## Known gaps (Phase 1 audit)
+## Known gaps
 
-These are intentionally not yet built; add them in a later phase rather than
-papering over them in tests:
+Add these in a later phase rather than papering over them in tests:
 
-- No `PATCH /users/{id}` or `GET /users` list endpoint (deactivation is DB-level only).
-- No `PATCH /companies/{id}` or company access grant/revoke endpoints.
-- `AI_PROVIDER` is configurable but only `none` is implemented.
+- `AI_PROVIDER` supports `none` (deterministic, default), `openai`/`azure` and
+  `local`; the hosted providers are implemented but unverified against a live
+  endpoint.
+- Frontend is still the approved static dashboard plus `frontend/app.js`, which
+  hydrates it from the real APIs when served by the backend. There is no login
+  screen or write flows in the browser yet.
+
+## Phase 2 additions
+
+Built on top of the Phase 1 foundation (do not rebuild Phase 1):
+
+- `backend/ai/` — provider abstraction (`get_provider`), deterministic
+  `NullProvider`, OpenAI-compatible/local providers, and number *grounding*
+  (`find_ungrounded`) so an answer can never cite a figure absent from context.
+- `backend/services/insights_service.py` — four data-driven executive insights
+  (revenue change, attention, opportunity, financial review), exposed at
+  `GET /api/v1/ai/insights`.
+- `backend/services/admin_service.py` — user list/update and company-access
+  grant/revoke; `PATCH /users/{id}`, `PATCH /companies/{id}`.
+- `backend/core/storage.py` — attachment storage with content-type allow-list,
+  size cap and path-traversal guard; wired into `POST/DELETE
+  /monthly-reports/{id}/attachments`.
+- Dashboard now returns `change_vs_previous` and `companies_performance`
+  (per-company revenue/expenses/net, growth vs. previous month, report status).
+- `PATCH /support-requests/{id}/assign` (owner-only).
+
+## Frontend live hydration
+
+`frontend/index.html` ships curated demo figures; `frontend/app.js` replaces
+them with live API data when the page is served by the backend. The bridge is
+opt-in per element, so a section that is not wired (or a request that fails)
+keeps its demo content rather than blanking out.
+
+Hooks the markup must keep for hydration to work:
+
+- `body[data-api]` - backend origin. Empty string means same origin, which is
+  the case when FastAPI serves `frontend/`. `?token=`, `?year=`, `?month=`
+  query params supply auth and the reporting period.
+- `[data-kpi="<name>"]` - KPI tiles, hub total, counts and deltas
+  (`total_revenue`, `net_delta`, `net_margin`, `insights_count`, and so on).
+- `#aiAnswer` + `#aiAnswerBody` - the Holding AI executive summary block.
+- `#insightsList`, `#supportBody`, `.rep-grid`, `.subs`, `.ov-card .card-body`
+  - containers whose innerHTML the bridge replaces wholesale.
+
+Anything a live API returns is HTML-escaped before insertion (the AI answer
+included), since a real LLM provider could otherwise emit markup.

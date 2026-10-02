@@ -45,10 +45,19 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 10  # attempts
     LOGIN_RATE_WINDOW_SECONDS: int = 300
 
-    # ---- AI foundation ----
-    AI_PROVIDER: str = "none"  # none | openai | azure | local  (Phase 2)
+    # ---- attachments ----
+    UPLOAD_DIR: str = "./uploads"
+
+    # ---- AI ----
+    # none | openai | azure | local
+    #   none   -> deterministic, offline provider (default, used by tests)
+    #   openai -> any OpenAI-compatible endpoint (AI_BASE_URL, AI_API_KEY)
+    #   local  -> self-hosted open-weight server (vLLM / Ollama / LM Studio)
+    AI_PROVIDER: str = "none"
     AI_MODEL: str = ""
     AI_API_KEY: str = ""
+    AI_BASE_URL: str = ""  # e.g. https://api.openai.com/v1 or http://localhost:11434/v1
+    AI_TIMEOUT_SECONDS: float = 30.0
 
     @field_validator("SECRET_KEY")
     @classmethod

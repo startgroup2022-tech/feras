@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
 
 from backend.api.deps import CurrentUser, DbSession, require
+from backend.core.errors import NotFoundError, ValidationError
 from backend.db.models.identity import User
 from backend.rbac.authorization import require_any_permission
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import MonthlyReportRepository
 from backend.schemas import (
+    AttachmentOut,
     FinancialReviewOut,
     FinancialReviewRequest,
     MonthlyReportCreateRequest,
@@ -110,6 +112,58 @@ def submit_report(
         user_agent=ctx["user_agent"],
     )
     return _to_out(report)
+
+
+@router.post(
+    "/{report_id}/attachments",
+    response_model=AttachmentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_attachment(
+    report_id: int,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+    file: UploadFile = File(...),
+) -> AttachmentOut:
+    """Attach a file to a report. Type and size are validated server-side."""
+    ctx = audit_service.request_context(request)
+    data = await file.read()
+    attachment = report_service.add_attachment(
+        db,
+        user=user,
+        report_id=report_id,
+        filename=file.filename or "",
+        content_type=file.content_type,
+        data=data,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return AttachmentOut.model_validate(attachment)
+
+
+@router.delete(
+    "/{report_id}/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_attachment(
+    report_id: int,
+    attachment_id: int,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> Response:
+    ctx = audit_service.request_context(request)
+    report_service.remove_attachment(
+        db,
+        user=user,
+        report_id=report_id,
+        attachment_id=attachment_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --------------------------------------------------------------------------

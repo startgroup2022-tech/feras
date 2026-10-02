@@ -90,6 +90,12 @@ def _mount_frontend(app: FastAPI) -> None:
     def styles() -> FileResponse:
         return FileResponse(str(FRONTEND_DIR / "styles.css"), media_type="text/css")
 
+    @app.get("/app.js", include_in_schema=False)
+    def app_js() -> FileResponse:
+        return FileResponse(
+            str(FRONTEND_DIR / "app.js"), media_type="application/javascript"
+        )
+
     @app.get("/preview-16x9.png", include_in_schema=False)
     def preview() -> FileResponse:
         return FileResponse(str(FRONTEND_DIR / "preview-16x9.png"), media_type="image/png")
@@ -114,6 +120,7 @@ def api_root() -> JSONResponse:
                 "/api/v1/dashboard",
                 "/api/v1/ai/holding",
                 "/api/v1/ai/company",
+                "/api/v1/ai/insights",
             ],
         }
     )

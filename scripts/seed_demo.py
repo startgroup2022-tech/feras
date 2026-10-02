@@ -61,6 +61,16 @@ REPORTS_2027_10 = [
     # SAF-HLT intentionally has no report -- it appears in "missing reports".
 ]
 
+# September baseline so the dashboard can show real month-over-month change and
+# per-company growth. Kept slightly lower than October to reflect growth.
+REPORTS_2027_09 = [
+    ("SAF-TECH", "4280000", "2900000", "1380000", "390000", ReportStatus.REVIEWED),
+    ("SAF-REAL", "2990000", "2150000", "840000", "910000", ReportStatus.REVIEWED),
+    ("SAF-MFG", "2850000", "2540000", "310000", "1280000", ReportStatus.REVIEWED),
+    ("SAF-RET", "1890000", "1250000", "640000", "140000", ReportStatus.REVIEWED),
+    ("SAF-LOG", "1290000", "1100000", "190000", "280000", ReportStatus.REVIEWED),
+]
+
 SUPPORT_REQUESTS = [
     ("SAF-TECH", "طلب تطوير خطة التوسع الإقليمي", SupportCategory.BUSINESS_DEVELOPMENT,
      SupportStatus.IN_PROGRESS),
@@ -204,6 +214,64 @@ def seed(reset: bool) -> None:
             created_reports += 1
         db.commit()
         print(f"  {created_reports} monthly reports for 2027-10")
+
+        # ---- September baseline reports (for month-over-month) ----
+        created_prev = 0
+        for code, revenue, expenses, net, receivables, status in REPORTS_2027_09:
+            company = companies[code]
+            exists = db.execute(
+                select(MonthlyReport).where(
+                    MonthlyReport.company_id == company.id,
+                    MonthlyReport.period_year == 2027,
+                    MonthlyReport.period_month == 9,
+                )
+            ).scalar_one_or_none()
+            if exists:
+                continue
+            db.add(
+                MonthlyReport(
+                    company_id=company.id,
+                    period_year=2027,
+                    period_month=9,
+                    status=status.value,
+                    revenue=Decimal(revenue),
+                    expenses=Decimal(expenses),
+                    net_result=Decimal(net),
+                    outstanding_receivables=Decimal(receivables),
+                    submitted_at=utcnow(),
+                    submitted_by_id=manager.id,
+                )
+            )
+            created_prev += 1
+        db.commit()
+        print(f"  {created_prev} monthly reports for 2027-09 (baseline)")
+
+        # ---- one demo attachment (a tiny PDF) on the reviewed Tech report ----
+        tech_report = db.execute(
+            select(MonthlyReport).where(
+                MonthlyReport.company_id == companies["SAF-TECH"].id,
+                MonthlyReport.period_year == 2027,
+                MonthlyReport.period_month == 10,
+            )
+        ).scalar_one_or_none()
+        if tech_report is not None and not tech_report.attachments:
+            from backend.core import storage
+            from backend.db.models.report import MonthlyReportAttachment
+
+            payload = b"%PDF-1.4\n% Safir demo monthly financial pack\n"
+            key = storage.store_bytes(data=payload, extension=".pdf")
+            db.add(
+                MonthlyReportAttachment(
+                    report_id=tech_report.id,
+                    original_filename="Safir-Tech-2027-10.pdf",
+                    storage_key=key,
+                    content_type="application/pdf",
+                    size_bytes=len(payload),
+                    uploaded_by_id=owner.id,
+                )
+            )
+            db.commit()
+            print("  1 demo attachment on SAF-TECH report")
 
         # ---- support requests ----
         created_requests = 0

@@ -222,6 +222,104 @@ def _coalesce(new_value, existing):
     return new_value if new_value is not None else existing
 
 
+def add_attachment(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    filename: str,
+    content_type: str | None,
+    data: bytes,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReportAttachment:
+    """Attach a file to a report.
+
+    Permitted while the report is a draft (the manager is assembling it) and
+    afterwards for evidence; a *reviewed* report is frozen, so attachments are
+    refused there to keep the reviewed record immutable.
+    """
+    from backend.core import storage
+    from backend.db.models.report import MonthlyReportAttachment
+
+    require_permission(user, Perm.REPORT_UPDATE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id, write=True)
+
+    if report.status == ReportStatus.REVIEWED.value:
+        raise ConflictError("A reviewed report cannot be modified.")
+
+    extension = storage.validate_upload(
+        filename=filename, content_type=content_type, size=len(data)
+    )
+    storage_key = storage.store_bytes(data=data, extension=extension)
+
+    attachment = MonthlyReportAttachment(
+        report_id=report.id,
+        original_filename=filename.strip()[:255],
+        storage_key=storage_key,
+        content_type=content_type,
+        size_bytes=len(data),
+        uploaded_by_id=user.id,
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_ATTACHMENT_ADDED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"filename": filename, "size": len(data)},
+    )
+    return attachment
+
+
+def remove_attachment(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    attachment_id: int,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    from backend.core import storage
+    from backend.db.models.report import MonthlyReportAttachment
+
+    require_permission(user, Perm.REPORT_UPDATE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id, write=True)
+
+    if report.status == ReportStatus.REVIEWED.value:
+        raise ConflictError("A reviewed report cannot be modified.")
+
+    attachment = db.get(MonthlyReportAttachment, attachment_id)
+    if attachment is None or attachment.report_id != report.id:
+        raise NotFoundError("Attachment not found.")
+
+    storage.delete_stored(attachment.storage_key)
+    db.delete(attachment)
+    db.commit()
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_ATTACHMENT_REMOVED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"attachment_id": attachment_id},
+    )
+
+
 def _get_scoped_or_404(db: Session, user: User, report_id: int) -> MonthlyReport:
     """Fetch a report inside the caller's company scope.
 
@@ -261,6 +359,7 @@ def serialise(report: MonthlyReport) -> dict:
         "created_at": report.created_at,
         "updated_at": report.updated_at,
         "financial_review": report.financial_review,
+        "attachments": report.attachments,
     }
     return data
 
@@ -270,6 +369,8 @@ __all__ = [
     "update_report",
     "submit_report",
     "review_financially",
+    "add_attachment",
+    "remove_attachment",
     "serialise",
     "MonthlyReport",
     "Decimal",

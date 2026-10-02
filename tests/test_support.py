@@ -235,3 +235,49 @@ def test_empty_comment_is_rejected(client, world, auth):
     )
 
     assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Phase 2: assignment
+# --------------------------------------------------------------------------
+def test_owner_assigns_a_request(client, world, auth):
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/assign",
+        headers=auth(world["owner"]),
+        json={"assigned_to_id": world["owner"].id},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["assigned_to_id"] == world["owner"].id
+
+
+def test_manager_cannot_assign(client, world, auth):
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/assign",
+        headers=auth(world["alpha_mgr"]),
+        json={"assigned_to_id": world["alpha_mgr"].id},
+    )
+    assert response.status_code == 403
+
+
+def test_assign_to_unknown_user_is_rejected(client, world, auth):
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/assign",
+        headers=auth(world["owner"]),
+        json={"assigned_to_id": 999999},
+    )
+    assert response.status_code == 422
+
+
+def test_assignment_is_audited(client, world, auth, db):
+    from backend.db.models.ai import AuditLog
+
+    client.patch(
+        f"{BASE}/{world['alpha_req'].id}/assign",
+        headers=auth(world["owner"]),
+        json={
+            "assigned_to_id": world["owner"].id,
+            "responsible_department": "business_development",
+        },
+    )
+    assert "support_request.assigned" in [row.action for row in db.query(AuditLog).all()]
+

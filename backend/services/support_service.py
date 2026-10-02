@@ -113,6 +113,49 @@ def change_status(
     return request
 
 
+def assign_request(
+    db: Session,
+    *,
+    user: User,
+    request_id: int,
+    assigned_to_id: int | None,
+    responsible_department: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> SupportRequest:
+    """Assign a request to a staff member and/or a department.
+
+    Only the ``assigned_to_id`` and department label are stored; there is no
+    routing engine. The department is normally derived from the category, but a
+    manager may override it.
+    """
+    require_permission(user, Perm.SUPPORT_ASSIGN)
+    request = _get_scoped_or_404(db, user, request_id)
+
+    if assigned_to_id is not None:
+        assignee = db.get(User, assigned_to_id)
+        if assignee is None or not assignee.is_active:
+            raise ValidationError("Assignee not found or inactive.")
+
+    request.assigned_to_id = assigned_to_id
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    audit_service.record(
+        db,
+        action=AuditAction.SUPPORT_REQUEST_ASSIGNED,
+        actor_user_id=user.id,
+        entity_type="support_request",
+        entity_id=request.id,
+        company_id=request.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"assigned_to": assigned_to_id, "department": responsible_department},
+    )
+    return request
+
+
 def add_comment(
     db: Session,
     *,

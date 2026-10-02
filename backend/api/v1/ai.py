@@ -12,8 +12,10 @@ from fastapi import APIRouter, Request
 
 from backend.api.deps import CurrentUser, DbSession
 from backend.db.models.enums import AIScope
-from backend.schemas import AIAskRequest, AIAskResponse, AIMessageOut
-from backend.services import ai_service, audit_service
+from backend.rbac.authorization import has_permission
+from backend.rbac.permissions import Perm
+from backend.schemas import AIAskRequest, AIAskResponse, AIInsightOut, AIMessageOut
+from backend.services import ai_service, audit_service, insights_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -50,6 +52,8 @@ def _run(request: Request, user, db, payload: AIAskRequest, scope: str) -> AIAsk
         answer=result["answer"],
         grounded_on_company_ids=result["grounded_on_company_ids"],
         provider=result["provider"],
+        grounded=result["grounded"],
+        ungrounded_numbers=result["ungrounded_numbers"],
         message=AIMessageOut.model_validate(result["message"]),
     )
 
@@ -68,3 +72,25 @@ def ask_company(
 ) -> AIAskResponse:
     """Ask Company AI a question about one company. Isolation is enforced."""
     return _run(request, user, db, payload, AIScope.COMPANY.value)
+
+
+@router.get("/insights", response_model=list[AIInsightOut])
+def insights(
+    request: Request, user: CurrentUser, db: DbSession
+) -> list[AIInsightOut]:
+    """The four data-driven executive insights for the period.
+
+    Each insight is computed from the database; when the data is insufficient
+    the entry states so explicitly rather than inventing an observation.
+    """
+    if not (
+        has_permission(user, Perm.DASHBOARD_HOLDING)
+        or has_permission(user, Perm.DASHBOARD_COMPANY)
+    ):
+        from backend.core.errors import PermissionDeniedError
+
+        raise PermissionDeniedError("You do not have access to insights.")
+
+    year, month = _period(request)
+    rows = insights_service.build_insights(db, user=user, year=year, month=month)
+    return [AIInsightOut(**row) for row in rows]

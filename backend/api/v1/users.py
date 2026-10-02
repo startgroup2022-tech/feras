@@ -15,12 +15,15 @@ from backend.rbac.authorization import (
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import CompanyRepository
 from backend.schemas import (
+    CompanyAccessRequest,
     CompanyCreateRequest,
     CompanyOut,
+    CompanyUpdateRequest,
     CreateUserRequest,
+    UpdateUserRequest,
     UserOut,
 )
-from backend.services import audit_service, auth_service
+from backend.services import admin_service, audit_service, auth_service
 from backend.services.rbac_service import bootstrap_rbac
 
 router = APIRouter(tags=["users", "companies"])
@@ -35,6 +38,97 @@ def my_permissions(user: CurrentUser) -> UserOut:
     from backend.api.v1.auth import _user_payload
 
     return UserOut(**_user_payload(user))
+
+
+@router.get("/users", response_model=list[UserOut], tags=["users"])
+def list_users(
+    db: DbSession,
+    actor: User = Depends(require(Perm.USER_READ)),
+) -> list[UserOut]:
+    """All platform users. Holding Owner / administrators only."""
+    from backend.api.v1.auth import _user_payload
+
+    return [UserOut(**_user_payload(u)) for u in admin_service.list_users(db, user=actor)]
+
+
+@router.patch("/users/{user_id}", response_model=UserOut, tags=["users"])
+def update_user(
+    user_id: int,
+    payload: UpdateUserRequest,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.USER_MANAGE)),
+) -> UserOut:
+    """Update a user's profile, role or active state."""
+    from backend.api.v1.auth import _user_payload
+
+    ctx = audit_service.request_context(request)
+    updated = admin_service.update_user(
+        db,
+        actor=actor,
+        user_id=user_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return UserOut(**_user_payload(updated))
+
+
+@router.post(
+    "/users/{user_id}/company-access",
+    response_model=UserOut,
+    tags=["users"],
+)
+def grant_company_access(
+    user_id: int,
+    payload: CompanyAccessRequest,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.COMPANY_ACCESS_MANAGE)),
+) -> UserOut:
+    """Grant (or update) a user's access to a company."""
+    from backend.api.v1.auth import _user_payload
+
+    ctx = audit_service.request_context(request)
+    admin_service.grant_company_access(
+        db,
+        actor=actor,
+        user_id=user_id,
+        company_id=payload.company_id,
+        can_read=payload.can_read,
+        can_write=payload.can_write,
+        is_primary=payload.is_primary,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return UserOut(**_user_payload(admin_service.get_user(db, user=actor, user_id=user_id)))
+
+
+@router.delete(
+    "/users/{user_id}/company-access/{company_id}",
+    response_model=UserOut,
+    tags=["users"],
+)
+def revoke_company_access(
+    user_id: int,
+    company_id: int,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.COMPANY_ACCESS_MANAGE)),
+) -> UserOut:
+    """Revoke a user's access to a company."""
+    from backend.api.v1.auth import _user_payload
+
+    ctx = audit_service.request_context(request)
+    admin_service.revoke_company_access(
+        db,
+        actor=actor,
+        user_id=user_id,
+        company_id=company_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return UserOut(**_user_payload(admin_service.get_user(db, user=actor, user_id=user_id)))
 
 
 @router.post(
@@ -155,6 +249,27 @@ def create_company(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
         metadata={"code": company.code},
+    )
+    return CompanyOut.model_validate(company)
+
+
+@router.patch("/companies/{company_id}", response_model=CompanyOut, tags=["companies"])
+def update_company(
+    company_id: int,
+    payload: CompanyUpdateRequest,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.COMPANY_MANAGE)),
+) -> CompanyOut:
+    """Update a subsidiary's descriptive fields (name, sector, health, status)."""
+    ctx = audit_service.request_context(request)
+    company = admin_service.update_company(
+        db,
+        actor=actor,
+        company_id=company_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
     )
     return CompanyOut.model_validate(company)
 
