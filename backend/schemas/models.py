@@ -1,0 +1,360 @@
+"""Pydantic request/response schemas.
+
+Central validation lives here: every payload entering the API is parsed by one
+of these models, so validation rules are declared once and cannot drift between
+endpoints. Field constraints double as the first line of defence against
+malformed or hostile input.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime
+from decimal import Decimal
+from typing import Annotated
+
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+
+from backend.db.models.enums import SupportCategory, SupportStatus
+
+# Deliberately syntax-only. Public email validators reject reserved/internal
+# TLDs (``.local``, private zones) outright, which would make it impossible to
+# register the Holding's own staff. This platform never sends mail itself, so
+# deliverability is not this layer's concern; strict syntax is.
+_LOCAL_PART = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$")
+_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+MAX_EMAIL_LENGTH = 254
+
+
+def _validate_internal_email(value: str) -> str:
+    """Validate and normalise an email address's syntax."""
+    value = (value or "").strip()
+    if not value or len(value) > MAX_EMAIL_LENGTH:
+        raise ValueError("Not a valid email address.")
+    if value.count("@") != 1:
+        raise ValueError("Not a valid email address.")
+    local, _, domain = value.partition("@")
+    if not local or len(local) > 64:
+        raise ValueError("Not a valid email address.")
+    if local.startswith(".") or local.endswith(".") or ".." in local:
+        raise ValueError("Not a valid email address.")
+    if not _LOCAL_PART.match(local):
+        raise ValueError("Not a valid email address.")
+    labels = domain.split(".")
+    if len(labels) < 2 or any(not _LABEL.match(label) for label in labels):
+        raise ValueError("Not a valid email address.")
+    return f"{local}@{domain}".lower()
+
+
+# Email type used across the API: syntax-checked, internal-domain friendly.
+InternalEmail = Annotated[str, AfterValidator(_validate_internal_email)]
+
+
+# --------------------------------------------------------------------------
+# auth
+# --------------------------------------------------------------------------
+class LoginRequest(BaseModel):
+    email: InternalEmail
+    password: str = Field(min_length=1, max_length=72)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=10)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: InternalEmail
+    full_name_ar: str
+    full_name_en: str | None
+    is_active: bool
+    role_code: str
+    role_name_ar: str | None = None
+    role_name_en: str | None = None
+    permissions: list[str] = []
+    company_ids: list[int] = []
+    last_login_at: datetime | None = None
+
+
+class CreateUserRequest(BaseModel):
+    email: InternalEmail
+    password: str = Field(min_length=8, max_length=72)
+    full_name_ar: str = Field(min_length=1, max_length=180)
+    full_name_en: str | None = Field(default=None, max_length=180)
+    role_code: str = Field(min_length=2, max_length=40)
+    company_ids: list[int] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------
+# companies
+# --------------------------------------------------------------------------
+class CompanyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str
+    sector: str | None
+    status: str
+    health: str
+    contact_email: str | None
+
+
+class CompanyCreateRequest(BaseModel):
+    code: str = Field(min_length=2, max_length=40)
+    name_ar: str = Field(min_length=1, max_length=180)
+    name_en: str = Field(min_length=1, max_length=180)
+    sector: str | None = Field(default=None, max_length=120)
+    contact_email: InternalEmail | None = None
+
+
+# --------------------------------------------------------------------------
+# monthly reports
+# --------------------------------------------------------------------------
+class MonthlyReportCreateRequest(BaseModel):
+    company_id: int
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+
+    revenue: Decimal | None = Field(default=None, ge=0)
+    expenses: Decimal | None = Field(default=None, ge=0)
+    net_result: Decimal | None = None
+    outstanding_receivables: Decimal | None = Field(default=None, ge=0)
+
+    important_developments: str | None = Field(default=None, max_length=5000)
+    new_customers: str | None = Field(default=None, max_length=5000)
+    new_opportunities: str | None = Field(default=None, max_length=5000)
+    major_problems: str | None = Field(default=None, max_length=5000)
+    support_required: str | None = Field(default=None, max_length=5000)
+    marketing_status: str | None = Field(default=None, max_length=5000)
+    business_development_status: str | None = Field(default=None, max_length=5000)
+    management_notes: str | None = Field(default=None, max_length=5000)
+
+
+class MonthlyReportUpdateRequest(BaseModel):
+    """All fields optional; only drafts may be updated."""
+
+    revenue: Decimal | None = Field(default=None, ge=0)
+    expenses: Decimal | None = Field(default=None, ge=0)
+    net_result: Decimal | None = None
+    outstanding_receivables: Decimal | None = Field(default=None, ge=0)
+    important_developments: str | None = Field(default=None, max_length=5000)
+    new_customers: str | None = Field(default=None, max_length=5000)
+    new_opportunities: str | None = Field(default=None, max_length=5000)
+    major_problems: str | None = Field(default=None, max_length=5000)
+    support_required: str | None = Field(default=None, max_length=5000)
+    marketing_status: str | None = Field(default=None, max_length=5000)
+    business_development_status: str | None = Field(default=None, max_length=5000)
+    management_notes: str | None = Field(default=None, max_length=5000)
+
+
+class FinancialReviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    report_id: int
+    reviewer_id: int
+    status: str
+    verified_revenue: Decimal | None
+    verified_expenses: Decimal | None
+    verified_net_result: Decimal | None
+    verified_outstanding_receivables: Decimal | None
+    financial_notes: str | None
+    is_financially_accurate: bool | None
+    flagged_reason: str | None
+    reviewed_at: datetime | None
+
+
+class MonthlyReportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    company_name_ar: str | None = None
+    company_name_en: str | None = None
+    period_year: int
+    period_month: int
+    status: str
+    revenue: Decimal | None
+    expenses: Decimal | None
+    net_result: Decimal | None
+    outstanding_receivables: Decimal | None
+    important_developments: str | None = None
+    new_customers: str | None = None
+    new_opportunities: str | None = None
+    major_problems: str | None = None
+    support_required: str | None = None
+    marketing_status: str | None = None
+    business_development_status: str | None = None
+    management_notes: str | None = None
+    submitted_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    financial_review: FinancialReviewOut | None = None
+
+
+class FinancialReviewRequest(BaseModel):
+    """Accountant verification payload."""
+
+    verified_revenue: Decimal | None = Field(default=None, ge=0)
+    verified_expenses: Decimal | None = Field(default=None, ge=0)
+    verified_net_result: Decimal | None = None
+    verified_outstanding_receivables: Decimal | None = Field(default=None, ge=0)
+    financial_notes: str | None = Field(default=None, max_length=5000)
+    is_financially_accurate: bool
+    flagged_reason: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _require_reason_when_inaccurate(self) -> FinancialReviewRequest:
+        # A model validator is required here, not a field validator: Pydantic v2
+        # skips field validators for fields left at their default, so a check
+        # on ``flagged_reason`` would never run when the client omits it --
+        # exactly the case it exists to catch.
+        if not self.is_financially_accurate and not (
+            self.flagged_reason and self.flagged_reason.strip()
+        ):
+            raise ValueError("A reason is required when financial data is not accurate.")
+        return self
+
+
+# --------------------------------------------------------------------------
+# support requests
+# --------------------------------------------------------------------------
+class SupportRequestCreateRequest(BaseModel):
+    company_id: int
+    title: str = Field(min_length=3, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    category: SupportCategory = SupportCategory.GENERAL
+
+
+class SupportRequestStatusRequest(BaseModel):
+    status: SupportStatus
+
+
+class SupportCommentRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+    is_internal: bool = False
+
+
+class SupportCommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    request_id: int
+    author_id: int | None
+    author_name_ar: str | None = None
+    body: str
+    is_internal: bool
+    created_at: datetime
+
+
+class SupportRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    company_name_ar: str | None = None
+    company_name_en: str | None = None
+    title: str
+    description: str | None
+    category: str
+    status: str
+    responsible_department: str
+    requested_by_id: int | None
+    assigned_to_id: int | None
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None
+
+
+# --------------------------------------------------------------------------
+# dashboard
+# --------------------------------------------------------------------------
+class DashboardKpis(BaseModel):
+    companies_count: int
+    reports_submitted: int
+    reports_missing: int
+    total_revenue: Decimal
+    total_expenses: Decimal
+    total_net_result: Decimal
+    companies_requiring_attention: int
+    open_support_requests: int
+    pending_financial_reviews: int
+
+
+class AttentionCompanyOut(BaseModel):
+    """A company the Holding should look at, with the reason why."""
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    health: str
+    reason: str | None = None
+    support_required: str | None = None
+
+
+class DashboardResponse(BaseModel):
+    scope: str  # "holding" | "company"
+    company_id: int | None
+    period_year: int
+    period_month: int
+    kpis: DashboardKpis
+    companies: list[CompanyOut] = []
+    companies_missing_report: list[CompanyOut] = []
+    companies_requiring_attention: list[AttentionCompanyOut] = []
+
+
+# --------------------------------------------------------------------------
+# AI
+# --------------------------------------------------------------------------
+class AIAskRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=2000)
+    conversation_id: int | None = None
+    company_id: int | None = None  # required for company-scoped AI
+
+    @field_validator("question")
+    @classmethod
+    def _question_must_have_content(cls, value: str) -> str:
+        # ``min_length`` alone accepts a run of spaces, which is not a question.
+        stripped = value.strip()
+        if len(stripped) < 2:
+            raise ValueError("The question must contain at least 2 visible characters.")
+        return stripped
+
+
+class AIMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    role: str
+    content: str
+    created_at: datetime
+
+
+class AIAskResponse(BaseModel):
+    conversation_id: int
+    scope: str
+    company_id: int | None
+    answer: str
+    grounded_on_company_ids: list[int]
+    provider: str
+    message: AIMessageOut

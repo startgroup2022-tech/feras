@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases and secrets
+*.db
+*.sqlite3
+.env
+.env.*
+
+# Agent/editor scratch
+.agent_tmp/
+.obs/
