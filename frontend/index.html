@@ -9,7 +9,56 @@
 <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body data-api="">
+<body>
+
+<!-- ================= LOGIN GATE ================= -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-mark">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
+          <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
+          <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
+        </svg>
+      </div>
+      <div>
+        <div class="login-title"><span class="ar">سفير القابضة ٢٠٢٧</span><span class="en">Safir Holding 2027</span></div>
+        <div class="login-sub"><span class="ar">منصة القيادة التنفيذية · تسجيل الدخول</span><span class="en">Executive Platform · Sign in</span></div>
+      </div>
+    </div>
+
+    <div class="login-error" id="loginError"></div>
+
+    <form id="loginForm" autocomplete="on">
+      <div class="login-field">
+        <label><span class="ar">البريد الإلكتروني المؤسسي</span><span class="en">Corporate email</span></label>
+        <input type="email" id="loginEmail" name="email" autocomplete="username" required
+               placeholder="name@safir.local" dir="ltr" />
+      </div>
+      <div class="login-field">
+        <label><span class="ar">كلمة المرور</span><span class="en">Password</span></label>
+        <input type="password" id="loginPassword" name="password" autocomplete="current-password" required
+               placeholder="••••••••" dir="ltr" />
+      </div>
+      <div class="login-actions">
+        <div class="login-lang">
+          <button type="button" class="lang-opt on" data-lang="ar">عربي</button>
+          <button type="button" class="lang-opt" data-lang="en">EN</button>
+        </div>
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">
+        <span class="ar">دخول المنصة</span><span class="en">Sign in</span>
+      </button>
+    </form>
+
+    <div class="login-hint">
+      <span class="ar">الدخول مقتصر على حسابات القابضة والشركات التابعة المصرّح لها.</span>
+      <span class="en">Access is limited to authorised Holding and subsidiary accounts.</span>
+    </div>
+  </div>
+</div>
+
 <div class="stage-wrap">
 <div class="stage" id="stage">
 
@@ -62,8 +111,11 @@
           <span class="p-name"><span class="ar">عبدالله السفير</span><span class="en">Abdullah Al-Safir</span></span>
           <span class="p-role"><span class="ar">الرئيس التنفيذي للمجموعة</span><span class="en">Group CEO</span></span>
         </div>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9DAABD" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
       </div>
+      <button class="logout-btn" id="logoutBtn" title="تسجيل الخروج">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l-5-5 5-5"/><path d="M15 12H5"/></svg>
+        <span class="ar">خروج</span><span class="en">Logout</span>
+      </button>
     </div>
   </div>
 </header>
@@ -87,7 +139,7 @@
   </div>
 
   <!-- ============== KPI STRIP ============== -->
-  <section class="kpis">
+  <section class="kpis" data-perm="dashboard.holding dashboard.company">
     <div class="kpi anim" style="animation-delay:.06s">
       <div class="kpi-head"><div class="kpi-lbl"><span class="ar">عدد الشركات</span><span class="en">Companies</span></div>
         <div class="kpi-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div></div>
@@ -132,7 +184,7 @@
   </section>
 
   <!-- ============== HOLDING AI (left column) ============== -->
-  <section class="ai anim" style="animation-delay:.18s">
+  <section class="ai anim" style="animation-delay:.18s" data-perm="ai.holding ai.company">
     <div class="ai-top">
       <div class="ai-orb">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
@@ -185,7 +237,7 @@
   </section>
 
   <!-- ============== AI INSIGHTS (bottom-left) ============== -->
-  <section class="aii anim" style="animation-delay:.30s">
+  <section class="aii anim" style="animation-delay:.30s" data-perm="dashboard.holding dashboard.company">
     <div class="aii-head">
       <div class="t-ico gold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 10.9 10.1 9 12 3.4Z"/></svg></div>
       <h2><span class="ar">رؤى الذكاء الاصطناعي</span><span class="en">AI Insights</span></h2>
@@ -233,7 +285,7 @@
   </section>
 
   <!-- ============== MONTHLY COMPANY REPORTS ============== -->
-  <section class="card reports anim" style="animation-delay:.22s">
+  <section class="card reports anim" style="animation-delay:.22s" data-perm="monthly_report.read_own monthly_report.read_all">
     <div class="card-head">
       <div class="card-title">
         <div class="t-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></div>
@@ -389,7 +441,7 @@
   </section>
 
   <!-- ============== SUPPORT REQUESTS ============== -->
-  <section class="card support anim" style="animation-delay:.26s">
+  <section class="card support anim" style="animation-delay:.26s" data-perm="support_request.read_own support_request.read_all">
     <div class="card-head">
       <div class="card-title">
         <div class="t-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg></div>
@@ -455,7 +507,7 @@
   <div class="rel">
 
     <!-- Group structure map -->
-    <section class="card map-card anim" style="animation-delay:.30s">
+    <section class="card map-card anim" style="animation-delay:.30s" data-perm="dashboard.holding dashboard.company">
       <div class="card-head">
         <div class="card-title">
           <div class="t-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="19" r="2.4"/><circle cx="19" cy="19" r="2.4"/><path d="M12 7.4v4M12 11.4 6.4 16.8M12 11.4l5.6 5.4"/></svg></div>
@@ -521,7 +573,7 @@
     </section>
 
     <!-- Companies overview -->
-    <section class="card ov-card anim" style="animation-delay:.34s">
+    <section class="card ov-card anim" style="animation-delay:.34s" data-perm="dashboard.holding dashboard.company">
       <div class="card-head">
         <div class="card-title">
           <div class="t-ico gold"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div>
@@ -619,6 +671,7 @@
   fit();
 })();
 </script>
+<script src="auth.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

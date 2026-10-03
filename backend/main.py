@@ -141,6 +141,12 @@ def _mount_frontend(app: FastAPI) -> None:
             str(FRONTEND_DIR / "app.js"), media_type="application/javascript"
         )
 
+    @app.get("/auth.js", include_in_schema=False)
+    def auth_js() -> FileResponse:
+        return FileResponse(
+            str(FRONTEND_DIR / "auth.js"), media_type="application/javascript"
+        )
+
     @app.get("/preview-16x9.png", include_in_schema=False)
     def preview() -> FileResponse:
         return FileResponse(str(FRONTEND_DIR / "preview-16x9.png"), media_type="image/png")

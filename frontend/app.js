@@ -1,60 +1,62 @@
 /*
  * Safir Holding 2027 — live data bridge.
  *
- * The dashboard ships as a self-contained, presentation-quality mockup. This
- * script upgrades it to a *live* dashboard when the FastAPI backend is
- * reachable, and otherwise leaves the curated demo figures in place. That
- * graceful degradation matters for a Holding platform: a stakeholder opening
- * the file directly still sees a coherent screen, while the deployed product
- * shows real, company-scoped data.
+ * This file binds the executive dashboard to the real FastAPI backend. It is
+ * no longer a standalone mockup: every figure on screen is loaded from the API
+ * and PostgreSQL for the signed-in user, and the page is gated behind the
+ * backend's existing JWT authentication (see auth.js).
  *
- * Configuration (all optional, via <body> data-* attributes or query string):
- *   data-api="http://localhost:8000"   backend origin
- *   data-token="<jwt>"                 a pre-issued access token
- *   ?year=2027&month=10                the reporting period
+ * The reporting period defaults to the most recent month that actually has
+ * data (derived from the reports the caller may see), falling back to the
+ * current month. It can still be pinned with ?year=2027&month=10.
  *
- * No credentials are ever hardcoded here.
+ * No credential or token is ever hardcoded here or read from the URL.
  */
 (function () {
   "use strict";
 
   var body = document.body;
   var params = new URLSearchParams(location.search);
-  var configured = body.getAttribute("data-api") || params.get("api") || "";
-  // When served by the backend itself, fall back to the current origin so the
-  // dashboard goes live with no configuration. Opened as a file, it stays demo.
-  var sameOrigin = /^https?:$/.test(location.protocol) ? location.origin : "";
-  var API = (configured || sameOrigin).replace(/\/$/, "");
-  var TOKEN = body.getAttribute("data-token") || params.get("token") || "";
+  var api = window.SafirApi;
   var YEAR = params.get("year");
   var MONTH = params.get("month");
 
   var period = "";
   if (YEAR && MONTH) period = "?year=" + YEAR + "&month=" + MONTH;
 
-  function headers() {
-    var h = { "Content-Type": "application/json" };
-    if (TOKEN) h["Authorization"] = "Bearer " + TOKEN;
-    return h;
+  // The backend defaults an unspecified period to the current calendar month,
+  // which for a freshly seeded environment holds no data. Unless the caller
+  // pinned ?year&month, derive the most recent period that actually has data
+  // from the reports this user may see, so the dashboard opens on real figures.
+  function resolvePeriod() {
+    if (YEAR && MONTH) return Promise.resolve();
+    if (!has("monthly_report.read_own") && !has("monthly_report.read_all")) {
+      return Promise.resolve();
+    }
+    return get("/api/v1/monthly-reports")
+      .then(function (rows) {
+        var best = null;
+        (rows || []).forEach(function (r) {
+          var key = r.period_year * 12 + r.period_month;
+          if (!best || key > best.key) {
+            best = { key: key, year: r.period_year, month: r.period_month };
+          }
+        });
+        if (best) period = "?year=" + best.year + "&month=" + best.month;
+      })
+      .catch(function () {
+        /* fall back to the backend's current-month default */
+      });
   }
 
   function get(path) {
-    return fetch(API + path, { headers: headers() }).then(function (r) {
-      if (!r.ok) throw new Error(path + " -> " + r.status);
-      return r.json();
-    });
+    return api.get(path);
   }
 
   function post(path, payload) {
-    return fetch(API + path, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(payload),
-    }).then(function (r) {
-      if (!r.ok) throw new Error(path + " -> " + r.status);
-      return r.json();
-    });
+    return api.post(path, payload);
   }
+
 
   // ---- formatting ------------------------------------------------------
   var NUM = new Intl.NumberFormat("en-US");
@@ -380,15 +382,21 @@
 
   function hydrateCompanies(data) {
     var rows = data.companies_performance || [];
-    if (!rows.length) return;
 
     var repGrid = document.querySelector(".rep-grid");
-    if (repGrid) repGrid.innerHTML = rows.map(reportCard).join("");
-
     var subs = document.querySelector(".subs");
-    if (subs) subs.innerHTML = rows.map(subCard).join("");
-
     var overview = document.querySelector(".ov-card .card-body");
+
+    if (!rows.length) {
+      var none = emptyHtml("لا توجد بيانات شركات لهذه الفترة.", "No company data for this period.");
+      if (repGrid) repGrid.innerHTML = none;
+      if (subs) subs.innerHTML = none;
+      if (overview) overview.innerHTML = none;
+      return;
+    }
+
+    if (repGrid) repGrid.innerHTML = rows.map(reportCard).join("");
+    if (subs) subs.innerHTML = rows.map(subCard).join("");
     if (overview) overview.innerHTML = rows.map(overviewCard).join("");
 
     var hubTotal = (data.kpis && data.kpis.total_revenue) || 0;
@@ -512,7 +520,14 @@
 
   function hydrateSupport(rows) {
     var body = document.getElementById("supportBody");
-    if (!body || !rows.length) return;
+    if (!body) return;
+    if (!rows.length) {
+      body.innerHTML =
+        '<tr><td colspan="5">' +
+        emptyHtml("لا توجد طلبات دعم لهذه الفترة.", "No support requests for this period.") +
+        "</td></tr>";
+      return;
+    }
     body.innerHTML = rows.slice(0, 5).map(supportRow).join("");
 
     var pending = rows.filter(function (r) {
@@ -575,7 +590,11 @@
 
   function renderInsights(insights) {
     var list = document.getElementById("insightsList");
-    if (!list || !insights.length) return;
+    if (!list) return;
+    if (!insights.length) {
+      list.innerHTML = emptyHtml("لا توجد رؤى لهذه الفترة.", "No insights for this period.");
+      return;
+    }
 
     setText(
       '[data-kpi="insights_count"]',
@@ -639,6 +658,32 @@
       .replace(/>/g, "&gt;");
   }
 
+  function loadingHtml() {
+    return (
+      '<div class="state"><span class="spinner"></span>' +
+      '<span class="ar">جارٍ تحميل البيانات…</span>' +
+      '<span class="en">Loading data…</span></div>'
+    );
+  }
+
+  function errorHtml(message) {
+    var safe = escapeHtml(message || "تعذّر تحميل البيانات.");
+    return (
+      '<div class="data-error">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' +
+      '<span class="ar">' + safe + '</span>' +
+      '<span class="en">' + safe + "</span></div>"
+    );
+  }
+
+  function emptyHtml(ar, en) {
+    return (
+      '<div class="state"><span class="ar">' + escapeHtml(ar) +
+      '</span><span class="en">' + escapeHtml(en) + "</span></div>"
+    );
+  }
+
+
   function hydrateAiAnswer(data, question) {
     var box = document.getElementById("aiAnswer");
     if (!box || !data.answer) return;
@@ -671,13 +716,67 @@
     }
   }
 
+  // ---- permissions -----------------------------------------------------
+  var USER = null;
+
+  function has(perm) {
+    return !!(USER && USER.permissions && USER.permissions.indexOf(perm) >= 0);
+  }
+
+  function applyPermissions() {
+    document.querySelectorAll("[data-perm]").forEach(function (el) {
+      var needed = el.getAttribute("data-perm").split(/\s+/);
+      var ok = needed.some(has);
+      el.classList.toggle("perm-hidden", !ok);
+    });
+  }
+
+  function fillProfile() {
+    if (!USER) return;
+    var name = USER.full_name_ar || USER.full_name_en || "";
+    var role = USER.role_name_ar || USER.role_code || "";
+    document.querySelectorAll(".profile .p-name .ar").forEach(function (el) {
+      el.textContent = name;
+    });
+    document.querySelectorAll(".profile .p-name .en").forEach(function (el) {
+      el.textContent = USER.full_name_en || name;
+    });
+    document.querySelectorAll(".profile .p-role .ar").forEach(function (el) {
+      el.textContent = role;
+    });
+    document.querySelectorAll(".profile .p-role .en").forEach(function (el) {
+      el.textContent = USER.role_name_en || role;
+    });
+    var avatar = document.querySelector(".profile .avatar");
+    if (avatar) avatar.textContent = (name || "؟").trim().charAt(0);
+  }
+
+  function isHolding() {
+    return has("dashboard.holding");
+  }
+
+  function primaryCompanyId() {
+    return USER && USER.company_ids && USER.company_ids.length
+      ? USER.company_ids[0]
+      : null;
+  }
+
+  // ---- AI --------------------------------------------------------------
   function askAi(question) {
-    return post("/api/v1/ai/holding" + period, { question: question }).then(
-      function (data) {
-        hydrateAiAnswer(data, question);
-        return data;
-      },
-    );
+    var path, payload;
+    if (isHolding()) {
+      path = "/api/v1/ai/holding" + period;
+      payload = { question: question };
+    } else if (primaryCompanyId() !== null) {
+      path = "/api/v1/ai/company" + period;
+      payload = { question: question, company_id: primaryCompanyId() };
+    } else {
+      return Promise.reject(new Error("no AI scope available"));
+    }
+    return post(path, payload).then(function (data) {
+      hydrateAiAnswer(data, question);
+      return data;
+    });
   }
 
   function bindAskBox() {
@@ -692,7 +791,7 @@
       if (!q) return;
       input.value = "";
       askAi(q).catch(function (err) {
-        console.warn("[safir] AI request failed:", err.message);
+        showAiError(err.message);
       });
     }
     send.addEventListener("click", submit);
@@ -710,36 +809,242 @@
     });
   }
 
-  // ---- boot ------------------------------------------------------------
-  function boot() {
-    if (!API) {
-      console.info("[safir] No data-api configured; showing demo figures.");
+  function showAiError(message) {
+    var box = document.getElementById("aiAnswerBody");
+    if (box) box.innerHTML = errorHtml(message);
+  }
+
+  // Clear the curated demo figures immediately after sign-in so nothing is ever
+  // mistaken for real data while the API responses are in flight.
+  function showLoadingStates() {
+    ["companies_count", "companies_count_unit", "total_revenue",
+     "total_net_result", "reports_submitted", "companies_requiring_attention",
+     "open_support_requests"].forEach(function (key) {
+      setText('[data-kpi="' + key + '"]', "…");
+    });
+    var repGrid = document.querySelector(".rep-grid");
+    if (repGrid) repGrid.innerHTML = loadingHtml();
+    var subs = document.querySelector(".subs");
+    if (subs) subs.innerHTML = loadingHtml();
+    var overview = document.querySelector(".ov-card .card-body");
+    if (overview) overview.innerHTML = loadingHtml();
+    var list = document.getElementById("insightsList");
+    if (list) list.innerHTML = loadingHtml();
+    var aiBody = document.getElementById("aiAnswerBody");
+    if (aiBody) aiBody.innerHTML = loadingHtml();
+    var sbody = document.getElementById("supportBody");
+    if (sbody) {
+      sbody.innerHTML = '<tr><td colspan="5">' + loadingHtml() + "</td></tr>";
+    }
+  }
+
+  // ---- data loading ----------------------------------------------------
+  function loadDashboard() {
+    var path = isHolding()
+      ? "/api/v1/dashboard/holding" + period
+      : "/api/v1/dashboard/company/" + primaryCompanyId() + period;
+    return get(path).then(function (data) {
+      hydrateKpis(data);
+      hydrateCompanies(data);
+      return data;
+    });
+  }
+
+  function loadSupport() {
+    return get("/api/v1/support-requests").then(hydrateSupport);
+  }
+
+  function loadInsights() {
+    return get("/api/v1/ai/insights" + period).then(renderInsights);
+  }
+
+  function loadDefaultAi() {
+    return askAi("ملخص أداء المجموعة هذا الشهر");
+  }
+
+  function showDashboardErrors(message) {
+    var repGrid = document.querySelector(".rep-grid");
+    if (repGrid) repGrid.innerHTML = errorHtml(message);
+    var subs = document.querySelector(".subs");
+    if (subs) subs.innerHTML = errorHtml(message);
+    var overview = document.querySelector(".ov-card .card-body");
+    if (overview) overview.innerHTML = errorHtml(message);
+    var list = document.getElementById("insightsList");
+    if (list) list.innerHTML = errorHtml(message);
+    showAiError(message);
+    var sbody = document.getElementById("supportBody");
+    if (sbody) {
+      sbody.innerHTML =
+        '<tr><td colspan="5">' + errorHtml(message) + "</td></tr>";
+    }
+  }
+
+  // ---- login screen ----------------------------------------------------
+  function showLogin() {
+    body.classList.remove("authed");
+    var screen = document.getElementById("loginScreen");
+    if (screen) screen.style.display = "";
+    var pw = document.getElementById("loginPassword");
+    if (pw) pw.value = "";
+  }
+
+  function hideLogin() {
+    var screen = document.getElementById("loginScreen");
+    if (screen) screen.style.display = "none";
+    body.classList.add("authed");
+  }
+
+  function setLoginError(message) {
+    var el = document.getElementById("loginError");
+    if (!el) return;
+    if (message) {
+      el.textContent = message;
+      el.classList.add("show");
+    } else {
+      el.classList.remove("show");
+    }
+  }
+
+  function bindLogin() {
+    var form = document.getElementById("loginForm");
+    if (!form) return;
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var email = (document.getElementById("loginEmail").value || "").trim();
+      var password = document.getElementById("loginPassword").value || "";
+      var btn = document.getElementById("loginBtn");
+      setLoginError("");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+      }
+      api
+        .login(email, password)
+        .then(function () {
+          return enterApp();
+        })
+        .catch(function (err) {
+          setLoginError(err.message || "تعذّر تسجيل الدخول.");
+        })
+        .then(function () {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML =
+              '<span class="ar">دخول المنصة</span><span class="en">Sign in</span>';
+          }
+        });
+    });
+  }
+
+  function bindLogout() {
+    var btn = document.getElementById("logoutBtn");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      api.logout().then(function () {
+        USER = null;
+        btn.disabled = false;
+        showLogin();
+        window.scrollTo(0, 0);
+      });
+    });
+  }
+
+  // ---- session expiry --------------------------------------------------
+  var toastShown = false;
+  function sessionExpired() {
+    if (toastShown) return;
+    toastShown = true;
+    var t = document.createElement("div");
+    t.className = "session-toast";
+    t.innerHTML =
+      '<span class="ar">انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.</span>' +
+      '<span class="en">Session expired. Please sign in again.</span>';
+    document.body.appendChild(t);
+    setTimeout(function () {
+      t.remove();
+      toastShown = false;
+    }, 5000);
+    showLogin();
+  }
+
+  function handleLoadError(err) {
+    if (err && err.status === 401) {
+      api.clear();
+      sessionExpired();
       return;
     }
-    bindAskBox();
+    if (err && err.status === 403) {
+      showDashboardErrors("ليست لديك صلاحية لعرض هذه البيانات.");
+      return;
+    }
+    showDashboardErrors(err && err.message ? err.message : "تعذّر تحميل البيانات.");
+  }
 
-    get("/api/v1/dashboard/holding" + period)
-      .then(function (data) {
-        hydrateKpis(data);
-        hydrateCompanies(data);
-        document.body.classList.add("is-live");
+  // ---- boot ------------------------------------------------------------
+  function enterApp() {
+    hideLogin();
+    return api
+      .me()
+      .then(function (user) {
+        USER = user;
+        fillProfile();
+        applyPermissions();
+        bindAskBox();
+        bindLogout();
+        showLoadingStates();
+        return resolvePeriod();
+      })
+      .then(function () {
+        var jobs = [];
+        if (has("dashboard.holding") || has("dashboard.company")) {
+          jobs.push(
+            loadDashboard().catch(function (err) {
+              handleLoadError(err);
+            }),
+          );
+        }
+        if (has("support_request.read_own") || has("support_request.read_all")) {
+          jobs.push(
+            loadSupport().catch(function (err) {
+              handleLoadError(err);
+            }),
+          );
+        }
+        if (has("dashboard.holding") || has("dashboard.company")) {
+          jobs.push(
+            loadInsights().catch(function (err) {
+              handleLoadError(err);
+            }),
+          );
+          if (has("ai.holding") || has("ai.company")) {
+            jobs.push(
+              loadDefaultAi().catch(function (err) {
+                showAiError(err && err.message);
+              }),
+            );
+          }
+        }
+        return Promise.all(jobs);
       })
       .catch(function (err) {
-        console.warn(
-          "[safir] Dashboard unavailable, keeping demo data:",
-          err.message,
-        );
+        if (err && err.status === 401) {
+          api.clear();
+          showLogin();
+        } else {
+          handleLoadError(err);
+        }
       });
+  }
 
-    get("/api/v1/support-requests")
-      .then(hydrateSupport)
-      .catch(function () {});
-
-    get("/api/v1/ai/insights" + period)
-      .then(renderInsights)
-      .catch(function () {});
-
-    askAi("ملخص أداء المجموعة هذا الشهر").catch(function () {});
+  function boot() {
+    api.load();
+    bindLogin();
+    if (api.isAuthenticated()) {
+      enterApp();
+    } else {
+      showLogin();
+    }
   }
 
   if (document.readyState === "loading") {
