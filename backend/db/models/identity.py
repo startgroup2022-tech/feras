@@ -18,7 +18,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
-from backend.db.models.enums import CompanyHealth, CompanyStatus, RoleCode
+from backend.db.models.enums import (
+    CompanyHealth,
+    CompanyStatus,
+    CompanyType,
+    RoleCode,
+)
 
 if TYPE_CHECKING:
     from backend.db.models.ai import AIConversation
@@ -88,6 +93,18 @@ class Company(Base, TimestampMixin):
     )
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # ---- Phase 2 administrative fields (all nullable / additive) ----
+    legal_name_ar: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    legal_name_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    company_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=CompanyType.SUBSIDIARY.value
+    )
+    country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    commercial_registration: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     users: Mapped[list["UserCompanyAccess"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"
     )
@@ -116,6 +133,17 @@ class User(Base, TimestampMixin):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role_id: Mapped[int] = mapped_column(
         ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    # Optional home department. Company-scoped by construction: the department
+    # itself carries the company, so assigning a user to a department also
+    # implies the company context for display purposes.
+    # ``use_alter`` breaks the users<->departments FK cycle so Alembic can order
+    # the CREATE TABLE statements deterministically.
+    department_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "departments.id", ondelete="SET NULL", use_alter=True, name="fk_users_department"
+        ),
+        nullable=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

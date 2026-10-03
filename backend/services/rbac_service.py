@@ -88,3 +88,29 @@ def sync_role_permissions(db: Session) -> None:
 
 def bootstrap_rbac(db: Session) -> None:
     sync_role_permissions(db)
+
+
+def effective_permissions(db: Session, role_code: str) -> set[str] | None:
+    """Permission codes granted to a role *as stored in the database*.
+
+    Returns ``None`` when the role code is unknown, so the caller can fall back
+    to the static catalogue. This is what lets an administrator edit a role's
+    permissions (or define a new role) and have it enforced on the next request
+    without a deploy.
+    """
+    from backend.db.models.identity import Permission, Role, RolePermission
+
+    role = db.execute(select(Role).where(Role.code == role_code)).scalar_one_or_none()
+    if role is None:
+        return None
+    rows = db.execute(
+        select(Permission.code)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .where(RolePermission.role_id == role.id)
+    ).scalars()
+    return set(rows)
+
+
+def list_permissions(db: Session) -> list[Permission]:
+    """The full permission catalogue, ordered for stable presentation."""
+    return list(db.execute(select(Permission).order_by(Permission.code)).scalars())

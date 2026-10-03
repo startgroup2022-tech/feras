@@ -10,14 +10,30 @@ import enum
 
 
 class RoleCode(str, enum.Enum):
-    """The six V1 roles."""
+    """Platform roles.
 
+    The original six V1 roles are extended in Phase 2 with group
+    administration and company-governance roles. Roles only ever *group
+    permissions*: no endpoint branches on a role name.
+    """
+
+    # V1 roles
     HOLDING_OWNER = "holding_owner"
     COMPANY_MANAGER = "company_manager"
     ACCOUNTANT = "accountant"
     BUSINESS_DEVELOPMENT = "business_development"
     MARKETING = "marketing"
     DESIGNER = "designer"
+
+    # Phase 2 group-administration and governance roles
+    SUPER_ADMIN = "super_admin"
+    HOLDING_FINANCE = "holding_finance"
+    COMPANY_OWNER = "company_owner"
+    CEO = "ceo"
+    FINANCE_MANAGER = "finance_manager"
+    HR_MANAGER = "hr_manager"
+    DEPARTMENT_MANAGER = "department_manager"
+    EMPLOYEE = "employee"
 
 
 class ReportStatus(str, enum.Enum):
@@ -64,6 +80,37 @@ class AIMessageRole(str, enum.Enum):
 
 
 class CompanyStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ARCHIVED = "archived"
+
+
+class CompanyType(str, enum.Enum):
+    """Coarse classification of a subsidiary entity."""
+
+    HOLDING = "holding"
+    SUBSIDIARY = "subsidiary"
+    JOINT_VENTURE = "joint_venture"
+    AFFILIATE = "affiliate"
+
+
+class OwnershipStatus(str, enum.Enum):
+    """Lifecycle of an ownership stake.
+
+    Rows are never deleted: a change closes the previous row (``ended``) and a
+    new row is opened, so the ownership history is preserved and auditable.
+    """
+
+    ACTIVE = "active"
+    ENDED = "ended"
+
+
+class DepartmentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class HoldingStatus(str, enum.Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
 

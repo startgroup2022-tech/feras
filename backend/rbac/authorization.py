@@ -18,6 +18,8 @@ for the companies that exist -- and writes are still permission-checked.
 
 from __future__ import annotations
 
+from sqlalchemy.orm import object_session
+
 from backend.core.errors import PermissionDeniedError
 from backend.db.models.enums import RoleCode
 from backend.db.models.identity import Company, User
@@ -25,10 +27,34 @@ from backend.rbac.permissions import HOLDING_WIDE_ROLES, ROLE_PERMISSIONS
 
 
 def role_permissions(user: User) -> set[str]:
-    """Permission codes granted to a user's role."""
+    """Permission codes granted to a user's role.
+
+    Grants are read from the database when the user is session-bound, so an
+    administrator can edit a role's permissions (or add a custom role) and have
+    it enforced immediately. The static catalogue remains the fallback whenever
+    the row is unavailable or the role is unknown.
+    """
     if user.is_superuser:
         return set().union(*ROLE_PERMISSIONS.values())
-    return set(ROLE_PERMISSIONS.get(user.role_code, set()))
+
+    cached = user.__dict__.get("_effective_permissions")
+    if cached is not None:
+        return cached
+
+    code = user.role_code
+    permissions: set[str] | None = None
+    session = object_session(user)
+    if session is not None:
+        # Imported lazily to avoid an import cycle (rbac_service imports models).
+        from backend.services.rbac_service import effective_permissions
+
+        permissions = effective_permissions(session, code)
+    if permissions is None:
+        permissions = set(ROLE_PERMISSIONS.get(code, set()))
+
+    # Cache on the instance; it lives for the duration of one request.
+    user.__dict__["_effective_permissions"] = permissions
+    return permissions
 
 
 def has_permission(user: User, permission: str) -> bool:

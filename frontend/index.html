@@ -87,6 +87,7 @@
       <div class="nav-item" data-view="investments" data-perm="dashboard.holding" role="button" tabindex="0"><span class="ar">الاستثمارات</span><span class="en">Investments</span></div>
       <div class="nav-item" data-view="support" data-perm="support_request.read_own support_request.read_all" role="button" tabindex="0"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></div>
       <div class="nav-item" data-view="bi" data-perm="ai.holding ai.company" role="button" tabindex="0"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
+      <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
     </nav>
 
     <div class="h-actions">
@@ -425,6 +426,24 @@
     </div>
   </div>
   <div id="biContent"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-admin" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">إدارة المجموعة</span><span class="en">Group Administration</span></h1>
+      <p><span class="ar">ملف القابضة، هيكل الملكية، الأقسام، المستخدمون، الأدوار وسجل النشاط.</span><span class="en">Holding profile, ownership structure, departments, users, roles and the audit trail.</span></p>
+    </div>
+    <div class="av-toolbar" id="adminTabs">
+      <button class="chip on" data-admin-tab="structure" data-perm="company.read ownership.read"><span class="ar">الهيكل والملكية</span><span class="en">Structure &amp; ownership</span></button>
+      <button class="chip" data-admin-tab="companies" data-perm="company.read"><span class="ar">الشركات</span><span class="en">Companies</span></button>
+      <button class="chip" data-admin-tab="departments" data-perm="department.read"><span class="ar">الأقسام</span><span class="en">Departments</span></button>
+      <button class="chip" data-admin-tab="users" data-perm="user.read_all"><span class="ar">المستخدمون</span><span class="en">Users</span></button>
+      <button class="chip" data-admin-tab="roles" data-perm="role.read"><span class="ar">الأدوار والصلاحيات</span><span class="en">Roles &amp; permissions</span></button>
+      <button class="chip" data-admin-tab="audit" data-perm="audit.read"><span class="ar">سجل النشاط</span><span class="en">Audit trail</span></button>
+    </div>
+  </div>
+  <div id="adminContent" class="av-grid cols-2"></div>
 </section>
 
 </div><!-- /stage-body -->

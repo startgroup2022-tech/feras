@@ -18,8 +18,22 @@ class AuditAction:
     USER_ROLE_CHANGED = "user.role_changed"
     COMPANY_CREATED = "company.created"
     COMPANY_UPDATED = "company.updated"
+    COMPANY_STATUS_CHANGED = "company.status_changed"
     COMPANY_ACCESS_GRANTED = "company.access_granted"
     COMPANY_ACCESS_REVOKED = "company.access_revoked"
+
+    # Phase 2 group administration
+    HOLDING_UPDATED = "holding.updated"
+    OWNERSHIP_CREATED = "ownership.created"
+    OWNERSHIP_UPDATED = "ownership.updated"
+    OWNERSHIP_ENDED = "ownership.ended"
+    DEPARTMENT_CREATED = "department.created"
+    DEPARTMENT_UPDATED = "department.updated"
+    DEPARTMENT_STATUS_CHANGED = "department.status_changed"
+    ROLE_CREATED = "role.created"
+    ROLE_UPDATED = "role.updated"
+    ROLE_PERMISSIONS_CHANGED = "role.permissions_changed"
+    USER_DEPARTMENT_ASSIGNED = "user.department_assigned"
 
     # monthly reports
     REPORT_CREATED = "monthly_report.created"

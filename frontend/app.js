@@ -82,6 +82,14 @@
     return api.post(path, payload);
   }
 
+  function patch(path, payload) {
+    return api.patch(path, payload);
+  }
+
+  function put(path, payload) {
+    return api.put(path, payload);
+  }
+
 
   // ---- formatting ------------------------------------------------------
   var NUM = new Intl.NumberFormat("en-US");
@@ -1195,7 +1203,15 @@
   }
 
   // ---- routing ---------------------------------------------------------
-  var VIEWS = ["dashboard", "subsidiaries", "reports", "investments", "support", "bi"];
+  var VIEWS = [
+    "dashboard",
+    "subsidiaries",
+    "reports",
+    "investments",
+    "support",
+    "bi",
+    "admin",
+  ];
   var NAV_PERM = {
     dashboard: ["dashboard.holding", "dashboard.company"],
     subsidiaries: ["company.read"],
@@ -1203,6 +1219,13 @@
     investments: ["dashboard.holding"],
     support: ["support_request.read_own", "support_request.read_all"],
     bi: ["ai.holding", "ai.company"],
+    admin: [
+      "company.read",
+      "ownership.read",
+      "department.read",
+      "user.read_all",
+      "role.read",
+    ],
   };
 
   function canView(view) {
@@ -1273,6 +1296,7 @@
     if (view === "support") return renderSupportView();
     if (view === "investments") return renderInvestments();
     if (view === "bi") return renderBi();
+    if (view === "admin") return renderAdmin();
     return Promise.resolve();
   }
 
@@ -2105,6 +2129,542 @@
         );
       }).join("") + "</div>"
     );
+  }
+
+  // ---- group administration view ---------------------------------------
+  //
+  // One delegated click handler drives every admin action, so cards can be
+  // re-rendered freely without rebinding. Each tab is loaded lazily and only
+  // if the caller holds the permission that tab needs.
+  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "audit"];
+  var ADMIN_TAB_PERM = {
+    structure: ["company.read", "ownership.read"],
+    companies: ["company.read"],
+    departments: ["department.read"],
+    users: ["user.read_all"],
+    roles: ["role.read"],
+    audit: ["audit.read"],
+  };
+
+  function canTab(tab) {
+    return (ADMIN_TAB_PERM[tab] || []).some(has);
+  }
+
+  function firstTab() {
+    for (var i = 0; i < ADMIN_TABS.length; i++) {
+      if (canTab(ADMIN_TABS[i])) return ADMIN_TABS[i];
+    }
+    return "structure";
+  }
+
+  function renderAdmin() {
+    var host = byId("adminContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.adminTab || !canTab(STATE.adminTab)) STATE.adminTab = firstTab();
+    if (!STATE.adminBound) {
+      STATE.adminBound = true;
+      bindAdminTabs();
+      host.addEventListener("click", onAdminClick);
+      host.addEventListener("submit", onAdminSubmit);
+    }
+    return renderAdminTab(STATE.adminTab);
+  }
+
+  function bindAdminTabs() {
+    document.querySelectorAll("[data-admin-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tab = btn.getAttribute("data-admin-tab");
+        if (!canTab(tab)) return;
+        STATE.adminTab = tab;
+        document.querySelectorAll("[data-admin-tab]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        renderAdminTab(tab);
+      });
+    });
+  }
+
+  function renderAdminTab(tab) {
+    var host = byId("adminContent");
+    if (!host) return Promise.resolve();
+    document.querySelectorAll("[data-admin-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-admin-tab") === tab);
+    });
+    host.className = "av-grid " + (tab === "users" || tab === "roles" ? "cols-1" : "cols-2");
+    host.innerHTML = loadingHtml();
+    if (tab === "structure") return renderAdminStructure();
+    if (tab === "companies") return renderAdminCompanies();
+    if (tab === "departments") return renderAdminDepartments();
+    if (tab === "users") return renderAdminUsers();
+    if (tab === "roles") return renderAdminRoles();
+    if (tab === "audit") return renderAdminAudit();
+    return Promise.resolve();
+  }
+
+  function adminPanel(titleAr, titleEn, bodyHtml) {
+    return (
+      '<div class="av-panel"><h3>' + dual(titleAr, titleEn) + "</h3>" + bodyHtml + "</div>"
+    );
+  }
+
+  function field(labelAr, labelEn, inputHtml) {
+    return (
+      '<div class="av-field"><label>' + dual(labelAr, labelEn) + "</label>" +
+      inputHtml +
+      "</div>"
+    );
+  }
+
+  function textInput(id, value, placeholder) {
+    return (
+      '<input class="av-input" id="' + id + '" type="text" value="' +
+      escAttr(value || "") + '" placeholder="' + escAttr(placeholder || "") + '">'
+    );
+  }
+
+  function selectInput(id, options, selected) {
+    return (
+      '<select class="av-select av-input" id="' + id + '">' +
+      options.map(function (o) {
+        return (
+          '<option value="' + escAttr(o.value) + '"' +
+          (String(o.value) === String(selected) ? " selected" : "") +
+          ">" + escapeHtml(o.label) + "</option>"
+        );
+      }).join("") +
+      "</select>"
+    );
+  }
+
+  // ---- tab: structure & ownership ----
+  function renderAdminStructure() {
+    var host = byId("adminContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/admin/holding").catch(function () { return null; })]).then(function (res) {
+      var holding = res[1];
+      var structureP = has("ownership.read")
+        ? get("/api/v1/admin/holding/structure").catch(function () { return []; })
+        : Promise.resolve([]);
+      var ownershipP = has("ownership.read")
+        ? get("/api/v1/admin/ownerships").catch(function () { return []; })
+        : Promise.resolve([]);
+      return Promise.all([structureP, ownershipP]).then(function (r2) {
+        host.innerHTML =
+          adminPanel("بيانات القابضة", "Holding profile", holdingPanel(holding)) +
+          adminPanel("هيكل الملكية", "Ownership structure", structurePanel(r2[0], r2[1]));
+      });
+    });
+  }
+
+  function holdingPanel(h) {
+    if (!h) return '<p class="av-empty">' + dual("لا توجد بيانات.", "No data.") + "</p>";
+    if (!has("group.manage")) {
+      return (
+        '<div class="kv">' +
+        kv(dual("الاسم", "Name"), escapeHtml(h.display_name_ar || h.legal_name_ar || "—")) +
+        kv(dual("الاسم القانوني", "Legal name"), escapeHtml(h.legal_name_en || "—")) +
+        kv(dual("العملة", "Currency"), escapeHtml(h.default_currency || "—")) +
+        kv(dual("الحالة", "Status"), escapeHtml(h.status || "—")) +
+        "</div>"
+      );
+    }
+    return (
+      '<form class="av-form" id="holdingForm">' +
+      field("الاسم القانوني (عربي)", "Legal name (AR)", textInput("hLegalAr", h.legal_name_ar)) +
+      field("الاسم القانوني (إنجليزي)", "Legal name (EN)", textInput("hLegalEn", h.legal_name_en)) +
+      field("السجل التجاري", "Commercial registration", textInput("hCr", h.commercial_registration)) +
+      field("الرقم الضريبي", "Tax number", textInput("hTax", h.tax_number)) +
+      field("العملة الافتراضية", "Default currency", textInput("hCurrency", h.default_currency)) +
+      field("البريد", "Email", textInput("hEmail", h.contact_email)) +
+      field("الهاتف", "Phone", textInput("hPhone", h.phone)) +
+      '<div class="av-form-actions"><button class="btn-solid" type="submit" data-admin-action="save-holding">' +
+      dual("حفظ", "Save") + "</button></div></form>"
+    );
+  }
+
+  function structurePanel(nodes, ownerships) {
+    if (!nodes.length) return '<p class="av-empty">' + dual("لا توجد شركات.", "No companies.") + "</p>";
+    var byParent = {};
+    var roots = [];
+    nodes.forEach(function (n) {
+      if (n.parent_company_id) {
+        (byParent[n.parent_company_id] = byParent[n.parent_company_id] || []).push(n);
+      } else {
+        roots.push(n);
+      }
+    });
+    // A forest: nodes whose parent is not in the visible set render as roots,
+    // so nothing is ever hidden by a scoping filter.
+    var visible = {};
+    nodes.forEach(function (n) { visible[n.company_id] = true; });
+    nodes.forEach(function (n) {
+      if (n.parent_company_id && !visible[n.parent_company_id] && roots.indexOf(n) < 0) {
+        roots.push(n);
+      }
+    });
+
+    function branch(n, depth) {
+      var kids = (byParent[n.company_id] || []).filter(function (k) { return k !== n; });
+      return (
+        '<div class="tree-node" style="margin-inline-start:' + depth * 16 + 'px">' +
+        '<div class="co-dot" style="background:' + PALETTE[n.company_id % PALETTE.length] + '">' + initial(n.name_ar) + "</div>" +
+        '<div class="grow"><div class="t">' + escapeHtml(companyLabel(n)) + "</div>" +
+        '<div class="s">' + escapeHtml(n.sector || "") +
+        (n.ownership_percentage != null ? " · " + dual(toArabicDigits(n.ownership_percentage + "٪"), n.ownership_percentage + "%") : "") +
+        "</div></div></div>" +
+        kids.map(function (k) { return branch(k, depth + 1); }).join("")
+      );
+    }
+
+    return (
+      '<div class="av-tree">' + roots.map(function (n) { return branch(n, 0); }).join("") + "</div>" +
+      (has("ownership.manage")
+        ? '<form class="av-form av-form-inline" id="stakeForm">' +
+          field("الشركة المملوكة", "Owned company", selectInput("stOwned", companyOptions(nodes), "")) +
+          field("المالك", "Owner", selectInput("stOwner", [{ value: "", label: "—" }].concat(companyOptions(nodes)), "")) +
+          field("النسبة %", "Percentage %", '<input class="av-input" id="stPct" type="number" min="0" max="100" step="0.01">') +
+          field("من تاريخ", "Effective from", '<input class="av-input" id="stFrom" type="date">') +
+          '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="add-stake">' +
+          dual("إضافة حصة", "Add stake") + "</button></div></form>"
+        : "") +
+      (ownerships.length
+        ? '<div class="sec-title">' + dual("الحصص المسجلة", "Recorded stakes") + "</div>" +
+          '<div class="av-list">' + ownerships.map(function (s) {
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(ownerLabel(s)) + " → " + escapeHtml(ownedLabel(s)) + "</div>" +
+              '<div class="s">' + dual(toArabicDigits(s.ownership_percentage + "٪"), s.ownership_percentage + "%") +
+              " · " + escapeHtml(s.status) + " · " + fmtDate(s.effective_from) + "</div></div>" +
+              (has("ownership.manage") && s.status === "active"
+                ? '<button class="btn-outline" data-admin-action="end-stake" data-id="' + s.id + '">' + dual("إنهاء", "End") + "</button>"
+                : "") +
+              "</div>"
+            );
+          }).join("") + "</div>"
+        : "")
+    );
+  }
+
+  function companyOptions(nodes) {
+    return nodes.map(function (n) {
+      return { value: n.company_id, label: companyLabel(n) };
+    });
+  }
+
+  function companyLabel(n) {
+    return STATE.lang === "ar" ? (n.name_ar || n.name_en) : (n.name_en || n.name_ar);
+  }
+
+  function ownedLabel(s) {
+    return STATE.lang === "ar" ? (s.owned_company_name_ar || s.owned_company_name_en) : (s.owned_company_name_en || s.owned_company_name_ar);
+  }
+
+  function ownerLabel(s) {
+    if (s.owner_company_id) {
+      return STATE.lang === "ar" ? (s.owner_company_name_ar || s.owner_company_name_en) : (s.owner_company_name_en || s.owner_company_name_ar);
+    }
+    return s.external_owner_name || "—";
+  }
+
+  // ---- tab: companies ----
+  function renderAdminCompanies() {
+    var host = byId("adminContent");
+    return ensureCompanies().then(function (rows) {
+      if (!rows.length) {
+        host.innerHTML = adminPanel("الشركات", "Companies", '<p class="av-empty">' + dual("لا توجد شركات.", "No companies.") + "</p>");
+        return;
+      }
+      host.innerHTML = rows.map(function (c) {
+        return adminPanel("شركة", "Company", companyAdminCard(c));
+      }).join("");
+    });
+  }
+
+  function companyAdminCard(c) {
+    var sector = sectorLabel(c.sector);
+    var base =
+      '<div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">' +
+      '<div class="co-dot" style="background:' + PALETTE[c.id % PALETTE.length] + '">' + initial(c.name_ar) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(companyName(c)) + "</div>" +
+      '<div class="s">' + escapeHtml(c.code) + " · " + dual(escapeHtml(sector.ar), escapeHtml(sector.en)) + "</div></div>" +
+      healthBadge(c.health) + "</div>";
+    if (!has("company.manage")) return base;
+    return (
+      base +
+      '<form class="av-form" id="companyForm' + c.id + '">' +
+      field("الاسم (عربي)", "Name (AR)", textInput("cNameAr" + c.id, c.name_ar)) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("cNameEn" + c.id, c.name_en)) +
+      field("القطاع", "Sector", textInput("cSector" + c.id, c.sector)) +
+      field("العملة", "Currency", textInput("cCurrency" + c.id, c.currency)) +
+      field("الدولة", "Country", textInput("cCountry" + c.id, c.country)) +
+      '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="save-company" data-id="' + c.id + '">' +
+      dual("حفظ", "Save") + "</button></div></form>"
+    );
+  }
+
+  // ---- tab: departments ----
+  function renderAdminDepartments() {
+    var host = byId("adminContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/admin/departments").catch(function () { return []; })]).then(function (res) {
+      var companies = res[0];
+      var departments = res[1];
+      var createForm = has("department.manage")
+        ? '<form class="av-form av-form-inline" id="deptForm">' +
+          field("الشركة", "Company", selectInput("dCompany", companies.map(function (c) { return { value: c.id, label: companyName(c) }; }), companies.length ? companies[0].id : "")) +
+          field("الكود", "Code", textInput("dCode", "", "FIN")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("dNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("dNameEn", "")) +
+          '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="add-department">' +
+          dual("إضافة قسم", "Add department") + "</button></div></form>"
+        : "";
+      var list = departments.length
+        ? '<div class="av-list">' + departments.map(function (d) {
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(STATE.lang === "ar" ? d.name_ar : d.name_en || d.name_ar) + "</div>" +
+              '<div class="s">' + escapeHtml(d.code) + " · " +
+              escapeHtml(STATE.lang === "ar" ? d.company_name_ar || "" : d.company_name_en || d.company_name_ar || "") +
+              "</div></div>" +
+              '<span class="status ' + (d.status === "active" ? "ok" : "warn") + '"><i></i>' + escapeHtml(d.status) + "</span></div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد أقسام.", "No departments.") + "</p>";
+      host.innerHTML =
+        adminPanel("الأقسام", "Departments", createForm + list) +
+        adminPanel("ملخص", "Summary", '<div class="kv">' +
+          kv(dual("عدد الأقسام", "Departments"), plainNum(departments.length)) +
+          kv(dual("الشركات المتاحة", "Companies in scope"), plainNum(companies.length)) +
+          "</div>");
+    });
+  }
+
+  // ---- tab: users ----
+  function renderAdminUsers() {
+    var host = byId("adminContent");
+    var page = STATE.adminUsers || (STATE.adminUsers = { limit: 25, offset: 0, total: 0 });
+    return Promise.all([
+      get("/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset),
+      get("/api/v1/admin/roles").catch(function () { return []; }),
+      ensureCompanies(),
+      get("/api/v1/admin/departments").catch(function () { return []; }),
+    ]).then(function (res) {
+      var data = res[0];
+      var roles = res[1];
+      var departments = res[3];
+      page.total = data.total;
+      var roleOptions = roles.map(function (r) { return { value: r.code, label: STATE.lang === "ar" ? r.name_ar : r.name_en }; });
+      var deptOptions = [{ value: "", label: "—" }].concat(departments.map(function (d) { return { value: d.id, label: d.code + " · " + (STATE.lang === "ar" ? d.name_ar : d.name_en) }; }));
+
+      var rows = data.items.map(function (u) {
+        var name = STATE.lang === "ar" ? u.full_name_ar : u.full_name_en || u.full_name_ar;
+        var controls = has("user.manage")
+          ? '<div class="av-user-controls">' +
+            selectInput("uRole" + u.id, roleOptions, u.role_code) +
+            selectInput("uDept" + u.id, deptOptions, u.department_id || "") +
+            '<button class="btn-outline" data-admin-action="save-user" data-id="' + u.id + '">' + dual("حفظ", "Save") + "</button>" +
+            '<button class="btn-outline" data-admin-action="toggle-user" data-id="' + u.id + '" data-active="' + (u.is_active ? "1" : "0") + '">' +
+            (u.is_active ? dual("إيقاف", "Deactivate") : dual("تفعيل", "Activate")) + "</button>" +
+            "</div>"
+          : "";
+        return (
+          '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+          '<div style="display:flex;align-items:center;gap:11px"><div class="co-dot" style="background:' + PALETTE[u.id % PALETTE.length] + '">' + initial(u.full_name_ar) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
+          '<div class="s">' + escapeHtml(u.email) + " · " + escapeHtml(STATE.lang === "ar" ? u.role_name_ar || u.role_code : u.role_name_en || u.role_code) + "</div></div>" +
+          '<span class="status ' + (u.is_active ? "ok" : "warn") + '"><i></i>' +
+          (u.is_active ? dual("نشط", "Active") : dual("موقوف", "Inactive")) + "</span></div>" +
+          controls + "</div>"
+        );
+      }).join("");
+
+      var pager =
+        '<div class="av-pager">' +
+        '<button class="btn-outline" data-admin-action="users-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
+        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
+        '<button class="btn-outline" data-admin-action="users-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
+
+      host.innerHTML = adminPanel("المستخدمون", "Users", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
+    });
+  }
+
+  // ---- tab: roles ----
+  function renderAdminRoles() {
+    var host = byId("adminContent");
+    return Promise.all([
+      get("/api/v1/admin/roles"),
+      get("/api/v1/admin/permissions").catch(function () { return []; }),
+    ]).then(function (res) {
+      var roles = res[0];
+      var allPerms = res[1];
+      var catalogue = allPerms.map(function (p) { return p.code; });
+      host.innerHTML = roles.map(function (role) {
+        var editable = has("permission.assign");
+        var body = '<div class="perm-grid">' + catalogue.map(function (code) {
+          var checked = role.permissions.indexOf(code) >= 0;
+          return (
+            '<label class="perm-item"><input type="checkbox" data-perm-code="' + escAttr(code) + '"' +
+            (checked ? " checked" : "") + (editable ? "" : " disabled") + ">" +
+            '<span class="mono">' + escapeHtml(code) + "</span></label>"
+          );
+        }).join("") + "</div>";
+        return adminPanel(role.name_ar, role.name_en, 
+          '<div class="s" style="margin-bottom:8px">' + escapeHtml(role.code) + (role.is_system ? " · " + dual("دور نظام", "System role") : "") + "</div>" +
+          body +
+          (editable
+            ? '<div class="av-form-actions"><button class="btn-outline" data-admin-action="save-role" data-code="' + escAttr(role.code) + '">' + dual("حفظ الصلاحيات", "Save permissions") + "</button></div>"
+            : "")
+        );
+      }).join("");
+    });
+  }
+
+  // ---- tab: audit ----
+  function renderAdminAudit() {
+    var host = byId("adminContent");
+    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0 });
+    return get("/api/v1/admin/audit-logs?limit=" + page.limit + "&offset=" + page.offset).then(function (data) {
+      page.total = data.total;
+      var rows = data.items.map(function (e) {
+        var actor = STATE.lang === "ar" ? e.actor_name_ar || "—" : e.actor_name_en || e.actor_name_ar || "—";
+        return (
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t mono">' + escapeHtml(e.action) + "</div>" +
+          '<div class="s">' + escapeHtml(actor) + " · " + escapeHtml(e.entity_type || "") +
+          (e.entity_id ? " #" + escapeHtml(e.entity_id) : "") + "</div></div>" +
+          '<span class="s">' + fmtDateTime(e.created_at) + "</span></div>"
+        );
+      }).join("");
+      var pager =
+        '<div class="av-pager">' +
+        '<button class="btn-outline" data-admin-action="audit-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
+        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
+        '<button class="btn-outline" data-admin-action="audit-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
+      host.innerHTML = adminPanel("سجل النشاط", "Audit trail", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
+    });
+  }
+
+  // ---- admin event handling ----
+  function onAdminClick(e) {
+    var el = e.target.closest ? e.target.closest("[data-admin-action]") : null;
+    if (!el) return;
+    var action = el.getAttribute("data-admin-action");
+    var id = el.getAttribute("data-id");
+
+    if (action === "users-prev") { STATE.adminUsers.offset = Math.max(0, STATE.adminUsers.offset - STATE.adminUsers.limit); return renderAdminUsers(); }
+    if (action === "users-next") { STATE.adminUsers.offset += STATE.adminUsers.limit; return renderAdminUsers(); }
+    if (action === "audit-prev") { STATE.adminAudit.offset = Math.max(0, STATE.adminAudit.offset - STATE.adminAudit.limit); return renderAdminAudit(); }
+    if (action === "audit-next") { STATE.adminAudit.offset += STATE.adminAudit.limit; return renderAdminAudit(); }
+
+    if (action === "end-stake") {
+      return confirmDialog({
+        title: dual("إنهاء الحصة", "End stake"),
+        message: STATE.lang === "ar" ? "سيتم إنهاء هذه الحصة مع الحفاظ على سجلها." : "This stake will be closed while its history is preserved.",
+        danger: true,
+      }).then(function (ok) {
+        if (!ok) return;
+        return post("/api/v1/admin/ownerships/" + id + "/end", {}).then(function () {
+          toast(STATE.lang === "ar" ? "تم إنهاء الحصة." : "Stake ended.", "ok");
+          return renderAdminStructure();
+        });
+      });
+    }
+
+    if (action === "toggle-user") {
+      var active = el.getAttribute("data-active") === "1";
+      return patch("/api/v1/admin/users/" + id, { is_active: !active }).then(function () {
+        toast(STATE.lang === "ar" ? "تم تحديث المستخدم." : "User updated.", "ok");
+        return renderAdminUsers();
+      }).catch(adminError);
+    }
+
+    if (action === "save-user") {
+      var roleCode = byId("uRole" + id);
+      var deptId = byId("uDept" + id);
+      var payload = {};
+      if (roleCode) payload.role_code = roleCode.value;
+      if (deptId && deptId.value) payload.department_id = parseInt(deptId.value, 10);
+      return patch("/api/v1/admin/users/" + id, payload).then(function () {
+        toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
+        return renderAdminUsers();
+      }).catch(adminError);
+    }
+
+    if (action === "save-role") {
+      var code = el.getAttribute("data-code");
+      var panel = el.closest(".av-panel");
+      var perms = [];
+      panel.querySelectorAll("[data-perm-code]").forEach(function (cb) {
+        if (cb.checked) perms.push(cb.getAttribute("data-perm-code"));
+      });
+      return put("/api/v1/admin/roles/" + encodeURIComponent(code) + "/permissions", { permissions: perms })
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تم حفظ الصلاحيات." : "Permissions saved.", "ok");
+          return renderAdminRoles();
+        }).catch(adminError);
+    }
+
+    if (action === "save-company") {
+      var cid = parseInt(id, 10);
+      return patch("/api/v1/companies/" + cid, {
+        name_ar: byId("cNameAr" + cid) ? byId("cNameAr" + cid).value : undefined,
+        name_en: byId("cNameEn" + cid) ? byId("cNameEn" + cid).value : undefined,
+        sector: byId("cSector" + cid) ? byId("cSector" + cid).value : undefined,
+        currency: byId("cCurrency" + cid) ? byId("cCurrency" + cid).value : undefined,
+        country: byId("cCountry" + cid) ? byId("cCountry" + cid).value : undefined,
+      }).then(function () {
+        STATE.loaded.companies = false;
+        toast(STATE.lang === "ar" ? "تم حفظ الشركة." : "Company saved.", "ok");
+        return renderAdminCompanies();
+      }).catch(adminError);
+    }
+  }
+
+  function onAdminSubmit(e) {
+    var form = e.target;
+    if (!form || !form.getAttribute) return;
+    if (form.id === "holdingForm") {
+      e.preventDefault();
+      return patch("/api/v1/admin/holding", {
+        legal_name_ar: byId("hLegalAr").value,
+        legal_name_en: byId("hLegalEn").value,
+        commercial_registration: byId("hCr").value,
+        tax_number: byId("hTax").value,
+        default_currency: byId("hCurrency").value,
+        contact_email: byId("hEmail").value,
+        phone: byId("hPhone").value,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تم حفظ بيانات القابضة." : "Holding profile saved.", "ok");
+        return renderAdminStructure();
+      }).catch(adminError);
+    }
+    if (form.id === "stakeForm") {
+      e.preventDefault();
+      var owner = byId("stOwner").value;
+      var payload = {
+        owned_company_id: parseInt(byId("stOwned").value, 10),
+        ownership_percentage: parseFloat(byId("stPct").value),
+        effective_from: byId("stFrom").value,
+      };
+      if (owner) payload.owner_company_id = parseInt(owner, 10);
+      return post("/api/v1/admin/ownerships", payload).then(function () {
+        toast(STATE.lang === "ar" ? "تمت إضافة الحصة." : "Stake added.", "ok");
+        return renderAdminStructure();
+      }).catch(adminError);
+    }
+    if (form.id === "deptForm") {
+      e.preventDefault();
+      return post("/api/v1/admin/departments", {
+        company_id: parseInt(byId("dCompany").value, 10),
+        code: byId("dCode").value,
+        name_ar: byId("dNameAr").value,
+        name_en: byId("dNameEn").value,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تمت إضافة القسم." : "Department added.", "ok");
+        return renderAdminDepartments();
+      }).catch(adminError);
+    }
+  }
+
+  function adminError(err) {
+    toast(errText(err), "err");
   }
 
   // ---- search ----------------------------------------------------------

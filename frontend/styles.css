@@ -698,6 +698,26 @@ body:not(.authed) .stage-wrap{display:none;}
 .table{table-layout:auto;}
 .table th:nth-child(3),.table td:nth-child(3){white-space:nowrap;}
 
+/* ---- Group administration view ---- */
+.chip.on{background:linear-gradient(135deg,var(--navy-500),var(--navy-700));color:#fff;border-color:transparent;box-shadow:var(--shadow-sm);}
+.chip.on .en{color:rgba(255,255,255,.82);}
+.av-grid.cols-1{grid-template-columns:1fr;}
+.av-form{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-start;}
+.av-form .av-field{flex:1 1 190px;margin-bottom:0;}
+.av-form-inline{padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--bg-2);margin-bottom:12px;}
+.av-form-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;}
+.av-tree{display:flex;flex-direction:column;gap:5px;}
+.tree-node{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--line-2);background:#fff;}
+.tree-node:hover{border-color:var(--navy-300);}
+.av-pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:12px;}
+.av-pager-info{font-size:11px;color:var(--ink-400);}
+.av-user-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 0 2px;}
+.av-user-controls .av-select{min-width:150px;}
+.perm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:5px 14px;}
+.perm-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-700);}
+.perm-item input{accent-color:var(--navy-500);}
+.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10.5px;letter-spacing:-.01em;}
+
 /* ============================================================
    RESPONSIVE — the 1920×1080 stage scales down to any viewport.
    Below the stage's comfortable width we stop scaling and reflow

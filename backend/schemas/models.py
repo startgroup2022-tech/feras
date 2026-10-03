@@ -9,7 +9,7 @@ malformed or hostile input.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 
@@ -25,6 +25,10 @@ from pydantic import (
 from backend.db.models.enums import (
     CompanyHealth,
     CompanyStatus,
+    CompanyType,
+    DepartmentStatus,
+    HoldingStatus,
+    OwnershipStatus,
     SupportCategory,
     SupportStatus,
 )
@@ -90,11 +94,16 @@ class UserOut(BaseModel):
     full_name_ar: str
     full_name_en: str | None
     is_active: bool
+    # ``role_code`` is the primary role and is always populated for a user that
+    # has a role row. ``roles`` mirrors it as a list so a future many-to-many
+    # role model can be exposed without breaking this contract.
     role_code: str
     role_name_ar: str | None = None
     role_name_en: str | None = None
+    roles: list[str] = []
     permissions: list[str] = []
     company_ids: list[int] = []
+    department_id: int | None = None
     last_login_at: datetime | None = None
 
 
@@ -114,6 +123,7 @@ class UpdateUserRequest(BaseModel):
     full_name_en: str | None = Field(default=None, max_length=180)
     role_code: str | None = Field(default=None, min_length=2, max_length=40)
     is_active: bool | None = None
+    department_id: int | None = None
 
 
 class CompanyAccessRequest(BaseModel):
@@ -137,6 +147,14 @@ class CompanyOut(BaseModel):
     status: str
     health: str
     contact_email: str | None
+    legal_name_ar: str | None = None
+    legal_name_en: str | None = None
+    company_type: str = CompanyType.SUBSIDIARY.value
+    country: str | None = None
+    commercial_registration: str | None = None
+    currency: str = "SAR"
+    address: str | None = None
+    phone: str | None = None
 
 
 class CompanyCreateRequest(BaseModel):
@@ -145,6 +163,22 @@ class CompanyCreateRequest(BaseModel):
     name_en: str = Field(min_length=1, max_length=180)
     sector: str | None = Field(default=None, max_length=120)
     contact_email: InternalEmail | None = None
+    legal_name_ar: str | None = Field(default=None, max_length=200)
+    legal_name_en: str | None = Field(default=None, max_length=200)
+    company_type: str = Field(default=CompanyType.SUBSIDIARY.value, max_length=30)
+    country: str | None = Field(default=None, max_length=80)
+    commercial_registration: str | None = Field(default=None, max_length=80)
+    currency: str = Field(default="SAR", min_length=3, max_length=8)
+    address: str | None = Field(default=None, max_length=1000)
+    phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("company_type")
+    @classmethod
+    def _valid_company_type(cls, value: str) -> str:
+        allowed = {t.value for t in CompanyType}
+        if value not in allowed:
+            raise ValueError(f"company_type must be one of {sorted(allowed)}")
+        return value
 
 
 class CompanyUpdateRequest(BaseModel):
@@ -156,6 +190,14 @@ class CompanyUpdateRequest(BaseModel):
     health: str | None = Field(default=None, max_length=20)
     status: str | None = Field(default=None, max_length=20)
     contact_email: InternalEmail | None = None
+    legal_name_ar: str | None = Field(default=None, max_length=200)
+    legal_name_en: str | None = Field(default=None, max_length=200)
+    company_type: str | None = Field(default=None, max_length=30)
+    country: str | None = Field(default=None, max_length=80)
+    commercial_registration: str | None = Field(default=None, max_length=80)
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    address: str | None = Field(default=None, max_length=1000)
+    phone: str | None = Field(default=None, max_length=40)
 
     @field_validator("health")
     @classmethod
@@ -175,6 +217,16 @@ class CompanyUpdateRequest(BaseModel):
         allowed = {s.value for s in CompanyStatus}
         if value not in allowed:
             raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+    @field_validator("company_type")
+    @classmethod
+    def _valid_company_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {t.value for t in CompanyType}
+        if value not in allowed:
+            raise ValueError(f"company_type must be one of {sorted(allowed)}")
         return value
 
 
@@ -473,3 +525,230 @@ class AIInsightOut(BaseModel):
     detail_en: str
     tone: str
     metric: str | None = None
+
+
+# --------------------------------------------------------------------------
+# Phase 2: group administration
+# --------------------------------------------------------------------------
+class HoldingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    legal_name_ar: str
+    legal_name_en: str
+    display_name_ar: str | None = None
+    display_name_en: str | None = None
+    country: str | None = None
+    commercial_registration: str | None = None
+    tax_number: str | None = None
+    default_currency: str = "SAR"
+    contact_email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    status: str = HoldingStatus.ACTIVE.value
+
+
+class HoldingUpdateRequest(BaseModel):
+    """Partial update of the Holding's group metadata."""
+
+    legal_name_ar: str | None = Field(default=None, min_length=1, max_length=200)
+    legal_name_en: str | None = Field(default=None, min_length=1, max_length=200)
+    display_name_ar: str | None = Field(default=None, max_length=200)
+    display_name_en: str | None = Field(default=None, max_length=200)
+    country: str | None = Field(default=None, max_length=80)
+    commercial_registration: str | None = Field(default=None, max_length=80)
+    tax_number: str | None = Field(default=None, max_length=80)
+    default_currency: str | None = Field(default=None, min_length=3, max_length=8)
+    contact_email: InternalEmail | None = None
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=1000)
+    status: str | None = Field(default=None, max_length=20)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in HoldingStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class OwnershipCreateRequest(BaseModel):
+    owned_company_id: int
+    owner_company_id: int | None = None
+    external_owner_name: str | None = Field(default=None, max_length=200)
+    ownership_percentage: Decimal = Field(gt=0, le=100, max_digits=6, decimal_places=3)
+    effective_from: date
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _exactly_one_owner(self) -> "OwnershipCreateRequest":
+        has_company = self.owner_company_id is not None
+        has_external = bool(self.external_owner_name and self.external_owner_name.strip())
+        if has_company == has_external:
+            raise ValueError(
+                "Provide exactly one of owner_company_id or external_owner_name."
+            )
+        return self
+
+
+class OwnershipUpdateRequest(BaseModel):
+    """Change a stake. Closing a stake sets ``status`` to ``ended``."""
+
+    ownership_percentage: Decimal | None = Field(
+        default=None, gt=0, le=100, max_digits=6, decimal_places=3
+    )
+    effective_to: date | None = None
+    status: str | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in OwnershipStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class OwnershipOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    owned_company_id: int
+    owner_company_id: int | None
+    external_owner_name: str | None
+    ownership_percentage: float
+    effective_from: date
+    effective_to: date | None
+    status: str
+    notes: str | None = None
+    # Denormalised labels so the frontend does not need a second lookup.
+    owned_company_name_ar: str | None = None
+    owned_company_name_en: str | None = None
+    owner_company_name_ar: str | None = None
+    owner_company_name_en: str | None = None
+
+
+class GroupStructureNode(BaseModel):
+    """One edge of the group structure: parent -> subsidiary at ``percentage``."""
+
+    company_id: int
+    code: str
+    name_ar: str
+    name_en: str
+    sector: str | None
+    status: str
+    parent_company_id: int | None
+    parent_name_ar: str | None
+    parent_name_en: str | None
+    ownership_percentage: float | None
+    direct_children: int = 0
+
+
+class DepartmentCreateRequest(BaseModel):
+    company_id: int
+    code: str = Field(min_length=1, max_length=40)
+    name_ar: str = Field(min_length=1, max_length=180)
+    name_en: str = Field(min_length=1, max_length=180)
+    manager_user_id: int | None = None
+    parent_department_id: int | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class DepartmentUpdateRequest(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=40)
+    name_ar: str | None = Field(default=None, min_length=1, max_length=180)
+    name_en: str | None = Field(default=None, min_length=1, max_length=180)
+    manager_user_id: int | None = None
+    parent_department_id: int | None = None
+    status: str | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in DepartmentStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class DepartmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    code: str
+    name_ar: str
+    name_en: str
+    manager_user_id: int | None
+    parent_department_id: int | None
+    status: str
+    notes: str | None = None
+    company_name_ar: str | None = None
+    company_name_en: str | None = None
+    manager_name_ar: str | None = None
+    manager_name_en: str | None = None
+
+
+class RoleOut(BaseModel):
+    code: str
+    name_ar: str
+    name_en: str
+    description: str | None = None
+    permissions: list[str] = []
+    is_system: bool = True
+
+
+class RoleCreateRequest(BaseModel):
+    code: str = Field(min_length=2, max_length=40, pattern=r"^[a-z][a-z0-9_]*$")
+    name_ar: str = Field(min_length=1, max_length=120)
+    name_en: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    permissions: list[str] = []
+
+
+class RoleUpdateRequest(BaseModel):
+    name_ar: str | None = Field(default=None, min_length=1, max_length=120)
+    name_en: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class RolePermissionsRequest(BaseModel):
+    permissions: list[str]
+
+
+class PermissionOut(BaseModel):
+    code: str
+    description: str | None = None
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    actor_user_id: int | None
+    actor_name_ar: str | None = None
+    actor_name_en: str | None = None
+    action: str
+    entity_type: str | None
+    entity_id: str | None
+    company_id: int | None
+    ip_address: str | None
+    meta: dict | None = None
+    created_at: datetime
+
+
+class PageOut(BaseModel):
+    """Generic paginated envelope."""
+
+    total: int
+    limit: int
+    offset: int
+    items: list[dict]

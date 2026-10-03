@@ -65,11 +65,27 @@ def test_support_departments_can_handle_but_not_create_requests(role):
 def test_holding_wide_roles_match_the_catalogue():
     assert set(HOLDING_WIDE_ROLES) == {
         "holding_owner",
+        "super_admin",
+        "holding_finance",
         "accountant",
         "business_development",
         "marketing",
         "designer",
     }
+
+
+def test_company_governance_roles_are_not_holding_wide():
+    """Company-level roles must stay confined to their granted companies."""
+    for role in (
+        "company_owner",
+        "ceo",
+        "company_manager",
+        "finance_manager",
+        "hr_manager",
+        "department_manager",
+        "employee",
+    ):
+        assert role not in HOLDING_WIDE_ROLES
 
 
 # --------------------------------------------------------------------------

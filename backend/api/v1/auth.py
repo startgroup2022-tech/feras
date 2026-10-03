@@ -22,17 +22,26 @@ _login_limiter = RateLimiter(
 
 
 def _user_payload(user) -> dict:
+    """Serialise a user for the API.
+
+    ``role_code`` is the user's (single) role and is always populated. ``roles``
+    repeats it as a list so the contract already matches a future many-to-many
+    role model; existing clients that read ``role_code`` are unaffected.
+    """
+    role_code = user.role_code or None
     return {
         "id": user.id,
         "email": user.email,
         "full_name_ar": user.full_name_ar,
         "full_name_en": user.full_name_en,
         "is_active": user.is_active,
-        "role_code": user.role_code,
+        "role_code": role_code,
         "role_name_ar": user.role.name_ar if user.role else None,
         "role_name_en": user.role.name_en if user.role else None,
+        "roles": [role_code] if role_code else [],
         "permissions": sorted(role_permissions(user)),
         "company_ids": user.permitted_company_ids,
+        "department_id": getattr(user, "department_id", None),
         "last_login_at": user.last_login_at,
     }
 

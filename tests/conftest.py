@@ -28,7 +28,10 @@ from backend.db.models import (  # noqa: E402
     AIMessage,
     AuditLog,
     Company,
+    Department,
+    Holding,
     MonthlyReport,
+    Ownership,
     SupportRequest,
     User,
     UserCompanyAccess,
@@ -61,6 +64,10 @@ def _database():
 def _clean_data(_database):
     """Remove all business rows before each test, keeping the RBAC catalogue."""
     with SessionLocal() as db:
+        # Order matters: children before parents. ``users`` must be cleared
+        # before ``departments`` (which references a manager), and departments
+        # before companies. Custom roles created by a test are removed too;
+        # the bootstrap catalogue is re-synced just after.
         for model in (
             AIMessage,
             AIConversation,
@@ -68,10 +75,25 @@ def _clean_data(_database):
             SupportRequest,
             MonthlyReport,
             UserCompanyAccess,
-            Company,
+            Ownership,
             User,
+            Department,
+            Holding,
+            Company,
         ):
             db.query(model).delete()
+        db.flush()
+        bootstrap_rbac(db)
+
+        # A test may have created a custom role; drop those so the catalogue is
+        # exactly the code-defined set before the next test.
+        from backend.db.models.identity import Role
+        from backend.rbac.permissions import ROLE_DEFINITIONS
+
+        system_codes = {d["code"] for d in ROLE_DEFINITIONS}
+        for role in db.query(Role).all():
+            if role.code not in system_codes:
+                db.delete(role)
         db.commit()
     yield
 

@@ -7,6 +7,7 @@ whenever a new model module is added.
 
 from backend.db.base import Base
 from backend.db.models.ai import AIMessage, AIConversation, AuditLog
+from backend.db.models.group import Department, Holding, Ownership
 from backend.db.models.identity import (
     Company,
     Permission,
@@ -34,6 +35,9 @@ __all__ = [
     "User",
     "Company",
     "UserCompanyAccess",
+    "Holding",
+    "Ownership",
+    "Department",
     "MonthlyReport",
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",
