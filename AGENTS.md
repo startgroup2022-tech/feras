@@ -105,23 +105,31 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
   (per-company revenue/expenses/net, growth vs. previous month, report status).
 - `PATCH /support-requests/{id}/assign` (owner-only).
 
-## Frontend live hydration
+## Frontend: real app (auth-gated, live data)
 
-`frontend/index.html` ships curated demo figures; `frontend/app.js` replaces
-them with live API data when the page is served by the backend. The bridge is
-opt-in per element, so a section that is not wired (or a request that fails)
-keeps its demo content rather than blanking out.
+The dashboard is now the working application, not a mockup. `frontend/app.js`
+loads every figure from the API for the signed-in user and has no demo
+fallback — while a request is in flight the section shows a loading state, and
+a failure shows an explicit error/empty state.
 
-Hooks the markup must keep for hydration to work:
+- `frontend/auth.js` (`window.SafirApi`) owns the JWT session: login, logout,
+  transparent single refresh on 401, and `get/post/patch`. Tokens live in
+  `localStorage` under `safir.session.v1`; they are never put in the URL or
+  HTML. `setBase()` exists but the app runs same-origin (empty base).
+- Login gate: `.login-screen` (fixed, z-index 1000) covers the app until the
+  backend authenticates the user; `.stage-wrap` is hidden via
+  `body:not(.authed)`. `#loginForm`, `#loginEmail`, `#loginPassword`,
+  `#loginBtn`, `#loginError`, `#logoutBtn` are the hooks.
+- Reporting period: the backend defaults to the *current* calendar month, which
+  has no data in a seeded environment. Unless `?year=&month=` is pinned,
+  `app.js` derives the latest month that actually has data from
+  `/api/v1/monthly-reports` and uses it for the dashboard, insights and AI.
+- RBAC mirroring: sections carry `data-perm="<perm> <perm>"` (any-of). After
+  `/auth/me`, `applyPermissions()` adds `.perm-hidden` to sections the user
+  cannot access, and the loader only calls permitted endpoints. Company users
+  get `/dashboard/company/{id}` and `/ai/company`; holding users get
+  `/dashboard/holding` and `/ai/holding`.
+- `/auth.js` is served by an explicit route in `backend/main.py`.
 
-- `body[data-api]` - backend origin. Empty string means same origin, which is
-  the case when FastAPI serves `frontend/`. `?token=`, `?year=`, `?month=`
-  query params supply auth and the reporting period.
-- `[data-kpi="<name>"]` - KPI tiles, hub total, counts and deltas
-  (`total_revenue`, `net_delta`, `net_margin`, `insights_count`, and so on).
-- `#aiAnswer` + `#aiAnswerBody` - the Holding AI executive summary block.
-- `#insightsList`, `#supportBody`, `.rep-grid`, `.subs`, `.ov-card .card-body`
-  - containers whose innerHTML the bridge replaces wholesale.
-
-Anything a live API returns is HTML-escaped before insertion (the AI answer
-included), since a real LLM provider could otherwise emit markup.
+Still true: anything a live API returns is HTML-escaped before insertion (the
+AI answer included), since a real LLM provider could otherwise emit markup.
