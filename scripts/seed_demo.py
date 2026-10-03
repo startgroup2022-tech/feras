@@ -36,10 +36,16 @@ from backend.db.models.report import MonthlyReport  # noqa: E402
 from backend.db.models.support import SupportRequest  # noqa: E402
 from backend.db.session import session_scope  # noqa: E402
 from backend.services.auth_service import create_user  # noqa: E402
+from backend.services.document_service import seed_default_categories  # noqa: E402
 from backend.services.rbac_service import bootstrap_rbac  # noqa: E402
 
 DEMO_PASSWORD = "SafirDemo!2027"
 DEMO_EMAIL_DOMAIN = "demo.safir.local"
+
+# Roles used when building the Phase-3 operations demo (forms, workflows,
+# approvals, documents). Kept as codes so they match the RBAC catalogue.
+OPS_FINANCE_ROLE = "accountant"
+OPS_COMPANY_ROLE = "company_manager"
 
 COMPANIES = [
     ("SAF-TECH", "السفير للتقنية", "Safir Technology", "Technology", CompanyHealth.STRONG),
@@ -85,9 +91,20 @@ SUPPORT_REQUESTS = [
 
 def _reset(db) -> None:
     """Delete demo rows only -- identified by the demo email domain."""
+    from backend.db.models.documents import Document
+    from backend.db.models.forms import DynamicForm
+    from backend.db.models.submissions import FormSubmission
+    from backend.db.models.workflows import WorkflowDefinition
+
     demo_users = list(
         db.execute(select(User).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))).scalars()
     )
+    # Operations rows are holding-scoped and not company-cascaded, so purge
+    # them explicitly before the users/companies they reference disappear.
+    db.query(Document).delete()
+    db.query(FormSubmission).delete()
+    db.query(WorkflowDefinition).delete()
+    db.query(DynamicForm).delete()
     for user in demo_users:
         db.delete(user)
     for company in db.execute(select(Company)).scalars():
@@ -106,6 +123,9 @@ def seed(reset: bool) -> None:
     with session_scope() as db:
         bootstrap_rbac(db)
         print("  RBAC catalogue synced")
+
+        seed_default_categories(db)
+        print("  document categories synced")
 
         if reset:
             _reset(db)
@@ -171,6 +191,10 @@ def seed(reset: bool) -> None:
             f"manager.hlt@{DEMO_EMAIL_DOMAIN}", "مدير الرعاية الصحية", "Healthcare Manager",
             "company_manager", ("SAF-HLT",),
         )
+        manager_real = ensure_user(
+            f"manager.real@{DEMO_EMAIL_DOMAIN}", "مدير شركة العقار", "Real Estate Manager",
+            "company_manager", ("SAF-REAL",),
+        )
         accountant = ensure_user(
             f"accountant@{DEMO_EMAIL_DOMAIN}", "المحاسب", "Group Accountant", "accountant"
         )
@@ -180,7 +204,7 @@ def seed(reset: bool) -> None:
         )
         ensure_user(f"marketing@{DEMO_EMAIL_DOMAIN}", "التسويق", "Marketing", "marketing")
         ensure_user(f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer")
-        print("  7 demo users (one per role, plus a second company manager)")
+        print("  8 demo users (one per role, plus two company managers)")
 
         # ---- monthly reports for October 2027 ----
         created_reports = 0
@@ -299,6 +323,17 @@ def seed(reset: bool) -> None:
         db.commit()
         print(f"  {created_requests} support requests")
 
+        # ---- Phase 3 operations demo: forms, workflows, submissions,
+        #      approvals and documents -------------------------------------
+        _seed_operations(
+            db,
+            companies=companies,
+            owner=owner,
+            tech_manager=manager,
+            real_manager=manager_real,
+            accountant=accountant,
+        )
+
         print(
             "\nDemo seed complete.\n"
             f"  password for every demo account: {DEMO_PASSWORD}\n"
@@ -306,6 +341,347 @@ def seed(reset: bool) -> None:
             f"  company manager: manager.tech@{DEMO_EMAIL_DOMAIN}\n"
             f"  accountant:      accountant@{DEMO_EMAIL_DOMAIN}"
         )
+
+
+def _seed_operations(
+    db,
+    *,
+    companies,
+    owner,
+    tech_manager,
+    real_manager,
+    accountant,
+):
+    """Seed the Phase-3 dynamic platform via the real services.
+
+    Going through the services (rather than inserting rows directly) keeps the
+    demo consistent with what the running app can actually do: published forms
+    with fields and requirements, a two-step workflow, live submissions routed
+    into approvals, an approved request, an incomplete one, and documents.
+    """
+    from backend.services import (
+        document_service,
+        form_service,
+        requirement_service,
+        submission_service,
+        workflow_service,
+    )
+    from backend.db.models.documents import DocumentCategory
+    from backend.db.models.forms import DynamicForm
+    from datetime import date, timedelta
+
+    # Idempotent: re-running the seed without --reset must not duplicate the
+    # operations demo.
+    if db.execute(
+        select(DynamicForm).where(DynamicForm.code == "capex_request")
+    ).scalar_one_or_none() is not None:
+        print("  operations demo already present (skipped)")
+        return
+
+    # A holding-wide form every subsidiary can submit.
+    capex = form_service.create_form(
+        db,
+        actor=owner,
+        payload={
+            "code": "capex_request",
+            "name_ar": "طلب مصروف رأسمالي",
+            "name_en": "Capital Expenditure Request",
+            "description_ar": "نموذج موحّد لطلبات المصروفات الرأسمالية.",
+            "description_en": "Group-wide capital expenditure request form.",
+            "scope": "holding",
+        },
+    )
+    form_service.add_field(
+        db,
+        actor=owner,
+        form_id=capex["id"],
+        payload={
+            "key": "amount",
+            "field_type": "decimal",
+            "label_ar": "المبلغ التقديري",
+            "label_en": "Estimated amount",
+            "is_required": True,
+            "config": {"min": 0},
+        },
+    )
+    form_service.add_field(
+        db,
+        actor=owner,
+        form_id=capex["id"],
+        payload={
+            "key": "purpose",
+            "field_type": "long_text",
+            "label_ar": "الغرض من الطلب",
+            "label_en": "Purpose of the request",
+            "is_required": True,
+        },
+    )
+    form_service.add_field(
+        db,
+        actor=owner,
+        form_id=capex["id"],
+        payload={
+            "key": "priority",
+            "field_type": "select",
+            "label_ar": "الأولوية",
+            "label_en": "Priority",
+            "is_required": True,
+            "config": {
+                "options": [
+                    {"value": "low", "label_ar": "منخفضة", "label_en": "Low"},
+                    {"value": "normal", "label_ar": "عادية", "label_en": "Normal"},
+                    {"value": "high", "label_ar": "عالية", "label_en": "High"},
+                ]
+            },
+        },
+    )
+    requirement_service.add_requirement(
+        db,
+        actor=owner,
+        form_id=capex["id"],
+        payload={
+            "key": "quotation",
+            "name_ar": "عرض سعر",
+            "name_en": "Quotation",
+            "requirement_type": "document",
+            "is_mandatory": True,
+            "config": {"min_count": 1},
+        },
+    )
+    form_service.publish_form(db, actor=owner, form_id=capex["id"])
+
+    workflow = workflow_service.create_workflow(
+        db,
+        actor=owner,
+        payload={
+            "code": "capex_flow",
+            "name_ar": "مسار اعتماد المصروف الرأسمالي",
+            "name_en": "Capital Expenditure Approval Flow",
+            "form_id": capex["id"],
+            "scope": "holding",
+        },
+    )
+    workflow_service.add_step(
+        db,
+        actor=owner,
+        workflow_id=workflow["id"],
+        payload={
+            "key": "company_manager",
+            "name_ar": "مدير الشركة",
+            "name_en": "Company Manager",
+            "assignment_type": "company_manager",
+        },
+    )
+    workflow_service.add_step(
+        db,
+        actor=owner,
+        workflow_id=workflow["id"],
+        payload={
+            "key": "finance_review",
+            "name_ar": "المراجعة المالية",
+            "name_en": "Finance Review",
+            "assignment_type": "role",
+            "assignment_config": {"role_code": OPS_FINANCE_ROLE},
+        },
+    )
+    workflow_service.publish_workflow(db, actor=owner, workflow_id=workflow["id"])
+    print("  1 published form + 1 published workflow (capex)")
+
+    # -- live submissions -------------------------------------------------
+    # (a) SAF-TECH approved all the way through; the document satisfies the
+    #     mandatory quotation requirement, so it routes into approvals.
+    tech = companies["SAF-TECH"]
+    approved = submission_service.create_submission(
+        db,
+        actor=tech_manager,
+        payload={
+            "form_id": capex["id"],
+            "company_id": tech.id,
+            "title": "طلب مصروف رأسمالي — توسعة مركز البيانات",
+            "values": {
+                "amount": "1850000",
+                "purpose": "توسعة مركز البيانات وترقية البنية التحتية.",
+                "priority": "high",
+            },
+        },
+    )
+    _attach_requirement_document(
+        db, submission=approved, actor=tech_manager, filename="عرض-سعر-التوسعة.pdf"
+    )
+    submission_service.submit_submission(
+        db, actor=tech_manager, submission_id=approved.id
+    )
+
+    # (b) SAF-REAL left incomplete: submitted with the mandatory quotation
+    #     missing, which surfaces it in the "needs attention" queue.
+    real = companies["SAF-REAL"]
+    incomplete = submission_service.create_submission(
+        db,
+        actor=real_manager,
+        payload={
+            "form_id": capex["id"],
+            "company_id": real.id,
+            "title": "طلب مصروف رأسمالي — تحديث المعرض",
+            "values": {
+                "amount": "640000",
+                "purpose": "تحديث صالة العرض الرئيسية.",
+                "priority": "normal",
+            },
+        },
+    )
+    # Missing the mandatory quotation: the service records the request as
+    # "incomplete" and raises, which is the intended demo state.
+    from backend.core.errors import ConflictError
+
+    try:
+        submission_service.submit_submission(
+            db, actor=real_manager, submission_id=incomplete.id
+        )
+    except ConflictError:
+        pass
+    print("  2 form submissions (submitted + incomplete)")
+
+    # -- approve the SAF-TECH request through both workflow steps ---------
+    from backend.db.models.enums import TaskStatus
+    from backend.db.models.workflows import WorkflowInstance, ApprovalTask
+
+    instance = db.execute(
+        select(WorkflowInstance).where(WorkflowInstance.submission_id == approved.id)
+    ).scalar_one_or_none()
+    if instance is not None:
+        # Step 1: company manager.
+        pending = db.execute(
+            select(ApprovalTask)
+            .where(
+                ApprovalTask.instance_id == instance.id,
+                ApprovalTask.status == TaskStatus.PENDING.value,
+            )
+            .order_by(ApprovalTask.step_order)
+        ).scalars().all()
+        first = first_of(pending, lambda t: t.assignee_id == tech_manager.id)
+        if first is not None:
+            _act(db, actor=tech_manager, task_id=first.id, decision="approve",
+                 comment="معتمد على مستوى الشركة.")
+        # Step 2: finance review (the accountant holds the role).
+        pending = db.execute(
+            select(ApprovalTask)
+            .where(
+                ApprovalTask.instance_id == instance.id,
+                ApprovalTask.status == TaskStatus.PENDING.value,
+            )
+        ).scalars().all()
+        second = first_of(pending, lambda t: t.assignee_id == accountant.id)
+        if second is not None:
+            _act(db, actor=accountant, task_id=second.id, decision="approve",
+                 comment="المراجعة المالية سليمة.")
+    print("  1 request fully approved (2 steps)")
+
+    # (c) A second SAF-TECH request left mid-flow: the company manager has
+    #     approved, so it now waits in the group accountant's approval queue.
+    pending_sub = submission_service.create_submission(
+        db,
+        actor=tech_manager,
+        payload={
+            "form_id": capex["id"],
+            "company_id": tech.id,
+            "title": "طلب مصروف رأسمالي — منصة الذكاء الاصطناعي",
+            "values": {
+                "amount": "920000",
+                "purpose": "بناء منصة تحليلات ذكية للمجموعة.",
+                "priority": "normal",
+            },
+        },
+    )
+    _attach_requirement_document(
+        db, submission=pending_sub, actor=tech_manager, filename="عرض-سعر-المنصة.pdf"
+    )
+    submission_service.submit_submission(
+        db, actor=tech_manager, submission_id=pending_sub.id
+    )
+    pending_instance = db.execute(
+        select(WorkflowInstance).where(
+            WorkflowInstance.submission_id == pending_sub.id
+        )
+    ).scalar_one_or_none()
+    if pending_instance is not None:
+        step_one = db.execute(
+            select(ApprovalTask).where(
+                ApprovalTask.instance_id == pending_instance.id,
+                ApprovalTask.status == TaskStatus.PENDING.value,
+                ApprovalTask.assignee_id == tech_manager.id,
+            )
+        ).scalars().first()
+        if step_one is not None:
+            _act(db, actor=tech_manager, task_id=step_one.id, decision="approve",
+                 comment="معتمد، بانتظار المراجعة المالية.")
+    print("  1 request awaiting finance approval (in the accountant's queue)")
+
+    # -- documents --------------------------------------------------------
+    category = db.execute(
+        select(DocumentCategory).where(DocumentCategory.code == "commercial_registration")
+    ).scalar_one_or_none()
+    from datetime import date, timedelta
+
+    pdf = b"%PDF-1.4\n% Safir demo operations document\n"
+    document_service.upload_document(
+        db,
+        actor=tech_manager,
+        company_id=tech.id,
+        filename="السجل-التجاري.pdf",
+        content_type="application/pdf",
+        data=pdf,
+        category_id=category.id if category else None,
+        title_ar="السجل التجاري — السفير للتقنية",
+        title_en="Commercial Registration — Safir Technology",
+        expiry_date=date.today() + timedelta(days=20),
+    )
+    print("  1 registered document (expiring soon)")
+
+
+def _act(db, *, actor, task_id, decision, comment=None):
+    from backend.services import approval_service
+
+    approval_service.act(
+        db, actor=actor, task_id=task_id, decision=decision, comment=comment
+    )
+
+
+def _attach_requirement_document(db, *, submission, actor, filename):
+    """Upload a document and satisfy the submission's mandatory document
+    requirement, mirroring what the UI does when a company attaches its file."""
+    from backend.db.models.submissions import SubmissionRequirement
+    from backend.services import document_service
+
+    requirement = db.execute(
+        select(SubmissionRequirement).where(
+            SubmissionRequirement.submission_id == submission.id,
+            SubmissionRequirement.requirement_type == "document",
+        )
+    ).scalars().first()
+    if requirement is None:
+        return
+    pdf = b"%PDF-1.4\n% Safir demo quotation attachment\n"
+    document_service.upload_document(
+        db,
+        actor=actor,
+        company_id=submission.company_id,
+        filename=filename,
+        content_type="application/pdf",
+        data=pdf,
+        title_ar="عرض سعر مرفق",
+        title_en="Attached quotation",
+        submission_id=submission.id,
+        submission_requirement_id=requirement.id,
+    )
+
+
+
+def first_of(items, predicate):
+    for item in items:
+        if predicate(item):
+            return item
+    return None
+
 
 
 if __name__ == "__main__":

@@ -26,15 +26,30 @@ from backend.db.base import Base, utcnow  # noqa: E402
 from backend.db.models import (  # noqa: E402
     AIConversation,
     AIMessage,
+    ApprovalEvent,
+    ApprovalTask,
     AuditLog,
     Company,
     Department,
+    Document,
+    DocumentCategory,
+    DynamicForm,
+    FormCompany,
+    FormField,
+    FormRequirement,
+    FormSubmission,
+    FormVersion,
     Holding,
     MonthlyReport,
     Ownership,
+    SubmissionRequirement,
     SupportRequest,
     User,
     UserCompanyAccess,
+    WorkflowDefinition,
+    WorkflowInstance,
+    WorkflowStep,
+    WorkflowVersion,
 )
 from backend.db.models.enums import (  # noqa: E402
     CompanyHealth,
@@ -69,6 +84,21 @@ def _clean_data(_database):
         # before companies. Custom roles created by a test are removed too;
         # the bootstrap catalogue is re-synced just after.
         for model in (
+            ApprovalEvent,
+            ApprovalTask,
+            WorkflowInstance,
+            SubmissionRequirement,
+            Document,
+            FormSubmission,
+            WorkflowStep,
+            WorkflowVersion,
+            WorkflowDefinition,
+            FormRequirement,
+            FormField,
+            FormVersion,
+            FormCompany,
+            DynamicForm,
+            DocumentCategory,
             AIMessage,
             AIConversation,
             AuditLog,
@@ -268,3 +298,157 @@ def login(client):
         return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     return _login
+
+
+# --------------------------------------------------------------------------
+# Phase 3: dynamic operations platform world
+# --------------------------------------------------------------------------
+@pytest.fixture
+def ops_world(db, make_company, make_user):
+    """Two companies, an owner, company managers, finance manager, a published
+    holding-wide form and a two-step workflow. Tests build on this."""
+    from backend.db.models.enums import (
+        AssignmentType,
+        FieldType,
+        FormScope,
+        FormStatus,
+        RequirementType,
+        WorkflowStatus,
+    )
+    from backend.db.models.forms import (
+        DynamicForm,
+        FormField,
+        FormRequirement,
+        FormVersion,
+    )
+    from backend.db.models.workflows import (
+        WorkflowDefinition,
+        WorkflowStep,
+        WorkflowVersion,
+    )
+
+    alpha = make_company("ALPHA", "شركة ألفا")
+    beta = make_company("BETA", "شركة بيتا")
+    # A third company used by document tests, so the extra builder account does
+    # not participate in the approval workflow's company-manager resolution.
+    gamma = make_company("GAMMA", "شركة غاما")
+
+    owner = make_user("owner2@corp.sa", "holding_owner")
+    alpha_mgr = make_user("am@corp.sa", "company_manager", [alpha])
+    gamma_owner = make_user("go@corp.sa", "company_owner", [gamma])
+    beta_mgr = make_user("bm@corp.sa", "company_manager", [beta])
+    finance = make_user("fin@corp.sa", "finance_manager")
+
+    form = DynamicForm(
+        code="capex",
+        name_ar="طلب مصروف رأسمالي",
+        name_en="Capital Expenditure Request",
+        scope=FormScope.HOLDING.value,
+        status=FormStatus.DRAFT.value,
+        created_by_id=owner.id,
+    )
+    db.add(form)
+    db.flush()
+    version = FormVersion(
+        form_id=form.id,
+        version_number=1,
+        status=FormStatus.DRAFT.value,
+        created_by_id=owner.id,
+    )
+    db.add(version)
+    db.flush()
+    db.add(
+        FormField(
+            form_version_id=version.id,
+            key="amount",
+            field_type=FieldType.DECIMAL.value,
+            label_ar="المبلغ",
+            label_en="Amount",
+            is_required=True,
+            display_order=1,
+        )
+    )
+    db.add(
+        FormField(
+            form_version_id=version.id,
+            key="purpose",
+            field_type=FieldType.SHORT_TEXT.value,
+            label_ar="الغرض",
+            label_en="Purpose",
+            is_required=True,
+            display_order=2,
+        )
+    )
+    db.add(
+        FormRequirement(
+            form_version_id=version.id,
+            key="quote",
+            name_ar="عرض سعر",
+            name_en="Quotation",
+            requirement_type=RequirementType.DOCUMENT.value,
+            is_mandatory=True,
+            display_order=1,
+            config={"min_count": 1},
+        )
+    )
+    db.commit()
+    db.refresh(form)
+
+    workflow = WorkflowDefinition(
+        code="capex_flow",
+        name_ar="مسار المصروف الرأسمالي",
+        name_en="Capex Flow",
+        form_id=form.id,
+        scope=FormScope.HOLDING.value,
+        status=WorkflowStatus.DRAFT.value,
+        allow_requirement_override=False,
+        created_by_id=owner.id,
+    )
+    db.add(workflow)
+    db.flush()
+    wf_version = WorkflowVersion(
+        definition_id=workflow.id,
+        version_number=1,
+        status=WorkflowStatus.DRAFT.value,
+        created_by_id=owner.id,
+    )
+    db.add(wf_version)
+    db.flush()
+    db.add(
+        WorkflowStep(
+            workflow_version_id=wf_version.id,
+            key="manager",
+            name_ar="مدير الشركة",
+            name_en="Company Manager",
+            display_order=1,
+            assignment_type=AssignmentType.COMPANY_MANAGER.value,
+            assignment_config={},
+        )
+    )
+    db.add(
+        WorkflowStep(
+            workflow_version_id=wf_version.id,
+            key="finance",
+            name_ar="المدير المالي",
+            name_en="Finance Manager",
+            display_order=2,
+            assignment_type=AssignmentType.ROLE.value,
+            assignment_config={"role_code": "finance_manager"},
+        )
+    )
+    db.commit()
+
+    return {
+        "alpha": alpha,
+        "beta": beta,
+        "gamma": gamma,
+        "owner": owner,
+        "alpha_mgr": alpha_mgr,
+        "gamma_owner": gamma_owner,
+        "beta_mgr": beta_mgr,
+        "finance": finance,
+        "form": form,
+        "version": version,
+        "workflow": workflow,
+        "wf_version": wf_version,
+    }

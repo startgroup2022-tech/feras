@@ -151,6 +151,57 @@
     return authed("/api/v1/auth/me");
   }
 
+  // Multipart upload. ``fields`` becomes FormData entries; ``file`` is appended
+  // under ``file``. The Authorization header is attached the same way as for
+  // JSON calls, but Content-Type is left to the browser so the multipart
+  // boundary is set correctly.
+  function upload(path, file, fields) {
+    var form = new FormData();
+    form.append("file", file);
+    if (fields) {
+      Object.keys(fields).forEach(function (k) {
+        if (fields[k] !== undefined && fields[k] !== null && fields[k] !== "") {
+          form.append(k, fields[k]);
+        }
+      });
+    }
+    return fetch(API_BASE + path, {
+      method: "POST",
+      headers: session && session.access_token
+        ? { Authorization: "Bearer " + session.access_token }
+        : {},
+      body: form,
+    }).then(function (res) {
+      return res
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (data) {
+          if (res.ok) return data;
+          var err = new Error(messageFor(res.status, data));
+          err.status = res.status;
+          throw err;
+        });
+    });
+  }
+
+  // Authenticated file download. Returns an object URL the caller revokes.
+  function download(path) {
+    return fetch(API_BASE + path, {
+      headers: session && session.access_token
+        ? { Authorization: "Bearer " + session.access_token }
+        : {},
+    }).then(function (res) {
+      if (!res.ok) {
+        var err = new Error(messageFor(res.status, null));
+        err.status = res.status;
+        throw err;
+      }
+      return res.blob();
+    });
+  }
+
   function isAuthenticated() {
     return !!(session && session.access_token);
   }
@@ -176,6 +227,8 @@
     del: function (path) {
       return authed(path, { method: "DELETE" });
     },
+    upload: upload,
+    download: download,
     isAuthenticated: isAuthenticated,
     clear: clear,
   };

@@ -123,7 +123,7 @@ def test_sqlite_ddl_still_compiles():
 # migration head
 # --------------------------------------------------------------------------
 def test_alembic_has_a_single_head_at_the_approved_revision():
-    """The migration graph must have exactly one head: the Phase 2 revision."""
+    """The migration graph must have exactly one head: the Phase 3 revision."""
     versions_dir = PROJECT_ROOT / "alembic" / "versions"
     revisions: dict[str, str | None] = {}
     for path in versions_dir.glob("*.py"):
@@ -132,6 +132,9 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
         revisions[namespace["revision"]] = namespace.get("down_revision")
 
     heads = set(revisions) - {down for down in revisions.values() if down}
-    assert heads == {"1b786167cd02"}
-    # The Phase 2 revision must build directly on the initial schema.
+    assert len(heads) == 1
+    head = heads.pop()
+    # The head must build on the Phase 2 revision, which builds on the initial
+    # schema -- a single linear chain, no branches.
+    assert revisions[head] == "1b786167cd02"
     assert revisions["1b786167cd02"] == "55d2d244bc1b"

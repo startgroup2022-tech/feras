@@ -53,5 +53,57 @@ class AuditAction:
     AI_CONVERSATION_STARTED = "ai.conversation_started"
     AI_MESSAGE_SENT = "ai.message_sent"
 
+    # Phase 3: dynamic forms builder
+    FORM_CREATED = "form.created"
+    FORM_UPDATED = "form.updated"
+    FORM_PUBLISHED = "form.published"
+    FORM_ARCHIVED = "form.archived"
+    FORM_DUPLICATED = "form.duplicated"
+    FORM_FIELD_ADDED = "form.field_added"
+    FORM_FIELD_UPDATED = "form.field_updated"
+    FORM_FIELD_REMOVED = "form.field_removed"
+    FORM_FIELD_REORDERED = "form.field_reordered"
+
+    # Phase 3: requirements engine
+    REQUIREMENT_CREATED = "requirement.created"
+    REQUIREMENT_UPDATED = "requirement.updated"
+    REQUIREMENT_REMOVED = "requirement.removed"
+    REQUIREMENT_REORDERED = "requirement.reordered"
+
+    # Phase 3: submissions
+    SUBMISSION_CREATED = "form_submission.created"
+    SUBMISSION_UPDATED = "form_submission.updated"
+    SUBMISSION_SUBMITTED = "form_submission.submitted"
+    SUBMISSION_INCOMPLETE = "form_submission.incomplete"
+    SUBMISSION_CANCELLED = "form_submission.cancelled"
+    SUBMISSION_OVERRIDDEN = "form_submission.requirements_overridden"
+
+    # Phase 3: workflow builder
+    WORKFLOW_CREATED = "workflow.created"
+    WORKFLOW_UPDATED = "workflow.updated"
+    WORKFLOW_PUBLISHED = "workflow.published"
+    WORKFLOW_ARCHIVED = "workflow.archived"
+    WORKFLOW_DUPLICATED = "workflow.duplicated"
+    WORKFLOW_STEP_ADDED = "workflow.step_added"
+    WORKFLOW_STEP_UPDATED = "workflow.step_updated"
+    WORKFLOW_STEP_REMOVED = "workflow.step_removed"
+    WORKFLOW_STEP_REORDERED = "workflow.step_reordered"
+
+    # Phase 3: approval engine
+    WORKFLOW_INSTANCE_STARTED = "approval.instance_started"
+    APPROVAL_TASK_CREATED = "approval.task_created"
+    APPROVAL_APPROVED = "approval.approved"
+    APPROVAL_REJECTED = "approval.rejected"
+    APPROVAL_RETURNED = "approval.returned"
+    APPROVAL_COMPLETED = "approval.completed"
+
+    # Phase 3: document management
+    DOCUMENT_UPLOADED = "document.uploaded"
+    DOCUMENT_UPDATED = "document.updated"
+    DOCUMENT_ARCHIVED = "document.archived"
+    DOCUMENT_DOWNLOADED = "document.downloaded"
+    DOCUMENT_CATEGORY_CREATED = "document_category.created"
+    DOCUMENT_CATEGORY_UPDATED = "document_category.updated"
+
     # security
     ACCESS_DENIED = "security.access_denied"

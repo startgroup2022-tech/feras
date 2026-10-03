@@ -122,3 +122,132 @@ class CompanyHealth(str, enum.Enum):
     STABLE = "stable"
     WATCH = "watch"
     ATTENTION = "attention"
+
+
+# --------------------------------------------------------------------------
+# Phase 3: dynamic operations platform
+# --------------------------------------------------------------------------
+class FormStatus(str, enum.Enum):
+    """Lifecycle of a dynamic form definition."""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class FormScope(str, enum.Enum):
+    """Who a form definition applies to.
+
+    ``HOLDING`` templates are visible group-wide; ``COMPANY`` forms are
+    restricted to the explicit rows in ``form_companies``.
+    """
+
+    HOLDING = "holding"
+    COMPANY = "company"
+
+
+class FieldType(str, enum.Enum):
+    """Supported configurable field types.
+
+    Deliberately a closed set: the frontend renders each type and the backend
+    validates against it, so no arbitrary executable validation is possible.
+    """
+
+    SHORT_TEXT = "short_text"
+    LONG_TEXT = "long_text"
+    INTEGER = "integer"
+    DECIMAL = "decimal"
+    CURRENCY = "currency"
+    DATE = "date"
+    DATETIME = "datetime"
+    CHECKBOX = "checkbox"
+    SELECT = "select"
+    MULTI_SELECT = "multi_select"
+    EMAIL = "email"
+    PHONE = "phone"
+    URL = "url"
+    FILE = "file"
+    COMPANY = "company"
+    DEPARTMENT = "department"
+    USER = "user"
+
+
+class RequirementType(str, enum.Enum):
+    """What a requirement asks for.
+
+    A closed set, extensible by adding a value plus a branch in the
+    completeness evaluator.
+    """
+
+    DOCUMENT = "document"
+    FIELD_VALUE = "field_value"
+    ACKNOWLEDGEMENT = "acknowledgement"
+
+
+class WorkflowStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class AssignmentType(str, enum.Enum):
+    """How a workflow step resolves its approver(s).
+
+    Explicit, safe rules only -- no scripting. The resolver lives in
+    :mod:`backend.services.workflow_service`.
+    """
+
+    USER = "user"
+    ROLE = "role"
+    DEPARTMENT_MANAGER = "department_manager"
+    COMPANY_MANAGER = "company_manager"
+    SUBMITTER_MANAGER = "submitter_manager"
+
+
+class SubmissionStatus(str, enum.Enum):
+    """Lifecycle of a form submission / request.
+
+    Transitions are validated in :mod:`backend.services.submission_service`;
+    an impossible transition is rejected server-side.
+    """
+
+    DRAFT = "draft"
+    INCOMPLETE = "incomplete"
+    SUBMITTED = "submitted"
+    IN_REVIEW = "in_review"
+    RETURNED = "returned"
+    REJECTED = "rejected"
+    APPROVED = "approved"
+    CANCELLED = "cancelled"
+
+
+class TaskStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    RETURNED = "returned"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+
+
+class ApprovalDecision(str, enum.Enum):
+    """The actions an approver may take on a pending task."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    RETURN = "return"
+
+
+class DocumentStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class DocumentEntityType(str, enum.Enum):
+    """The entity a document is attached to, for generic linking."""
+
+    COMPANY = "company"
+    FORM_SUBMISSION = "form_submission"
+    SUBMISSION_REQUIREMENT = "submission_requirement"
+    REQUIREMENT = "requirement"
+    OTHER = "other"

@@ -86,6 +86,9 @@
       <div class="nav-item" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></div>
       <div class="nav-item" data-view="investments" data-perm="dashboard.holding" role="button" tabindex="0"><span class="ar">الاستثمارات</span><span class="en">Investments</span></div>
       <div class="nav-item" data-view="support" data-perm="support_request.read_own support_request.read_all" role="button" tabindex="0"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></div>
+      <div class="nav-item" data-view="requests" data-perm="form.read" role="button" tabindex="0"><span class="ar">الطلبات</span><span class="en">Requests</span></div>
+      <div class="nav-item" data-view="approvals" data-perm="approval.read_own approval.read_all" role="button" tabindex="0"><span class="ar">الموافقات</span><span class="en">Approvals</span></div>
+      <div class="nav-item" data-view="documents" data-perm="document.read" role="button" tabindex="0"><span class="ar">المستندات</span><span class="en">Documents</span></div>
       <div class="nav-item" data-view="bi" data-perm="ai.holding ai.company" role="button" tabindex="0"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
       <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
     </nav>
@@ -408,6 +411,65 @@
   <div id="supportList" class="av-list"></div>
 </section>
 
+<section class="app-view view-hidden" id="view-requests" data-view="requests" data-perm="form.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الطلبات</span><span class="en">Requests</span></h1>
+      <p><span class="ar">الطلبات المبنية على نماذج ديناميكية ومسار موافقاتها.</span><span class="en">Requests built on dynamic forms, with their approval path.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <select class="av-select" id="reqFormFilter"></select>
+      <select class="av-select" id="reqStatusFilter">
+        <option value=""><span class="ar">كل الحالات</span><span class="en">All statuses</span></option>
+        <option value="draft">Draft</option>
+        <option value="incomplete">Incomplete</option>
+        <option value="in_review">In review</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn-outline" id="reqRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+      <button class="btn-solid" id="reqNew" data-perm="form.submit"><span class="ar">طلب جديد</span><span class="en">New request</span></button>
+    </div>
+  </div>
+  <div id="requestsList" class="av-list"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-approvals" data-view="approvals" data-perm="approval.read_own approval.read_all">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الموافقات</span><span class="en">Approvals</span></h1>
+      <p><span class="ar">الطلبات التي تنتظر إجرائك عليها.</span><span class="en">Requests currently awaiting your action.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <button class="btn-outline" id="apprRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+    </div>
+  </div>
+  <div id="approvalsList" class="av-list"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-documents" data-view="documents" data-perm="document.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">المستندات</span><span class="en">Documents</span></h1>
+      <p><span class="ar">المستندات المؤسسية ومواعيد انتهائها.</span><span class="en">Corporate documents and their expiry dates.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <select class="av-select" id="docCatFilter"></select>
+      <select class="av-select" id="docExpiryFilter">
+        <option value=""><span class="ar">كل الصلاحيات</span><span class="en">Any validity</span></option>
+        <option value="expiring_soon">Expiring soon</option>
+        <option value="expired">Expired</option>
+        <option value="valid">Valid</option>
+      </select>
+      <button class="btn-outline" id="docRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+      <button class="btn-solid" id="docNew" data-perm="document.upload"><span class="ar">رفع مستند</span><span class="en">Upload</span></button>
+    </div>
+  </div>
+  <div id="docsSummary" class="av-grid cols-3" style="margin-bottom:12px"></div>
+  <div id="documentsList" class="av-list"></div>
+</section>
+
 <section class="app-view view-hidden" id="view-investments" data-view="investments" data-perm="dashboard.holding">
   <div class="av-head">
     <div>
@@ -440,6 +502,8 @@
       <button class="chip" data-admin-tab="departments" data-perm="department.read"><span class="ar">الأقسام</span><span class="en">Departments</span></button>
       <button class="chip" data-admin-tab="users" data-perm="user.read_all"><span class="ar">المستخدمون</span><span class="en">Users</span></button>
       <button class="chip" data-admin-tab="roles" data-perm="role.read"><span class="ar">الأدوار والصلاحيات</span><span class="en">Roles &amp; permissions</span></button>
+      <button class="chip" data-admin-tab="builder" data-perm="form.read form.create"><span class="ar">منشئ النماذج</span><span class="en">Form builder</span></button>
+      <button class="chip" data-admin-tab="workflows" data-perm="workflow.read"><span class="ar">مسارات الموافقات</span><span class="en">Workflows</span></button>
       <button class="chip" data-admin-tab="audit" data-perm="audit.read"><span class="ar">سجل النشاط</span><span class="en">Audit trail</span></button>
     </div>
   </div>

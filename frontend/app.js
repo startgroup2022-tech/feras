@@ -32,7 +32,12 @@
     support: [],
     insights: [],
     users: [],
+    forms: [],
     dashboard: null,
+    reqForm: "",
+    reqStatus: "",
+    docCategory: "",
+    docExpiry: "",
     loaded: {},
   };
 
@@ -88,6 +93,10 @@
 
   function put(path, payload) {
     return api.put(path, payload);
+  }
+
+  function del(path) {
+    return api.del(path);
   }
 
 
@@ -1209,6 +1218,9 @@
     "reports",
     "investments",
     "support",
+    "requests",
+    "approvals",
+    "documents",
     "bi",
     "admin",
   ];
@@ -1218,6 +1230,9 @@
     reports: ["monthly_report.read_own", "monthly_report.read_all"],
     investments: ["dashboard.holding"],
     support: ["support_request.read_own", "support_request.read_all"],
+    requests: ["form.read"],
+    approvals: ["approval.read_own", "approval.read_all"],
+    documents: ["document.read"],
     bi: ["ai.holding", "ai.company"],
     admin: [
       "company.read",
@@ -1294,6 +1309,9 @@
     if (view === "subsidiaries") return renderSubsidiaries();
     if (view === "reports") return renderReports();
     if (view === "support") return renderSupportView();
+    if (view === "requests") return renderRequestsView();
+    if (view === "approvals") return renderApprovalsView();
+    if (view === "documents") return renderDocumentsView();
     if (view === "investments") return renderInvestments();
     if (view === "bi") return renderBi();
     if (view === "admin") return renderAdmin();
@@ -2032,6 +2050,811 @@
     });
   }
 
+  // ---- requests view (dynamic forms + approvals) -----------------------
+  function submissionStatusBadge(status) {
+    var map = {
+      draft: ["مسودة", "Draft", "late"],
+      incomplete: ["غير مكتمل", "Incomplete", "late"],
+      submitted: ["مُقدَّم", "Submitted", "rev"],
+      in_review: ["قيد المراجعة", "In review", "rev"],
+      returned: ["معاد", "Returned", "late"],
+      approved: ["معتمد", "Approved", "ok"],
+      rejected: ["مرفوض", "Rejected", "miss"],
+      cancelled: ["ملغى", "Cancelled", "rev"],
+    };
+    return statusBadgeFromMap(status, map);
+  }
+
+  function statusBadgeFromMap(value, map) {
+    var m = map[value] || [value || "—", value || "—", "rev"];
+    return (
+      '<span class="status ' + m[2] + '"><i></i>' + dual(m[0], m[1]) + "</span>"
+    );
+  }
+
+  function ensureForms() {
+    if (STATE.loaded.forms) return Promise.resolve(STATE.forms);
+    if (!has("form.read")) return Promise.resolve([]);
+    return get("/api/v1/forms")
+      .then(function (rows) {
+        STATE.forms = rows || [];
+        STATE.loaded.forms = true;
+        return STATE.forms;
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        return [];
+      });
+  }
+
+  function ensureSubmissions() {
+    var q = [];
+    if (STATE.reqForm) q.push("form_id=" + STATE.reqForm);
+    if (STATE.reqStatus) q.push("status=" + STATE.reqStatus);
+    var suffix = q.length ? "?" + q.join("&") : "";
+    return get("/api/v1/form-submissions" + suffix)
+      .then(function (page) {
+        return page && page.items ? page.items : [];
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        return [];
+      });
+  }
+
+  function renderRequestsView() {
+    var host = byId("requestsList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    bindRequestsControls();
+    return Promise.all([ensureForms(), ensureSubmissions()]).then(function (res) {
+      var forms = res[0];
+      var rows = res[1];
+      fillFormFilter(forms);
+      if (!rows.length) {
+        host.innerHTML = emptyHtml(
+          "لا توجد طلبات مطابقة. ابدأ بإنشاء طلب جديد.",
+          "No matching requests. Start by creating a new one."
+        );
+        return;
+      }
+      host.innerHTML = rows.map(requestRow).join("");
+      host.querySelectorAll("[data-submission]").forEach(function (row) {
+        row.addEventListener("click", function () {
+          openSubmission(parseInt(row.getAttribute("data-submission"), 10));
+        });
+      });
+    });
+  }
+
+  function fillFormFilter(forms) {
+    var sel = byId("reqFormFilter");
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML =
+      '<option value="">' + dual("كل النماذج", "All forms") + "</option>" +
+      forms
+        .filter(function (f) {
+          return f.status === "published";
+        })
+        .map(function (f) {
+          return (
+            '<option value="' + f.id + '">' +
+            escapeHtml(companyName(f)) +
+            "</option>"
+          );
+        })
+        .join("");
+    sel.value = current || STATE.reqForm || "";
+  }
+
+  function requestRow(s) {
+    var company = STATE.lang === "ar" ? s.company_name_ar : s.company_name_en;
+    var step = STATE.lang === "ar" ? s.current_step_name_ar : s.current_step_name_en;
+    var stepText = step
+      ? dual("الخطوة: " + s.current_step_order + "/" + (s.total_steps || "?"), 
+             "Step " + s.current_step_order + "/" + (s.total_steps || "?") ) +
+        " · " + escapeHtml(step)
+      : "";
+    return (
+      '<div class="av-row" data-submission="' + s.id + '" style="flex-direction:column;align-items:stretch;gap:8px">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="co-dot" style="background:var(--navy-600);width:34px;height:34px;border-radius:10px;font-size:12px">' +
+      escapeHtml((s.reference || "").slice(-2)) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(s.title || companyName(s)) + "</div>" +
+      '<div class="s">' + escapeHtml(s.reference || "") + " · " + escapeHtml(company || "") + "</div></div>" +
+      submissionStatusBadge(s.status) +
+      "</div>" +
+      (stepText
+        ? '<div style="font-size:10.5px;color:var(--ink-400)">' + stepText + "</div>"
+        : "") +
+      "</div>"
+    );
+  }
+
+  function bindRequestsControls() {
+    var refresh = byId("reqRefresh");
+    if (refresh && !refresh.getAttribute("data-bound")) {
+      refresh.setAttribute("data-bound", "1");
+      refresh.addEventListener("click", function () { renderRequestsView(); });
+    }
+    var status = byId("reqStatusFilter");
+    if (status && !status.getAttribute("data-bound")) {
+      status.setAttribute("data-bound", "1");
+      status.addEventListener("change", function () {
+        STATE.reqStatus = this.value;
+        renderRequestsView();
+      });
+    }
+    var form = byId("reqFormFilter");
+    if (form && !form.getAttribute("data-bound")) {
+      form.setAttribute("data-bound", "1");
+      form.addEventListener("change", function () {
+        STATE.reqForm = this.value;
+        renderRequestsView();
+      });
+    }
+    var newBtn = byId("reqNew");
+    if (newBtn && !newBtn.getAttribute("data-bound")) {
+      newBtn.setAttribute("data-bound", "1");
+      newBtn.addEventListener("click", newRequestForm);
+    }
+  }
+
+  function newRequestForm(preselectFormId) {
+    ensureForms().then(function (forms) {
+      var usable = forms.filter(function (f) { return f.status === "published"; });
+      if (!usable.length) {
+        toast(
+          STATE.lang === "ar"
+            ? "لا توجد نماذج منشورة بعد."
+            : "There are no published forms yet.",
+          "warn"
+        );
+        return;
+      }
+      var needCompany = has("company.read");
+      var companiesP = needCompany ? ensureCompanies() : Promise.resolve([]);
+      companiesP.then(function (companies) {
+        openModal({
+          title: dual("طلب جديد", "New request"),
+          body:
+            field(
+              "النموذج",
+              "Form",
+              selectInput(
+                "nrForm",
+                usable.map(function (f) {
+                  return { value: f.id, label: companyName(f) };
+                }),
+                preselectFormId
+              )
+            ) +
+            (companies.length
+              ? field(
+                  "الشركة",
+                  "Company",
+                  selectInput(
+                    "nrCompany",
+                    companies.map(function (c) {
+                      return { value: c.id, label: companyName(c) };
+                    })
+                  )
+                )
+              : "") +
+            field(
+              "العنوان",
+              "Title",
+              textInput("nrTitle", "", STATE.lang === "ar" ? "عنوان مختصر" : "Short title")
+            ) +
+            '<p class="note-block" style="margin-top:8px"><span class="lbl">' +
+            dual("ملاحظة", "Note") +
+            "</span>" +
+            dual(
+              "ستُبنى حقول النموذج تلقائيًا بعد اختيار النموذج وحفظ المسودة.",
+              "The form fields are loaded from the form definition when you save the draft."
+            ) +
+            "</p>",
+          footer:
+            '<button class="btn-outline" id="nrCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+            '<button class="btn-solid" id="nrSave">' + dual("حفظ المسودة", "Save draft") + "</button>",
+          onMount: function (root) {
+            root.querySelector("#nrCancel").addEventListener("click", closeModal);
+            root.querySelector("#nrSave").addEventListener("click", function () {
+              var btn = this;
+              var payload = {
+                form_id: parseInt(root.querySelector("#nrForm").value, 10),
+                company_id: root.querySelector("#nrCompany")
+                  ? parseInt(root.querySelector("#nrCompany").value, 10)
+                  : (primaryCompanyId() || 0),
+                title: root.querySelector("#nrTitle").value || null,
+                values: {},
+              };
+              if (!payload.company_id) {
+                toast(STATE.lang === "ar" ? "اختر شركة." : "Choose a company.", "warn");
+                return;
+              }
+              busy(btn, true);
+              post("/api/v1/form-submissions", payload)
+                .then(function (created) {
+                  closeModal();
+                  toast(STATE.lang === "ar" ? "تم إنشاء الطلب." : "Request created.", "ok");
+                  renderRequestsView();
+                  openSubmission(created.id);
+                })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(btn, false);
+                });
+            });
+          },
+        });
+      });
+    });
+  }
+
+  function openSubmission(id) {
+    openModal({
+      title: dual("تفاصيل الطلب", "Request details"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        loadSubmissionDetail(id);
+      },
+    });
+  }
+
+  function loadSubmissionDetail(id) {
+    var body = byId("modalBody");
+    return get("/api/v1/form-submissions/" + id)
+      .then(function (s) {
+        body.innerHTML = submissionDetailHtml(s);
+        bindSubmissionActions(s);
+      })
+      .catch(function (err) {
+        body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function submissionDetailHtml(s) {
+    var company = STATE.lang === "ar" ? s.company_name_ar : s.company_name_en;
+    var html =
+      '<div class="note-block"><span class="lbl">' + dual("المرجع", "Reference") + "</span>" +
+      escapeHtml(s.reference || "") + " · " + escapeHtml(company || "") + "</div>" +
+      '<div class="note-block"><span class="lbl">' + dual("الحالة", "Status") + "</span>" +
+      submissionStatusBadge(s.status) + "</div>";
+
+    // dynamic values
+    var vals = s.values || {};
+    var keys = Object.keys(vals);
+    if (keys.length) {
+      html += '<h3 style="font-size:12.5px;margin:14px 0 8px">' + dual("البيانات", "Values") + "</h3>";
+      html += keys
+        .map(function (k) {
+          return (
+            '<div class="note-block"><span class="lbl">' + escapeHtml(k) + "</span>" +
+            escapeHtml(String(vals[k])) + "</div>"
+          );
+        })
+        .join("");
+    }
+
+    // requirements
+    if (s.requirements && s.requirements.length) {
+      html += '<h3 style="font-size:12.5px;margin:14px 0 8px">' + dual("المتطلبات", "Requirements") + "</h3>";
+      html += s.requirements
+        .map(function (r) {
+          var tick = r.is_satisfied
+            ? '<span class="badge badge-ok">' + dual("مستوفى", "Met") + "</span>"
+            : '<span class="badge badge-err">' + dual("ناقص", "Missing") + "</span>";
+          var action =
+            has("document.upload") && !r.is_satisfied && s.status !== "approved"
+              ? ' <button class="btn-outline" data-req-upload="' + r.id + '">' +
+                dual("رفع", "Upload") + "</button>"
+              : "";
+          return (
+            '<div class="av-row" style="cursor:default">' +
+            '<div class="grow"><div class="t">' + escapeHtml(companyName(r)) + "</div>" +
+            '<div class="s">' + escapeHtml(r.requirement_type) +
+            (r.is_mandatory ? " · " + dual("إلزامي", "Mandatory") : "") + "</div></div>" +
+            tick + action +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+
+    // workflow timeline
+    if (s.workflow) {
+      html += '<h3 style="font-size:12.5px;margin:14px 0 8px">' + dual("مسار الموافقات", "Approval path") + "</h3>";
+      html += (s.workflow.tasks || [])
+        .map(function (t) {
+          var name = STATE.lang === "ar" ? t.step_name_ar : t.step_name_en;
+          var assignee = STATE.lang === "ar" ? t.assignee_name_ar : t.assignee_name_en;
+          return (
+            '<div class="av-row" style="cursor:default">' +
+            '<div class="co-dot" style="width:30px;height:30px;border-radius:9px;font-size:11px">' +
+            t.step_order + "</div>" +
+            '<div class="grow"><div class="t">' + escapeHtml(name || "") + "</div>" +
+            '<div class="s">' + escapeHtml(assignee || "—") + "</div></div>" +
+            statusBadgeFromMap(t.status, {
+              pending: ["قيد الانتظار", "Pending", "rev"],
+              approved: ["معتمد", "Approved", "ok"],
+              rejected: ["مرفوض", "Rejected", "miss"],
+              skipped: ["متجاوز", "Skipped", "rev"],
+              returned: ["معاد", "Returned", "late"],
+            }) +
+            "</div>"
+          );
+        })
+        .join("");
+    }
+
+    // footer actions
+    var actions = [];
+    if (s.status === "draft" || s.status === "incomplete") {
+      if (has("form.update")) {
+        actions.push('<button class="btn-outline" id="subEdit">' + dual("تعديل", "Edit") + "</button>");
+      }
+      actions.push('<button class="btn-solid" id="subSubmit">' + dual("إرسال", "Submit") + "</button>");
+    }
+    if (s.can_act && s.workflow && s.workflow.tasks) {
+      var mine = s.workflow.tasks.filter(function (t) {
+        return t.status === "pending" && t.assignee_id === USER.id;
+      })[0];
+      if (mine) {
+        html +=
+          '<input class="av-input" id="subComment" placeholder="' +
+          escapeAttrSafe(STATE.lang === "ar" ? "ملاحظة" : "Comment") +
+          '" style="margin-top:12px">';
+        actions.push('<button class="btn-outline" data-act="return">' + dual("إعادة", "Return") + "</button>");
+        actions.push('<button class="btn-outline danger" data-act="reject">' + dual("رفض", "Reject") + "</button>");
+        actions.push('<button class="btn-solid" data-act="approve">' + dual("اعتماد", "Approve") + "</button>");
+      }
+    }
+
+    return (
+      html +
+      (actions.length
+        ? '<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:16px">' +
+          actions.join("") + "</div>"
+        : "")
+    );
+  }
+
+  function escapeAttrSafe(t) {
+    return escAttr(t);
+  }
+
+  function bindSubmissionActions(s) {
+    var body = byId("modalBody");
+    var submit = byId("subSubmit");
+    if (submit) {
+      submit.addEventListener("click", function () {
+        var btn = this;
+        busy(btn, true);
+        post("/api/v1/form-submissions/" + s.id + "/submit", {})
+          .then(function () {
+            toast(STATE.lang === "ar" ? "تم إرسال الطلب." : "Request submitted.", "ok");
+            loadSubmissionDetail(s.id);
+            renderRequestsView();
+          })
+          .catch(function (err) {
+            toast(errText(err), "err");
+            busy(btn, false);
+          });
+      });
+    }
+    var edit = byId("subEdit");
+    if (edit) {
+      edit.addEventListener("click", function () { editSubmissionForm(s); });
+    }
+    body.querySelectorAll("[data-req-upload]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        uploadRequirementDocument(s.id, parseInt(btn.getAttribute("data-req-upload"), 10));
+      });
+    });
+    body.querySelectorAll("[data-act]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        submitApprovalDecision(s, btn.getAttribute("data-act"), btn);
+      });
+    });
+  }
+
+  function submitApprovalDecision(s, decision, btn) {
+    var mine = (s.workflow.tasks || []).filter(function (t) {
+      return t.status === "pending" && t.assignee_id === USER.id;
+    })[0];
+    if (!mine) return;
+    var commentEl = byId("subComment");
+    var comment = commentEl ? commentEl.value : "";
+    busy(btn, true);
+    post("/api/v1/approvals/tasks/" + mine.id, { decision: decision, comment: comment || null })
+      .then(function () {
+        toast(STATE.lang === "ar" ? "تم تسجيل الإجراء." : "Action recorded.", "ok");
+        loadSubmissionDetail(s.id);
+        renderApprovalsView();
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+        busy(btn, false);
+      });
+  }
+
+  function uploadRequirementDocument(submissionId, requirementId) {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.addEventListener("change", function () {
+      if (!input.files || !input.files[0]) return;
+      api
+        .upload(
+          "/api/v1/form-submissions/" + submissionId + "/requirements/" + requirementId + "/documents",
+          input.files[0]
+        )
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تم رفع المستند." : "Document uploaded.", "ok");
+          loadSubmissionDetail(submissionId);
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+        });
+    });
+    input.click();
+  }
+
+  function editSubmissionForm(s) {
+    get("/api/v1/forms/" + s.form_id + "/versions/" + s.form_version_id)
+      .then(function (version) {
+        openModal({
+          title: dual("تعديل الطلب", "Edit request"),
+          wide: true,
+          body:
+            field("العنوان", "Title", textInput("seTitle", s.title || "", "")) +
+            (version.fields || [])
+              .map(function (f) { return dynamicFieldHtml(f, s.values || {}); })
+              .join(""),
+          footer:
+            '<button class="btn-outline" id="seCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+            '<button class="btn-solid" id="seSave">' + dual("حفظ", "Save") + "</button>",
+          onMount: function (root) {
+            root.querySelector("#seCancel").addEventListener("click", closeModal);
+            root.querySelector("#seSave").addEventListener("click", function () {
+              var btn = this;
+              var values = collectDynamicValues(version.fields || []);
+              busy(btn, true);
+              patch("/api/v1/form-submissions/" + s.id, {
+                title: root.querySelector("#seTitle").value || null,
+                values: values,
+              })
+                .then(function () {
+                  closeModal();
+                  toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
+                  loadSubmissionDetail(s.id);
+                })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(btn, false);
+                });
+            });
+          },
+        });
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+      });
+  }
+
+  function dynamicFieldHtml(f, values) {
+    var label = STATE.lang === "ar" ? f.label_ar : f.label_en;
+    var val = values && values[f.key] !== undefined ? values[f.key] : "";
+    var control;
+    if (f.field_type === "long_text") {
+      control = '<textarea class="av-input" data-value-key="' + escAttr(f.key) + '">' +
+        escapeHtml(String(val)) + "</textarea>";
+    } else if (f.field_type === "select") {
+      var opts = (f.config && f.config.options) || [];
+      control = '<select class="av-input" data-value-key="' + escAttr(f.key) + '"><option value=""></option>' +
+        opts.map(function (o) {
+          var v = o.value !== undefined ? o.value : o;
+          return '<option value="' + escAttr(v) + '"' +
+            (String(v) === String(val) ? " selected" : "") + ">" + escapeHtml(v) + "</option>";
+        }).join("") + "</select>";
+    } else if (f.field_type === "boolean") {
+      control = '<select class="av-input" data-value-key="' + escAttr(f.key) + '">' +
+        '<option value=""></option><option value="true">' +
+        dual("نعم", "Yes") + '</option><option value="false">' + dual("لا", "No") + "</option></select>";
+    } else if (f.field_type === "date") {
+      control = '<input class="av-input" type="date" data-value-key="' + escAttr(f.key) +
+        '" value="' + escAttr(val) + '">';
+    } else if (f.field_type === "decimal" || f.field_type === "integer") {
+      control = '<input class="av-input" type="number" step="any" data-value-key="' + escAttr(f.key) +
+        '" value="' + escAttr(val) + '">';
+    } else {
+      control = '<input class="av-input" type="text" data-value-key="' + escAttr(f.key) +
+        '" value="' + escAttr(val) + '">';
+    }
+    return field(label, label, control);
+  }
+
+  function collectDynamicValues(fields) {
+    var out = {};
+    fields.forEach(function (f) {
+      var el = document.querySelector('[data-value-key="' + f.key + '"]');
+      if (!el) return;
+      out[f.key] = el.value;
+    });
+    return out;
+  }
+
+  // ---- approvals view --------------------------------------------------
+  function renderApprovalsView() {
+    var host = byId("approvalsList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    var refresh = byId("apprRefresh");
+    if (refresh && !refresh.getAttribute("data-bound")) {
+      refresh.setAttribute("data-bound", "1");
+      refresh.addEventListener("click", renderApprovalsView);
+    }
+    return get("/api/v1/approvals/my")
+      .then(function (page) {
+        var rows = page && page.items ? page.items : [];
+        if (!rows.length) {
+          host.innerHTML = emptyHtml(
+            "لا توجد طلبات تنتظر إجرائك.",
+            "No requests are waiting for your action."
+          );
+          return;
+        }
+        host.innerHTML = rows.map(requestRow).join("");
+        host.querySelectorAll("[data-submission]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openSubmission(parseInt(row.getAttribute("data-submission"), 10));
+          });
+        });
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        host.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  // ---- documents view --------------------------------------------------
+  function renderDocumentsView() {
+    var host = byId("documentsList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    bindDocumentsControls();
+    return Promise.all([
+      get("/api/v1/documents/categories").catch(function () { return []; }),
+      get("/api/v1/documents/expiry-summary").catch(function () { return null; }),
+    ]).then(function (meta) {
+      fillDocCategoryFilter(meta[0]);
+      renderDocSummary(meta[1]);
+      var q = [];
+      if (STATE.docCategory) q.push("category_id=" + STATE.docCategory);
+      if (STATE.docExpiry) q.push("expiry=" + STATE.docExpiry);
+      return get("/api/v1/documents" + (q.length ? "?" + q.join("&") : ""));
+    }).then(function (page) {
+      var rows = page && page.items ? page.items : [];
+      if (!rows.length) {
+        host.innerHTML = emptyHtml("لا توجد مستندات.", "No documents found.");
+        return;
+      }
+      host.innerHTML = rows.map(documentRow).join("");
+      host.querySelectorAll("[data-doc]").forEach(function (row) {
+        row.addEventListener("click", function () {
+          openDocument(JSON.parse(row.getAttribute("data-doc")));
+        });
+      });
+    }).catch(function (err) {
+      handleLoadError(err);
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
+  function renderDocSummary(summary) {
+    var host = byId("docsSummary");
+    if (!host) return;
+    if (!summary) { host.innerHTML = ""; return; }
+    summary.total =
+      (summary.expired || 0) + (summary.expiring_soon || 0) +
+      (summary.valid || 0) + (summary.none || 0);
+    var tiles = [
+      ["total", "إجمالي المستندات", "Total documents"],
+      ["expiring_soon", "تنتهي قريبًا", "Expiring soon"],
+      ["expired", "منتهية", "Expired"],
+    ];
+    host.innerHTML = tiles
+      .map(function (t) {
+        return (
+          '<div class="av-panel"><div style="font-size:10px;color:var(--ink-400);font-weight:600">' +
+          dual(t[1], t[2]) + "</div>" +
+          '<div style="font-family:var(--f-display);font-size:24px;font-weight:600;color:var(--navy-900);margin-top:4px">' +
+          toArabicDigits(String(summary[t[0]] || 0)) + "</div></div>"
+        );
+      })
+      .join("");
+  }
+
+  function fillDocCategoryFilter(categories) {
+    var sel = byId("docCatFilter");
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML =
+      '<option value="">' + dual("كل التصنيفات", "All categories") + "</option>" +
+      (categories || [])
+        .map(function (c) {
+          return '<option value="' + c.id + '">' + escapeHtml(companyName(c)) + "</option>";
+        })
+        .join("");
+    sel.value = current || STATE.docCategory || "";
+  }
+
+  function expiryBadge(state) {
+    return statusBadgeFromMap(state, {
+      expired: ["منتهي", "Expired", "miss"],
+      expiring_soon: ["قريب الانتهاء", "Expiring soon", "late"],
+      valid: ["ساري", "Valid", "ok"],
+    });
+  }
+
+  function documentRow(d) {
+    var company = STATE.lang === "ar" ? d.company_name_ar : d.company_name_en;
+    return (
+      '<div class="av-row" data-doc="' + escAttr(JSON.stringify(d)) + '">' +
+      '<div class="co-dot" style="background:var(--gold-600);width:34px;height:34px;border-radius:10px;font-size:12px">' +
+      escapeHtml((d.original_filename || "?").slice(-1).toUpperCase()) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(companyName(d)) + "</div>" +
+      '<div class="s">' + escapeHtml(d.original_filename) + " · " + escapeHtml(company || "") + "</div></div>" +
+      expiryBadge(d.expiry_state) +
+      "</div>"
+    );
+  }
+
+  function bindDocumentsControls() {
+    var refresh = byId("docRefresh");
+    if (refresh && !refresh.getAttribute("data-bound")) {
+      refresh.setAttribute("data-bound", "1");
+      refresh.addEventListener("click", renderDocumentsView);
+    }
+    var cat = byId("docCatFilter");
+    if (cat && !cat.getAttribute("data-bound")) {
+      cat.setAttribute("data-bound", "1");
+      cat.addEventListener("change", function () {
+        STATE.docCategory = this.value;
+        renderDocumentsView();
+      });
+    }
+    var exp = byId("docExpiryFilter");
+    if (exp && !exp.getAttribute("data-bound")) {
+      exp.setAttribute("data-bound", "1");
+      exp.addEventListener("change", function () {
+        STATE.docExpiry = this.value;
+        renderDocumentsView();
+      });
+    }
+    var newBtn = byId("docNew");
+    if (newBtn && !newBtn.getAttribute("data-bound")) {
+      newBtn.setAttribute("data-bound", "1");
+      newBtn.addEventListener("click", uploadDocumentForm);
+    }
+  }
+
+  function uploadDocumentForm() {
+    ensureCompanies().then(function (companies) {
+      get("/api/v1/documents/categories").then(function (categories) {
+        openModal({
+          title: dual("رفع مستند", "Upload document"),
+          body:
+            field("الملف", "File", '<input class="av-input" type="file" id="duFile">') +
+            (companies.length
+              ? field("الشركة", "Company", selectInput("duCompany", companies.map(function (c) {
+                  return { value: c.id, label: companyName(c) };
+                })))
+              : "") +
+            field("التصنيف", "Category", selectInput("duCategory", (categories || []).map(function (c) {
+              return { value: c.id, label: companyName(c) };
+            }))) +
+            field("العنوان", "Title", textInput("duTitle", "", "")) +
+            field("تاريخ الإصدار", "Issue date", '<input class="av-input" type="date" id="duIssue">') +
+            field("تاريخ الانتهاء", "Expiry date", '<input class="av-input" type="date" id="duExpiry">'),
+          footer:
+            '<button class="btn-outline" id="duCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+            '<button class="btn-solid" id="duSave">' + dual("رفع", "Upload") + "</button>",
+          onMount: function (root) {
+            root.querySelector("#duCancel").addEventListener("click", closeModal);
+            root.querySelector("#duSave").addEventListener("click", function () {
+              var btn = this;
+              var file = root.querySelector("#duFile").files[0];
+              if (!file) {
+                toast(STATE.lang === "ar" ? "اختر ملفًا." : "Choose a file.", "warn");
+                return;
+              }
+              var fields = {
+                company_id: root.querySelector("#duCompany")
+                  ? root.querySelector("#duCompany").value
+                  : primaryCompanyId(),
+                category_id: root.querySelector("#duCategory").value,
+                title_ar: root.querySelector("#duTitle").value,
+                issue_date: root.querySelector("#duIssue").value,
+                expiry_date: root.querySelector("#duExpiry").value,
+              };
+              busy(btn, true);
+              api.upload("/api/v1/documents", file, fields)
+                .then(function () {
+                  closeModal();
+                  toast(STATE.lang === "ar" ? "تم رفع المستند." : "Document uploaded.", "ok");
+                  renderDocumentsView();
+                })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(btn, false);
+                });
+            });
+          },
+        });
+      });
+    });
+  }
+
+  function openDocument(d) {
+    openModal({
+      title: dual("تفاصيل المستند", "Document details"),
+      body: documentDetailHtml(d),
+      footer:
+        '<button class="btn-outline" id="dcClose">' + dual("إغلاق", "Close") + "</button>" +
+        '<button class="btn-solid" id="dcDownload">' + dual("تنزيل", "Download") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#dcClose").addEventListener("click", closeModal);
+        root.querySelector("#dcDownload").addEventListener("click", function () {
+          var btn = this;
+          busy(btn, true);
+          api
+            .download("/api/v1/documents/" + d.id + "/download")
+            .then(function (blob) {
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement("a");
+              a.href = url;
+              a.download = d.original_filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+              busy(btn, false);
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
+  }
+
+  function documentDetailHtml(d) {
+    var company = STATE.lang === "ar" ? d.company_name_ar : d.company_name_en;
+    var rows = [
+      [dual("ملف", "File"), d.original_filename],
+      [dual("الشركة", "Company"), company],
+      [dual("التصنيف", "Category"), d.category_code],
+      [dual("الحالة", "Status"), d.status],
+      [dual("الصلاحية", "Validity"), d.expiry_state],
+      [dual("الإصدار", "Issued"), fmtDate(d.issue_date)],
+      [dual("الانتهاء", "Expires"), fmtDate(d.expiry_date)],
+      [dual("الحجم", "Size"), d.size_bytes ? Math.round(d.size_bytes / 1024) + " KB" : null],
+    ];
+    return rows
+      .filter(function (r) { return r[1]; })
+      .map(function (r) {
+        return (
+          '<div class="note-block"><span class="lbl">' + r[0] + "</span>" +
+          escapeHtml(String(r[1])) + "</div>"
+        );
+      })
+      .join("");
+  }
+
   // ---- investments view ------------------------------------------------
   function renderInvestments() {
     var host = byId("investContent");
@@ -2136,13 +2959,15 @@
   // One delegated click handler drives every admin action, so cards can be
   // re-rendered freely without rebinding. Each tab is loaded lazily and only
   // if the caller holds the permission that tab needs.
-  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "builder", "workflows", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
     departments: ["department.read"],
     users: ["user.read_all"],
     roles: ["role.read"],
+    builder: ["form.read", "form.create"],
+    workflows: ["workflow.read"],
     audit: ["audit.read"],
   };
 
@@ -2190,13 +3015,15 @@
     document.querySelectorAll("[data-admin-tab]").forEach(function (b) {
       b.classList.toggle("on", b.getAttribute("data-admin-tab") === tab);
     });
-    host.className = "av-grid " + (tab === "users" || tab === "roles" ? "cols-1" : "cols-2");
+    host.className = "av-grid " + (tab === "users" || tab === "roles" || tab === "builder" ? "cols-1" : "cols-2");
     host.innerHTML = loadingHtml();
     if (tab === "structure") return renderAdminStructure();
     if (tab === "companies") return renderAdminCompanies();
     if (tab === "departments") return renderAdminDepartments();
     if (tab === "users") return renderAdminUsers();
     if (tab === "roles") return renderAdminRoles();
+    if (tab === "builder") return renderAdminBuilder();
+    if (tab === "workflows") return renderAdminWorkflows();
     if (tab === "audit") return renderAdminAudit();
     return Promise.resolve();
   }
@@ -2541,6 +3368,373 @@
     });
   }
 
+  // ---- tab: form builder ----
+  function renderAdminBuilder() {
+    var host = byId("adminContent");
+    return ensureForms().then(function (forms) {
+      var canCreate = has("form.create");
+      var createForm = canCreate
+        ? '<form class="av-form av-form-inline" id="builderForm">' +
+          field("الكود", "Code", textInput("bfCode", "", "capex")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("bfNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("bfNameEn", "")) +
+          field("النطاق", "Scope",
+            selectInput("bfScope", [
+              { value: "holding", label: STATE.lang === "ar" ? "القابضة" : "Holding" },
+              { value: "company", label: STATE.lang === "ar" ? "شركة" : "Company" },
+            ], "holding")) +
+          '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="builder-create">' +
+          dual("إنشاء نموذج", "Create form") + "</button></div></form>"
+        : "";
+      var list = forms.length
+        ? '<div class="av-list">' + forms.map(function (f) {
+            var statusCls = f.status === "published" ? "ok" : f.status === "archived" ? "warn" : "late";
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(companyName(f)) + "</div>" +
+              '<div class="s">' + escapeHtml(f.code) + " · " + escapeHtml(f.scope) +
+              " · " + dual("الحقول", "fields") + " " + plainNum(f.field_count || 0) + "</div></div>" +
+              '<span class="status ' + statusCls + '"><i></i>' + escapeHtml(f.status) + "</span>" +
+              '<button class="btn-outline" data-admin-action="builder-open" data-id="' + f.id + '">' +
+              dual("إدارة", "Manage") + "</button></div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد نماذج.", "No forms yet.") + "</p>";
+      host.innerHTML = adminPanel("منشئ النماذج الديناميكية", "Dynamic form builder", createForm + list);
+    });
+  }
+
+  function openFormBuilder(formId) {
+    Promise.all([
+      get("/api/v1/forms/" + formId),
+      get("/api/v1/forms/" + formId + "/current").catch(function () { return null; }),
+    ]).then(function (res) {
+      var form = res[0];
+      var version = res[1];
+      var fields = version && version.fields ? version.fields : [];
+      var reqs = version && version.requirements ? version.requirements : [];
+      var canEdit = has("form.update");
+      var canPublish = has("form.publish");
+      var body =
+        '<div class="note-block"><span class="lbl">' + dual("الكود", "Code") + "</span>" +
+        escapeHtml(form.code) + " · " + dual("الإصدار", "Version") + " " +
+        plainNum(form.latest_version_number || 1) + "</div>" +
+        '<h3 style="font-size:12.5px;margin:14px 0 8px">' + dual("الحقول", "Fields") + "</h3>" +
+        (fields.length
+          ? fields.map(function (f) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+                escapeHtml(STATE.lang === "ar" ? f.label_ar : f.label_en) + "</div>" +
+                '<div class="s mono">' + escapeHtml(f.key) + " · " + escapeHtml(f.field_type) +
+                (f.is_required ? " · " + dual("إلزامي", "required") : "") + "</div></div>" +
+                (canEdit ? '<button class="btn-outline danger" data-field-del="' + f.id + '">&times;</button>' : "") +
+                "</div>";
+            }).join("")
+          : '<p class="av-empty">' + dual("لا توجد حقول بعد.", "No fields yet.") + "</p>") +
+        (canEdit ? addFieldForm() : "") +
+        '<h3 style="font-size:12.5px;margin:16px 0 8px">' + dual("المتطلبات", "Requirements") + "</h3>" +
+        (reqs.length
+          ? reqs.map(function (r) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+                escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en) + "</div>" +
+                '<div class="s">' + escapeHtml(r.requirement_type) +
+                (r.is_mandatory ? " · " + dual("إلزامي", "mandatory") : "") + "</div></div>" +
+                (has("requirement.manage") ? '<button class="btn-outline danger" data-req-del="' + r.id + '">&times;</button>' : "") +
+                "</div>";
+            }).join("")
+          : '<p class="av-empty">' + dual("لا توجد متطلبات بعد.", "No requirements yet.") + "</p>") +
+        (has("requirement.manage") ? addRequirementForm(formId) : "");
+
+      openModal({
+        title: dual("إدارة النموذج", "Manage form") + " — " + escapeHtml(companyName(form)),
+        wide: true,
+        body: body,
+        footer:
+          (canPublish
+            ? '<button class="btn-solid gold" id="fbPublish">' + dual("نشر", "Publish") + "</button>"
+            : "") +
+          '<button class="btn-outline" id="fbClose">' + dual("إغلاق", "Close") + "</button>",
+        onMount: function (root) {
+          root.querySelector("#fbClose").addEventListener("click", closeModal);
+          var pub = root.querySelector("#fbPublish");
+          if (pub) {
+            pub.addEventListener("click", function () {
+              busy(pub, true);
+              post("/api/v1/forms/" + formId + "/publish", {})
+                .then(function () {
+                  toast(STATE.lang === "ar" ? "تم نشر النموذج." : "Form published.", "ok");
+                  closeModal();
+                  STATE.loaded.forms = false;
+                  renderAdminBuilder();
+                })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(pub, false);
+                });
+            });
+          }
+          bindFieldForm(root, formId, function () { closeModal(); openFormBuilder(formId); });
+          var reqAdd = root.querySelector("#arAdd");
+          if (reqAdd) {
+            reqAdd.addEventListener("click", function () {
+              var payload = {
+                key: root.querySelector("#arKey").value.trim(),
+                requirement_type: root.querySelector("#arType").value,
+                name_ar: root.querySelector("#arNameAr").value.trim() || root.querySelector("#arKey").value.trim(),
+                name_en: root.querySelector("#arNameEn").value.trim() || root.querySelector("#arKey").value.trim(),
+                is_mandatory: root.querySelector("#arMandatory").value === "1",
+              };
+              busy(reqAdd, true);
+              post("/api/v1/forms/" + formId + "/requirements", payload)
+                .then(function () { closeModal(); openFormBuilder(formId); })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(reqAdd, false);
+                });
+            });
+          }
+          root.querySelectorAll("[data-field-del]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              del("/api/v1/forms/" + formId + "/fields/" + b.getAttribute("data-field-del"))
+                .then(function () { closeModal(); openFormBuilder(formId); })
+                .catch(function (err) { toast(errText(err), "err"); });
+            });
+          });
+          root.querySelectorAll("[data-req-del]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              del("/api/v1/forms/" + formId + "/requirements/" + b.getAttribute("data-req-del"))
+                .then(function () { closeModal(); openFormBuilder(formId); })
+                .catch(function (err) { toast(errText(err), "err"); });
+            });
+          });
+        },
+      });
+    }).catch(function (err) {
+      toast(errText(err), "err");
+    });
+  }
+
+  function addFieldForm() {
+    return (
+      '<div class="av-form av-form-inline" style="margin-top:10px">' +
+      field("المفتاح", "Key", textInput("afKey", "", "amount")) +
+      field("النوع", "Type", selectInput("afType", [
+        { value: "short_text", label: "Short text" },
+        { value: "long_text", label: "Long text" },
+        { value: "decimal", label: "Decimal" },
+        { value: "integer", label: "Integer" },
+        { value: "date", label: "Date" },
+        { value: "boolean", label: "Boolean" },
+        { value: "select", label: "Select (JSON options)" },
+      ], "short_text")) +
+      field("التسمية (عربي)", "Label (AR)", textInput("afLabelAr", "")) +
+      field("التسمية (إنجليزي)", "Label (EN)", textInput("afLabelEn", "")) +
+      field("إلزامي", "Required", selectInput("afRequired", [
+        { value: "0", label: STATE.lang === "ar" ? "لا" : "No" },
+        { value: "1", label: STATE.lang === "ar" ? "نعم" : "Yes" },
+      ], "0")) +
+      '<div class="av-form-actions"><button class="btn-outline" id="afAdd">' +
+      dual("إضافة حقل", "Add field") + "</button></div></div>"
+    );
+  }
+
+  function bindFieldForm(root, formId, done) {
+    var btn = root.querySelector("#afAdd");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var payload = {
+        key: root.querySelector("#afKey").value.trim(),
+        field_type: root.querySelector("#afType").value,
+        label_ar: root.querySelector("#afLabelAr").value.trim() || root.querySelector("#afKey").value.trim(),
+        label_en: root.querySelector("#afLabelEn").value.trim() || root.querySelector("#afKey").value.trim(),
+        is_required: root.querySelector("#afRequired").value === "1",
+      };
+      busy(btn, true);
+      post("/api/v1/forms/" + formId + "/fields", payload)
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تمت إضافة الحقل." : "Field added.", "ok");
+          done();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(btn, false);
+        });
+    });
+  }
+
+  function addRequirementForm() {
+    return (
+      '<div class="av-form av-form-inline" style="margin-top:10px">' +
+      field("المفتاح", "Key", textInput("arKey", "", "quote")) +
+      field("النوع", "Type", selectInput("arType", [
+        { value: "document", label: STATE.lang === "ar" ? "مستند" : "Document" },
+        { value: "field_value", label: STATE.lang === "ar" ? "قيمة حقل" : "Field value" },
+      ], "document")) +
+      field("الاسم (عربي)", "Name (AR)", textInput("arNameAr", "")) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("arNameEn", "")) +
+      field("إلزامي", "Mandatory", selectInput("arMandatory", [
+        { value: "1", label: STATE.lang === "ar" ? "نعم" : "Yes" },
+        { value: "0", label: STATE.lang === "ar" ? "لا" : "No" },
+      ], "1")) +
+      '<div class="av-form-actions"><button class="btn-outline" id="arAdd">' +
+      dual("إضافة متطلب", "Add requirement") + "</button></div></div>"
+    );
+  }
+
+  // ---- tab: workflows ----
+  function renderAdminWorkflows() {
+    var host = byId("adminContent");
+    return Promise.all([
+      get("/api/v1/workflows").catch(function () { return []; }),
+      ensureForms(),
+    ]).then(function (res) {
+      var workflows = res[0];
+      var forms = res[1];
+      var canCreate = has("workflow.create");
+      var createForm = canCreate
+        ? '<form class="av-form av-form-inline" id="wfForm">' +
+          field("الكود", "Code", textInput("wfCode", "", "capex_flow")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("wfNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("wfNameEn", "")) +
+          field("النموذج", "Form", selectInput("wfFormId", forms.map(function (f) {
+            return { value: f.id, label: companyName(f) };
+          }), forms.length ? forms[0].id : "")) +
+          '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="workflow-create">' +
+          dual("إنشاء مسار", "Create workflow") + "</button></div></form>"
+        : "";
+      var list = workflows.length
+        ? '<div class="av-list">' + workflows.map(function (w) {
+            var statusCls = w.status === "published" ? "ok" : w.status === "archived" ? "warn" : "late";
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(companyName(w)) + "</div>" +
+              '<div class="s">' + escapeHtml(w.code) + " · " + dual("النموذج", "form") + ": " +
+              escapeHtml(STATE.lang === "ar" ? w.form_name_ar || "" : w.form_name_en || w.form_name_ar || "") +
+              " · " + dual("الخطوات", "steps") + " " + plainNum(w.step_count || 0) + "</div></div>" +
+              '<span class="status ' + statusCls + '"><i></i>' + escapeHtml(w.status) + "</span>" +
+              '<button class="btn-outline" data-admin-action="workflow-open" data-id="' + w.id + '">' +
+              dual("إدارة", "Manage") + "</button></div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد مسارات.", "No workflows yet.") + "</p>";
+      host.innerHTML = adminPanel("مسارات الموافقات", "Approval workflows", createForm + list);
+    });
+  }
+
+  function openWorkflowBuilder(workflowId) {
+    Promise.all([
+      get("/api/v1/workflows/" + workflowId),
+      get("/api/v1/workflows/" + workflowId + "/current").catch(function () { return null; }),
+      get("/api/v1/admin/roles").catch(function () { return []; }),
+    ]).then(function (res) {
+      var workflow = res[0];
+      var version = res[1];
+      var roles = res[2];
+      var steps = version && version.steps ? version.steps : [];
+      var canEdit = has("workflow.update");
+      var body =
+        '<div class="note-block"><span class="lbl">' + dual("الكود", "Code") + "</span>" +
+        escapeHtml(workflow.code) + " · " + dual("يسمح بالتجاوز", "Override allowed") + ": " +
+        (workflow.allow_requirement_override ? dual("نعم", "Yes") : dual("لا", "No")) + "</div>" +
+        '<h3 style="font-size:12.5px;margin:14px 0 8px">' + dual("الخطوات", "Steps") + "</h3>" +
+        (steps.length
+          ? steps.map(function (s) {
+              var who = s.assignment_type === "role"
+                ? (s.assignment_config && s.assignment_config.role_code) || ""
+                : s.assignment_type;
+              return '<div class="av-row" style="cursor:default">' +
+                '<div class="co-dot" style="width:30px;height:30px;border-radius:9px;font-size:11px">' +
+                s.display_order + "</div>" +
+                '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? s.name_ar : s.name_en) + "</div>" +
+                '<div class="s mono">' + escapeHtml(s.assignment_type) + " · " + escapeHtml(who) + "</div></div>" +
+                (canEdit ? '<button class="btn-outline danger" data-step-del="' + s.id + '">&times;</button>' : "") +
+                "</div>";
+            }).join("")
+          : '<p class="av-empty">' + dual("لا توجد خطوات بعد.", "No steps yet.") + "</p>") +
+        (canEdit ? addStepForm(roles) : "");
+
+      openModal({
+        title: dual("إدارة المسار", "Manage workflow") + " — " + escapeHtml(companyName(workflow)),
+        wide: true,
+        body: body,
+        footer:
+          (has("workflow.publish")
+            ? '<button class="btn-solid gold" id="wfPublish">' + dual("نشر", "Publish") + "</button>"
+            : "") +
+          '<button class="btn-outline" id="wfClose">' + dual("إغلاق", "Close") + "</button>",
+        onMount: function (root) {
+          root.querySelector("#wfClose").addEventListener("click", closeModal);
+          var pub = root.querySelector("#wfPublish");
+          if (pub) {
+            pub.addEventListener("click", function () {
+              busy(pub, true);
+              post("/api/v1/workflows/" + workflowId + "/publish", {})
+                .then(function () {
+                  toast(STATE.lang === "ar" ? "تم نشر المسار." : "Workflow published.", "ok");
+                  closeModal();
+                  renderAdminWorkflows();
+                })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(pub, false);
+                });
+            });
+          }
+          var addBtn = root.querySelector("#wsAdd");
+          if (addBtn) {
+            addBtn.addEventListener("click", function () {
+              var type = root.querySelector("#wsType").value;
+              var cfg = {};
+              if (type === "role") cfg.role_code = root.querySelector("#wsRole").value;
+              var payload = {
+                key: root.querySelector("#wsKey").value.trim(),
+                name_ar: root.querySelector("#wsNameAr").value.trim() || root.querySelector("#wsKey").value.trim(),
+                name_en: root.querySelector("#wsNameEn").value.trim() || root.querySelector("#wsKey").value.trim(),
+                assignment_type: type,
+                assignment_config: cfg,
+              };
+              busy(addBtn, true);
+              post("/api/v1/workflows/" + workflowId + "/steps", payload)
+                .then(function () { closeModal(); openWorkflowBuilder(workflowId); })
+                .catch(function (err) {
+                  toast(errText(err), "err");
+                  busy(addBtn, false);
+                });
+            });
+          }
+          root.querySelectorAll("[data-step-del]").forEach(function (b) {
+            b.addEventListener("click", function () {
+              del("/api/v1/workflows/" + workflowId + "/steps/" + b.getAttribute("data-step-del"))
+                .then(function () { closeModal(); openWorkflowBuilder(workflowId); })
+                .catch(function (err) { toast(errText(err), "err"); });
+            });
+          });
+        },
+      });
+    }).catch(function (err) {
+      toast(errText(err), "err");
+    });
+  }
+
+  function addStepForm(roles) {
+    return (
+      '<div class="av-form av-form-inline" style="margin-top:10px">' +
+      field("المفتاح", "Key", textInput("wsKey", "", "manager")) +
+      field("النوع", "Assignment", selectInput("wsType", [
+        { value: "company_manager", label: STATE.lang === "ar" ? "مدير الشركة" : "Company manager" },
+        { value: "role", label: STATE.lang === "ar" ? "دور" : "Role" },
+        { value: "submitter_manager", label: STATE.lang === "ar" ? "مدير مقدم الطلب" : "Submitter's manager" },
+        { value: "department_manager", label: STATE.lang === "ar" ? "مدير القسم" : "Department manager" },
+      ], "company_manager")) +
+      field("الدور", "Role", selectInput("wsRole", roles.map(function (r) {
+        return { value: r.code, label: STATE.lang === "ar" ? r.name_ar : r.name_en };
+      }))) +
+      field("الاسم (عربي)", "Name (AR)", textInput("wsNameAr", "")) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("wsNameEn", "")) +
+      '<div class="av-form-actions"><button class="btn-outline" id="wsAdd">' +
+      dual("إضافة خطوة", "Add step") + "</button></div></div>"
+    );
+  }
+
   // ---- admin event handling ----
   function onAdminClick(e) {
     var el = e.target.closest ? e.target.closest("[data-admin-action]") : null;
@@ -2552,6 +3746,9 @@
     if (action === "users-next") { STATE.adminUsers.offset += STATE.adminUsers.limit; return renderAdminUsers(); }
     if (action === "audit-prev") { STATE.adminAudit.offset = Math.max(0, STATE.adminAudit.offset - STATE.adminAudit.limit); return renderAdminAudit(); }
     if (action === "audit-next") { STATE.adminAudit.offset += STATE.adminAudit.limit; return renderAdminAudit(); }
+
+    if (action === "builder-open") return openFormBuilder(parseInt(id, 10));
+    if (action === "workflow-open") return openWorkflowBuilder(parseInt(id, 10));
 
     if (action === "end-stake") {
       return confirmDialog({
@@ -2620,6 +3817,31 @@
   function onAdminSubmit(e) {
     var form = e.target;
     if (!form || !form.getAttribute) return;
+    if (form.id === "builderForm") {
+      e.preventDefault();
+      return post("/api/v1/forms", {
+        code: byId("bfCode").value.trim(),
+        name_ar: byId("bfNameAr").value.trim(),
+        name_en: byId("bfNameEn").value.trim(),
+        scope: byId("bfScope").value,
+      }).then(function (created) {
+        STATE.loaded.forms = false;
+        toast(STATE.lang === "ar" ? "تم إنشاء النموذج." : "Form created.", "ok");
+        return renderAdminBuilder().then(function () { openFormBuilder(created.id); });
+      }).catch(adminError);
+    }
+    if (form.id === "wfForm") {
+      e.preventDefault();
+      return post("/api/v1/workflows", {
+        code: byId("wfCode").value.trim(),
+        name_ar: byId("wfNameAr").value.trim(),
+        name_en: byId("wfNameEn").value.trim(),
+        form_id: parseInt(byId("wfFormId").value, 10),
+      }).then(function (created) {
+        toast(STATE.lang === "ar" ? "تم إنشاء المسار." : "Workflow created.", "ok");
+        return renderAdminWorkflows().then(function () { openWorkflowBuilder(created.id); });
+      }).catch(adminError);
+    }
     if (form.id === "holdingForm") {
       e.preventDefault();
       return patch("/api/v1/admin/holding", {
@@ -3230,6 +4452,11 @@
               handleLoadError(err);
             }),
           );
+        }
+        // Preview the dynamic-ops counters on the dashboard without navigating
+        // away: forms (for the request type list) and the approvals inbox.
+        if (has("form.read") || has("form_submit")) {
+          jobs.push(ensureForms().catch(function () {}));
         }
         if (has("dashboard.holding") || has("dashboard.company")) {
           jobs.push(

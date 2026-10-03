@@ -68,6 +68,44 @@ class Perm:
     AI_HOLDING = "ai.holding"
     AI_COMPANY = "ai.company"
 
+    # ---- Phase 3: dynamic forms builder ----
+    FORM_READ = "form.read"
+    FORM_CREATE = "form.create"
+    FORM_UPDATE = "form.update"
+    FORM_PUBLISH = "form.publish"
+    FORM_ARCHIVE = "form.archive"
+    FORM_SUBMIT = "form.submit"
+
+    # ---- Phase 3: requirements engine ----
+    REQUIREMENT_READ = "requirement.read"
+    REQUIREMENT_MANAGE = "requirement.manage"
+
+    # ---- Phase 3: submissions ----
+    SUBMISSION_READ_OWN = "form_submission.read_own"
+    SUBMISSION_READ_COMPANY = "form_submission.read_company"
+    SUBMISSION_READ_ALL = "form_submission.read_all"
+    SUBMISSION_CANCEL = "form_submission.cancel"
+
+    # ---- Phase 3: workflow builder ----
+    WORKFLOW_READ = "workflow.read"
+    WORKFLOW_CREATE = "workflow.create"
+    WORKFLOW_UPDATE = "workflow.update"
+    WORKFLOW_PUBLISH = "workflow.publish"
+    WORKFLOW_ARCHIVE = "workflow.archive"
+
+    # ---- Phase 3: approval engine ----
+    APPROVAL_ACT = "approval.act"
+    APPROVAL_READ_OWN = "approval.read_own"  # see your own approval inbox
+    APPROVAL_READ_ALL = "approval.read_all"  # see all approvals in scope
+    APPROVAL_OVERRIDE = "approval.override"  # allow documented requirement bypass
+
+    # ---- Phase 3: document management ----
+    DOCUMENT_READ = "document.read"
+    DOCUMENT_UPLOAD = "document.upload"
+    DOCUMENT_UPDATE = "document.update"
+    DOCUMENT_ARCHIVE = "document.archive"
+    DOCUMENT_CATEGORY_MANAGE = "document.category.manage"
+
 
 ALL_PERMISSIONS: dict[str, str] = {
     Perm.USER_READ: "View users",
@@ -110,6 +148,32 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.DASHBOARD_COMPANY: "View a company dashboard",
     Perm.AI_HOLDING: "Use Holding AI",
     Perm.AI_COMPANY: "Use Company AI",
+    Perm.FORM_READ: "View form definitions available to you",
+    Perm.FORM_CREATE: "Create a dynamic form definition",
+    Perm.FORM_UPDATE: "Edit a draft form definition and its fields",
+    Perm.FORM_PUBLISH: "Publish a form definition so it can be submitted",
+    Perm.FORM_ARCHIVE: "Archive a form definition",
+    Perm.FORM_SUBMIT: "Submit a published form",
+    Perm.REQUIREMENT_READ: "View a form's requirements",
+    Perm.REQUIREMENT_MANAGE: "Add, edit and reorder a draft form's requirements",
+    Perm.SUBMISSION_READ_OWN: "Read the submissions you created",
+    Perm.SUBMISSION_READ_COMPANY: "Read submissions raised within your companies",
+    Perm.SUBMISSION_READ_ALL: "Read submissions across all companies",
+    Perm.SUBMISSION_CANCEL: "Cancel a submission you own",
+    Perm.WORKFLOW_READ: "View workflow definitions",
+    Perm.WORKFLOW_CREATE: "Create a workflow definition",
+    Perm.WORKFLOW_UPDATE: "Edit a draft workflow and its steps",
+    Perm.WORKFLOW_PUBLISH: "Publish a workflow so new requests use it",
+    Perm.WORKFLOW_ARCHIVE: "Archive a workflow definition",
+    Perm.APPROVAL_ACT: "Approve, reject or return a request assigned to you",
+    Perm.APPROVAL_READ_OWN: "See requests awaiting your approval",
+    Perm.APPROVAL_READ_ALL: "See approvals across your company scope",
+    Perm.APPROVAL_OVERRIDE: "Override a mandatory requirement with a recorded reason",
+    Perm.DOCUMENT_READ: "View and download documents in your scope",
+    Perm.DOCUMENT_UPLOAD: "Upload documents",
+    Perm.DOCUMENT_UPDATE: "Edit document metadata",
+    Perm.DOCUMENT_ARCHIVE: "Archive documents",
+    Perm.DOCUMENT_CATEGORY_MANAGE: "Manage document categories",
 }
 
 
@@ -134,8 +198,22 @@ _HOLDING_READ = {
     Perm.DEPARTMENT_READ,
 }
 
+# Every role that can *operate* the dynamic platform (read forms/submissions
+# and act on approvals) gets this baseline. Configuration rights are added
+# below, on top of it.
+_OPERATOR_READ = {
+    Perm.FORM_READ,
+    Perm.REQUIREMENT_READ,
+    Perm.WORKFLOW_READ,
+    Perm.SUBMISSION_READ_OWN,
+    Perm.APPROVAL_READ_OWN,
+    Perm.APPROVAL_ACT,
+    Perm.DOCUMENT_READ,
+    Perm.DOCUMENT_UPLOAD,
+}
+
 # Holding Finance: group-wide financial oversight and read-only admin views.
-HOLDING_FINANCE = _HOLDING_READ | {
+HOLDING_FINANCE = _HOLDING_READ | _OPERATOR_READ | {
     Perm.FINANCIAL_REVIEW_READ,
     Perm.FINANCIAL_REVIEW_WRITE,
     Perm.SUPPORT_READ_ALL,
@@ -144,6 +222,26 @@ HOLDING_FINANCE = _HOLDING_READ | {
     Perm.ROLE_READ,
     Perm.PERMISSION_READ,
     Perm.AUDIT_READ,
+    Perm.SUBMISSION_READ_ALL,
+    Perm.APPROVAL_READ_ALL,
+    Perm.FORM_SUBMIT,
+}
+
+# Company-level configuration rights: an administrator (Company Owner) may
+# build forms/workflows for the companies they are granted, but the services
+# additionally confine every write to that company scope.
+_COMPANY_BUILDER = {
+    Perm.FORM_CREATE,
+    Perm.FORM_UPDATE,
+    Perm.FORM_PUBLISH,
+    Perm.FORM_ARCHIVE,
+    Perm.REQUIREMENT_MANAGE,
+    Perm.WORKFLOW_CREATE,
+    Perm.WORKFLOW_UPDATE,
+    Perm.WORKFLOW_PUBLISH,
+    Perm.WORKFLOW_ARCHIVE,
+    Perm.DOCUMENT_UPDATE,
+    Perm.DOCUMENT_ARCHIVE,
 }
 
 # Company-level governance roles. These are company-scoped: they only ever see
@@ -157,7 +255,7 @@ _COMPANY_READ = {
     Perm.DEPARTMENT_READ,
 }
 
-COMPANY_OWNER = _COMPANY_READ | {
+COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.REPORT_CREATE,
     Perm.REPORT_UPDATE,
     Perm.REPORT_SUBMIT,
@@ -171,9 +269,14 @@ COMPANY_OWNER = _COMPANY_READ | {
     Perm.USER_ASSIGN_COMPANY,
     Perm.DEPARTMENT_MANAGE,
     Perm.COMPANY_UPDATE,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
+    Perm.SUBMISSION_CANCEL,
+    Perm.APPROVAL_READ_ALL,
+    Perm.DOCUMENT_CATEGORY_MANAGE,
 }
 
-CEO = _COMPANY_READ | {
+CEO = _COMPANY_READ | _OPERATOR_READ | {
     Perm.REPORT_CREATE,
     Perm.REPORT_UPDATE,
     Perm.REPORT_SUBMIT,
@@ -183,9 +286,12 @@ CEO = _COMPANY_READ | {
     Perm.SUPPORT_COMMENT,
     Perm.USER_READ,
     Perm.DEPARTMENT_READ,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
+    Perm.APPROVAL_READ_ALL,
 }
 
-FINANCE_MANAGER = _COMPANY_READ | {
+FINANCE_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.REPORT_READ_ALL,
     Perm.FINANCIAL_REVIEW_READ,
     Perm.FINANCIAL_REVIEW_WRITE,
@@ -193,9 +299,12 @@ FINANCE_MANAGER = _COMPANY_READ | {
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
     Perm.DEPARTMENT_READ,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
+    Perm.APPROVAL_READ_ALL,
 }
 
-HR_MANAGER = _COMPANY_READ | {
+HR_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.USER_READ,
     Perm.USER_UPDATE,
     Perm.USER_ASSIGN_COMPANY,
@@ -204,12 +313,16 @@ HR_MANAGER = _COMPANY_READ | {
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
 }
 
-DEPARTMENT_MANAGER = _COMPANY_READ | {
+DEPARTMENT_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
 }
 
 EMPLOYEE = {
@@ -219,11 +332,17 @@ EMPLOYEE = {
     Perm.AI_COMPANY,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
+    Perm.FORM_READ,
+    Perm.REQUIREMENT_READ,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_OWN,
+    Perm.APPROVAL_READ_OWN,
+    Perm.APPROVAL_ACT,
+    Perm.DOCUMENT_READ,
+    Perm.DOCUMENT_UPLOAD,
 }
 
-COMPANY_MANAGER = {
-    Perm.COMPANY_READ,
-    Perm.REPORT_READ_OWN,
+COMPANY_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.REPORT_CREATE,
     Perm.REPORT_UPDATE,
     Perm.REPORT_SUBMIT,
@@ -233,9 +352,12 @@ COMPANY_MANAGER = {
     Perm.SUPPORT_COMMENT,
     Perm.DASHBOARD_COMPANY,
     Perm.AI_COMPANY,
+    Perm.FORM_SUBMIT,
+    Perm.SUBMISSION_READ_COMPANY,
+    Perm.APPROVAL_READ_ALL,
 }
 
-ACCOUNTANT = {
+ACCOUNTANT = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
     Perm.FINANCIAL_REVIEW_READ,
@@ -247,9 +369,11 @@ ACCOUNTANT = {
     Perm.DASHBOARD_COMPANY,
     Perm.AI_HOLDING,
     Perm.AI_COMPANY,
+    Perm.APPROVAL_READ_ALL,
+    Perm.SUBMISSION_READ_ALL,
 }
 
-BUSINESS_DEVELOPMENT = {
+BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
     Perm.SUPPORT_READ_ALL,
@@ -257,9 +381,10 @@ BUSINESS_DEVELOPMENT = {
     Perm.SUPPORT_STATUS_CHANGE,
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
+    Perm.APPROVAL_READ_ALL,
 }
 
-MARKETING = {
+MARKETING = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
     Perm.SUPPORT_READ_ALL,
@@ -267,9 +392,10 @@ MARKETING = {
     Perm.SUPPORT_STATUS_CHANGE,
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
+    Perm.APPROVAL_READ_ALL,
 }
 
-DESIGNER = {
+DESIGNER = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
     Perm.SUPPORT_READ_ALL,
@@ -277,6 +403,7 @@ DESIGNER = {
     Perm.SUPPORT_STATUS_CHANGE,
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
+    Perm.APPROVAL_READ_ALL,
 }
 
 

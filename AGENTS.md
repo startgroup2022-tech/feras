@@ -176,3 +176,63 @@ AI answer included), since a real LLM provider could otherwise emit markup.
 - `auth.js` also exposes `put` (used for role-permission updates).
 - Do not expose an "Administration" nav item to company-scoped users — the
   nav-perm check plus the backend 403s keep it holding-only by design.
+
+## Phase 3: dynamic operations (forms, requirements, workflows, approvals, documents)
+
+Migration `34f510488f9c` (down_revision `1b786167cd02`) adds five cooperating
+capabilities. Each follows the same shape: models in `db/models/*`, rules in
+`services/*`, thin routers in `api/v1/*`, schemas in `schemas/ops.py`, and a
+matching `tests/test_*.py`.
+
+- **Dynamic Forms Builder** — `form_service` owns forms, versions and fields.
+  A form is a definition plus `FormVersion` rows; fields and requirements hang
+  off a version. `publish_form` freezes the latest version as
+  `published_version`; a new field invalidates the published version until it
+  is republished. `FormOut.field_count` counts the latest version's fields —
+  do not recompute it from `latest_version_number` (that is the version number,
+  not a field count).
+- **Requirements Management** — `requirement_service` adds per-form requirements
+  (`document` / `field`), mandatory or optional.
+- **Workflow Builder** — `workflow_service` owns `WorkflowDefinition` → ordered
+  steps. Steps carry an `assignment_type` (`user`, `role`,
+  `department_manager`, `company_manager`, `submitter_manager`) resolved to a
+  concrete assignee at submit time. `_assert_can_configure_form` reuses the form
+  service's scope check, so a workflow can never be built for a form the actor
+  cannot configure.
+- **Submission + Approval Engine** — `submission_service.create_submission` /
+  `submit_submission`. Submitting a definition whose form is published starts a
+  `WorkflowInstance` and its first `ApprovalTask`. A submission whose mandatory
+  requirements are unmet is recorded as `incomplete` and submission raises
+  `ConflictError` (the record still exists, by design — it drives the
+  "needs attention" queue). `approval_service.act` moves the task and advances
+  the instance; the final approval marks the submission `approved`.
+- **Document Management** — `document_service` + `core/document_storage.py`
+  store files with a content-type allow-list and size cap. `seed_default_categories`
+  populates a fixed category list; documents can carry an expiry date and can be
+  attached to a submission to satisfy a `document` requirement.
+- **RBAC** — baseline operator read covers `FORM_READ`, `REQUIREMENT_READ`,
+  `WORKFLOW_READ`, `SUBMISSION_READ_OWN`, `APPROVAL_READ_OWN`, `APPROVAL_ACT`,
+  `DOCUMENT_READ`, `DOCUMENT_UPLOAD`.
+
+Frontend surfaces: `requests` (`renderRequestsView`), `approvals`
+(`renderApprovalsView`, personal queue), `documents` (`renderDocumentsView`),
+and two admin tabs, `builder` and `workflows`. `/api/v1/approvals/my` is
+per-user: an owner sees an empty queue because no task is assigned to them.
+
+### Demo operations data
+
+`scripts/seed_demo.py` seeds the Phase-3 demo through the services (never raw
+inserts) so the data matches what the app can actually do:
+
+- one holding-wide published form `capex_request` (3 fields + a mandatory
+  document requirement) and one two-step workflow `capex_flow`;
+- three submissions: `CAPEX_RE-000001` approved end-to-end, `CAPEX_RE-000002`
+  incomplete (missing quotation), `CAPEX_RE-000003` awaiting finance review in
+  the accountant's queue;
+- two documents, one expiring soon.
+
+`_seed_operations` is idempotent (skips if `capex_request` exists). `_reset`
+purges options rows explicitly because forms/submissions/documents are
+holding-scoped and not company-cascaded, so deleting companies alone would
+leave them orphaned. Re-run with `--reset` after changing the operations seed.
+Demo accounts use password `SafirDemo!2027`.
