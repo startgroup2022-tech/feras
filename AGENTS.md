@@ -155,3 +155,24 @@ AI answer included), since a real LLM provider could otherwise emit markup.
   absolute overlay) so nothing clips. Overflow guards (`min-width:0`) on
   dynamic text cells, and the support table drops its department column at
   ≤560px.
+
+## Frontend: group administration view (Phase 2)
+
+- The `admin` nav item (`.nav-item[data-view="admin"]`, section
+  `#view-admin`) is gated on `company.read ownership.read department.read
+  user.read_all role.read` and backed by `frontend/app.js renderAdmin()`. It
+  is a tabbed surface, not a dashboard card set.
+- Tabs are declared in `ADMIN_TABS` / `ADMIN_TAB_PERM`; only tabs the caller
+  can read are shown, and `firstTab()` picks the landing tab. Each tab loads
+  lazily on first open.
+- The admin view uses one delegated `click` handler (`onAdminClick`) and one
+  delegated `submit` handler (`onAdminSubmit`) bound to `#adminContent` once
+  (`STATE.adminBound`), so re-rendering panels never rebinds listeners.
+- Every admin control is permission-scoped: `group.manage`, `ownership.manage`,
+  `company.manage`, `department.manage`, `user.manage`, `permission.assign`
+  gate the forms/buttons; reads are ungated within an already-visible tab.
+- Admin list endpoints return `{ items, total }` (`PageOut`); users and audit
+  trail paginate via `STATE.adminUsers` / `STATE.adminAudit` offsets.
+- `auth.js` also exposes `put` (used for role-permission updates).
+- Do not expose an "Administration" nav item to company-scoped users — the
+  nav-perm check plus the backend 403s keep it holding-only by design.
