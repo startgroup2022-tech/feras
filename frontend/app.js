@@ -21,8 +21,26 @@
   var YEAR = params.get("year");
   var MONTH = params.get("month");
 
+  // ---- state -----------------------------------------------------------
+  var STATE = {
+    year: null,
+    month: null,
+    view: "dashboard",
+    lang: "ar",
+    companies: [],
+    reports: [],
+    support: [],
+    insights: [],
+    dashboard: null,
+    loaded: {},
+  };
+
   var period = "";
-  if (YEAR && MONTH) period = "?year=" + YEAR + "&month=" + MONTH;
+  if (YEAR && MONTH) {
+    period = "?year=" + YEAR + "&month=" + MONTH;
+    STATE.year = parseInt(YEAR, 10);
+    STATE.month = parseInt(MONTH, 10);
+  }
 
   // The backend defaults an unspecified period to the current calendar month,
   // which for a freshly seeded environment holds no data. Unless the caller
@@ -42,7 +60,13 @@
             best = { key: key, year: r.period_year, month: r.period_month };
           }
         });
-        if (best) period = "?year=" + best.year + "&month=" + best.month;
+        if (best) {
+          STATE.year = best.year;
+          STATE.month = best.month;
+          period = "?year=" + best.year + "&month=" + best.month;
+        }
+        STATE.reports = rows || [];
+        STATE.loaded.reports = true;
       })
       .catch(function () {
         /* fall back to the backend's current-month default */
@@ -60,11 +84,6 @@
 
   // ---- formatting ------------------------------------------------------
   var NUM = new Intl.NumberFormat("en-US");
-
-  function money(value) {
-    if (value === null || value === undefined) return "—";
-    return NUM.format(Math.round(Number(value)));
-  }
 
   // Compact form for the KPI tiles: 192.4 (millions).
   function millions(value) {
@@ -221,8 +240,17 @@
     var status = statusClass(row.report_status);
     var label = statusLabel(row.report_status);
     var sector = sectorLabel(row.sector);
+    var rep = reportForCompany(row.id);
+    var reportId = rep ? rep.id : null;
+    var action = reportId
+      ? '<button class="btn-ghost" data-report-id="' + reportId + '">' +
+        dual("عرض التقرير", "View Report") +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>'
+      : '<button class="btn-ghost" data-remind="' + row.id + '">' +
+        dual("متابعة الشركة", "Follow up") +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>';
     return (
-      '<div class="rep">' +
+      '<div class="rep"' + (reportId ? ' data-open-report="' + reportId + '"' : "") + ">" +
       '<div class="rep-top">' +
       '<div class="rep-logo" style="background:' +
       bg +
@@ -231,24 +259,26 @@
       "</div>" +
       '<div class="rep-id">' +
       '<div class="rep-name"><span class="ar">' +
-      row.name_ar +
+      escapeHtml(row.name_ar) +
       '</span><span class="en">' +
-      (row.name_en || row.name_ar) +
+      escapeHtml(row.name_en || row.name_ar) +
       "</span></div>" +
       '<div class="rep-sec"><span class="ar">' +
-      sector.ar +
+      escapeHtml(sector.ar) +
       '</span><span class="en">' +
-      sector.en +
+      escapeHtml(sector.en) +
       "</span></div>" +
-      "</div></div>" +
+      "</div>" +
+      '<span class="status ' + status + '"><i></i>' + dual(label.ar, label.en) + "</span>" +
+      "</div>" +
       '<div class="rep-stats">' +
-      '<div class="stat"><div class="l"><span class="ar">الإيرادات</span><span class="en">Revenue</span></div><div class="v">' +
+      '<div class="stat"><div class="l">' + dual("الإيرادات", "Revenue") + '</div><div class="v">' +
       millions(row.revenue) +
       "</div></div>" +
-      '<div class="stat"><div class="l"><span class="ar">المصروفات</span><span class="en">Expenses</span></div><div class="v">' +
+      '<div class="stat"><div class="l">' + dual("المصروفات", "Expenses") + '</div><div class="v">' +
       millions(row.expenses) +
       "</div></div>" +
-      '<div class="stat"><div class="l"><span class="ar">الصافي</span><span class="en">Net</span></div><div class="v">' +
+      '<div class="stat"><div class="l">' + dual("الصافي", "Net") + '</div><div class="v">' +
       millions(row.net_result) +
       "</div></div>" +
       "</div>" +
@@ -258,16 +288,9 @@
       '</span><span class="en">' +
       (row.has_report ? "Updated" : "Overdue") +
       "</span></span>" +
-      '<div style="display:flex;align-items:center;gap:5px">' +
       growthHtml(row.revenue_pct) +
-      '<span class="status ' +
-      status +
-      '"><i></i><span class="ar">' +
-      label.ar +
-      '</span><span class="en">' +
-      label.en +
-      "</span></span>" +
-      "</div></div></div>"
+      action +
+      "</div></div>"
     );
   }
 
@@ -399,6 +422,8 @@
     if (subs) subs.innerHTML = rows.map(subCard).join("");
     if (overview) overview.innerHTML = rows.map(overviewCard).join("");
 
+    bindReportCardActions(repGrid);
+
     var hubTotal = (data.kpis && data.kpis.total_revenue) || 0;
     setText('[data-kpi="hub_total"]', toArabicDigits(millions(hubTotal)));
     setText('[data-kpi="hub_total_en"]', millions(hubTotal));
@@ -415,6 +440,124 @@
     var sectorCount = Object.keys(sectors).length;
     setText('[data-kpi="sector_count"]', toArabicDigits(String(sectorCount)));
     setText('[data-kpi="sector_count_en"]', String(sectorCount));
+  }
+
+  // The dashboard report cards offer "View Report" (a real report exists) or
+  // "Follow up" (the subsidiary has not sent its report yet).
+  function bindReportCardActions(repGrid) {
+    if (!repGrid) return;
+    repGrid.querySelectorAll("[data-report-id]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        openReport(parseInt(btn.getAttribute("data-report-id"), 10));
+      });
+    });
+    repGrid.querySelectorAll("[data-remind]").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        followUpCompany(parseInt(btn.getAttribute("data-remind"), 10));
+      });
+    });
+    repGrid.querySelectorAll("[data-open-report]").forEach(function (card) {
+      card.addEventListener("click", function () {
+        openReport(parseInt(card.getAttribute("data-open-report"), 10));
+      });
+    });
+  }
+
+  // A subsidiary without a report has no report to open. Rather than fake a
+  // "reminder" API that does not exist, open its record and offer the real,
+  // permission-gated action that fits its state.
+  function followUpCompany(companyId) {
+    openModal({
+      title: dual("متابعة الشركة", "Follow up"),
+      body: loadingHtml(),
+      onMount: function () {
+        loadFollowUp(companyId);
+      },
+    });
+  }
+
+  function loadFollowUp(companyId) {
+    var body = byId("modalBody");
+    Promise.all([get("/api/v1/companies/" + companyId), ensureReports()])
+      .then(function (res) {
+        var c = res[0];
+        if (!body) return;
+        var rep = reportForCompany(companyId);
+        var sector = sectorLabel(c.sector);
+        var actions = [];
+        if (rep) {
+          actions.push('<button class="btn-solid" id="fuOpen">' + dual("عرض التقرير", "Open report") + "</button>");
+        } else if (has("monthly_report.create")) {
+          actions.push('<button class="btn-solid" id="fuCreate">' + dual("إنشاء تقرير", "Create report") + "</button>");
+        }
+        if (has("support_request.create")) {
+          actions.push('<button class="btn-outline" id="fuSupport">' + dual("طلب دعم", "Request support") + "</button>");
+        }
+        actions.push('<button class="btn-outline" id="fuClose">' + dual("إغلاق", "Close") + "</button>");
+        body.innerHTML =
+          '<div class="kv">' +
+          kv(dual("الشركة", "Company"), escapeHtml(companyName(c))) +
+          kv(dual("القطاع", "Sector"), dual(escapeHtml(sector.ar), escapeHtml(sector.en))) +
+          kv(dual("المؤشر", "Health"), healthBadge(c.health)) +
+          kv(dual("حالة التقرير", "Report status"), rep ? statusBadge(rep.status) : statusBadge(null)) +
+          "</div>" +
+          '<p class="note-block" style="margin-top:12px">' +
+          dual(
+            "لم تُستلم بعد تقرير هذه الشركة لهذه الفترة.",
+            "This company has not submitted a report for this period yet.",
+          ) + "</p>" +
+          '<div class="modal-foot" style="margin-top:6px;border-radius:12px;border:1px solid var(--line-2)">' + actions.join("") + "</div>";
+        if (byId("fuClose")) byId("fuClose").addEventListener("click", closeModal);
+        if (byId("fuOpen")) byId("fuOpen").addEventListener("click", function () { openReport(rep.id); });
+        if (byId("fuCreate")) byId("fuCreate").addEventListener("click", function () { createReportForm(companyId); });
+        if (byId("fuSupport")) byId("fuSupport").addEventListener("click", function () { supportCreateForm(companyId); });
+      })
+      .catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function createReportForm(companyId) {
+    openModal({
+      title: dual("إنشاء تقرير شهري", "Create monthly report"),
+      body:
+        '<div class="av-field"><label>' + dual("السنة", "Year") + '</label><input class="av-input" id="crYear" style="width:100%" value="' + escAttr(String(STATE.year || new Date().getFullYear())) + '"></div>' +
+        '<div class="av-field"><label>' + dual("الشهر", "Month") + '</label><input class="av-input" id="crMonth" style="width:100%" value="' + escAttr(String(STATE.month || new Date().getMonth() + 1)) + '"></div>' +
+        '<div class="av-field"><label>' + dual("الإيرادات", "Revenue") + '</label><input class="av-input" id="crRev" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("المصروفات", "Expenses") + '</label><input class="av-input" id="crExp" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("ملاحظات الإدارة", "Management notes") + '</label><textarea class="av-textarea" id="crNotes"></textarea></div>',
+      footer:
+        '<button class="btn-outline" id="crCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="crSave">' + dual("إنشاء", "Create") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#crCancel").addEventListener("click", closeModal);
+        root.querySelector("#crSave").addEventListener("click", function () {
+          var btn = this;
+          var rev = numOrNull(root.querySelector("#crRev").value);
+          var exp = numOrNull(root.querySelector("#crExp").value);
+          busy(btn, true);
+          post("/api/v1/monthly-reports", {
+            company_id: companyId,
+            period_year: parseInt(root.querySelector("#crYear").value, 10),
+            period_month: parseInt(root.querySelector("#crMonth").value, 10),
+            revenue: rev,
+            expenses: exp,
+            net_result: rev !== null && exp !== null ? rev - exp : null,
+            management_notes: root.querySelector("#crNotes").value || null,
+          })
+            .then(function (created) {
+              toast(STATE.lang === "ar" ? "تم إنشاء التقرير." : "Report created.", "ok");
+              refreshAll().then(function () { openReport(created.id); });
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
   }
 
   // ---- support requests ------------------------------------------------
@@ -683,6 +826,291 @@
     );
   }
 
+  // ---- shared helpers --------------------------------------------------
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function escAttr(text) {
+    return escapeHtml(text).replace(/"/g, "&quot;");
+  }
+
+  // Bilingual span pair, the pattern the whole stylesheet switches on.
+  function dual(ar, en) {
+    return (
+      '<span class="ar">' + ar + '</span><span class="en">' + en + "</span>"
+    );
+  }
+
+  function money(value) {
+    if (value === null || value === undefined || value === "") {
+      return { ar: "—", en: "—" };
+    }
+    var n = Math.round(Number(value));
+    if (isNaN(n)) return { ar: "—", en: "—" };
+    var s = NUM.format(n);
+    return { ar: toArabicDigits(s) + " ر.س", en: s + " SAR" };
+  }
+
+  function plainNum(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    var n = Number(value);
+    return isNaN(n) ? String(value) : NUM.format(n);
+  }
+
+  function fmtDate(iso) {
+    var d = dateLabel(iso);
+    return dual(d.ar, d.en);
+  }
+
+  function fmtDateTime(iso) {
+    if (!iso) return dual("—", "—");
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return dual(iso.slice(0, 10), iso.slice(0, 10));
+    var base = dateLabel(iso);
+    var hh = String(d.getHours()).padStart(2, "0");
+    var mm = String(d.getMinutes()).padStart(2, "0");
+    return dual(
+      base.ar + " · " + toArabicDigits(hh + ":" + mm),
+      base.en + " · " + hh + ":" + mm,
+    );
+  }
+
+  function periodLabel() {
+    var y = STATE.year,
+      m = STATE.month;
+    if (!y || !m) return { ar: "", en: "" };
+    return {
+      ar: AR_MONTHS[m - 1] + " " + toArabicDigits(String(y)),
+      en: EN_MONTHS[m - 1] + " " + y,
+    };
+  }
+
+  function statusBadge(status) {
+    var label = statusLabel(status);
+    return (
+      '<span class="status ' +
+      statusClass(status) +
+      '"><i></i>' +
+      dual(label.ar, label.en) +
+      "</span>"
+    );
+  }
+
+  function healthBadge(health) {
+    var h = healthLabel(health);
+    return (
+      '<span class="health-pill ' +
+      healthClass(health) +
+      '"><i></i>' +
+      dual(h.ar, h.en) +
+      "</span>"
+    );
+  }
+
+  function catBadge(category) {
+    var cat = CATEGORY[category] || CATEGORY.general;
+    return (
+      '<span class="type-tag ' + cat.cls + '">' + dual(cat.ar, cat.en) + "</span>"
+    );
+  }
+
+  function supStatusBadge(status) {
+    var st = supportStatus(status);
+    return (
+      '<span class="status ' + st.cls + '"><i></i>' + dual(st.ar, st.en) + "</span>"
+    );
+  }
+
+  // ---- toasts ----------------------------------------------------------
+  function toast(message, kind) {
+    var wrap = byId("toastWrap");
+    if (!wrap) {
+      wrap = document.createElement("div");
+      wrap.className = "toast-wrap";
+      wrap.id = "toastWrap";
+      document.body.appendChild(wrap);
+    }
+    var t = document.createElement("div");
+    t.className = "toast " + (kind || "");
+    t.innerHTML = '<div class="grow">' + escapeHtml(message) + "</div>";
+    wrap.appendChild(t);
+    setTimeout(function () {
+      t.style.opacity = "0";
+      t.style.transform = "translateY(-8px)";
+      t.style.transition = ".24s";
+      setTimeout(function () {
+        if (t.parentNode) t.parentNode.removeChild(t);
+      }, 260);
+    }, kind === "err" ? 6000 : 3600);
+  }
+
+  function errText(err, fallback) {
+    if (err && err.message) return err.message;
+    return fallback || "تعذّر تنفيذ الطلب.";
+  }
+
+  // ---- modal + confirm -------------------------------------------------
+  function openModal(opts) {
+    closeModal();
+    var backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.id = "appModal";
+    backdrop.innerHTML =
+      '<div class="modal' +
+      (opts.wide ? " wide" : "") +
+      '" role="dialog" aria-modal="true">' +
+      '<div class="modal-head"><h2>' +
+      opts.title +
+      '</h2><button class="modal-x" aria-label="close">&times;</button></div>' +
+      '<div class="modal-body" id="modalBody">' +
+      (opts.body || "") +
+      "</div>" +
+      (opts.footer
+        ? '<div class="modal-foot" id="modalFoot">' + opts.footer + "</div>"
+        : "") +
+      "</div>";
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener("click", function (e) {
+      if (e.target === backdrop) closeModal();
+    });
+    backdrop.querySelector(".modal-x").addEventListener("click", closeModal);
+    document.addEventListener("keydown", escClose);
+    if (opts.onMount) opts.onMount(backdrop);
+  }
+
+  function escClose(e) {
+    if (e.key === "Escape") closeModal();
+  }
+
+  function closeModal() {
+    var m = byId("appModal");
+    if (m) m.parentNode.removeChild(m);
+    document.removeEventListener("keydown", escClose);
+  }
+
+  function confirmDialog(opts) {
+    return new Promise(function (resolve) {
+      openModal({
+        title: opts.title || dual("تأكيد", "Confirm"),
+        body:
+          '<p class="note-block">' +
+          escapeHtml(opts.message || "") +
+          "</p>" +
+          (opts.detail ? '<p class="note-block">' + opts.detail + "</p>" : ""),
+        footer:
+          '<button class="btn-outline" id="cfCancel">' +
+          dual("إلغاء", "Cancel") +
+          '</button><button class="btn-solid ' +
+          (opts.danger ? "danger" : "") +
+          '" id="cfOk">' +
+          (opts.confirmLabel || dual("تأكيد", "Confirm")) +
+          "</button>",
+        onMount: function (root) {
+          root.querySelector("#cfCancel").addEventListener("click", function () {
+            closeModal();
+            resolve(false);
+          });
+          root.querySelector("#cfOk").addEventListener("click", function () {
+            closeModal();
+            resolve(true);
+          });
+        },
+      });
+    });
+  }
+
+  function busy(btn, on) {
+    if (!btn) return;
+    if (on) {
+      btn.setAttribute("data-label", btn.innerHTML);
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+    } else {
+      btn.disabled = false;
+      if (btn.getAttribute("data-label")) {
+        btn.innerHTML = btn.getAttribute("data-label");
+      }
+    }
+  }
+
+  // ---- language --------------------------------------------------------
+  function setLang(lang) {
+    var html = document.documentElement;
+    document.querySelectorAll(".lang-opt").forEach(function (o) {
+      o.classList.toggle("on", o.getAttribute("data-lang") === lang);
+    });
+    html.classList.remove("lang-ar", "lang-en");
+    html.classList.add("lang-" + lang);
+    html.setAttribute("lang", lang);
+    html.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+    var ask = document.querySelector(".ask-box input");
+    if (ask) {
+      ask.placeholder =
+        lang === "ar"
+          ? "مثال: ملخص أداء المجموعة هذا الشهر"
+          : "e.g. Group performance summary this month";
+    }
+    try {
+      localStorage.setItem("safir.lang.v1", lang);
+    } catch (e) {
+      /* storage disabled */
+    }
+    if (typeof STATE !== "undefined") STATE.lang = lang;
+  }
+
+  function bindLang() {
+    document.querySelectorAll(".lang-opt").forEach(function (b) {
+      b.addEventListener("click", function () {
+        setLang(b.getAttribute("data-lang"));
+      });
+    });
+    var saved = null;
+    try {
+      saved = localStorage.getItem("safir.lang.v1");
+    } catch (e) {
+      saved = null;
+    }
+    setLang(saved === "en" ? "en" : "ar");
+  }
+
+  // ---- state -----------------------------------------------------------
+
+  function reportForCompany(companyId) {
+    for (var i = 0; i < STATE.reports.length; i++) {
+      var r = STATE.reports[i];
+      if (
+        r.company_id === companyId &&
+        r.period_year === STATE.year &&
+        r.period_month === STATE.month
+      ) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  function companyById(id) {
+    for (var i = 0; i < STATE.companies.length; i++) {
+      if (STATE.companies[i].id === id) return STATE.companies[i];
+    }
+    return null;
+  }
+
+  function companyName(row) {
+    if (!row) return "";
+    return STATE.lang === "ar"
+      ? row.name_ar || row.name_en || ""
+      : row.name_en || row.name_ar || "";
+  }
+
+  function reportCompanyName(r) {
+    if (!r) return "";
+    return STATE.lang === "ar"
+      ? r.company_name_ar || r.company_name_en || ""
+      : r.company_name_en || r.company_name_ar || "";
+  }
+
 
   function hydrateAiAnswer(data, question) {
     var box = document.getElementById("aiAnswer");
@@ -716,9 +1144,1133 @@
     }
   }
 
+  // ---- routing ---------------------------------------------------------
+  var VIEWS = ["dashboard", "subsidiaries", "reports", "investments", "support", "bi"];
+  var NAV_PERM = {
+    dashboard: ["dashboard.holding", "dashboard.company"],
+    subsidiaries: ["company.read"],
+    reports: ["monthly_report.read_own", "monthly_report.read_all"],
+    investments: ["dashboard.holding"],
+    support: ["support_request.read_own", "support_request.read_all"],
+    bi: ["ai.holding", "ai.company"],
+  };
+
+  function canView(view) {
+    var perms = NAV_PERM[view] || [];
+    return perms.some(has);
+  }
+
+  function navTo(view, push) {
+    if (VIEWS.indexOf(view) < 0) view = "dashboard";
+    if (!canView(view)) {
+      toast(
+        STATE.lang === "ar"
+          ? "ليست لديك صلاحية للوصول إلى هذا القسم."
+          : "You do not have permission to open this section.",
+        "warn",
+      );
+      return;
+    }
+    STATE.view = view;
+    document.querySelectorAll("[data-view]").forEach(function (el) {
+      var isSection = el.classList.contains("view") || el.classList.contains("app-view");
+      if (isSection) el.classList.toggle("view-hidden", el.getAttribute("data-view") !== view);
+    });
+    document.querySelectorAll(".nav-item").forEach(function (n) {
+      n.classList.toggle("active", n.getAttribute("data-view") === view);
+    });
+    var board = byId("board");
+    if (board) board.classList.toggle("view-hidden", view !== "dashboard");
+    if (push !== false) {
+      try {
+        history.replaceState(null, "", view === "dashboard" ? location.pathname : "#" + view);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    loadView(view);
+  }
+
+  function bindNav() {
+    document.querySelectorAll(".nav-item").forEach(function (n) {
+      var go = function () {
+        navTo(n.getAttribute("data-view"));
+      };
+      n.addEventListener("click", go);
+      n.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      });
+    });
+    document.querySelectorAll("[data-nav]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        navTo(el.getAttribute("data-nav"));
+      });
+    });
+    var hash = (location.hash || "").replace("#", "");
+    if (hash && VIEWS.indexOf(hash) >= 0 && canView(hash)) STATE.view = hash;
+    window.addEventListener("hashchange", function () {
+      var h = (location.hash || "").replace("#", "");
+      navTo(h || "dashboard", false);
+    });
+  }
+
+  function loadView(view) {
+    if (view === "subsidiaries") return renderSubsidiaries();
+    if (view === "reports") return renderReports();
+    if (view === "support") return renderSupportView();
+    if (view === "investments") return renderInvestments();
+    if (view === "bi") return renderBi();
+    return Promise.resolve();
+  }
+
+  function ensureCompanies() {
+    if (STATE.loaded.companies) return Promise.resolve(STATE.companies);
+    if (!has("company.read")) return Promise.resolve([]);
+    return get("/api/v1/companies")
+      .then(function (rows) {
+        STATE.companies = rows || [];
+        STATE.loaded.companies = true;
+        return STATE.companies;
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        return [];
+      });
+  }
+
+  function ensureReports() {
+    if (STATE.loaded.reports) return Promise.resolve(STATE.reports);
+    if (!has("monthly_report.read_own") && !has("monthly_report.read_all")) {
+      return Promise.resolve([]);
+    }
+    return get("/api/v1/monthly-reports")
+      .then(function (rows) {
+        STATE.reports = rows || [];
+        STATE.loaded.reports = true;
+        return STATE.reports;
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        return [];
+      });
+  }
+
+  function ensureSupport() {
+    if (STATE.loaded.support) return Promise.resolve(STATE.support);
+    if (!has("support_request.read_own") && !has("support_request.read_all")) {
+      return Promise.resolve([]);
+    }
+    return get("/api/v1/support-requests")
+      .then(function (rows) {
+        STATE.support = rows || [];
+        STATE.loaded.support = true;
+        return STATE.support;
+      })
+      .catch(function (err) {
+        handleLoadError(err);
+        return [];
+      });
+  }
+
+  // ---- subsidiaries view ----------------------------------------------
+  function renderSubsidiaries() {
+    var host = byId("subsList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return ensureReports().then(function () {
+      return ensureCompanies();
+    }).then(function (rows) {
+      if (!rows.length) {
+        host.innerHTML = emptyHtml("لا توجد شركات متاحة لك.", "No companies available to you.");
+        return;
+      }
+      host.innerHTML = rows.map(subsidiaryCard).join("");
+      host.querySelectorAll("[data-company]").forEach(function (card) {
+        card.addEventListener("click", function () {
+          openCompany(parseInt(card.getAttribute("data-company"), 10));
+        });
+      });
+    });
+  }
+
+  function subsidiaryCard(c) {
+    var rep = reportForCompany(c.id);
+    var sector = sectorLabel(c.sector);
+    var rev = rep ? money(rep.revenue) : null;
+    return (
+      '<div class="av-row" data-company="' + c.id + '" style="flex-direction:column;align-items:stretch;gap:9px">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="co-dot" style="background:' + PALETTE[c.id % PALETTE.length] + ';width:34px;height:34px;border-radius:10px;font-size:14px">' + initial(c.name_ar) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(companyName(c)) + "</div>" +
+      '<div class="s">' + dual(escapeHtml(sector.ar), escapeHtml(sector.en)) + " · " + escapeHtml(c.code) + "</div></div>" +
+      healthBadge(c.health) +
+      "</div>" +
+      '<div style="display:flex;align-items:center;gap:10px;font-size:11px">' +
+      '<span style="color:var(--ink-400)">' + dual("الإيرادات", "Revenue") + "</span>" +
+      '<b style="font-family:var(--f-display);color:var(--navy-900)">' + (rev ? dual(rev.ar, rev.en) : dual("—", "—")) + "</b>" +
+      '<span style="margin-inline-start:auto">' + (rep ? statusBadge(rep.status) : statusBadge(null)) + "</span>" +
+      "</div></div>"
+    );
+  }
+
+  function openCompany(id) {
+    openModal({
+      title: dual("تفاصيل الشركة", "Company details"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        loadCompanyDetail(id);
+      },
+    });
+  }
+
+  function loadCompanyDetail(id) {
+    var body = byId("modalBody");
+    Promise.all([
+      get("/api/v1/companies/" + id),
+      ensureReports(),
+      ensureSupport(),
+    ])
+      .then(function (res) {
+        var c = res[0];
+        if (!body) return;
+        var sector = sectorLabel(c.sector);
+        var reports = STATE.reports.filter(function (r) {
+          return r.company_id === id;
+        });
+        var reqs = STATE.support.filter(function (r) {
+          return r.company_id === id;
+        });
+        body.innerHTML =
+          '<div class="kv">' +
+          kv(dual("الكود", "Code"), escapeHtml(c.code)) +
+          kv(dual("القطاع", "Sector"), dual(escapeHtml(sector.ar), escapeHtml(sector.en))) +
+          kv(dual("الحالة", "Status"), escapeHtml(c.status)) +
+          kv(dual("المؤشر", "Health"), healthBadge(c.health)) +
+          kv(dual("البريد", "Contact"), escapeHtml(c.contact_email || "—")) +
+          "</div>" +
+          '<div class="sec-title">' + dual("التقارير الشهرية", "Monthly reports") + "</div>" +
+          (reports.length
+            ? '<div class="av-list">' + reports.map(reportRow).join("") + "</div>"
+            : '<p class="av-empty">' + dual("لا توجد تقارير.", "No reports.") + "</p>") +
+          '<div class="sec-title">' + dual("طلبات الدعم", "Support requests") + "</div>" +
+          (reqs.length
+            ? '<div class="av-list">' + reqs.map(supportRowCard).join("") + "</div>"
+            : '<p class="av-empty">' + dual("لا توجد طلبات.", "No requests.") + "</p>");
+        body.querySelectorAll("[data-report]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openReport(parseInt(el.getAttribute("data-report"), 10));
+          });
+        });
+        body.querySelectorAll("[data-request]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openSupport(parseInt(el.getAttribute("data-request"), 10));
+          });
+        });
+      })
+      .catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function kv(k, v) {
+    return '<div><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
+  }
+
+  // ---- reports view ----------------------------------------------------
+  function renderReports() {
+    var host = byId("reportsList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    populateYearSelect();
+    return ensureReports().then(function (rows) {
+      var year = STATE.year;
+      var status = byId("repStatus") ? byId("repStatus").value : "";
+      var list = rows.filter(function (r) {
+        if (year && r.period_year !== year) return false;
+        if (status && r.status !== status) return false;
+        return true;
+      });
+      if (!list.length) {
+        host.innerHTML = emptyHtml("لا توجد تقارير مطابقة.", "No matching reports.");
+        return;
+      }
+      list.sort(function (a, b) {
+        return b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month);
+      });
+      host.innerHTML = list.map(reportRow).join("");
+      host.querySelectorAll("[data-report]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          openReport(parseInt(el.getAttribute("data-report"), 10));
+        });
+      });
+    });
+  }
+
+  function populateYearSelect() {
+    var sel = byId("repYear");
+    if (!sel) return;
+    var years = {};
+    STATE.reports.forEach(function (r) {
+      years[r.period_year] = true;
+    });
+    if (STATE.year) years[STATE.year] = true;
+    var list = Object.keys(years).map(Number).sort(function (a, b) {
+      return b - a;
+    });
+    sel.innerHTML =
+      '<option value="">' + dual("كل السنوات", "All years") + "</option>" +
+      list.map(function (y) {
+        return (
+          '<option value="' + y + '"' + (y === STATE.year ? " selected" : "") + ">" +
+          toArabicDigits(String(y)) + " / " + y + "</option>"
+        );
+      }).join("");
+  }
+
+  function reportRow(r) {
+    var rev = money(r.revenue);
+    var net = money(r.net_result);
+    return (
+      '<div class="av-row" data-report="' + r.id + '">' +
+      '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] + ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(reportCompanyName(r)) + "</div>" +
+      '<div class="s">' + dual(AR_MONTHS[r.period_month - 1] + " " + toArabicDigits(String(r.period_year)), EN_MONTHS[r.period_month - 1] + " " + r.period_year) +
+      " · " + dual("الإيرادات ", "Revenue ") + '<b>' + dual(rev.ar, rev.en) + "</b>" +
+      " · " + dual("الصافي ", "Net ") + '<b>' + dual(net.ar, net.en) + "</b></div></div>" +
+      statusBadge(r.status) +
+      "</div>"
+    );
+  }
+
+  function openReport(id) {
+    openModal({
+      title: dual("تفاصيل التقرير الشهري", "Monthly report"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        loadReportDetail(id);
+      },
+    });
+  }
+
+  function reportField(labelAr, labelEn, value) {
+    if (value === null || value === undefined || value === "") return "";
+    return (
+      '<div class="note-block"><span class="lbl">' + dual(labelAr, labelEn) + "</span>" +
+      escapeHtml(value) + "</div>"
+    );
+  }
+
+  function loadReportDetail(id) {
+    var body = byId("modalBody");
+    get("/api/v1/monthly-reports/" + id)
+      .then(function (r) {
+        if (!body) return;
+        var rev = money(r.revenue);
+        var exp = money(r.expenses);
+        var net = money(r.net_result);
+        var rec = money(r.outstanding_receivables);
+        var fr = r.financial_review;
+        var canSubmit = has("monthly_report.submit") && (r.status === "draft" || r.status === "under_review");
+        var canReview = has("financial_review.write") && r.status !== "draft";
+        var canDelete = has("monthly_report.delete") && r.status === "draft";
+
+        body.innerHTML =
+          '<div class="kv">' +
+          kv(dual("الشركة", "Company"), escapeHtml(reportCompanyName(r))) +
+          kv(dual("الفترة", "Period"), dual(AR_MONTHS[r.period_month - 1] + " " + toArabicDigits(String(r.period_year)), EN_MONTHS[r.period_month - 1] + " " + r.period_year)) +
+          kv(dual("الحالة", "Status"), statusBadge(r.status)) +
+          kv(dual("آخر تحديث", "Last update"), fmtDateTime(r.updated_at)) +
+          "</div>" +
+          '<div class="sec-title">' + dual("المؤشرات المالية", "Financials") + "</div>" +
+          '<div class="kv">' +
+          kv(dual("الإيرادات", "Revenue"), dual(rev.ar, rev.en)) +
+          kv(dual("المصروفات", "Expenses"), dual(exp.ar, exp.en)) +
+          kv(dual("صافي النتيجة", "Net result"), dual(net.ar, net.en)) +
+          kv(dual("الذمم المدينة", "Receivables"), dual(rec.ar, rec.en)) +
+          "</div>" +
+          (r.important_developments || r.major_problems || r.new_opportunities || r.support_required || r.management_notes
+            ? '<div class="sec-title">' + dual("ملاحظات الشركة", "Company notes") + "</div>" +
+              reportField("أهم التطورات", "Developments", r.important_developments) +
+              reportField("عملاء جدد", "New customers", r.new_customers) +
+              reportField("فرص جديدة", "New opportunities", r.new_opportunities) +
+              reportField("مشاكل رئيسية", "Major problems", r.major_problems) +
+              reportField("الدعم المطلوب", "Support required", r.support_required) +
+              reportField("ملاحظات الإدارة", "Management notes", r.management_notes)
+            : "") +
+          (r.attachments && r.attachments.length
+            ? '<div class="sec-title">' + dual("المرفقات", "Attachments") + "</div>" +
+              r.attachments.map(function (a) {
+                return '<div class="note-block">' + escapeHtml(a.original_filename) +
+                  " · " + dual(plainNum(a.size_bytes) + " بايت", plainNum(a.size_bytes) + " bytes") + "</div>";
+              }).join("")
+            : "") +
+          (fr
+            ? '<div class="sec-title">' + dual("المراجعة المالية", "Financial review") + "</div>" +
+              '<div class="kv">' +
+              kv(dual("الحالة", "Status"), escapeHtml(fr.status)) +
+              kv(dual("دقيق ماليًا", "Accurate"), fr.is_financially_accurate ? dual("نعم", "Yes") : dual("لا", "No")) +
+              kv(dual("إيرادات موثقة", "Verified revenue"), dual(money(fr.verified_revenue).ar, money(fr.verified_revenue).en)) +
+              kv(dual("صافي موثق", "Verified net"), dual(money(fr.verified_net_result).ar, money(fr.verified_net_result).en)) +
+              "</div>" +
+              (fr.financial_notes ? reportField("ملاحظات", "Notes", fr.financial_notes) : "") +
+              (fr.flagged_reason ? reportField("سبب التحفظ", "Flag reason", fr.flagged_reason) : "")
+            : "") +
+          '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
+
+        var actions = byId("repActions");
+        var btns = [];
+        if (canSubmit) {
+          btns.push('<button class="btn-solid" id="repSubmit">' + dual("إرسال للقابضة", "Submit to Holding") + "</button>");
+        }
+        if (canReview) {
+          btns.push('<button class="btn-solid gold" id="repReview">' + dual("مراجعة مالية", "Financial review") + "</button>");
+        }
+        if (canDelete) {
+          btns.push('<button class="btn-solid danger" id="repDelete">' + dual("حذف المسودة", "Delete draft") + "</button>");
+        }
+        btns.push('<button class="btn-outline" id="repClose">' + dual("إغلاق", "Close") + "</button>");
+        if (actions) actions.innerHTML = btns.join("");
+
+        if (byId("repClose")) byId("repClose").addEventListener("click", closeModal);
+        if (byId("repSubmit")) byId("repSubmit").addEventListener("click", function () { submitReport(id, this); });
+        if (byId("repReview")) byId("repReview").addEventListener("click", function () { financialReviewForm(id); });
+        if (byId("repDelete")) byId("repDelete").addEventListener("click", function () { deleteReport(id, this); });
+      })
+      .catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function submitReport(id, btn) {
+    confirmDialog({
+      title: dual("إرسال التقرير", "Submit report"),
+      message: STATE.lang === "ar"
+        ? "سيتم إرسال التقرير إلى القابضة ولا يمكن تعديله بعد ذلك."
+        : "The report will be sent to the Holding and can no longer be edited.",
+      confirmLabel: dual("إرسال", "Submit"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/submit")
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تم إرسال التقرير بنجاح." : "Report submitted.", "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(btn, false);
+        });
+    });
+  }
+
+  function deleteReport(id, btn) {
+    confirmDialog({
+      title: dual("حذف المسودة", "Delete draft"),
+      message: STATE.lang === "ar" ? "سيتم حذف هذه المسودة نهائيًا." : "This draft will be permanently deleted.",
+      confirmLabel: dual("حذف", "Delete"),
+      danger: true,
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      api.del("/api/v1/monthly-reports/" + id)
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تم حذف المسودة." : "Draft deleted.", "ok");
+          closeModal();
+          refreshAll().then(function () { loadView(STATE.view); });
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(btn, false);
+        });
+    });
+  }
+
+  function financialReviewForm(id) {
+    var r = null;
+    for (var i = 0; i < STATE.reports.length; i++) {
+      if (STATE.reports[i].id === id) r = STATE.reports[i];
+    }
+    var rev = r ? r.revenue : "";
+    var exp = r ? r.expenses : "";
+    var net = r ? r.net_result : "";
+    openModal({
+      title: dual("المراجعة المالية", "Financial review"),
+      body:
+        '<div class="av-field"><label>' + dual("إيرادات موثقة", "Verified revenue") + '</label><input class="av-input" id="frRev" style="width:100%" value="' + escAttr(rev || "") + '"></div>' +
+        '<div class="av-field"><label>' + dual("مصروفات موثقة", "Verified expenses") + '</label><input class="av-input" id="frExp" style="width:100%" value="' + escAttr(exp || "") + '"></div>' +
+        '<div class="av-field"><label>' + dual("صافي موثق", "Verified net") + '</label><input class="av-input" id="frNet" style="width:100%" value="' + escAttr(net || "") + '"></div>' +
+        '<div class="av-field"><label>' + dual("ملاحظات", "Notes") + '</label><textarea class="av-textarea" id="frNotes"></textarea></div>' +
+        '<div class="av-field"><label><input type="checkbox" id="frAccurate" checked> ' + dual("البيانات دقيقة ماليًا", "Financial data is accurate") + "</label></div>" +
+        '<div class="av-field" id="frFlagWrap" style="display:none"><label>' + dual("سبب التحفظ", "Reason for flag") + '</label><input class="av-input" id="frFlag" style="width:100%"></div>',
+      footer:
+        '<button class="btn-outline" id="frCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid gold" id="frSave">' + dual("حفظ المراجعة", "Save review") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#frCancel").addEventListener("click", closeModal);
+        root.querySelector("#frAccurate").addEventListener("change", function () {
+          root.querySelector("#frFlagWrap").style.display = this.checked ? "none" : "";
+        });
+        root.querySelector("#frSave").addEventListener("click", function () {
+          var btn = this;
+          var accurate = root.querySelector("#frAccurate").checked;
+          var payload = {
+            is_financially_accurate: accurate,
+            verified_revenue: numOrNull(root.querySelector("#frRev").value),
+            verified_expenses: numOrNull(root.querySelector("#frExp").value),
+            verified_net_result: numOrNull(root.querySelector("#frNet").value),
+            financial_notes: root.querySelector("#frNotes").value || null,
+          };
+          if (!accurate) {
+            payload.flagged_reason = root.querySelector("#frFlag").value || null;
+            if (!payload.flagged_reason) {
+              toast(STATE.lang === "ar" ? "سبب التحفظ مطلوب." : "A reason is required.", "err");
+              return;
+            }
+          }
+          busy(btn, true);
+          post("/api/v1/monthly-reports/" + id + "/financial-review", payload)
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم حفظ المراجعة المالية." : "Financial review saved.", "ok");
+              refreshAll().then(function () { openReport(id); });
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
+  }
+
+  function numOrNull(v) {
+    if (v === "" || v === null || v === undefined) return null;
+    var n = Number(v);
+    return isNaN(n) ? null : n;
+  }
+
+  // ---- support view ----------------------------------------------------
+  function renderSupportView() {
+    var host = byId("supportList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    var bindNew = byId("supNew");
+    if (bindNew && !bindNew.getAttribute("data-bound")) {
+      bindNew.setAttribute("data-bound", "1");
+      bindNew.addEventListener("click", supportCreateForm);
+    }
+    return ensureSupport().then(function (rows) {
+      var st = byId("supStatus") ? byId("supStatus").value : "";
+      var list = rows.filter(function (r) {
+        return !st || r.status === st;
+      });
+      if (!list.length) {
+        host.innerHTML = emptyHtml("لا توجد طلبات مطابقة.", "No matching requests.");
+        return;
+      }
+      host.innerHTML = list.map(supportRowCard).join("");
+      host.querySelectorAll("[data-request]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          openSupport(parseInt(el.getAttribute("data-request"), 10));
+        });
+      });
+    });
+  }
+
+  function supportRowCard(r) {
+    var dept = deptLabel(r.responsible_department || r.category);
+    return (
+      '<div class="av-row" data-request="' + r.id + '">' +
+      '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] + ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(r.title) + "</div>" +
+      '<div class="s">' + escapeHtml(STATE.lang === "ar" ? r.company_name_ar : r.company_name_en || r.company_name_ar) +
+      " · " + dual(dept.ar, dept.en) + " · " + fmtDate(r.created_at) + "</div></div>" +
+      catBadge(r.category) + supStatusBadge(r.status) +
+      "</div>"
+    );
+  }
+
+  function openSupport(id) {
+    openModal({
+      title: dual("تفاصيل طلب الدعم", "Support request"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        loadSupportDetail(id);
+      },
+    });
+  }
+
+  function loadSupportDetail(id) {
+    var body = byId("modalBody");
+    Promise.all([
+      get("/api/v1/support-requests/" + id),
+      get("/api/v1/support-requests/" + id + "/comments").catch(function () {
+        return [];
+      }),
+    ])
+      .then(function (res) {
+        var r = res[0];
+        var comments = res[1] || [];
+        if (!body) return;
+        var dept = deptLabel(r.responsible_department || r.category);
+        var canComment = has("support_request.comment");
+        var canStatus = has("support_request.status_change");
+        var canAssign = has("support_request.assign");
+        var statuses = ["new", "in_progress", "completed", "closed"];
+
+        body.innerHTML =
+          '<div class="kv">' +
+          kv(dual("الشركة", "Company"), escapeHtml(STATE.lang === "ar" ? r.company_name_ar : r.company_name_en || r.company_name_ar)) +
+          kv(dual("النوع", "Type"), catBadge(r.category)) +
+          kv(dual("القسم المسؤول", "Department"), dual(dept.ar, dept.en)) +
+          kv(dual("الحالة", "Status"), supStatusBadge(r.status)) +
+          kv(dual("التاريخ", "Date"), fmtDate(r.created_at)) +
+          kv(dual("آخر تحديث", "Updated"), fmtDateTime(r.updated_at)) +
+          "</div>" +
+          (r.description ? '<div class="sec-title">' + dual("الوصف", "Description") + '</div><p class="note-block">' + escapeHtml(r.description) + "</p>" : "") +
+          '<div class="sec-title">' + dual("التعليقات", "Comments") + "</div>" +
+          '<div id="cmtList">' + renderComments(comments) + "</div>" +
+          (canComment
+            ? '<div class="av-field" style="margin-top:10px"><textarea class="av-textarea" id="cmtBody" placeholder="' +
+              (STATE.lang === "ar" ? "أضف تعليقًا…" : "Add a comment…") + '"></textarea>' +
+              '<div style="display:flex;gap:9px;align-items:center;margin-top:8px">' +
+              '<label style="font-size:10.5px;color:var(--ink-500)"><input type="checkbox" id="cmtInternal"> ' + dual("داخلي", "Internal") + "</label>" +
+              '<button class="btn-solid" id="cmtAdd" style="margin-inline-start:auto">' + dual("إضافة تعليق", "Add comment") + "</button></div></div>"
+            : "") +
+          ((canStatus || canAssign)
+            ? '<div class="sec-title">' + dual("إجراءات", "Actions") + "</div>" +
+              '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">' +
+              (canStatus
+                ? '<select class="av-select" id="supNewStatus">' + statuses.map(function (s) {
+                    var lab = supportStatus(s);
+                    return '<option value="' + s + '"' + (s === r.status ? " selected" : "") + ">" + dual(lab.ar, lab.en) + "</option>";
+                  }).join("") + "</select>" +
+                  '<button class="btn-solid" id="supSetStatus">' + dual("تغيير الحالة", "Change status") + "</button>"
+                : "") +
+              (canAssign
+                ? '<button class="btn-outline" id="supAssignBtn">' + dual("إسناد", "Assign") + "</button>"
+                : "") +
+              "</div>"
+            : "") +
+          '<div class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"><button class="btn-outline" id="supClose">' + dual("إغلاق", "Close") + "</button></div>";
+
+        if (byId("supClose")) byId("supClose").addEventListener("click", closeModal);
+        if (byId("cmtAdd")) {
+          byId("cmtAdd").addEventListener("click", function () {
+            addComment(id, this);
+          });
+        }
+        if (byId("supSetStatus")) {
+          byId("supSetStatus").addEventListener("click", function () {
+            changeSupportStatus(id, byId("supNewStatus").value, this);
+          });
+        }
+        if (byId("supAssignBtn")) {
+          byId("supAssignBtn").addEventListener("click", function () {
+            assignSupportForm(id, r);
+          });
+        }
+      })
+      .catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function renderComments(comments) {
+    if (!comments.length) {
+      return '<p class="av-empty">' + dual("لا توجد تعليقات بعد.", "No comments yet.") + "</p>";
+    }
+    return comments
+      .map(function (c) {
+        var name = c.author_name_ar || (STATE.lang === "ar" ? "مستخدم" : "User");
+        return (
+          '<div class="cmt' + (c.is_internal ? " internal" : "") + '">' +
+          '<div class="av">' + initial(name) + "</div>" +
+          '<div class="body"><div class="who">' + escapeHtml(name) +
+          (c.is_internal ? " · " + dual("داخلي", "Internal") : "") +
+          '</div><div class="when">' + fmtDateTime(c.created_at) + "</div>" +
+          '<div class="txt">' + escapeHtml(c.body) + "</div></div></div>"
+        );
+      })
+      .join("");
+  }
+
+  function addComment(id, btn) {
+    var box = byId("cmtBody");
+    var body = box ? box.value.trim() : "";
+    if (!body) {
+      toast(STATE.lang === "ar" ? "اكتب نص التعليق." : "Write a comment.", "err");
+      return;
+    }
+    busy(btn, true);
+    post("/api/v1/support-requests/" + id + "/comments", {
+      body: body,
+      is_internal: !!(byId("cmtInternal") && byId("cmtInternal").checked),
+    })
+      .then(function () {
+        toast(STATE.lang === "ar" ? "تم إضافة التعليق." : "Comment added.", "ok");
+        loadSupportDetail(id);
+        STATE.loaded.support = false;
+        ensureSupport();
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+        busy(btn, false);
+      });
+  }
+
+  function changeSupportStatus(id, status, btn) {
+    busy(btn, true);
+    api.patch("/api/v1/support-requests/" + id + "/status", { status: status })
+      .then(function () {
+        toast(STATE.lang === "ar" ? "تم تحديث الحالة." : "Status updated.", "ok");
+        STATE.loaded.support = false;
+        refreshAll().then(function () { openSupport(id); });
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+        busy(btn, false);
+      });
+  }
+
+  function assignSupportForm(id, r) {
+    var me = USER || {};
+    openModal({
+      title: dual("إسناد الطلب", "Assign request"),
+      body:
+        '<div class="av-field"><label>' + dual("القسم المسؤول", "Responsible department") + "</label>" +
+        '<select class="av-select" id="asgDept" style="width:100%">' +
+        ["holding_owner", "business_development", "marketing", "design", "accounting", "general"].map(function (d) {
+          var lab = deptLabel(d);
+          return '<option value="' + d + '"' + (d === (r.responsible_department || "") ? " selected" : "") + ">" + dual(lab.ar, lab.en) + "</option>";
+        }).join("") + "</select></div>" +
+        '<div class="av-field"><label>' + dual("المسؤول (معرّف المستخدم)", "Assignee (user id)") + "</label>" +
+        '<input class="av-input" id="asgUser" style="width:100%" value="' + escAttr(r.assigned_to_id || "") + '" placeholder="' + escAttr(String(me.id || "")) + '"></div>',
+      footer:
+        '<button class="btn-outline" id="asgCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="asgSave">' + dual("إسناد", "Assign") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#asgCancel").addEventListener("click", closeModal);
+        root.querySelector("#asgSave").addEventListener("click", function () {
+          var btn = this;
+          var uid = numOrNull(root.querySelector("#asgUser").value);
+          busy(btn, true);
+          api.patch("/api/v1/support-requests/" + id + "/assign", {
+            assigned_to_id: uid,
+            responsible_department: root.querySelector("#asgDept").value,
+          })
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم إسناد الطلب." : "Request assigned.", "ok");
+              STATE.loaded.support = false;
+              refreshAll().then(function () { openSupport(id); });
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
+  }
+
+  function supportCreateForm(preselectCompanyId) {
+    return ensureCompanies().then(function () {
+      var opts = STATE.companies.length ? STATE.companies : [];
+      openModal({
+        title: dual("طلب دعم جديد", "New support request"),
+        body:
+          '<div class="av-field"><label>' + dual("الشركة", "Company") + '</label><select class="av-select" id="ncCompany" style="width:100%">' +
+          opts.map(function (c) {
+            var sel = preselectCompanyId && c.id === preselectCompanyId ? " selected" : "";
+            return '<option value="' + c.id + '"' + sel + ">" + escapeHtml(companyName(c)) + "</option>";
+          }).join("") + "</select></div>" +
+        '<div class="av-field"><label>' + dual("النوع", "Type") + '</label><select class="av-select" id="ncCat" style="width:100%">' +
+        ["business_development", "marketing", "design", "accounting", "general"].map(function (c) {
+          var cat = CATEGORY[c];
+          return '<option value="' + c + '">' + dual(cat.ar, cat.en) + "</option>";
+        }).join("") + "</select></div>" +
+        '<div class="av-field"><label>' + dual("العنوان", "Title") + '</label><input class="av-input" id="ncTitle" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("الوصف", "Description") + '</label><textarea class="av-textarea" id="ncDesc"></textarea></div>',
+      footer:
+        '<button class="btn-outline" id="ncCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="ncSave">' + dual("إنشاء", "Create") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#ncCancel").addEventListener("click", closeModal);
+        root.querySelector("#ncSave").addEventListener("click", function () {
+          var btn = this;
+          var title = root.querySelector("#ncTitle").value.trim();
+          if (title.length < 3) {
+            toast(STATE.lang === "ar" ? "العنوان قصير جدًا." : "Title is too short.", "err");
+            return;
+          }
+          busy(btn, true);
+          post("/api/v1/support-requests", {
+            company_id: parseInt(root.querySelector("#ncCompany").value, 10),
+            category: root.querySelector("#ncCat").value,
+            title: title,
+            description: root.querySelector("#ncDesc").value || null,
+          })
+            .then(function (created) {
+              toast(STATE.lang === "ar" ? "تم إنشاء الطلب." : "Request created.", "ok");
+              STATE.loaded.support = false;
+              refreshAll().then(function () { openSupport(created.id); });
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
+    });
+  }
+
+  // ---- investments view ------------------------------------------------
+  function renderInvestments() {
+    var host = byId("investContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return Promise.all([ensureReports(), ensureCompanies()]).then(function () {
+      var opps = STATE.insights.filter(function (i) {
+        return i.kind === "opportunity";
+      });
+      var attention = (STATE.dashboard && STATE.dashboard.companies_requiring_attention) || [];
+      var missing = (STATE.dashboard && STATE.dashboard.companies_missing_report) || [];
+      host.innerHTML =
+        '<div class="av-grid cols-2">' +
+        '<div class="av-panel"><h3>' + dual("فرص استثمارية مرصودة", "Detected opportunities") + "</h3>" +
+        (opps.length
+          ? '<div class="av-list">' + opps.map(function (i) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? i.title_ar : i.title_en) + '</div><div class="s">' + escapeHtml(STATE.lang === "ar" ? i.detail_ar : i.detail_en) + "</div></div></div>";
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("لا توجد فرص مرصودة بعد.", "No opportunities detected yet.") + "</p>") +
+        "</div>" +
+        '<div class="av-panel"><h3>' + dual("شركات تحتاج متابعة", "Companies needing attention") + "</h3>" +
+        (attention.length
+          ? '<div class="av-list">' + attention.map(function (c) {
+              return '<div class="av-row" data-invest-co="' + c.id + '"><div class="co-dot" style="background:' + PALETTE[c.id % PALETTE.length] + '">' + initial(c.name_ar) + '</div><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) + '</div><div class="s">' + escapeHtml(c.reason || "") + "</div></div>" + healthBadge(c.health) + "</div>";
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("لا توجد شركات تحتاج متابعة.", "No companies need attention.") + "</p>") +
+        "</div>" +
+        '<div class="av-panel"><h3>' + dual("شركات لم ترسل التقرير", "Companies missing a report") + "</h3>" +
+        (missing.length
+          ? '<div class="av-list">' + missing.map(function (c) {
+              return '<div class="av-row" data-invest-co="' + c.id + '"><div class="co-dot" style="background:' + PALETTE[c.id % PALETTE.length] + '">' + initial(c.name_ar) + '</div><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) + '</div><div class="s">' + dual("بانتظار التقرير الشهري", "Awaiting report") + "</div></div></div>";
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("جميع الشركات أرسلت تقاريرها.", "All companies submitted reports.") + "</p>") +
+        "</div>" +
+        '<div class="av-panel"><h3>' + dual("مؤشرات المجموعة", "Group indicators") + "</h3>" + groupIndicators() + "</div>" +
+        "</div>";
+      host.querySelectorAll("[data-invest-co]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          openCompany(parseInt(el.getAttribute("data-invest-co"), 10));
+        });
+      });
+    });
+  }
+
+  function groupIndicators() {
+    var k = (STATE.dashboard && STATE.dashboard.kpis) || {};
+    var change = (STATE.dashboard && STATE.dashboard.change_vs_previous) || {};
+    var margin = k.total_revenue && Number(k.total_revenue)
+      ? ((Number(k.total_net_result) / Number(k.total_revenue)) * 100).toFixed(1)
+      : "—";
+    return (
+      '<div class="kv">' +
+      kv(dual("إجمالي الإيرادات", "Total revenue"), dual(money(k.total_revenue).ar, money(k.total_revenue).en)) +
+      kv(dual("صافي النتائج", "Net result"), dual(money(k.total_net_result).ar, money(k.total_net_result).en)) +
+      kv(dual("هامش الربح", "Net margin"), dual(toArabicDigits(margin) + "٪", margin + "%")) +
+      kv(dual("نمو الإيرادات", "Revenue growth"), change.revenue_pct === null || change.revenue_pct === undefined ? dual("—", "—") : dual(toArabicDigits(change.revenue_pct.toFixed(1)) + "٪", change.revenue_pct.toFixed(1) + "%")) +
+      "</div>"
+    );
+  }
+
+  // ---- business intelligence view --------------------------------------
+  function renderBi() {
+    var host = byId("biContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return Promise.all([loadInsights(true), ensureReports(), ensureCompanies()]).then(function () {
+      var insights = STATE.insights;
+      host.innerHTML =
+        '<div class="av-panel" style="margin-bottom:12px"><h3>' + dual("رؤى تنفيذية", "Executive insights") + "</h3>" +
+        (insights.length
+          ? '<div class="av-list">' + insights.map(function (i) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? i.title_ar : i.title_en) + '</div><div class="s">' + escapeHtml(STATE.lang === "ar" ? i.detail_ar : i.detail_en) + "</div></div>" + (i.metric ? '<span class="ins-tag">' + escapeHtml(i.metric) + "</span>" : "") + "</div>";
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("لا توجد رؤى لهذه الفترة.", "No insights for this period.") + "</p>") +
+        "</div>" +
+        '<div class="av-grid cols-2">' +
+        '<div class="av-panel"><h3>' + dual("أداء الشركات", "Company performance") + "</h3>" + biCompanyTable() + "</div>" +
+        '<div class="av-panel"><h3>' + dual("مؤشرات المجموعة", "Group indicators") + "</h3>" + groupIndicators() + "</div>" +
+        "</div>";
+    });
+  }
+
+  function biCompanyTable() {
+    var rows = (STATE.dashboard && STATE.dashboard.companies_performance) || [];
+    if (!rows.length) return '<p class="av-empty">' + dual("لا توجد بيانات.", "No data.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (r) {
+        var rev = money(r.revenue);
+        var net = money(r.net_result);
+        return (
+          '<div class="av-row" data-bi-co="' + r.id + '"><div class="co-dot" style="background:' + PALETTE[r.id % PALETTE.length] + '">' + initial(r.name_ar) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en || r.name_ar) + '</div>' +
+          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(rev.ar, rev.en) + " · " + dual("صافي ", "Net ") + dual(net.ar, net.en) + "</div></div>" +
+          growthHtml(r.revenue_pct) + healthBadge(r.health) + "</div>"
+        );
+      }).join("") + "</div>"
+    );
+  }
+
+  // ---- search ----------------------------------------------------------
+  function openSearch() {
+    var panel = document.createElement("div");
+    panel.className = "search-panel";
+    panel.id = "searchPanel";
+    panel.innerHTML =
+      '<div class="search-box"><div class="search-in">' +
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9DAABD" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+      '<input id="searchInput" placeholder="' + (STATE.lang === "ar" ? "ابحث في الشركات والتقارير والدعم…" : "Search companies, reports, support…") + '" autocomplete="off">' +
+      '<button class="modal-x" id="searchX">&times;</button></div>' +
+      '<div class="search-res" id="searchRes"></div></div>';
+    document.body.appendChild(panel);
+    panel.addEventListener("click", function (e) {
+      if (e.target === panel) closeSearch();
+    });
+    byId("searchX").addEventListener("click", closeSearch);
+    document.addEventListener("keydown", searchEsc);
+    var input = byId("searchInput");
+    input.focus();
+    var run = function () {
+      runSearch(input.value.trim());
+    };
+    input.addEventListener("input", debounce(run, 180));
+    Promise.all([ensureCompanies(), ensureReports(), ensureSupport()]).then(run);
+  }
+
+  function searchEsc(e) {
+    if (e.key === "Escape") closeSearch();
+  }
+
+  function closeSearch() {
+    var p = byId("searchPanel");
+    if (p) p.parentNode.removeChild(p);
+    document.removeEventListener("keydown", searchEsc);
+  }
+
+  var _debTimer = null;
+  function debounce(fn, ms) {
+    return function () {
+      clearTimeout(_debTimer);
+      _debTimer = setTimeout(fn, ms);
+    };
+  }
+
+  function runSearch(q) {
+    var host = byId("searchRes");
+    if (!host) return;
+    if (!q) {
+      host.innerHTML = '<p class="av-empty">' + dual("اكتب للبحث…", "Type to search…") + "</p>";
+      return;
+    }
+    var needle = q.toLowerCase();
+    var hit = function (s) {
+      return (s || "").toLowerCase().indexOf(needle) >= 0;
+    };
+    var companies = STATE.companies.filter(function (c) {
+      return hit(c.name_ar) || hit(c.name_en) || hit(c.code) || hit(c.sector);
+    });
+    var reports = STATE.reports.filter(function (r) {
+      return hit(r.company_name_ar) || hit(r.company_name_en) || hit(String(r.period_year) + "-" + r.period_month);
+    });
+    var support = STATE.support.filter(function (r) {
+      return hit(r.title) || hit(r.description) || hit(r.company_name_ar) || hit(r.company_name_en);
+    });
+
+    var html = "";
+    if (companies.length) {
+      html += '<div class="sr-group">' + dual("الشركات", "Companies") + "</div>" +
+        companies.map(function (c) {
+          return '<div class="sr-item" data-s-co="' + c.id + '"><div class="co-dot" style="background:' + PALETTE[c.id % PALETTE.length] + '">' + initial(c.name_ar) + '</div><div class="grow"><div class="t">' + escapeHtml(companyName(c)) + '</div><div class="s">' + escapeHtml(c.code) + "</div></div></div>";
+        }).join("");
+    }
+    if (reports.length) {
+      html += '<div class="sr-group">' + dual("التقارير", "Reports") + "</div>" +
+        reports.map(function (r) {
+          return '<div class="sr-item" data-s-rep="' + r.id + '"><div class="grow"><div class="t">' + escapeHtml(reportCompanyName(r)) + '</div><div class="s">' + dual(AR_MONTHS[r.period_month - 1] + " " + toArabicDigits(String(r.period_year)), EN_MONTHS[r.period_month - 1] + " " + r.period_year) + "</div></div>" + statusBadge(r.status) + "</div>";
+        }).join("");
+    }
+    if (support.length) {
+      html += '<div class="sr-group">' + dual("الدعم", "Support") + "</div>" +
+        support.map(function (r) {
+          return '<div class="sr-item" data-s-sup="' + r.id + '"><div class="grow"><div class="t">' + escapeHtml(r.title) + '</div><div class="s">' + escapeHtml(r.company_name_ar || "") + "</div></div>" + supStatusBadge(r.status) + "</div>";
+        }).join("");
+    }
+    host.innerHTML = html || '<p class="av-empty">' + dual("لا توجد نتائج.", "No results.") + "</p>";
+    host.querySelectorAll("[data-s-co]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        closeSearch();
+        openCompany(parseInt(el.getAttribute("data-s-co"), 10));
+      });
+    });
+    host.querySelectorAll("[data-s-rep]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        closeSearch();
+        openReport(parseInt(el.getAttribute("data-s-rep"), 10));
+      });
+    });
+    host.querySelectorAll("[data-s-sup]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        closeSearch();
+        openSupport(parseInt(el.getAttribute("data-s-sup"), 10));
+      });
+    });
+  }
+
+  // ---- notifications ---------------------------------------------------
+  function openNotifications() {
+    var existing = byId("notifDD");
+    if (existing) {
+      existing.parentNode.removeChild(existing);
+      return;
+    }
+    var dd = document.createElement("div");
+    dd.className = "dd";
+    dd.id = "notifDD";
+    var items = STATE.insights.slice(0, 6);
+    dd.innerHTML =
+      '<div class="dd-head">' + dual("التنبيهات التنفيذية", "Executive alerts") + "</div>" +
+      '<div class="dd-body">' +
+      (items.length
+        ? items.map(function (i) {
+            return '<div class="dd-item"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? i.title_ar : i.title_en) + '</div><div class="s">' + escapeHtml(STATE.lang === "ar" ? i.detail_ar : i.detail_en) + "</div></div></div>";
+          }).join("")
+        : '<p class="av-empty">' + dual("لا توجد تنبيهات.", "No alerts.") + "</p>") +
+      "</div>" +
+      '<div class="dd-foot">' + dual("مصدرها رؤى الذكاء الاصطناعي الحيّة", "Sourced from live AI insights") + "</div>";
+    var host = document.querySelector(".h-actions");
+    if (host) host.appendChild(dd);
+    setTimeout(function () {
+      document.addEventListener("click", closeDdOnce);
+    }, 0);
+  }
+
+  function closeDdOnce(e) {
+    var dd = byId("notifDD");
+    if (dd && !dd.contains(e.target) && e.target.id !== "notifBtn" && !byId("notifBtn").contains(e.target)) {
+      dd.parentNode.removeChild(dd);
+      document.removeEventListener("click", closeDdOnce);
+    }
+  }
+
+  function openMessages() {
+    openModal({
+      title: dual("الرسائل", "Messages"),
+      body: '<p class="av-empty">' +
+        dual(
+          "لا تتوفر واجهة رسائل مباشرة في هذه المرحلة. استخدم التعليقات داخل طلبات الدعم للتواصل.",
+          "No direct messaging API is available at this stage. Use comments inside support requests to communicate.",
+        ) + "</p>",
+      footer: '<button class="btn-outline" id="msgClose">' + dual("إغلاق", "Close") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#msgClose").addEventListener("click", closeModal);
+      },
+    });
+  }
+
+  // ---- export ----------------------------------------------------------
+  function exportExecutive() {
+    if (!STATE.dashboard) {
+      toast(STATE.lang === "ar" ? "لا توجد بيانات للتصدير." : "No data to export.", "err");
+      return;
+    }
+    var k = STATE.dashboard.kpis || {};
+    var change = STATE.dashboard.change_vs_previous || {};
+    var rows = STATE.dashboard.companies_performance || [];
+    var lines = [];
+    lines.push(["Safir Holding 2027 — Executive Report"]);
+    lines.push(["Period", (STATE.year || "") + "-" + String(STATE.month || "").padStart(2, "0")]);
+    lines.push(["Generated", new Date().toISOString()]);
+    lines.push([]);
+    lines.push(["KPI", "Value"]);
+    lines.push(["Companies", k.companies_count]);
+    lines.push(["Reports submitted", k.reports_submitted]);
+    lines.push(["Reports missing", k.reports_missing]);
+    lines.push(["Total revenue", k.total_revenue]);
+    lines.push(["Total expenses", k.total_expenses]);
+    lines.push(["Total net result", k.total_net_result]);
+    lines.push(["Companies needing attention", k.companies_requiring_attention]);
+    lines.push(["Open support requests", k.open_support_requests]);
+    lines.push(["Pending financial reviews", k.pending_financial_reviews]);
+    lines.push(["Revenue change %", change.revenue_pct]);
+    lines.push(["Net change %", change.net_pct]);
+    lines.push([]);
+    lines.push(["Company", "Code", "Sector", "Status", "Revenue", "Expenses", "Net", "Growth %"]);
+    rows.forEach(function (r) {
+      lines.push([r.name_en || r.name_ar, r.code, r.sector || "", r.report_status || "none", r.revenue || "", r.expenses || "", r.net_result || "", r.revenue_pct === null || r.revenue_pct === undefined ? "" : r.revenue_pct]);
+    });
+    var csv = lines
+      .map(function (row) {
+        return row
+          .map(function (cell) {
+            var s = cell === null || cell === undefined ? "" : String(cell);
+            return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+          })
+          .join(",");
+      })
+      .join("\r\n");
+    var blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "safir-executive-" + (STATE.year || "") + "-" + String(STATE.month || "").padStart(2, "0") + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1000);
+    toast(STATE.lang === "ar" ? "تم تنزيل التقرير التنفيذي (CSV)." : "Executive report downloaded (CSV).", "ok");
+  }
+
+  // ---- period + refresh ------------------------------------------------
+  function setPeriodLabels() {
+    var lab = periodLabel();
+    if (!lab.ar && !lab.en) return;
+    var eye = byId("periodEyebrow");
+    if (eye) eye.innerHTML = dual("الرؤية التنفيذية · " + lab.ar, "Executive View · " + lab.en);
+    var ai = byId("aiAnswerPeriod");
+    if (ai) ai.innerHTML = dual(lab.ar, lab.en);
+    var chip = byId("updatedChip");
+    if (chip) chip.innerHTML = dual("تحديث حي · " + lab.ar, "Live · " + lab.en);
+  }
+
+  function refreshAll() {
+    STATE.loaded = {};
+    var jobs = [
+      loadDashboard().catch(handleLoadError),
+      loadInsights().catch(handleLoadError),
+      ensureCompanies(),
+      ensureReports(),
+      ensureSupport(),
+    ];
+    if (has("support_request.read_own") || has("support_request.read_all")) {
+      jobs.push(loadSupport().catch(handleLoadError));
+    }
+    return Promise.all(jobs).then(function () {
+      setPeriodLabels();
+    });
+  }
+
   // ---- permissions -----------------------------------------------------
   var USER = null;
-
   function has(perm) {
     return !!(USER && USER.permissions && USER.permissions.indexOf(perm) >= 0);
   }
@@ -844,18 +2396,30 @@
       ? "/api/v1/dashboard/holding" + period
       : "/api/v1/dashboard/company/" + primaryCompanyId() + period;
     return get(path).then(function (data) {
+      STATE.dashboard = data;
       hydrateKpis(data);
       hydrateCompanies(data);
+      setPeriodLabels();
       return data;
     });
   }
 
   function loadSupport() {
-    return get("/api/v1/support-requests").then(hydrateSupport);
+    return get("/api/v1/support-requests").then(function (rows) {
+      STATE.support = rows || [];
+      STATE.loaded.support = true;
+      hydrateSupport(STATE.support);
+      return STATE.support;
+    });
   }
 
-  function loadInsights() {
-    return get("/api/v1/ai/insights" + period).then(renderInsights);
+  function loadInsights(keepCache) {
+    return get("/api/v1/ai/insights" + period).then(function (insights) {
+      STATE.insights = insights || [];
+      STATE.loaded.insights = true;
+      if (!keepCache) renderInsights(STATE.insights);
+      return STATE.insights;
+    });
   }
 
   function loadDefaultAi() {
@@ -992,6 +2556,8 @@
         applyPermissions();
         bindAskBox();
         bindLogout();
+        bindHeaderActions();
+        bindNav();
         showLoadingStates();
         return resolvePeriod();
       })
@@ -1027,6 +2593,9 @@
         }
         return Promise.all(jobs);
       })
+      .then(function () {
+        navTo(STATE.view || "dashboard", false);
+      })
       .catch(function (err) {
         if (err && err.status === 401) {
           api.clear();
@@ -1037,7 +2606,77 @@
       });
   }
 
+  function bindHeaderActions() {
+    var exp = byId("exportBtn");
+    if (exp && !exp.getAttribute("data-bound")) {
+      exp.setAttribute("data-bound", "1");
+      exp.addEventListener("click", exportExecutive);
+    }
+    var search = byId("searchBtn");
+    if (search && !search.getAttribute("data-bound")) {
+      search.setAttribute("data-bound", "1");
+      search.addEventListener("click", openSearch);
+    }
+    var notif = byId("notifBtn");
+    if (notif && !notif.getAttribute("data-bound")) {
+      notif.setAttribute("data-bound", "1");
+      notif.addEventListener("click", openNotifications);
+    }
+    var msg = byId("msgBtn");
+    if (msg && !msg.getAttribute("data-bound")) {
+      msg.setAttribute("data-bound", "1");
+      msg.addEventListener("click", openMessages);
+    }
+    var repRefresh = byId("repRefresh");
+    if (repRefresh && !repRefresh.getAttribute("data-bound")) {
+      repRefresh.setAttribute("data-bound", "1");
+      repRefresh.addEventListener("click", function () { renderReports(); });
+    }
+    var repYear = byId("repYear");
+    if (repYear && !repYear.getAttribute("data-bound")) {
+      repYear.setAttribute("data-bound", "1");
+      repYear.addEventListener("change", function () {
+        STATE.year = this.value ? parseInt(this.value, 10) : STATE.year;
+        renderReports();
+      });
+    }
+    var repStatus = byId("repStatus");
+    if (repStatus && !repStatus.getAttribute("data-bound")) {
+      repStatus.setAttribute("data-bound", "1");
+      repStatus.addEventListener("change", function () { renderReports(); });
+    }
+    var supStatus = byId("supStatus");
+    if (supStatus && !supStatus.getAttribute("data-bound")) {
+      supStatus.setAttribute("data-bound", "1");
+      supStatus.addEventListener("change", function () { renderSupportView(); });
+    }
+    var supRefresh = byId("supRefresh");
+    if (supRefresh && !supRefresh.getAttribute("data-bound")) {
+      supRefresh.setAttribute("data-bound", "1");
+      supRefresh.addEventListener("click", function () {
+        STATE.loaded.support = false;
+        renderSupportView();
+      });
+    }
+    var subsRefresh = byId("subsRefresh");
+    if (subsRefresh && !subsRefresh.getAttribute("data-bound")) {
+      subsRefresh.setAttribute("data-bound", "1");
+      subsRefresh.addEventListener("click", function () {
+        STATE.loaded.companies = false;
+        renderSubsidiaries();
+      });
+    }
+    // Ctrl/Cmd-K opens search, like a real SaaS app.
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (!byId("searchPanel")) openSearch();
+      }
+    });
+  }
+
   function boot() {
+    bindLang();
     api.load();
     bindLogin();
     if (api.isAuthenticated()) {

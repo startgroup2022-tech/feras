@@ -170,6 +170,9 @@
     patch: function (path, body) {
       return authed(path, { method: "PATCH", body: body });
     },
+    del: function (path) {
+      return authed(path, { method: "DELETE" });
+    },
     isAuthenticated: isAuthenticated,
     clear: clear,
   };

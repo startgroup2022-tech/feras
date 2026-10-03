@@ -80,13 +80,13 @@
       </div>
     </div>
 
-    <nav class="nav">
-      <div class="nav-item active"><span class="ar">لوحة القيادة</span><span class="en">Dashboard</span></div>
-      <div class="nav-item"><span class="ar">الشركات التابعة</span><span class="en">Subsidiaries</span></div>
-      <div class="nav-item"><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></div>
-      <div class="nav-item"><span class="ar">الاستثمارات</span><span class="en">Investments</span></div>
-      <div class="nav-item"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></div>
-      <div class="nav-item"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
+    <nav class="nav" id="mainNav">
+      <div class="nav-item active" data-view="dashboard" data-perm="dashboard.holding dashboard.company" role="button" tabindex="0"><span class="ar">لوحة القيادة</span><span class="en">Dashboard</span></div>
+      <div class="nav-item" data-view="subsidiaries" data-perm="company.read" role="button" tabindex="0"><span class="ar">الشركات التابعة</span><span class="en">Subsidiaries</span></div>
+      <div class="nav-item" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></div>
+      <div class="nav-item" data-view="investments" data-perm="dashboard.holding" role="button" tabindex="0"><span class="ar">الاستثمارات</span><span class="en">Investments</span></div>
+      <div class="nav-item" data-view="support" data-perm="support_request.read_own support_request.read_all" role="button" tabindex="0"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></div>
+      <div class="nav-item" data-view="bi" data-perm="ai.holding ai.company" role="button" tabindex="0"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
     </nav>
 
     <div class="h-actions">
@@ -94,16 +94,15 @@
         <button class="lang-opt on" data-lang="ar">عربي</button>
         <button class="lang-opt" data-lang="en">EN</button>
       </div>
-      <button class="icon-btn" title="بحث">
+      <button class="icon-btn" id="searchBtn" title="بحث">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
       </button>
-      <button class="icon-btn" title="الإشعارات">
+      <button class="icon-btn" id="notifBtn" title="الإشعارات">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-2.5 8-2.5 8h17S18 15 18 8Z"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
-        <span class="dot"></span>
+        <span class="dot" id="notifDot"></span>
       </button>
-      <button class="icon-btn" title="الرسائل">
+      <button class="icon-btn" id="msgBtn" title="الرسائل">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.9-.9L3 20.5l1.5-4.9a8.4 8.4 0 0 1-1-4.1 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.5 8.4Z"/></svg>
-        <span class="dot gold"></span>
       </button>
       <div class="profile">
         <div class="avatar">ع</div>
@@ -120,18 +119,20 @@
   </div>
 </header>
 
-<div class="board">
+<div class="stage-body">
+
+<div class="board" id="board">
 
   <!-- ============== PAGE HEAD ============== -->
-  <div class="head-row anim" style="animation-delay:.02s">
+  <div class="head-row anim view" data-view="dashboard" style="animation-delay:.02s">
     <div>
-      <div class="eyebrow"><span class="rule"></span><span class="ar">الرؤية التنفيذية · أكتوبر ٢٠٢٧</span><span class="en">Executive View · October 2027</span></div>
+      <div class="eyebrow"><span class="rule"></span><span id="periodEyebrow"><span class="ar">الرؤية التنفيذية</span><span class="en">Executive View</span></span></div>
       <h1 class="page-title"><span class="ar">لوحة القيادة التنفيذية للمجموعة</span><span class="en">Holding Executive Dashboard</span></h1>
       <p class="page-sub"><span class="ar">من بيانات الشركات التابعة الشهرية ← إلى رؤية القابضة ← إلى ذكاء الأعمال ← إلى دعم القرار.</span><span class="en">From subsidiary monthly data → to Holding visibility → to AI intelligence → to management decisions.</span></p>
     </div>
     <div class="head-right">
-      <div class="chip"><span class="live"></span><span class="ar">تحديث حي · قبل ٣ دقائق</span><span class="en">Live · updated 3 min ago</span></div>
-      <button class="btn-primary">
+      <div class="chip"><span class="live"></span><span id="updatedChip"><span class="ar">تحديث حي</span><span class="en">Live</span></span></div>
+      <button class="btn-primary" id="exportBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>
         <span class="ar">تصدير التقرير التنفيذي</span><span class="en">Export Executive Report</span>
       </button>
@@ -139,7 +140,7 @@
   </div>
 
   <!-- ============== KPI STRIP ============== -->
-  <section class="kpis" data-perm="dashboard.holding dashboard.company">
+  <section class="kpis view" data-view="dashboard" data-perm="dashboard.holding dashboard.company">
     <div class="kpi anim" style="animation-delay:.06s">
       <div class="kpi-head"><div class="kpi-lbl"><span class="ar">عدد الشركات</span><span class="en">Companies</span></div>
         <div class="kpi-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div></div>
@@ -184,7 +185,7 @@
   </section>
 
   <!-- ============== HOLDING AI (left column) ============== -->
-  <section class="ai anim" style="animation-delay:.18s" data-perm="ai.holding ai.company">
+  <section class="ai anim view" data-view="dashboard" style="animation-delay:.18s" data-perm="ai.holding ai.company">
     <div class="ai-top">
       <div class="ai-orb">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
@@ -224,7 +225,7 @@
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 10.9 10.1 9 12 3.4Z" fill="#DCBE72"/></svg>
           </div>
           <span class="who"><span class="ar">ملخص تنفيذي مُولَّد بالذكاء الاصطناعي</span><span class="en">AI-generated executive summary</span></span>
-          <span class="time"><span class="ar">أكتوبر ٢٠٢٧</span><span class="en">Oct 2027</span></span>
+          <span class="time" id="aiAnswerPeriod"><span class="ar"></span><span class="en"></span></span>
         </div>
         <div class="answer-q"><span class="ar">«ملخص أداء المجموعة هذا الشهر»</span><span class="en">“Group performance summary this month”</span></div>
         <div id="aiAnswerBody">
@@ -237,7 +238,7 @@
   </section>
 
   <!-- ============== AI INSIGHTS (bottom-left) ============== -->
-  <section class="aii anim" style="animation-delay:.30s" data-perm="dashboard.holding dashboard.company">
+  <section class="aii anim view" data-view="dashboard" style="animation-delay:.30s" data-perm="dashboard.holding dashboard.company">
     <div class="aii-head">
       <div class="t-ico gold"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 10.9 10.1 9 12 3.4Z"/></svg></div>
       <h2><span class="ar">رؤى الذكاء الاصطناعي</span><span class="en">AI Insights</span></h2>
@@ -285,7 +286,7 @@
   </section>
 
   <!-- ============== MONTHLY COMPANY REPORTS ============== -->
-  <section class="card reports anim" style="animation-delay:.22s" data-perm="monthly_report.read_own monthly_report.read_all">
+  <section class="card reports anim view" data-view="dashboard" style="animation-delay:.22s" data-perm="monthly_report.read_own monthly_report.read_all">
     <div class="card-head">
       <div class="card-title">
         <div class="t-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></div>
@@ -293,7 +294,7 @@
           <h2><span class="ar">التقارير الشهرية للشركات</span><span class="en">Monthly Company Reports</span></h2>
         </div>
       </div>
-      <span class="link-more"><span class="ar">عرض جميع التقارير</span><span class="en">View all reports</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
+      <span class="link-more" data-nav="reports"><span class="ar">عرض جميع التقارير</span><span class="en">View all reports</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
     </div>
     <div class="card-body">
       <div class="rep-grid">
@@ -441,7 +442,7 @@
   </section>
 
   <!-- ============== SUPPORT REQUESTS ============== -->
-  <section class="card support anim" style="animation-delay:.26s" data-perm="support_request.read_own support_request.read_all">
+  <section class="card support anim view" data-view="dashboard" style="animation-delay:.26s" data-perm="support_request.read_own support_request.read_all">
     <div class="card-head">
       <div class="card-title">
         <div class="t-ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg></div>
@@ -449,7 +450,7 @@
           <h2><span class="ar">طلبات الدعم من الشركات</span><span class="en">Support Requests</span></h2>
         </div>
       </div>
-      <span class="link-more"><span class="ar">جميع الطلبات</span><span class="en">All requests</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
+      <span class="link-more" data-nav="support"><span class="ar">جميع الطلبات</span><span class="en">All requests</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
     </div>
     <div class="card-body">
       <table class="table">
@@ -504,7 +505,7 @@
   </section>
 
   <!-- ============== RIGHT COLUMN ============== -->
-  <div class="rel">
+  <div class="rel view" data-view="dashboard">
 
     <!-- Group structure map -->
     <section class="card map-card anim" style="animation-delay:.30s" data-perm="dashboard.holding dashboard.company">
@@ -630,27 +631,94 @@
   </div><!-- /rel -->
 
 </div><!-- /board -->
+
+<!-- ============== ROUTED APPLICATION VIEWS ==============
+     These replace the dashboard board when a nav item other than
+     Dashboard is active. Each is filled from the real API by app.js. -->
+
+<section class="app-view view-hidden" id="view-subsidiaries" data-view="subsidiaries" data-perm="company.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الشركات التابعة</span><span class="en">Subsidiaries</span></h1>
+      <p><span class="ar">الشركات التي تسمح لك صلاحياتك بالاطلاع عليها.</span><span class="en">Companies your permissions allow you to see.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <button class="btn-outline" id="subsRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+    </div>
+  </div>
+  <div id="subsList" class="av-grid cols-3"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-reports" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></h1>
+      <p><span class="ar">تقارير الشركات التابعة لهذه الفترة.</span><span class="en">Subsidiary reports for the selected period.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <select class="av-select" id="repYear"></select>
+      <select class="av-select" id="repStatus">
+        <option value=""><span class="ar">كل الحالات</span><span class="en">All statuses</span></option>
+        <option value="draft">Draft</option>
+        <option value="submitted">Submitted</option>
+        <option value="under_review">Under review</option>
+        <option value="reviewed">Reviewed</option>
+      </select>
+      <button class="btn-outline" id="repRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+    </div>
+  </div>
+  <div id="reportsList" class="av-list"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-support" data-view="support" data-perm="support_request.read_own support_request.read_all">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الدعم والخدمات</span><span class="en">Support</span></h1>
+      <p><span class="ar">الطلبات الواردة من الشركات التابعة إلى القابضة.</span><span class="en">Requests raised by subsidiaries to the Holding.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <select class="av-select" id="supStatus">
+        <option value=""><span class="ar">كل الحالات</span><span class="en">All statuses</span></option>
+        <option value="new">New</option>
+        <option value="in_progress">In progress</option>
+        <option value="completed">Completed</option>
+        <option value="closed">Closed</option>
+      </select>
+      <button class="btn-outline" id="supRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+      <button class="btn-solid" id="supNew" data-perm="support_request.create"><span class="ar">طلب جديد</span><span class="en">New request</span></button>
+    </div>
+  </div>
+  <div id="supportList" class="av-list"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-investments" data-view="investments" data-perm="dashboard.holding">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الاستثمارات</span><span class="en">Investments</span></h1>
+      <p><span class="ar">فرص ومؤشرات استثمارية مستخرجة من بيانات المجموعة.</span><span class="en">Investment opportunities and indicators derived from group data.</span></p>
+    </div>
+  </div>
+  <div id="investContent"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-bi" data-view="bi" data-perm="ai.holding ai.company">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></h1>
+      <p><span class="ar">تحليل الأداء والرؤى التنفيذية المولّدة آليًا.</span><span class="en">Performance analysis and auto-generated executive insights.</span></p>
+    </div>
+  </div>
+  <div id="biContent"></div>
+</section>
+
+</div><!-- /stage-body -->
 </div><!-- /stage -->
 </div><!-- /stage-wrap -->
 
 <script>
 (function(){
-  var html=document.documentElement;
-  var opts=document.querySelectorAll('.lang-opt');
-  function setLang(lang){
-    opts.forEach(function(o){o.classList.toggle('on', o.getAttribute('data-lang')===lang);});
-    html.classList.remove('lang-ar','lang-en');
-    html.classList.add('lang-'+lang);
-    html.setAttribute('lang',lang);
-    html.setAttribute('dir', lang==='ar'?'rtl':'ltr');
-    var ask=document.querySelector('.ask-box input');
-    if(ask) ask.placeholder = lang==='ar'
-      ? 'مثال: ملخص أداء المجموعة هذا الشهر'
-      : 'e.g. Group performance summary this month';
-  }
-  opts.forEach(function(b){ b.addEventListener('click',function(){ setLang(b.getAttribute('data-lang')); }); });
-
-  // Scale the fixed 1920x1080 stage to fit the viewport (export mode renders 1:1)
+  // Scale the fixed 1920x1080 stage to fit the viewport (export mode renders 1:1).
+  // All other behaviour (routing, language, data) lives in app.js.
   var stage=document.getElementById('stage');
   var isExport=/[?&]export=1/.test(location.search);
   function fit(){
