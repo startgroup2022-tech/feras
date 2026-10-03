@@ -689,3 +689,53 @@ body:not(.authed) .stage-wrap{display:none;}
   display:flex;align-items:center;gap:9px;
 }
 
+/* Overflow guards for dynamically injected text (company names, KPIs). */
+.kpi-val,.rep-name,.ov-name,.sub-name,.av-row .t,.av-row .s,
+.dd-item .t,.dd-item .s,.co-cell>span,.dept,.aii-t,.aii-d{min-width:0;}
+.kpi-val{flex-wrap:wrap;}
+
+/* Table columns collapse gracefully instead of forcing horizontal scroll. */
+.table{table-layout:auto;}
+.table th:nth-child(3),.table td:nth-child(3){white-space:nowrap;}
+
+/* ============================================================
+   RESPONSIVE — the 1920×1080 stage scales down to any viewport.
+   Below the stage's comfortable width we stop scaling and reflow
+   the real application views so nothing overflows or overlaps.
+   ============================================================ */
+@media (max-width:820px){
+  .stage-wrap{padding:0;}
+  .stage{
+    width:100%;height:auto;min-height:100vh;transform:none !important;
+    margin-bottom:0 !important;border-radius:0;box-shadow:none;
+  }
+  .stage-body{flex:1 1 auto;min-height:0;}
+  /* Dashboard board becomes a single scrolling column. */
+  .board{
+    grid-template-columns:1fr;
+    grid-template-rows:none;
+    grid-template-areas:"head" "kpis" "ai" "reports" "support" "aii" "rel";
+    overflow-y:auto;
+  }
+  .kpis{grid-template-columns:repeat(2,1fr);}
+  .rel{grid-template-rows:auto auto;}
+  .rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr 1fr;}
+  .ai,.aii,.card{min-height:auto;}
+  .head-row{flex-direction:column;align-items:flex-start;gap:12px;}
+  .head-right{width:100%;justify-content:space-between;}
+  /* Header nav wraps instead of clipping. */
+  .header-inner{flex-wrap:wrap;gap:8px;}
+  .nav{order:3;flex-basis:100%;overflow-x:auto;padding-bottom:2px;}
+  /* Routed views flow in-document on mobile rather than overlaying a
+     zero-height board. */
+  .app-view{position:static;inset:auto;min-height:calc(100vh - 120px);padding:14px 14px 22px;}
+}
+@media (max-width:560px){
+  .kpis,.rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr;}
+  .modal-backdrop{padding:12px;}
+  .av-head{flex-direction:column;align-items:flex-start;}
+  .av-toolbar{width:100%;}
+  .table th:nth-child(3),.table td:nth-child(3){display:none;}
+  .login-card{padding:26px 20px 24px;}
+}
+

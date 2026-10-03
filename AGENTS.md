@@ -133,3 +133,25 @@ a failure shows an explicit error/empty state.
 
 Still true: anything a live API returns is HTML-escaped before insertion (the
 AI answer included), since a real LLM provider could otherwise emit markup.
+
+## Frontend polish (executive dashboard, v1)
+
+- Dashboard cards need the report list even when `?year=&month=` is pinned, so
+  `enterApp()` preloads `ensureReports()` + `ensureCompanies()` before the
+  dashboard, support and insight fetches. Without this the cards fall back to
+  "Follow up" instead of "View Report" for companies that did submit.
+- All percentage deltas render as bilingual `<span class="ar">…٪</span><span
+  class="en">…%</span>` via `growthHtml()` / `hydrateKpis()`, so the AR/EN
+  toggle never shows a stray Arabic `٪` in English mode.
+- `errText(err)` maps HTTP status to a short bilingual sentence and never
+  surfaces a raw object or `[object Object]`; login uses the same helper.
+- `openModal(opts)` passes `(root, body)` to `onMount`; use `body` instead of
+  re-querying `#modalBody`. Assignment uses the real user directory from
+  `/api/v1/users` (no free-typed ids).
+- `createReportForm()` validates year (2000–2100), month (1–12) and requires at
+  least one of revenue/expenses before POSTing.
+- Responsive: the 1920×1080 `.stage` scales down; at ≤820px the stage reflows
+  (board becomes one column, `.app-view` becomes in-document instead of an
+  absolute overlay) so nothing clips. Overflow guards (`min-width:0`) on
+  dynamic text cells, and the support table drops its department column at
+  ≤560px.

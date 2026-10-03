@@ -31,6 +31,7 @@
     reports: [],
     support: [],
     insights: [],
+    users: [],
     dashboard: null,
     loaded: {},
   };
@@ -89,12 +90,6 @@
   function millions(value) {
     if (value === null || value === undefined) return "—";
     return (Number(value) / 1e6).toFixed(1);
-  }
-
-  function pct(value) {
-    if (value === null || value === undefined) return null;
-    var sign = value >= 0 ? "+" : "−";
-    return sign + Math.abs(value).toFixed(1) + "%";
   }
 
   function setText(selector, value) {
@@ -174,8 +169,11 @@
       (up ? "up" : "down") +
       '">' +
       (up ? "▲ " : "▼ ") +
+      "<span class=\"ar\">" +
+      toArabicDigits(Math.abs(p).toFixed(1)) +
+      '٪</span><span class="en">' +
       Math.abs(p).toFixed(1) +
-      "٪</span>"
+      "%</span></span>"
     );
   }
 
@@ -321,8 +319,11 @@
       (row.revenue_pct === null || row.revenue_pct === undefined
         ? '<span class="ar">بانتظار</span><span class="en">Pending</span>'
         : (row.revenue_pct >= 0 ? "▲ " : "▼ ") +
+          '<span class="ar">' +
+          toArabicDigits(Math.abs(row.revenue_pct).toFixed(1)) +
+          '٪</span><span class="en">' +
           Math.abs(row.revenue_pct).toFixed(1) +
-          "٪") +
+          "%</span>") +
       "</div></div>"
     );
   }
@@ -504,10 +505,16 @@
           kv(dual("حالة التقرير", "Report status"), rep ? statusBadge(rep.status) : statusBadge(null)) +
           "</div>" +
           '<p class="note-block" style="margin-top:12px">' +
-          dual(
-            "لم تُستلم بعد تقرير هذه الشركة لهذه الفترة.",
-            "This company has not submitted a report for this period yet.",
-          ) + "</p>" +
+          (rep
+            ? dual(
+                "تم استلام تقرير هذه الشركة لهذه الفترة. يمكنك عرضه أو طلب دعم إضافي.",
+                "This company has submitted a report for this period. Open it or request additional support.",
+              )
+            : dual(
+                "لم تُستلم بعد تقرير هذه الشركة لهذه الفترة.",
+                "This company has not submitted a report for this period yet.",
+              )) +
+          "</p>" +
           '<div class="modal-foot" style="margin-top:6px;border-radius:12px;border:1px solid var(--line-2)">' + actions.join("") + "</div>";
         if (byId("fuClose")) byId("fuClose").addEventListener("click", closeModal);
         if (byId("fuOpen")) byId("fuOpen").addEventListener("click", function () { openReport(rep.id); });
@@ -535,13 +542,27 @@
         root.querySelector("#crCancel").addEventListener("click", closeModal);
         root.querySelector("#crSave").addEventListener("click", function () {
           var btn = this;
+          var year = parseInt(root.querySelector("#crYear").value, 10);
+          var month = parseInt(root.querySelector("#crMonth").value, 10);
           var rev = numOrNull(root.querySelector("#crRev").value);
           var exp = numOrNull(root.querySelector("#crExp").value);
+          if (!year || year < 2000 || year > 2100) {
+            toast(STATE.lang === "ar" ? "السنة غير صحيحة." : "Invalid year.", "err");
+            return;
+          }
+          if (!month || month < 1 || month > 12) {
+            toast(STATE.lang === "ar" ? "الشهر يجب أن يكون بين ١ و ١٢." : "Month must be between 1 and 12.", "err");
+            return;
+          }
+          if (rev === null && exp === null) {
+            toast(STATE.lang === "ar" ? "أدخل الإيرادات أو المصروفات." : "Enter revenue or expenses.", "err");
+            return;
+          }
           busy(btn, true);
           post("/api/v1/monthly-reports", {
             company_id: companyId,
-            period_year: parseInt(root.querySelector("#crYear").value, 10),
-            period_month: parseInt(root.querySelector("#crMonth").value, 10),
+            period_year: year,
+            period_month: month,
             revenue: rev,
             expenses: exp,
             net_result: rev !== null && exp !== null ? rev - exp : null,
@@ -698,36 +719,47 @@
     var change = data.change_vs_previous || {};
     var delta = document.querySelector('[data-kpi="revenue_delta"]');
     if (delta) {
-      var p = pct(change.revenue_pct);
-      if (p === null) {
+      if (change.revenue_pct === null || change.revenue_pct === undefined) {
         delta.className = "delta flat";
-        delta.textContent = "لا توجد مقارنة";
+        delta.innerHTML = dual("لا توجد مقارنة", "No comparison");
       } else {
         delta.className = "delta " + (change.revenue_pct >= 0 ? "up" : "down");
-        delta.textContent =
-          (change.revenue_pct >= 0 ? "▲ " : "▼ ") + p.replace(/^[+−]/, "");
+        delta.innerHTML = dual(
+          toArabicDigits(Math.abs(change.revenue_pct).toFixed(1)) + "٪",
+          Math.abs(change.revenue_pct).toFixed(1) + "%",
+        );
       }
     }
 
     var netDelta = document.querySelector('[data-kpi="net_delta"]');
     if (netDelta && change.net_pct !== null && change.net_pct !== undefined) {
       netDelta.className = "delta " + (change.net_pct >= 0 ? "up" : "down");
-      netDelta.textContent =
-        (change.net_pct >= 0 ? "▲ " : "▼ ") +
-        Math.abs(change.net_pct).toFixed(1) +
-        "٪";
+      netDelta.innerHTML = dual(
+        toArabicDigits(Math.abs(change.net_pct).toFixed(1)) + "٪",
+        Math.abs(change.net_pct).toFixed(1) + "%",
+      );
     }
 
     var margin = document.querySelector('[data-kpi="net_margin"]');
     if (margin && Number(k.total_revenue)) {
       var m = (Number(k.total_net_result) / Number(k.total_revenue)) * 100;
-      margin.textContent = m.toFixed(1) + "٪";
+      margin.textContent = toArabicDigits(m.toFixed(1)) + "٪";
     }
 
     var marginEn = document.querySelector('[data-kpi="net_margin_en"]');
     if (marginEn && Number(k.total_revenue)) {
       var m2 = (Number(k.total_net_result) / Number(k.total_revenue)) * 100;
       marginEn.textContent = m2.toFixed(1) + "%";
+    }
+
+    var repPct = document.querySelector('[data-kpi="reports_pct"]');
+    if (repPct && Number(k.companies_count)) {
+      var rp = (Number(k.reports_submitted) / Number(k.companies_count)) * 100;
+      repPct.className = "delta " + (rp >= 50 ? "up" : "down");
+      repPct.innerHTML = dual(
+        toArabicDigits(rp.toFixed(0)) + "٪",
+        rp.toFixed(0) + "%",
+      );
     }
   }
 
@@ -945,9 +977,27 @@
     }, kind === "err" ? 6000 : 3600);
   }
 
+  // Never surface raw objects or status codes to the user. HTTP failures are
+  // mapped to a short bilingual-safe sentence; anything unexpected falls back.
   function errText(err, fallback) {
-    if (err && err.message) return err.message;
-    return fallback || "تعذّر تنفيذ الطلب.";
+    var fb = fallback || (STATE.lang === "ar" ? "تعذّر تنفيذ الطلب." : "The request could not be completed.");
+    if (!err) return fb;
+    if (err.status) {
+      var byStatus = {
+        400: STATE.lang === "ar" ? "طلب غير صالح. تحقّق من البيانات." : "Invalid request. Please check the data.",
+        401: STATE.lang === "ar" ? "انتهت الجلسة. يرجى تسجيل الدخول من جديد." : "Session expired. Please sign in again.",
+        403: STATE.lang === "ar" ? "ليست لديك صلاحية لهذا الإجراء." : "You do not have permission for this action.",
+        404: STATE.lang === "ar" ? "العنصر المطلوب غير موجود." : "The requested item was not found.",
+        409: STATE.lang === "ar" ? "لا يمكن تنفيذ الإجراء في الحالة الحالية." : "This action conflicts with the current state.",
+        422: STATE.lang === "ar" ? "بيانات غير مكتملة أو غير صحيحة." : "Some fields are missing or invalid.",
+        429: STATE.lang === "ar" ? "محاولات كثيرة. حاول لاحقًا." : "Too many attempts. Try again later.",
+        500: STATE.lang === "ar" ? "خطأ في الخادم. حاول لاحقًا." : "Server error. Please try again.",
+      };
+      if (byStatus[err.status]) return byStatus[err.status];
+    }
+    var msg = typeof err.message === "string" ? err.message : "";
+    if (!msg || msg === "[object Object]") return fb;
+    return msg;
   }
 
   // ---- modal + confirm -------------------------------------------------
@@ -976,7 +1026,7 @@
     });
     backdrop.querySelector(".modal-x").addEventListener("click", closeModal);
     document.addEventListener("keydown", escClose);
-    if (opts.onMount) opts.onMount(backdrop);
+    if (opts.onMount) opts.onMount(backdrop, backdrop.querySelector("#modalBody"));
   }
 
   function escClose(e) {
@@ -1838,41 +1888,69 @@
       });
   }
 
+  // Assigning needs a real user directory. It is fetched from /api/v1/users
+  // (holding_owner / admin only) rather than typed by hand, so the UI can never
+  // send an id that does not exist.
   function assignSupportForm(id, r) {
-    var me = USER || {};
     openModal({
       title: dual("إسناد الطلب", "Assign request"),
-      body:
-        '<div class="av-field"><label>' + dual("القسم المسؤول", "Responsible department") + "</label>" +
-        '<select class="av-select" id="asgDept" style="width:100%">' +
-        ["holding_owner", "business_development", "marketing", "design", "accounting", "general"].map(function (d) {
-          var lab = deptLabel(d);
-          return '<option value="' + d + '"' + (d === (r.responsible_department || "") ? " selected" : "") + ">" + dual(lab.ar, lab.en) + "</option>";
-        }).join("") + "</select></div>" +
-        '<div class="av-field"><label>' + dual("المسؤول (معرّف المستخدم)", "Assignee (user id)") + "</label>" +
-        '<input class="av-input" id="asgUser" style="width:100%" value="' + escAttr(r.assigned_to_id || "") + '" placeholder="' + escAttr(String(me.id || "")) + '"></div>',
+      body: loadingHtml(),
       footer:
         '<button class="btn-outline" id="asgCancel">' + dual("إلغاء", "Cancel") + "</button>" +
-        '<button class="btn-solid" id="asgSave">' + dual("إسناد", "Assign") + "</button>",
-      onMount: function (root) {
+        '<button class="btn-solid" id="asgSave" disabled>' + dual("إسناد", "Assign") + "</button>",
+      onMount: function (root, body) {
         root.querySelector("#asgCancel").addEventListener("click", closeModal);
-        root.querySelector("#asgSave").addEventListener("click", function () {
-          var btn = this;
-          var uid = numOrNull(root.querySelector("#asgUser").value);
-          busy(btn, true);
-          api.patch("/api/v1/support-requests/" + id + "/assign", {
-            assigned_to_id: uid,
-            responsible_department: root.querySelector("#asgDept").value,
-          })
-            .then(function () {
-              toast(STATE.lang === "ar" ? "تم إسناد الطلب." : "Request assigned.", "ok");
-              STATE.loaded.support = false;
-              refreshAll().then(function () { openSupport(id); });
+        var userOptions = "";
+        var ready = has("user.read")
+          ? get("/api/v1/users")
+              .then(function (users) {
+                STATE.users = users || [];
+                userOptions = STATE.users.map(function (u) {
+                  var label = (STATE.lang === "ar" ? u.full_name_ar : u.full_name_en || u.full_name_ar) +
+                    " · " + (u.role_name_ar || u.role_code);
+                  return '<option value="' + u.id + '"' +
+                    (u.id === r.assigned_to_id ? " selected" : "") + ">" + escapeHtml(label) + "</option>";
+                }).join("");
+              })
+              .catch(function () { userOptions = ""; })
+          : Promise.resolve();
+
+        ready.then(function () {
+          var assigneeField = userOptions
+            ? '<div class="av-field"><label>' + dual("المسؤول", "Assignee") + "</label>" +
+              '<select class="av-select" id="asgUser" style="width:100%"><option value="">' +
+              dual("— غير مُسند —", "— Unassigned —") + "</option>" + userOptions + "</select></div>"
+            : '<div class="av-field"><label>' + dual("المسؤول", "Assignee") + "</label>" +
+              '<input class="av-input" id="asgUser" style="width:100%" value="' + escAttr(r.assigned_to_id || "") + '" placeholder="' + escAttr(String((USER && USER.id) || "")) + '"></div>';
+
+          body.innerHTML =
+            '<div class="av-field"><label>' + dual("القسم المسؤول", "Responsible department") + "</label>" +
+            '<select class="av-select" id="asgDept" style="width:100%">' +
+            ["holding_owner", "business_development", "marketing", "design", "accounting", "general"].map(function (d) {
+              var lab = deptLabel(d);
+              return '<option value="' + d + '"' + (d === (r.responsible_department || "") ? " selected" : "") + ">" + dual(lab.ar, lab.en) + "</option>";
+            }).join("") + "</select></div>" + assigneeField;
+
+          var save = root.querySelector("#asgSave");
+          save.disabled = false;
+          save.addEventListener("click", function () {
+            var btn = this;
+            var uid = numOrNull(root.querySelector("#asgUser").value);
+            busy(btn, true);
+            api.patch("/api/v1/support-requests/" + id + "/assign", {
+              assigned_to_id: uid,
+              responsible_department: root.querySelector("#asgDept").value,
             })
-            .catch(function (err) {
-              toast(errText(err), "err");
-              busy(btn, false);
-            });
+              .then(function () {
+                toast(STATE.lang === "ar" ? "تم إسناد الطلب." : "Request assigned.", "ok");
+                STATE.loaded.support = false;
+                refreshAll().then(function () { openSupport(id); });
+              })
+              .catch(function (err) {
+                toast(errText(err), "err");
+                busy(btn, false);
+              });
+          });
         });
       },
     });
@@ -2371,8 +2449,18 @@
   function showLoadingStates() {
     ["companies_count", "companies_count_unit", "total_revenue",
      "total_net_result", "reports_submitted", "companies_requiring_attention",
-     "open_support_requests"].forEach(function (key) {
+     "open_support_requests", "sector_count", "sector_count_en",
+     "structure_count", "structure_count_en", "hub_total", "hub_total_en",
+     "insights_count", "insights_count_en", "support_pending",
+     "support_pending_en"].forEach(function (key) {
       setText('[data-kpi="' + key + '"]', "…");
+    });
+    ["revenue_delta", "net_delta", "reports_pct"].forEach(function (key) {
+      var el = document.querySelector('[data-kpi="' + key + '"]');
+      if (el) {
+        el.className = "delta flat";
+        el.innerHTML = dual("…", "…");
+      }
     });
     var repGrid = document.querySelector(".rep-grid");
     if (repGrid) repGrid.innerHTML = loadingHtml();
@@ -2488,7 +2576,7 @@
           return enterApp();
         })
         .catch(function (err) {
-          setLoginError(err.message || "تعذّر تسجيل الدخول.");
+          setLoginError(errText(err, STATE.lang === "ar" ? "تعذّر تسجيل الدخول. تحقّق من البريد وكلمة المرور." : "Sign-in failed. Check your email and password."));
         })
         .then(function () {
           if (btn) {
@@ -2560,6 +2648,12 @@
         bindNav();
         showLoadingStates();
         return resolvePeriod();
+      })
+      .then(function () {
+        // Reports back the dashboard cards' "View Report" action and the
+        // company drill-downs, so load them first even when the period was
+        // pinned via the URL (resolvePeriod skips its own fetch in that case).
+        return Promise.all([ensureReports(), ensureCompanies()]);
       })
       .then(function () {
         var jobs = [];
