@@ -31,6 +31,7 @@ from backend.core.config import settings
 from backend.core.errors import register_exception_handlers
 from backend.core.logging_config import configure_logging
 from backend.db.session import SessionLocal
+from backend.services import branding_service
 from backend.website import pages as website_pages
 from backend.website import renderer as website_renderer
 from backend.website import seo as website_seo
@@ -182,14 +183,35 @@ def _mount_seo(app: FastAPI) -> None:
         return Response(website_seo.sitemap_xml(), media_type="application/xml")
 
 
+def _public_branding() -> dict | None:
+    """Branding for the website shell, or ``None`` to use the built-in mark.
+
+    The public site must render even if the database is momentarily
+    unavailable, so any failure degrades to the fallback logo rather than a
+    500 on a marketing page.
+    """
+    db = SessionLocal()
+    try:
+        return branding_service.branding_payload(db)
+    except Exception:  # noqa: BLE001 - never break a public page over branding
+        logger.warning("Branding lookup failed; using the fallback mark.", exc_info=True)
+        return None
+    finally:
+        db.close()
+
+
 def _render_or_404(path: str) -> Response:
     meta = website_pages.resolve_route(path)
     if meta is None:
         meta = website_pages.not_found_meta("ar")
         return Response(
-            website_renderer.render(meta), status_code=404, media_type="text/html"
+            website_renderer.render(meta, _public_branding()),
+            status_code=404,
+            media_type="text/html",
         )
-    return Response(website_renderer.render(meta), media_type="text/html")
+    return Response(
+        website_renderer.render(meta, _public_branding()), media_type="text/html"
+    )
 
 
 def _mount_website(app: FastAPI) -> None:

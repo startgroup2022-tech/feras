@@ -15,11 +15,12 @@ These are the Phase 2 foundations. They are deliberately small and additive:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -65,6 +66,19 @@ class Holding(Base, TimestampMixin):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=HoldingStatus.ACTIVE.value, index=True
+    )
+
+    # ---- public website branding ----
+    # The official logo is uploaded from the admin panel, not hardcoded. Only
+    # the opaque storage key and safe display metadata live in the database;
+    # the binary lives under the upload root (see ``core.branding_storage``).
+    # When ``logo_storage_key`` is null the public site falls back to the
+    # built-in mark, so the header never breaks before an upload.
+    logo_storage_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    logo_content_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    logo_original_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    logo_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

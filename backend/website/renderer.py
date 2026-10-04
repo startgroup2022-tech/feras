@@ -42,7 +42,11 @@ def _brand(lang: str) -> str:
 # shell
 # --------------------------------------------------------------------------
 def _brand_mark() -> str:
-    """The logo mark: a navy hexagon with a gold rim and centre."""
+    """The fallback logo mark: a navy hexagon with a gold rim and centre.
+
+    Used only until an official logo is uploaded from the admin panel; the
+    header swaps this for the uploaded image automatically.
+    """
     return (
         '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
         'focusable="false" aria-hidden="true">'
@@ -53,7 +57,24 @@ def _brand_mark() -> str:
     )
 
 
-def _nav_html(meta: PageMeta) -> str:
+def _brand_visual(lang: str, branding: dict | None) -> str:
+    """The header logo slot: the uploaded logo, or the built-in fallback mark.
+
+    The container has a fixed height and the image is constrained by
+    ``object-fit: contain`` with a max width, so a logo of any aspect ratio or
+    dimension can never distort or break the header layout.
+    """
+    logo_url = (branding or {}).get("logo_url")
+    if logo_url:
+        return (
+            '<span class="brand-logo">'
+            f'<img src="{e(logo_url)}" alt="{e(_brand(lang))}" '
+            'decoding="async" data-brand-logo></span>'
+        )
+    return f'<span class="brand-mark" data-brand-fallback>{_brand_mark()}</span>'
+
+
+def _nav_html(meta: PageMeta, branding: dict | None = None) -> str:
     lang = meta.lang
     links = []
     for item in C.NAV:
@@ -82,27 +103,29 @@ def _nav_html(meta: PageMeta) -> str:
 <header class="site-header" data-header>
   <div class="container header-inner">
     <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(_brand(lang))}">
-      <span class="brand-mark">{_brand_mark()}</span>
+      {_brand_visual(lang, branding)}
       <span class="brand-text">
         <span class="brand-name">{e(_brand(lang))}</span>
         <span class="brand-sub">{e(_t("بوابة البحرين والسعودية", "Bahrain & Saudi Gateway", lang))}</span>
       </span>
     </a>
 
-    <button class="nav-toggle" type="button" aria-expanded="false"
-            aria-controls="primary-nav" data-nav-toggle>
-      <span class="sr-only">{e(_t("القائمة", "Menu", lang))}</span>
-      <span class="nav-toggle-bars" aria-hidden="true"></span>
-    </button>
-
     <div class="header-menu" id="primary-nav" data-nav>
       <nav class="site-nav" aria-label="{e(_t('التنقل الرئيسي', 'Main navigation', lang))}">
         {' '.join(links)}
       </nav>
+    </div>
+
+    <div class="header-actions">
       <div class="lang-switch" role="group"
            aria-label="{e(_t('اختيار اللغة', 'Language selection', lang))}">
         {option("ar")}{option("en")}
       </div>
+      <button class="nav-toggle" type="button" aria-expanded="false"
+              aria-controls="primary-nav" data-nav-toggle>
+        <span class="sr-only">{e(_t("القائمة", "Menu", lang))}</span>
+        <span class="nav-toggle-bars" aria-hidden="true"></span>
+      </button>
     </div>
   </div>
 </header>"""
@@ -136,7 +159,7 @@ def _footer_html(meta: PageMeta) -> str:
 </footer>"""
 
 
-def render_page(meta: PageMeta, body: str) -> str:
+def render_page(meta: PageMeta, body: str, branding: dict | None = None) -> str:
     """Compose a full HTML document for a resolved route."""
     lang = meta.lang
     direction = "rtl" if lang == "ar" else "ltr"
@@ -158,7 +181,7 @@ def render_page(meta: PageMeta, body: str) -> str:
 </head>
 <body class="site lang-{e(lang)}">
 <a class="skip-link" href="#main">{e(_t('تخطَّ إلى المحتوى', 'Skip to content', lang))}</a>
-{_nav_html(meta)}
+{_nav_html(meta, branding)}
 <main id="main" tabindex="-1">
 {body}
 </main>
@@ -956,7 +979,7 @@ def not_found_body(lang: str) -> str:
 # --------------------------------------------------------------------------
 # dispatch
 # --------------------------------------------------------------------------
-def render(meta: PageMeta) -> str:
+def render(meta: PageMeta, branding: dict | None = None) -> str:
     """Render the full HTML document for a resolved page."""
     lang = meta.lang
     if meta.route == "home":
@@ -980,4 +1003,4 @@ def render(meta: PageMeta) -> str:
         body = _market_service_body(lang, market, slug)
     else:
         body = _home_body(lang)
-    return render_page(meta, body)
+    return render_page(meta, body, branding)

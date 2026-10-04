@@ -134,3 +134,7 @@ class AuditAction:
     WEBSITE_OPPORTUNITY_SUBMITTED = "website_opportunity.submitted"
     WEBSITE_OPPORTUNITY_REVIEWED = "website_opportunity.reviewed"
     WEBSITE_OPPORTUNITY_PUBLISHED = "website_opportunity.published"
+
+    # public website branding (logo)
+    BRANDING_LOGO_UPDATED = "branding.logo_updated"
+    BRANDING_LOGO_REMOVED = "branding.logo_removed"

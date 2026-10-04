@@ -28,14 +28,16 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from pydantic import ValidationError as PydanticValidationError
 
 from backend.api.deps import DbSession
 from backend.core.config import settings
-from backend.core.errors import RateLimitError, ValidationError
+from backend.core.errors import NotFoundError, RateLimitError, ValidationError
 from backend.core.rate_limit import RateLimiter
 from backend.core import storage
 from backend.schemas import (
+    BrandingOut,
     BusinessListingSubmission,
     CompanyFormationSubmission,
     ContactSubmission,
@@ -45,7 +47,7 @@ from backend.schemas import (
     PublicSubmissionResult,
 )
 from backend.db.models.enums import WebsiteServiceType
-from backend.services import audit_service, website_lead_service
+from backend.services import audit_service, branding_service, website_lead_service
 
 logger = logging.getLogger("safir.website")
 
@@ -266,3 +268,30 @@ def public_opportunities(
         db, market=market, opportunity_type=type
     )
     return [PublicOpportunityOut(**row) for row in rows]
+
+
+# --------------------------------------------------------------------------
+# branding (public read)
+# --------------------------------------------------------------------------
+@router.get("/branding", response_model=BrandingOut)
+def public_branding(db: DbSession) -> BrandingOut:
+    """Public branding values (the logo URL). No internal data is exposed."""
+    return BrandingOut(**branding_service.branding_payload(db))
+
+
+@router.get("/branding/logo", include_in_schema=False)
+def public_branding_logo(db: DbSession) -> Response:
+    """Stream the uploaded logo, or 404 when none is set.
+
+    Unauthenticated by design: the logo is public marketing material. Only a
+    file that exists under the branding root is ever served; the storage key
+    is never revealed in a URL.
+    """
+    path, content_type = branding_service.resolve_logo(db)
+    if path is None:
+        raise NotFoundError("No logo is configured.")
+    return FileResponse(
+        str(path),
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

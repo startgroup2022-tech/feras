@@ -3896,9 +3896,44 @@
       return Promise.all([structureP, ownershipP]).then(function (r2) {
         host.innerHTML =
           adminPanel("بيانات القابضة", "Holding profile", holdingPanel(holding)) +
+          adminPanel("هوية الموقع (الشعار)", "Website branding (logo)", brandingPanel(holding)) +
           adminPanel("هيكل الملكية", "Ownership structure", structurePanel(r2[0], r2[1]));
       });
     });
+  }
+
+  // The website logo is uploaded here and rendered by the public site's header.
+  // No code change is needed to swap it later; an empty state shows the
+  // built-in fallback mark the site uses until an official logo is uploaded.
+  function brandingPanel(h) {
+    var logoUrl = h && h.logo_url;
+    var canManage = has("group.manage");
+    var preview = logoUrl
+      ? '<img class="brand-preview" src="' + escAttr(logoUrl) + '" alt="' +
+        escAttr(dual("الشعار الحالي", "Current logo")) + '">'
+      : '<div class="brand-preview brand-preview-empty">' +
+        '<span class="brand-preview-mark" aria-hidden="true"></span>' +
+        '<span>' + dual("لا يوجد شعار مرفوع — يستخدم الموقع الشعار الافتراضي.", "No logo uploaded — the site uses its default mark.") + "</span>" +
+        "</div>";
+    if (!canManage) {
+      return '<div class="branding-box">' + preview + "</div>";
+    }
+    return (
+      '<div class="branding-box">' +
+      preview +
+      '<p class="branding-hint">' +
+      dual("ارفع شعار القابضة الرسمي (PNG أو JPEG أو WebP أو GIF، بحد أقصى 4 ميجابايت). يُعرض في ترويسة الموقع العامة.", "Upload the official Holding logo (PNG, JPEG, WebP or GIF, max 4 MB). It appears in the public website header.") +
+      "</p>" +
+      '<div class="branding-controls">' +
+      '<input class="av-input" type="file" id="brandLogoFile" accept="image/png,image/jpeg,image/webp,image/gif">' +
+      '<button class="btn-solid" type="button" data-admin-action="upload-logo">' +
+      dual(logoUrl ? "استبدال الشعار" : "رفع الشعار", logoUrl ? "Replace logo" : "Upload logo") + "</button>" +
+      (logoUrl
+        ? '<button class="btn-outline" type="button" data-admin-action="remove-logo">' +
+          dual("إزالة الشعار", "Remove logo") + "</button>"
+        : "") +
+      "</div></div>"
+    );
   }
 
   function holdingPanel(h) {
@@ -5046,6 +5081,37 @@
 
     if (action === "builder-open") return openFormBuilder(parseInt(id, 10));
     if (action === "workflow-open") return openWorkflowBuilder(parseInt(id, 10));
+
+    if (action === "upload-logo") {
+      var fileEl = byId("brandLogoFile");
+      var file = fileEl && fileEl.files ? fileEl.files[0] : null;
+      if (!file) {
+        toast(STATE.lang === "ar" ? "اختر ملف الشعار أولًا." : "Choose a logo file first.", "warn");
+        return;
+      }
+      busy(el, true);
+      return api.upload("/api/v1/admin/branding/logo", file, null)
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تم رفع الشعار." : "Logo uploaded.", "ok");
+          return renderAdminStructure();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
+    if (action === "remove-logo") {
+      busy(el, true);
+      return del("/api/v1/admin/branding/logo")
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تمت إزالة الشعار." : "Logo removed.", "ok");
+          return renderAdminStructure();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
 
     if (action === "hook-dismiss") {
       STATE.integrationSecret = null;

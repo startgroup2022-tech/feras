@@ -8,12 +8,13 @@ caller's company scope as part of the query.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 
 from backend.api.deps import CurrentUser, DbSession, require
 from backend.rbac import permission_metadata
 from backend.rbac.permissions import Perm
 from backend.schemas import (
+    BrandingOut,
     DepartmentCreateRequest,
     DepartmentOut,
     DepartmentUpdateRequest,
@@ -37,6 +38,7 @@ from backend.schemas import (
 from backend.services import (
     admin_service,
     audit_service,
+    branding_service,
     department_service,
     holding_service,
     ownership_service,
@@ -46,13 +48,24 @@ from backend.services import (
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _holding_out(holding) -> HoldingOut:
+    """Serialise the Holding and attach its public logo URL.
+
+    ``logo_url`` is derived, not stored, so the schema stays free of storage
+    internals while the admin UI can still preview the current logo.
+    """
+    data = HoldingOut.model_validate(holding)
+    data.logo_url = branding_service.logo_url(holding)
+    return data
+
+
 # --------------------------------------------------------------------------
 # group profile and structure
 # --------------------------------------------------------------------------
 @router.get("/holding", response_model=HoldingOut)
 def get_holding(db: DbSession, user: CurrentUser) -> HoldingOut:
     """The Holding's own metadata. Visible to any authenticated user."""
-    return HoldingOut.model_validate(holding_service.get_holding(db))
+    return _holding_out(holding_service.get_holding(db))
 
 
 @router.patch("/holding", response_model=HoldingOut)
@@ -70,7 +83,59 @@ def update_holding(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
-    return HoldingOut.model_validate(holding)
+    return _holding_out(holding)
+
+
+# --------------------------------------------------------------------------
+# public website branding (logo)
+# --------------------------------------------------------------------------
+@router.get("/branding", response_model=BrandingOut)
+def get_branding(db: DbSession, user: CurrentUser) -> BrandingOut:
+    """Current website branding (logo URL). Any authenticated user may read."""
+    return BrandingOut(**branding_service.branding_payload(db))
+
+
+@router.post("/branding/logo", response_model=BrandingOut, status_code=status.HTTP_201_CREATED)
+async def upload_branding_logo(
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.GROUP_MANAGE)),
+    file: UploadFile = File(...),
+) -> BrandingOut:
+    """Upload/replace the Holding logo used across the public website.
+
+    Type and size are validated on the server; the client filename never
+    influences the stored path.
+    """
+    data = await file.read()
+    ctx = audit_service.request_context(request)
+    holding = branding_service.set_logo(
+        db,
+        actor=actor,
+        data=data,
+        filename=file.filename or "",
+        content_type=file.content_type,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return BrandingOut(**branding_service.branding_payload(db))
+
+
+@router.delete("/branding/logo", response_model=BrandingOut)
+def delete_branding_logo(
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.GROUP_MANAGE)),
+) -> BrandingOut:
+    """Remove the uploaded logo so the site falls back to its built-in mark."""
+    ctx = audit_service.request_context(request)
+    branding_service.remove_logo(
+        db,
+        actor=actor,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return BrandingOut(**branding_service.branding_payload(db))
 
 
 @router.get("/holding/structure", response_model=list[GroupStructureNode])

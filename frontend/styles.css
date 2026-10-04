@@ -706,6 +706,19 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-form .av-field{flex:1 1 190px;margin-bottom:0;}
 .av-form-inline{padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--bg-2);margin-bottom:12px;}
 .av-form-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;}
+/* ---- Website branding (logo) panel ---- */
+.branding-box{display:flex;flex-direction:column;gap:11px;}
+.brand-preview{display:block;max-height:64px;max-width:220px;width:auto;height:auto;object-fit:contain;
+  padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg-2);}
+.brand-preview-empty{display:flex;align-items:center;gap:11px;max-width:none;min-height:56px;
+  font-size:11.5px;color:var(--ink-500);line-height:1.5;}
+.brand-preview-mark{flex:0 0 auto;width:30px;height:30px;border-radius:9px;
+  background:linear-gradient(155deg,var(--navy-500),var(--navy-900));position:relative;}
+.brand-preview-mark::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  box-shadow:inset 0 0 0 1px rgba(200,162,74,.45);}
+.branding-hint{margin:0;font-size:11px;color:var(--ink-400);line-height:1.6;max-width:70ch;}
+.branding-controls{display:flex;flex-wrap:wrap;align-items:center;gap:9px;}
+.branding-controls .av-input{flex:1 1 240px;min-width:200px;}
 .av-tree{display:flex;flex-direction:column;gap:5px;}
 .tree-node{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;border:1px solid var(--line-2);background:#fff;}
 .tree-node:hover{border-color:var(--navy-300);}

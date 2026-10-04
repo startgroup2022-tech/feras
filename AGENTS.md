@@ -322,11 +322,47 @@ The public website is a second, distinct experience in the same repo and origin,
   layer for the public site (the internal platform has its own `styles.css`).
   Both directions are driven by logical properties (`inline-start`/`end`), so
   RTL and LTR share one sheet; `html[lang="en"]` only swaps the font stack and
-  eyebrow tracking. The header collapses to a drawer at 860px (driven by
-  `.header-menu.is-open`, toggled in `website/assets/app.js`), and the
-  language control is a two-option segmented switch (`.lang-switch` /
-  `.lang-opt.is-on`) where each option links to the current page's mirror.
-  Keep both options explicit rather than a single toggle link.
+  eyebrow tracking. The header is a three-part flex row (brand · centred nav ·
+  actions) and collapses to a drawer at 1150px — the breakpoint sits just above
+  the widest nav so the links can never collide with the brand or the language
+  switch. The drawer is driven by `.header-menu.is-open`, toggled in
+  `website/assets/app.js`, and the language switch stays in the header bar
+  (only the links move). The language control is a two-option segmented switch
+  (`.lang-switch` / `.lang-opt.is-on`) where each option links to the current
+  page's mirror. Keep both options explicit rather than a single toggle link.
+  The brand wordmark and subtitle are `white-space: nowrap` with ellipsis, so
+  branding can never wrap into the navigation.
+
+## Configurable website logo (branding)
+
+- The public header logo is **not** hardcoded: it is uploaded from the admin
+  panel (Administration → Structure & ownership → "Website branding (logo)")
+  and rendered by the website. Until one is uploaded the header shows the
+  built-in SVG fallback (`data-brand-fallback`); an uploaded logo renders as
+  `data-brand-logo` inside `.brand-logo`, which is height-fixed with
+  `object-fit: contain` so any aspect ratio/dimension fits without distortion.
+- Storage: `backend/core/branding_storage.py` reuses the upload root and its
+  path-traversal guard, with a **raster-only** allow-list (PNG/JPEG/WebP/GIF;
+  SVG is deliberately excluded — it can carry script and renders on every
+  page). Keys are fresh UUIDs + a server-derived extension, so a client
+  filename never reaches the filesystem. 4 MiB cap.
+- Model: four nullable columns on `Holding` (`logo_storage_key`,
+  `logo_content_type`, `logo_original_name`, `logo_updated_at`). The binary is
+  never in the DB; only the opaque key + display metadata are.
+- Service/routes: `backend/services/branding_service.py`; admin
+  `GET/POST/DELETE /api/v1/admin/branding[/logo]` gated on `group.manage` (no
+  new permission) and audited (`branding.logo_updated` / `.logo_removed`).
+  Public read-only `GET /api/v1/public/branding` (URL only, never the key) and
+  `GET /api/v1/public/branding/logo` (streams the file, 404 when none).
+  `logo_url` is **derived**, not stored, and carries a `?v=` cache-buster.
+- Graceful degradation: if the Holding points at a key whose file has gone, the
+  URL is suppressed and the site falls back to the built-in mark instead of a
+  broken image; `main._public_branding()` also swallows any lookup failure so a
+  database blip can never 500 a public marketing page.
+- Migration `b7f1a7747880` (down_revision `9615c678609f`) adds the four
+  columns. `tests/test_postgres.py` asserts the chain, so update it when adding
+  a revision. Tests: `tests/test_branding.py` plus header cases in
+  `tests/test_website_pages.py`.
 
 ## Final UX/i18n pass (pre-production)
 

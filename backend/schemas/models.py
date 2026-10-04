@@ -547,6 +547,22 @@ class HoldingOut(BaseModel):
     phone: str | None = None
     address: str | None = None
     status: str = HoldingStatus.ACTIVE.value
+    # Public website branding. ``logo_url`` is the versioned URL of the
+    # uploaded logo, or null when the site should show its built-in fallback.
+    logo_url: str | None = None
+    logo_updated_at: datetime | None = None
+
+
+class BrandingOut(BaseModel):
+    """Public branding values the website shell needs.
+
+    Deliberately minimal: the public site only learns whether a logo exists
+    and where to fetch it. Nothing about the uploader or the raw storage key
+    is exposed.
+    """
+
+    logo_url: str | None = None
+    logo_updated_at: datetime | None = None
 
 
 class HoldingUpdateRequest(BaseModel):

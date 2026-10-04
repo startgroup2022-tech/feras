@@ -15,6 +15,7 @@ client-side shell:
 
 from __future__ import annotations
 
+import base64
 import re
 
 import pytest
@@ -169,6 +170,48 @@ def test_unknown_page_returns_404_html(public_client):
 
 def test_noscript_fallback_is_present(public_client):
     assert "<noscript>" in public_client.get("/contact").text
+
+
+# --------------------------------------------------------------------------
+# header shell
+# --------------------------------------------------------------------------
+def test_header_has_a_single_brand_and_a_language_switch(public_client):
+    html = public_client.get("/").text
+    assert 'class="brand"' in html
+    assert html.count('class="header-actions"') == 1
+    assert 'class="lang-switch"' in html
+    # The language switch offers both languages explicitly.
+    assert 'class="lang-opt' in html
+    assert ">العربية</a>" in html
+    assert ">English</a>" in html
+
+
+def test_header_uses_the_fallback_mark_when_no_logo_is_set(public_client):
+    html = public_client.get("/").text
+    assert "data-brand-fallback" in html
+    assert "data-brand-logo" not in html
+
+
+def test_header_renders_the_uploaded_logo(client, auth, make_user, tmp_path, monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "SPLIT_PUBLIC_SITE", True)
+    admin = make_user("header.admin@corp.sa", "super_admin")
+    logo = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    )
+    with TestClient(create_app()) as app_client:
+        upload = app_client.post(
+            "/api/v1/admin/branding/logo",
+            headers=auth(admin),
+            files={"file": ("logo.png", logo, "image/png")},
+        )
+        assert upload.status_code == 201, upload.text
+        html = app_client.get("/").text
+    assert "data-brand-logo" in html
+    assert "data-brand-fallback" not in html
+    assert "/api/v1/public/branding/logo?v=" in html
 
 
 # --------------------------------------------------------------------------
