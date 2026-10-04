@@ -470,3 +470,107 @@ body.export .stage{border-radius:0;box-shadow:none;}
 .ins-tag.warn{background:var(--amber-soft);color:var(--amber);}
 .ins-tag.risk{background:var(--red-soft);color:var(--red);}
 .ins-tag.gold{background:var(--gold-100);color:var(--gold-700);}
+
+/* ============================================================
+   Real-app shell: login gate, states, session controls
+   ============================================================ */
+
+/* Hide the dashboard until authenticated. */
+body:not(.authed) .stage-wrap{display:none;}
+
+/* ---- Login screen ---- */
+.login-screen{
+  position:fixed;inset:0;display:grid;place-items:center;
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(44,87,160,.35), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(175,137,47,.22), transparent 55%),
+    linear-gradient(160deg,#060E1F,#0A1730 55%,#0E2044);
+  z-index:1000;padding:24px;
+}
+.login-card{
+  width:400px;max-width:100%;background:var(--paper);border-radius:20px;
+  box-shadow:var(--shadow-lg);padding:34px 32px 30px;position:relative;overflow:hidden;
+}
+.login-card::before{
+  content:"";position:absolute;inset:0 0 auto 0;height:5px;
+  background:linear-gradient(90deg,var(--gold-400),var(--gold-600),var(--navy-500));
+}
+.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:22px;}
+.login-mark{
+  width:46px;height:46px;border-radius:14px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#132C5C,#0A1730);box-shadow:var(--shadow-sm);
+}
+.login-title{font-family:var(--f-display);font-size:19px;font-weight:700;color:var(--navy-800);line-height:1.25;}
+.login-sub{font-size:11.5px;color:var(--ink-400);margin-top:2px;}
+.login-field{margin-bottom:14px;}
+.login-field label{display:block;font-size:11px;font-weight:600;color:var(--ink-700);margin-bottom:6px;}
+.login-field input{
+  width:100%;height:42px;border:1px solid var(--line);border-radius:11px;
+  padding:0 13px;font-family:var(--f-body);font-size:13px;color:var(--ink-900);
+  background:var(--bg);transition:border-color .15s,box-shadow .15s;outline:none;
+}
+.login-field input:focus{border-color:var(--navy-400);box-shadow:0 0 0 3px rgba(44,87,160,.14);background:#fff;}
+.login-actions{display:flex;align-items:center;justify-content:space-between;margin:2px 0 16px;}
+.login-lang{display:flex;gap:4px;background:var(--bg-2);border-radius:9px;padding:3px;}
+.login-lang button{
+  border:none;background:transparent;font-family:var(--f-body);font-size:11px;font-weight:600;
+  color:var(--ink-400);padding:5px 11px;border-radius:7px;cursor:pointer;transition:.15s;
+}
+.login-lang button.on{background:#fff;color:var(--navy-700);box-shadow:var(--shadow-xs);}
+.login-btn{
+  width:100%;height:44px;border:none;border-radius:11px;cursor:pointer;
+  background:linear-gradient(145deg,var(--navy-600),var(--navy-800));color:#fff;
+  font-family:var(--f-display);font-size:13.5px;font-weight:600;letter-spacing:.2px;
+  display:flex;align-items:center;justify-content:center;gap:9px;transition:.15s;
+}
+.login-btn:hover{filter:brightness(1.08);}
+.login-btn:disabled{opacity:.6;cursor:progress;}
+.login-error{
+  display:none;background:var(--red-soft);color:var(--red);border:1px solid #F3D4D1;
+  border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:600;margin-bottom:14px;
+}
+.login-error.show{display:block;}
+.login-hint{
+  margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);
+  font-size:10.5px;color:var(--ink-400);text-align:center;line-height:1.6;
+}
+.spinner{
+  width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---- Logout button in header ---- */
+.logout-btn{
+  display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;
+  color:var(--ink-500);border-radius:10px;padding:7px 11px;font-family:var(--f-body);
+  font-size:11px;font-weight:600;cursor:pointer;transition:.15s;
+}
+.logout-btn:hover{border-color:var(--red);color:var(--red);background:var(--red-soft);}
+
+/* ---- Loading / error / empty states ---- */
+.state{
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  padding:22px;font-size:11.5px;color:var(--ink-400);text-align:center;
+}
+.state .spinner{border-color:var(--line);border-top-color:var(--navy-400);}
+.data-error{
+  margin:0;padding:14px 16px;border-radius:12px;background:var(--red-soft);
+  border:1px solid #F3D4D1;color:var(--red);font-size:11.5px;font-weight:600;
+  display:flex;align-items:center;gap:8px;
+}
+.rep-grid .data-error,.subs .data-error,.aii-list .data-error{grid-column:1/-1;}
+
+/* Role-gated sections: JS adds .perm-hidden when the user lacks every listed
+   permission. Using a class (not a base rule) keeps each section's own display
+   (grid/flex/block) intact when it is permitted. */
+[data-perm].perm-hidden{display:none !important;}
+
+/* Session-expired toast */
+.session-toast{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);
+  background:var(--navy-800);color:#fff;padding:11px 18px;border-radius:11px;
+  font-size:12px;font-weight:600;box-shadow:var(--shadow-lg);z-index:1200;
+  display:flex;align-items:center;gap:9px;
+}
+

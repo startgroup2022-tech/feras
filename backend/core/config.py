@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = False
 
+    # Swagger/OpenAPI. Enabled by default for development; staging/production
+    # tiers may disable it or restrict it at the reverse proxy (see
+    # ``deploy/nginx/``). Disabled outright when APP_ENV=production.
+    DOCS_ENABLED: bool = True
+
     # ---- database ----
     # Defaults to a local SQLite file for development only. Production must
     # provide a PostgreSQL URL (postgresql+psycopg://...).

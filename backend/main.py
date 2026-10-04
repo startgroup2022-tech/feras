@@ -8,6 +8,7 @@ separately later (see ``CORS_ORIGINS``).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -19,6 +20,9 @@ from backend.api.v1 import api_router
 from backend.core.config import settings
 from backend.core.errors import register_exception_handlers
 from backend.core.logging_config import configure_logging
+from backend.db.session import SessionLocal
+
+logger = logging.getLogger("safir.readiness")
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -35,12 +39,17 @@ SECURITY_HEADERS = {
 def create_app() -> FastAPI:
     configure_logging(settings.DEBUG)
 
+    # Swagger/OpenAPI is never exposed in production, and can be switched off
+    # for any tier via DOCS_ENABLED. Public staging access is additionally
+    # restricted at the reverse proxy (see deploy/nginx/).
+    docs_enabled = settings.DOCS_ENABLED and not settings.is_production
+
     app = FastAPI(
         title=f"{settings.APP_NAME} API",
         version="1.0.0",
-        docs_url="/api/docs" if not settings.is_production else None,
+        docs_url="/api/docs" if docs_enabled else None,
         redoc_url=None,
-        openapi_url="/api/openapi.json" if not settings.is_production else None,
+        openapi_url="/api/openapi.json" if docs_enabled else None,
     )
 
     register_exception_handlers(app)
@@ -64,6 +73,42 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         """Liveness probe. Deliberately exposes no configuration detail."""
         return {"status": "ok", "service": "safir-holding-2027"}
+
+    @app.get("/ready", tags=["system"])
+    def ready() -> JSONResponse:
+        """Readiness probe.
+
+        Verifies the two runtime dependencies a request actually needs: a live
+        database connection and a writable upload directory. It returns only
+        coarse booleans -- no credentials, paths, driver names or exception
+        details -- so it is safe to expose to a load balancer.
+        """
+        checks = {"database": False, "uploads_writable": False}
+
+        try:
+            from sqlalchemy import text
+
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+            checks["database"] = True
+        except Exception:  # noqa: BLE001 - never leak failure specifics
+            logger.warning("readiness: database check failed")
+
+        try:
+            upload_dir = Path(settings.UPLOAD_DIR)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            probe = upload_dir / ".ready_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            checks["uploads_writable"] = True
+        except Exception:  # noqa: BLE001 - never leak failure specifics
+            logger.warning("readiness: upload directory check failed")
+
+        is_ready = all(checks.values())
+        return JSONResponse(
+            status_code=200 if is_ready else 503,
+            content={"status": "ready" if is_ready else "not_ready", **checks},
+        )
 
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
@@ -94,6 +139,12 @@ def _mount_frontend(app: FastAPI) -> None:
     def app_js() -> FileResponse:
         return FileResponse(
             str(FRONTEND_DIR / "app.js"), media_type="application/javascript"
+        )
+
+    @app.get("/auth.js", include_in_schema=False)
+    def auth_js() -> FileResponse:
+        return FileResponse(
+            str(FRONTEND_DIR / "auth.js"), media_type="application/javascript"
         )
 
     @app.get("/preview-16x9.png", include_in_schema=False)
