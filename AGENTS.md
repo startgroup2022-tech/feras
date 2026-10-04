@@ -267,3 +267,55 @@ Demo accounts use password `SafirDemo!2027`.
   A `company_manager` sees only the executive briefing tab and no
   integrations/audit tabs; a `holding_owner` sees everything.
 
+## Phase 10 — public website (separate experience)
+
+The public website is a second, distinct experience in the same repo and origin,
+**not** a redesign of the internal platform. Full operations doc: `docs/WEBSITE.md`.
+
+- **Layout** — `SPLIT_PUBLIC_SITE` decides who owns the root. `true`
+  (staging/production): website at `/`, platform under `PLATFORM_PATH`
+  (`/platform`) with `X-Robots-Tag: noindex`. `false` (development): platform
+  keeps the root so local workflows are unchanged. `WEBSITE_BASE_URL` feeds
+  canonical/hreflang/sitemap absolute URLs.
+- **Content model** — `backend/website/content.py` is the single source of
+  truth (markets, services, nav, per-market copy, group companies). Pages,
+  sitemap and hreflang are all derived from it, so they cannot drift.
+  `backend/website/pages.py` resolves a path to `PageMeta`;
+  `backend/website/renderer.py` renders the HTML; `backend/website/seo.py`
+  builds meta tags, `robots.txt` and `sitemap.xml`. Arabic is the default and
+  RTL; English is a separate URL with `dir="ltr"`.
+- **Public API** — `/api/v1/public/leads/*` (formation, feasibility,
+  opportunity-interest, business-listing, contact) and
+  `/api/v1/public/opportunities`. All unauthenticated, closed-set validated,
+  rate-limited per IP, honeypot-protected. A submission returns only a
+  reference and a timestamp; the public opportunity shape is deliberately
+  narrow (no description, no value range).
+- **Lead service** — `website_lead_service.create_lead` classifies market and
+  service server-side, applies `ROUTING_TABLE` (e.g. `company_formation` +
+  `bahrain` → `formation_bahrain`), copies attribution verbatim, notifies the
+  responsible role via `notification_service`, and emits `lead.created` via
+  `integration_service`. Honeypot hits return a normal success but store
+  nothing.
+- **Listings** — a submitted listing is private (`is_public=false`,
+  `status=submitted`). Publishing requires `website_opportunity.publish` **and**
+  Holding-written public copy; the confidential description is never echoed.
+- **Internal API/UI** — `/api/v1/leads` (list/detail/update/stats) gated by
+  `website_lead.read` / `.manage` / `.status_change` and
+  `website_opportunity.review` / `.publish`. The platform's `leads` view
+  (`#view-leads`, `renderLeads()` in `frontend/app.js`) shows funnel stats, a
+  filterable list and a detail modal.
+- **Migration** — `9615c678609f` (down_revision `5ff680970d75`) adds
+  `website_leads`, `website_lead_attachments`, `website_opportunities`. It does
+  not alter existing tables. `tests/test_postgres.py` asserts the chain, so
+  update it when adding a revision.
+- **Existing dev DBs** need `bootstrap_rbac` re-run to pick up the new
+  permissions before the lead endpoints return 200 instead of 403.
+- **Tests** — `tests/test_website_leads.py` (public API, routing, attribution,
+  honeypot, privacy, permissions) and `tests/test_website_pages.py` (routes,
+  metadata, hreflang, sitemap/robots, RTL/LTR, escaping, indexability). The page
+  tests use a `public_client` fixture that enables `SPLIT_PUBLIC_SITE`, i.e. the
+  production layout.
+- **Content rule** — never fabricate statistics, values, clients, awards,
+  partnerships, years or locations. Group companies carry a `verified` flag;
+  unverified entities stay out until confirmed.
+

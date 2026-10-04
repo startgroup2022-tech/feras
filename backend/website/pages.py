@@ -1,0 +1,196 @@
+"""Route resolution and page metadata for the public website.
+
+:func:`resolve_route` maps a request path to a :class:`PageMeta`. It is the one
+place that decides what a public URL means, so the HTML shell, the SEO tags and
+the sitemap all agree on the same set of routes.
+
+Route shapes:
+
+* ``/`` and ``/ar``                          -- home (English / Arabic)
+* ``/<page>`` and ``/ar/<page-ar>``          -- top-level pages
+* ``/<market>/<service>`` and
+  ``/ar/<market-ar>/<service-ar>``           -- the indexable market/service pages
+"""
+
+from __future__ import annotations
+
+from backend.website import content as C
+from backend.website.content import PageMeta
+
+# Localized top-level path -> (page key, language).
+_TOP_LEVEL: dict[str, tuple[str, str]] = {}
+for _key, _paths in C.PAGE_PATHS.items():
+    _TOP_LEVEL[_paths["en"]] = (_key, "en")
+    _TOP_LEVEL[_paths["ar"]] = (_key, "ar")
+
+# Localized market/service path -> (market, service slug, language).
+_MARKET_SERVICE: dict[str, tuple[str, str, str]] = {}
+for _market, _slug in C.all_market_service_pages():
+    for _lang in ("en", "ar"):
+        _MARKET_SERVICE[C.market_service_path(_market, _slug, _lang)] = (
+            _market,
+            _slug,
+            _lang,
+        )
+
+# Static page titles/descriptions. Kept here (not in content.py) because they
+# are page-level, whereas content.py is about the domain structure.
+_PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
+    "home": {
+        "ar": {
+            "title": "سفير القابضة — بوابتك للأعمال والاستثمار في البحرين والسعودية",
+            "description": "بوابة أعمال واستثمار تربط المستثمرين والشركات والفرص في البحرين والسعودية.",
+        },
+        "en": {
+            "title": "Safir Holding — Your Business & Investment Gateway in Bahrain and Saudi Arabia",
+            "description": "A business and investment gateway connecting investors, companies and opportunities in Bahrain and Saudi Arabia.",
+        },
+    },
+    "opportunities": {
+        "ar": {
+            "title": "الفرص والمشاريع | سفير القابضة",
+            "description": "استعرض فرص الأعمال والمشاريع المتاحة في البحرين والسعودية.",
+        },
+        "en": {
+            "title": "Opportunities & Projects | Safir Holding",
+            "description": "Browse business and project opportunities available in Bahrain and Saudi Arabia.",
+        },
+    },
+    "services": {
+        "ar": {
+            "title": "خدمات الأعمال | سفير القابضة",
+            "description": "تأسيس الشركات، دراسات الجدوى، الشراكات والاستثمار في البحرين والسعودية.",
+        },
+        "en": {
+            "title": "Business Services | Safir Holding",
+            "description": "Company formation, feasibility studies, partnerships and investment in Bahrain and Saudi Arabia.",
+        },
+    },
+    "group": {
+        "ar": {
+            "title": "شركات المجموعة | سفير القابضة",
+            "description": "شركات المجموعة والكيانات المرتبطة بسفير القابضة.",
+        },
+        "en": {
+            "title": "Group Companies | Safir Holding",
+            "description": "The group companies and entities associated with Safir Holding.",
+        },
+    },
+    "about": {
+        "ar": {
+            "title": "عن سفير القابضة",
+            "description": "سفير القابضة طبقة تنسيق تربط المستثمرين والشركات والفرص والخدمات في البحرين والسعودية.",
+        },
+        "en": {
+            "title": "About Safir Holding",
+            "description": "Safir Holding is an orchestration layer connecting investors, companies, opportunities and services across Bahrain and Saudi Arabia.",
+        },
+    },
+    "contact": {
+        "ar": {
+            "title": "تواصل معنا | سفير القابضة",
+            "description": "تواصل مع سفير القابضة بشأن الفرص والخدمات في البحرين والسعودية.",
+        },
+        "en": {
+            "title": "Contact | Safir Holding",
+            "description": "Contact Safir Holding about opportunities and services in Bahrain and Saudi Arabia.",
+        },
+    },
+    "list-your-business": {
+        "ar": {
+            "title": "اعرض شركتك أو مشروعك | سفير القابضة",
+            "description": "قدّم شركتك أو مشروعك للبيع أو الشراكة أو الاستثمار عبر سفير القابضة.",
+        },
+        "en": {
+            "title": "List Your Business | Safir Holding",
+            "description": "Offer your business or project for sale, partnership or investment through Safir Holding.",
+        },
+    },
+}
+
+
+def _breadcrumb_home(lang: str) -> tuple[str, str]:
+    label = "الرئيسية" if lang == "ar" else "Home"
+    return (label, C.PAGE_PATHS["home"][lang])
+
+
+def resolve_route(path: str) -> PageMeta | None:
+    """Resolve a public path to page metadata, or ``None`` if it is not a page.
+
+    Returns ``None`` for anything the website does not own -- the API, static
+    assets, the platform -- so the caller can fall through to the next handler.
+    """
+    path = path.rstrip("/") or "/"
+
+    # ---- home ----
+    if path in ("/", "/ar"):
+        lang = "ar" if path == "/ar" else "en"
+        copy = _PAGE_COPY["home"][lang]
+        return PageMeta(
+            route="home",
+            lang=lang,
+            title=copy["title"],
+            description=copy["description"],
+            canonical_path=C.PAGE_PATHS["home"][lang],
+            alternates={"en": C.PAGE_PATHS["home"]["en"], "ar": C.PAGE_PATHS["home"]["ar"]},
+        )
+
+    # ---- market/service ----
+    if path in _MARKET_SERVICE:
+        market, slug, lang = _MARKET_SERVICE[path]
+        service = C.service_def(slug)
+        market_meta = C.MARKET_CONTENT[market]["meta"][lang]
+        market_name = C.market_label(market, lang)
+        service_name = service["title"][lang]
+        title = (
+            f"{service_name} في {market_name} | سفير القابضة"
+            if lang == "ar"
+            else f"{service_name} in {market_name} | Safir Holding"
+        )
+        description = market_meta["description"]
+        return PageMeta(
+            route=f"market-service:{market}:{slug}",
+            lang=lang,
+            title=title,
+            description=description,
+            canonical_path=C.market_service_path(market, slug, lang),
+            alternates={
+                "en": C.market_service_path(market, slug, "en"),
+                "ar": C.market_service_path(market, slug, "ar"),
+            },
+            breadcrumbs=[
+                _breadcrumb_home(lang),
+                (C.PAGE_PATHS["services"][lang], C.PAGE_PATHS["services"][lang]),
+                (service_name, C.market_service_path(market, slug, lang)),
+            ],
+        )
+
+    # ---- top level ----
+    if path in _TOP_LEVEL:
+        key, lang = _TOP_LEVEL[path]
+        copy = _PAGE_COPY[key][lang]
+        return PageMeta(
+            route=key,
+            lang=lang,
+            title=copy["title"],
+            description=copy["description"],
+            canonical_path=C.PAGE_PATHS[key][lang],
+            alternates={"en": C.PAGE_PATHS[key]["en"], "ar": C.PAGE_PATHS[key]["ar"]},
+            breadcrumbs=[
+                _breadcrumb_home(lang),
+                (C.nav_label(key, lang), C.PAGE_PATHS[key][lang]),
+            ],
+        )
+
+    return None
+
+
+def not_found_meta(lang: str = "ar") -> PageMeta:
+    return PageMeta(
+        route="not-found",
+        lang=lang,
+        title="الصفحة غير موجودة | سفير القابضة" if lang == "ar" else "Page not found | Safir Holding",
+        description="",
+        canonical_path="/404",
+        robots="noindex, follow",
+    )

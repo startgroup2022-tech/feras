@@ -124,3 +124,13 @@ class AuditAction:
 
     # security
     ACCESS_DENIED = "security.access_denied"
+
+    # Phase 10: public website leads and opportunities
+    WEBSITE_LEAD_CREATED = "website_lead.created"
+    WEBSITE_LEAD_UPDATED = "website_lead.updated"
+    WEBSITE_LEAD_ASSIGNED = "website_lead.assigned"
+    WEBSITE_LEAD_STATUS_CHANGED = "website_lead.status_changed"
+    WEBSITE_LEAD_ATTACHMENT_ADDED = "website_lead.attachment_added"
+    WEBSITE_OPPORTUNITY_SUBMITTED = "website_opportunity.submitted"
+    WEBSITE_OPPORTUNITY_REVIEWED = "website_opportunity.reviewed"
+    WEBSITE_OPPORTUNITY_PUBLISHED = "website_opportunity.published"

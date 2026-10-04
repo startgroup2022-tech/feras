@@ -1229,6 +1229,7 @@
     "bi",
     "analytics",
     "inbox",
+    "leads",
     "admin",
   ];
   var NAV_PERM = {
@@ -1248,6 +1249,7 @@
       "analytics.compliance",
     ],
     inbox: ["notification.read_own"],
+    leads: ["website_lead.read"],
     admin: [
       "company.read",
       "ownership.read",
@@ -1330,6 +1332,7 @@
     if (view === "bi") return renderBi();
     if (view === "analytics") return renderAnalytics();
     if (view === "inbox") return renderInbox();
+    if (view === "leads") return renderLeads();
     if (view === "admin") return renderAdmin();
     return Promise.resolve();
   }
@@ -3395,6 +3398,262 @@
       });
     });
     return Promise.resolve();
+  }
+
+  // ---- website leads view ---------------------------------------------
+  var LEAD_SERVICE = {
+    company_formation: { ar: "تأسيس شركة", en: "Company formation" },
+    feasibility_study: { ar: "دراسة جدوى", en: "Feasibility study" },
+    opportunity_interest: { ar: "اهتمام بفرصة", en: "Opportunity interest" },
+    business_listing: { ar: "عرض شركة", en: "Business listing" },
+    investment: { ar: "استثمار", en: "Investment" },
+    general_contact: { ar: "تواصل عام", en: "General contact" },
+  };
+  var LEAD_MARKET = {
+    bahrain: { ar: "البحرين", en: "Bahrain" },
+    saudi: { ar: "السعودية", en: "Saudi Arabia" },
+  };
+  var LEAD_STATUS = {
+    new: { ar: "جديد", en: "New", cls: "rev" },
+    in_progress: { ar: "قيد المعالجة", en: "In progress", cls: "ok" },
+    contacted: { ar: "تم التواصل", en: "Contacted", cls: "ok" },
+    converted: { ar: "مُحوَّل", en: "Converted", cls: "ok" },
+    closed: { ar: "مغلق", en: "Closed", cls: "ok" },
+    rejected: { ar: "مرفوض", en: "Rejected", cls: "miss" },
+  };
+  var LEAD_PRIORITY = {
+    low: { ar: "منخفضة", en: "Low" },
+    normal: { ar: "عادية", en: "Normal" },
+    high: { ar: "مرتفعة", en: "High" },
+    urgent: { ar: "عاجلة", en: "Urgent" },
+  };
+
+  function leadLabel(map, value) {
+    return map[value] || { ar: value || "—", en: value || "—" };
+  }
+
+  function renderLeads() {
+    var host = byId("leadContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.leadBound) {
+      STATE.leadBound = true;
+      document.querySelectorAll("[data-lead-status]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-lead-status]").forEach(function (b) {
+            b.classList.remove("on");
+          });
+          btn.classList.add("on");
+          STATE.leadStatus = btn.getAttribute("data-lead-status") || "";
+          loadLeadList();
+        });
+      });
+    }
+    STATE.leadStatus = STATE.leadStatus || "";
+    host.innerHTML = loadingHtml();
+    return Promise.all([loadLeadStats(), loadLeadList()]);
+  }
+
+  function loadLeadStats() {
+    var host = byId("leadStats");
+    if (!host) return Promise.resolve();
+    if (!has("website_lead.read")) {
+      host.innerHTML = "";
+      return Promise.resolve();
+    }
+    return get("/api/v1/leads/stats")
+      .then(function (stats) {
+        STATE.leadStats = stats;
+        var byStatus = stats.by_status || {};
+        var byMarket = stats.by_market || {};
+        host.innerHTML =
+          '<div class="av-panel"><h3>' + dual("نظرة عامة", "Overview") + "</h3>" +
+          '<div class="av-grid cols-3">' +
+          '<div class="kv">' +
+          kv(dual("إجمالي الطلبات", "Total leads"), plainNum(stats.total)) +
+          kv(dual("طلبات جديدة", "New"), plainNum(byStatus.new || 0)) +
+          kv(dual("قيد المعالجة", "In progress"), plainNum(byStatus.in_progress || 0)) +
+          kv(dual("مغلقة", "Closed"), plainNum((byStatus.closed || 0) + (byStatus.converted || 0))) +
+          "</div>" +
+          '<div class="kv">' +
+          kv(dual("البحرين", "Bahrain"), plainNum(byMarket.bahrain || 0)) +
+          kv(dual("السعودية", "Saudi Arabia"), plainNum(byMarket.saudi || 0)) +
+          kv(dual("عروض مقدَّمة", "Listings submitted"), plainNum(stats.opportunities_submitted || 0)) +
+          kv(dual("عروض منشورة", "Listings published"), plainNum(stats.opportunities_published || 0)) +
+          "</div>" +
+          '<div class="kv">' +
+          Object.keys(stats.by_service || {})
+            .map(function (key) {
+              var label = leadLabel(LEAD_SERVICE, key);
+              return kv(dual(escapeHtml(label.ar), escapeHtml(label.en)), plainNum(stats.by_service[key]));
+            })
+            .join("") +
+          "</div>" +
+          "</div></div>";
+      })
+      .catch(function () {
+        host.innerHTML = "";
+      });
+  }
+
+  function loadLeadList() {
+    var host = byId("leadContent");
+    if (!host) return Promise.resolve();
+    var query = "/api/v1/leads?limit=50";
+    if (STATE.leadStatus) query += "&status=" + encodeURIComponent(STATE.leadStatus);
+    return get(query)
+      .then(function (res) {
+        var items = (res && res.items) || [];
+        if (!items.length) {
+          host.innerHTML =
+            '<div class="av-panel">' +
+            emptyHtml("لا توجد طلبات مطابقة.", "No matching leads.") +
+            "</div>";
+          return;
+        }
+        host.innerHTML =
+          '<div class="av-panel"><div class="av-list">' +
+          items.map(leadRow).join("") +
+          "</div></div>";
+        host.querySelectorAll("[data-lead]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openLead(parseInt(row.getAttribute("data-lead"), 10));
+          });
+        });
+      })
+      .catch(function (err) {
+        host.innerHTML = errorHtml(
+          STATE.lang === "ar" ? "تعذّر تحميل الطلبات." : "Could not load leads.",
+        );
+        handleLoadError(err);
+      });
+  }
+
+  function leadRow(lead) {
+    var service = leadLabel(LEAD_SERVICE, lead.service_type);
+    var market = leadLabel(LEAD_MARKET, lead.market);
+    var status = leadLabel(LEAD_STATUS, lead.status);
+    var priority = leadLabel(LEAD_PRIORITY, lead.priority);
+    return (
+      '<div class="av-row" data-lead="' + lead.id + '" style="flex-direction:column;align-items:stretch;gap:8px">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="grow"><div class="t">' +
+      escapeHtml(lead.full_name) +
+      (lead.company_name ? " · " + escapeHtml(lead.company_name) : "") +
+      "</div>" +
+      '<div class="s">' +
+      dual(escapeHtml(service.ar), escapeHtml(service.en)) +
+      " · " +
+      dual(escapeHtml(market.ar), escapeHtml(market.en)) +
+      " · " +
+      escapeHtml(lead.reference) +
+      "</div></div>" +
+      '<span class="status ' + (status.cls || "") + '"><i></i>' +
+      dual(escapeHtml(status.ar), escapeHtml(status.en)) +
+      "</span>" +
+      "</div>" +
+      '<div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--ink-400)">' +
+      "<span>" + dual("الأولوية", "Priority") + ": " + dual(escapeHtml(priority.ar), escapeHtml(priority.en)) + "</span>" +
+      "<span>" + dual("التوجيه", "Routed to") + ": " + escapeHtml(lead.routed_team || "—") + "</span>" +
+      "<span>" + fmtDateTime(lead.created_at) + "</span>" +
+      "</div></div>"
+    );
+  }
+
+  function openLead(id) {
+    return get("/api/v1/leads/" + id).then(function (lead) {
+      var payload = lead.payload || {};
+      var detailRows = Object.keys(payload)
+        .filter(function (k) { return payload[k] !== null && payload[k] !== ""; })
+        .map(function (k) {
+          return kv(escapeHtml(k), escapeHtml(String(payload[k])));
+        })
+        .join("");
+      var attribution = lead.attribution || {};
+      var attrRows = Object.keys(attribution)
+        .filter(function (k) { return attribution[k]; })
+        .map(function (k) {
+          return kv(escapeHtml(k), escapeHtml(String(attribution[k])));
+        })
+        .join("");
+      var service = leadLabel(LEAD_SERVICE, lead.service_type);
+      var market = leadLabel(LEAD_MARKET, lead.market);
+      var status = leadLabel(LEAD_STATUS, lead.status);
+      var priority = leadLabel(LEAD_PRIORITY, lead.priority);
+
+      var contact =
+        '<div class="kv">' +
+        kv(dual("الاسم", "Name"), escapeHtml(lead.full_name)) +
+        kv(dual("البريد", "Email"), escapeHtml(lead.email)) +
+        (lead.phone ? kv(dual("الهاتف", "Phone"), escapeHtml(lead.phone)) : "") +
+        (lead.nationality ? kv(dual("الجنسية", "Nationality"), escapeHtml(lead.nationality)) : "") +
+        kv(dual("السوق", "Market"), dual(escapeHtml(market.ar), escapeHtml(market.en))) +
+        kv(dual("الخدمة", "Service"), dual(escapeHtml(service.ar), escapeHtml(service.en))) +
+        kv(dual("الحالة", "Status"), dual(escapeHtml(status.ar), escapeHtml(status.en))) +
+        kv(dual("الأولوية", "Priority"), dual(escapeHtml(priority.ar), escapeHtml(priority.en))) +
+        kv(dual("التوجيه", "Routed to"), escapeHtml(lead.routed_team || "—")) +
+        kv(dual("التاريخ", "Created"), fmtDateTime(lead.created_at)) +
+        "</div>";
+
+      var body =
+        contact +
+        (detailRows
+          ? '<h3 style="margin-top:16px">' + dual("تفاصيل الطلب", "Request details") + '</h3><div class="kv">' + detailRows + "</div>"
+          : "") +
+        (attrRows
+          ? '<h3 style="margin-top:16px">' + dual("مصدر الحملة", "Attribution") + '</h3><div class="kv">' + attrRows + "</div>"
+          : "") +
+        (lead.message
+          ? '<h3 style="margin-top:16px">' + dual("رسالة", "Message") + "</h3><p>" + escapeHtml(lead.message) + "</p>"
+          : "") +
+        (has("website_lead.manage")
+          ? '<h3 style="margin-top:16px">' + dual("تحديث الطلب", "Update lead") + "</h3>" +
+            '<div class="modal-foot" style="border-radius:12px;border:1px solid var(--line-2)">' +
+            '<select id="leadStatusSel">' +
+            Object.keys(LEAD_STATUS)
+              .map(function (key) {
+                var l = LEAD_STATUS[key];
+                return '<option value="' + key + '"' + (key === lead.status ? " selected" : "") + ">" + l.ar + " / " + l.en + "</option>";
+              })
+              .join("") +
+            "</select>" +
+            '<select id="leadPriSel">' +
+            Object.keys(LEAD_PRIORITY)
+              .map(function (key) {
+                var l = LEAD_PRIORITY[key];
+                return '<option value="' + key + '"' + (key === lead.priority ? " selected" : "") + ">" + l.ar + " / " + l.en + "</option>";
+              })
+              .join("") +
+            "</select>" +
+            '<button class="btn-solid" id="leadSave">' + dual("حفظ", "Save") + "</button>" +
+            "</div>"
+          : "");
+
+      openModal({
+        title: escapeHtml(lead.full_name) + " · " + escapeHtml(lead.reference),
+        body: body,
+      });
+
+      var saveBtn = byId("leadSave");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+          var statusSel = byId("leadStatusSel");
+          var priSel = byId("leadPriSel");
+          var payloadOut = {};
+          if (statusSel) payloadOut.status = statusSel.value;
+          if (priSel) payloadOut.priority = priSel.value;
+          patch("/api/v1/leads/" + id, payloadOut)
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم تحديث الطلب." : "Lead updated.", "ok");
+              closeModal();
+              loadLeadList();
+              loadLeadStats();
+            })
+            .catch(function () {
+              toast(STATE.lang === "ar" ? "تعذّر التحديث." : "Update failed.", "err");
+            });
+        });
+      }
+    });
   }
 
   function refreshNotifications() {

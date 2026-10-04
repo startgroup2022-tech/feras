@@ -49,6 +49,9 @@ from backend.db.models import (  # noqa: E402
     UserCompanyAccess,
     WebhookDelivery,
     WebhookEndpoint,
+    WebsiteLead,
+    WebsiteLeadAttachment,
+    WebsiteOpportunity,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStep,
@@ -88,6 +91,9 @@ def _clean_data(_database):
         # before companies. Custom roles created by a test are removed too;
         # the bootstrap catalogue is re-synced just after.
         for model in (
+            WebsiteLeadAttachment,
+            WebsiteOpportunity,
+            WebsiteLead,
             WebhookDelivery,
             WebhookEndpoint,
             Notification,

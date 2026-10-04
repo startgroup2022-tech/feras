@@ -1,0 +1,946 @@
+"""Server-side HTML rendering for the public website.
+
+Pages are rendered on the server so every route is a real, crawlable document
+with its own title, description, canonical and hreflang tags -- a JavaScript
+single-page app would make the market/service pages far weaker SEO assets.
+
+The renderer is deliberately simple: small functions returning HTML strings,
+composed per route. Every interpolated value passes through :func:`e`
+(``html.escape``) so no content -- including a database-sourced opportunity
+title -- can inject markup.
+
+Arabic is the default language and RTL the default direction; English pages
+render with ``dir="ltr"``. The two are separate URLs, not a client-side toggle,
+which is what makes the hreflang pairing meaningful.
+"""
+
+from __future__ import annotations
+
+import html
+
+from backend.website import content as C
+from backend.website import seo
+from backend.website.content import PageMeta
+
+BRAND_AR = "سفير القابضة"
+BRAND_EN = "Safir Holding"
+
+
+def e(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def _t(ar: str, en: str, lang: str) -> str:
+    return ar if lang == "ar" else en
+
+
+def _brand(lang: str) -> str:
+    return _t(BRAND_AR, BRAND_EN, lang)
+
+
+# --------------------------------------------------------------------------
+# shell
+# --------------------------------------------------------------------------
+def _nav_html(meta: PageMeta) -> str:
+    lang = meta.lang
+    links = []
+    for item in C.NAV:
+        path = item["path"] if lang == "en" else item["path_ar"]
+        active = ""
+        if item["key"] == meta.route or (
+            meta.route.startswith("market-service") and item["key"] == "services"
+        ):
+            active = ' aria-current="page" class="is-active"'
+        links.append(
+            f'<a href="{e(path)}"{active}>{e(item["label"][lang])}</a>'
+        )
+
+    # Language switch links to the same page in the other language.
+    other = "en" if lang == "ar" else "ar"
+    other_path = meta.alternates.get(other) or C.PAGE_PATHS["home"][other]
+    switch_label = "English" if lang == "ar" else "العربية"
+    switch_href = other_path
+
+    return f"""
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(_brand(lang))}">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" focusable="false">
+          <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
+          <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
+          <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name">{e(_brand(lang))}</span>
+        <span class="brand-sub">{e(_t("بوابة البحرين والسعودية", "Bahrain & Saudi Gateway", lang))}</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-expanded="false"
+            aria-controls="primary-nav" data-nav-toggle>
+      <span class="sr-only">{e(_t("القائمة", "Menu", lang))}</span>
+      <span class="nav-toggle-bars" aria-hidden="true"></span>
+    </button>
+
+    <nav class="site-nav" id="primary-nav" aria-label="{e(_t('التنقل الرئيسي', 'Main navigation', lang))}" data-nav>
+      {' '.join(links)}
+      <a class="nav-lang" href="{e(switch_href)}" hreflang="{e(other)}" lang="{e(other)}">{e(switch_label)}</a>
+    </nav>
+  </div>
+</header>"""
+
+
+def _footer_html(meta: PageMeta) -> str:
+    lang = meta.lang
+    nav_links = "".join(
+        f'<li><a href="{e(item["path"] if lang == "en" else item["path_ar"])}">'
+        f'{e(item["label"][lang])}</a></li>'
+        for item in C.NAV
+    )
+    return f"""
+<footer class="site-footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <div class="brand-name">{e(_brand(lang))}</div>
+      <p class="footer-tag">{e(_t("بوابتك للأعمال والاستثمار في البحرين والسعودية",
+                                   "Your business and investment gateway in Bahrain and Saudi Arabia", lang))}</p>
+    </div>
+    <nav class="footer-nav" aria-label="{e(_t('روابط التذييل', 'Footer links', lang))}">
+      <ul>{nav_links}</ul>
+    </nav>
+  </div>
+  <div class="container footer-legal">
+    <p>&copy; {e(_t('سفير القابضة', 'Safir Holding', lang))} — {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
+    <a href="{e('/' if lang == 'en' else '/ar')}">{e(_t('الرئيسية', 'Home', lang))}</a>
+  </div>
+</footer>"""
+
+
+def render_page(meta: PageMeta, body: str) -> str:
+    """Compose a full HTML document for a resolved route."""
+    lang = meta.lang
+    direction = "rtl" if lang == "ar" else "ltr"
+    jsonld = [seo.organization_jsonld(lang)]
+    crumbs = seo.breadcrumb_jsonld(meta.breadcrumbs)
+    if crumbs:
+        jsonld.append(crumbs)
+    jsonld_html = "".join(seo.jsonld_script(node) for node in jsonld)
+
+    return f"""<!DOCTYPE html>
+<html lang="{e(lang)}" dir="{e(direction)}">
+<head>
+{seo.render_meta_tags(meta)}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/website/assets/styles.css">
+{jsonld_html}
+</head>
+<body class="site lang-{e(lang)}">
+<a class="skip-link" href="#main">{e(_t('تخطَّ إلى المحتوى', 'Skip to content', lang))}</a>
+{_nav_html(meta)}
+<main id="main" tabindex="-1">
+{body}
+</main>
+{_footer_html(meta)}
+<noscript>
+  <div class="container"><p class="noscript-note">{e(_t(
+    'يتطلب إرسال النماذج تفعيل JavaScript. يمكنك التواصل معنا عبر بيانات التواصل في صفحة «تواصل».',
+    'Submitting forms requires JavaScript. You can reach us using the details on the Contact page.',
+    lang))}</p></div>
+</noscript>
+<script src="/website/assets/app.js" defer></script>
+</body>
+</html>"""
+
+
+# --------------------------------------------------------------------------
+# shared building blocks
+# --------------------------------------------------------------------------
+def _market_choice(lang: str, service_slug: str, heading: str | None = None) -> str:
+    """The two market buttons shown inside every service."""
+    cards = []
+    for market in C.MARKETS:
+        label = C.market_label(market, lang)
+        path = C.market_service_path(market, service_slug, lang)
+        flag = "🇧🇭" if market == "bahrain" else "🇸🇦"
+        cards.append(
+            f"""<a class="market-card" href="{e(path)}">
+  <span class="market-flag" aria-hidden="true">{flag}</span>
+  <span class="market-name">{e(label)}</span>
+  <span class="market-cta">{e(_t('ابدأ الآن', 'Get started', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+    title = heading or _t("اختر السوق", "Choose your market", lang)
+    return f"""
+<section class="section market-choice">
+  <div class="container">
+    <h2 class="section-title">{e(title)}</h2>
+    <div class="market-grid">{''.join(cards)}</div>
+  </div>
+</section>"""
+
+
+def _service_cards(lang: str) -> str:
+    cards = []
+    for slug, service in C.SERVICES.items():
+        # Each card leads into the market choice for that service, so the
+        # visitor always picks a market explicitly.
+        target = C.PAGE_PATHS["services"][lang] + "#" + service["slug"]
+        cards.append(
+            f"""<a class="service-card" href="{e(target)}" data-service="{e(slug)}">
+  <span class="service-icon" aria-hidden="true">{_icon(service['icon'])}</span>
+  <h3 class="service-title">{e(service['title'][lang])}</h3>
+  <p class="service-blurb">{e(service['blurb'][lang])}</p>
+  <span class="service-link">{e(_t('اختر السوق', 'Choose market', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+    return f'<div class="service-grid">{"".join(cards)}</div>'
+
+
+def _icon(name: str) -> str:
+    icons = {
+        "opportunities": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M3 7h18v13H3z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+            '<path d="M3 12h18"/></svg>'
+        ),
+        "formation": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M3 21h18"/><path d="M6 21V8l6-5 6 5v13"/><path d="M10 21v-5h4v5"/></svg>'
+        ),
+        "feasibility": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/>'
+            '<path d="M8 13h8"/><path d="M8 17h5"/></svg>'
+        ),
+        "investment": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>'
+        ),
+        "listing": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M12 5v14"/><path d="M5 12h14"/></svg>'
+        ),
+    }
+    return icons.get(name, "")
+
+
+# --------------------------------------------------------------------------
+# home
+# --------------------------------------------------------------------------
+def _home_body(lang: str) -> str:
+    journeys = [
+        ("opportunities", C.SERVICES["opportunities"], "opportunities"),
+        ("company-formation", C.SERVICES["company-formation"], "formation"),
+        ("feasibility-study", C.SERVICES["feasibility-study"], "feasibility"),
+        ("list-your-business", None, "listing"),
+    ]
+    cards = []
+    for slug, service, icon in journeys:
+        if service is None:
+            title = _t("اعرض فرصة / شركة", "List Your Business / Opportunity", lang)
+            blurb = _t(
+                "قدّم مشروعك أو شركتك للشراكة أو الاستحواذ.",
+                "Offer your project or company for partnership or acquisition.",
+                lang,
+            )
+            href = C.PAGE_PATHS["list-your-business"][lang]
+        else:
+            title = service["title"][lang]
+            blurb = service["blurb"][lang]
+            href = C.PAGE_PATHS["services"][lang] + "#" + service["slug"]
+        cards.append(
+            f"""<a class="journey-card" href="{e(href)}">
+  <span class="journey-icon" aria-hidden="true">{_icon(icon)}</span>
+  <h3>{e(title)}</h3>
+  <p>{e(blurb)}</p>
+  <span class="journey-cta">{e(_t('ابدأ', 'Start', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+
+    return f"""
+<section class="hero">
+  <div class="container hero-inner">
+    <p class="hero-eyebrow">{e(_t('بوابة مؤسسية', 'Corporate gateway', lang))}</p>
+    <h1 class="hero-title">{e(_brand(lang))}</h1>
+    <p class="hero-tagline">{e(_t('بوابتك للأعمال والاستثمار<br>في البحرين والسعودية',
+                                    'Your business and investment gateway<br>in Bahrain and Saudi Arabia', lang))}</p>
+    <p class="hero-values">{e(_t('فرص • تأسيس شركات • دراسات جدوى • شراكات',
+                                 'Opportunities • Company Formation • Feasibility Studies • Partnerships', lang))}</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#choose">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('استعرض الفرص', 'Browse opportunities', lang))}</a>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="choose">
+  <div class="container">
+    <h2 class="section-title">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</h2>
+    <p class="section-sub">{e(_t('اختر الخدمة، ثم السوق — ونحن نتولى التوجيه داخليًا.',
+                                 'Choose a service, then a market — we handle the routing internally.', lang))}</p>
+    <div class="journey-grid">{''.join(cards)}</div>
+  </div>
+</section>
+
+{_market_choice(lang, 'company-formation', _t('اختر السوق لخدماتنا', 'Choose your market', lang))}
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">{e(_t('كيف تعمل البوابة', 'How the gateway works', lang))}</h2>
+    <ol class="steps">
+      <li>{e(_t('اختر احتياجك', 'Choose your need', lang))}</li>
+      <li>{e(_t('حدّد السوق: البحرين أو السعودية', 'Select the market: Bahrain or Saudi Arabia', lang))}</li>
+      <li>{e(_t('أكمل النموذج المناسب', 'Complete the relevant form', lang))}</li>
+      <li>{e(_t('تتواصل معك الجهة المختصة', 'The responsible team contacts you', lang))}</li>
+    </ol>
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# services hub
+# --------------------------------------------------------------------------
+def _services_body(lang: str) -> str:
+    blocks = []
+    for slug, service in C.SERVICES.items():
+        if service["form"] is None:
+            # Opportunities is a listing, not a form: link to its market pages.
+            market_cards = "".join(
+                f'<a class="market-card compact" href="{e(C.market_service_path(market, slug, lang))}">'
+                f'<span class="market-name">{e(C.market_label(market, lang))}</span>'
+                f'<span class="market-cta">{e(_t("استعرض", "Browse", lang))} <span aria-hidden="true">←</span></span></a>'
+                for market in C.MARKETS
+            )
+            market_block = f'<div class="market-grid">{market_cards}</div>'
+        else:
+            market_block = _market_choice(lang, slug, _t('اختر السوق', 'Choose your market', lang))
+            # _market_choice wraps in a section; unwrap its inner grid for
+            # embedding inside this service block.
+            market_block = market_block.split('<div class="market-grid">', 1)[1]
+            market_block = '<div class="market-grid">' + market_block
+        blocks.append(
+            f"""<article class="service-block" id="{e(service['slug'])}">
+  <header class="service-block-head">
+    <span class="service-icon" aria-hidden="true">{_icon(service['icon'])}</span>
+    <div>
+      <h2>{e(service['title'][lang])}</h2>
+      <p>{e(service['blurb'][lang])}</p>
+    </div>
+  </header>
+  {market_block}
+</article>"""
+        )
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('خدمات الأعمال', 'Business Services', lang))}</h1>
+    <p>{e(_t('خدمة واحدة في الواجهة — ومسار مخصص لكل سوق.',
+             'One service on the surface — a dedicated path for each market.', lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container">
+    {''.join(blocks)}
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# market / service page
+# --------------------------------------------------------------------------
+def _market_service_body(lang: str, market: str, slug: str) -> str:
+    service = C.service_def(slug)
+    market_content = C.MARKET_CONTENT[market]
+    market_name = C.market_label(market, lang)
+    highlights = "".join(
+        f"<li>{e(item)}</li>" for item in market_content["highlights"][lang]
+    )
+    other = "en" if lang == "ar" else "ar"
+    other_path = C.market_service_path(market, slug, other)
+
+    # The form for this page. Opportunities/investment use the interest form.
+    form_key = service["form"]
+    if form_key in (None, "opportunity-interest"):
+        # No listing form here: opportunities pages show the live listings and
+        # a link to the interest flow; investment pages show the interest form.
+        if slug == "opportunities":
+            body_section = _opportunities_section(lang, market)
+        else:
+            body_section = _form_section(lang, "opportunity-interest", market, service)
+    else:
+        body_section = _form_section(lang, form_key, market, service)
+
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <nav class="crumbs" aria-label="{e(_t('مسار التنقل', 'Breadcrumb', lang))}">
+      <a href="{e(C.PAGE_PATHS['home'][lang])}">{e(_t('الرئيسية', 'Home', lang))}</a>
+      <span aria-hidden="true">/</span>
+      <a href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('خدمات الأعمال', 'Business Services', lang))}</a>
+      <span aria-hidden="true">/</span>
+      <span>{e(market_name)}</span>
+    </nav>
+    <h1>{e(service['title'][lang])} — {e(market_name)}</h1>
+    <p class="page-hero-sub">{e(market_content['intro'][lang])}</p>
+    <div class="page-hero-actions">
+      <a class="btn btn-primary" href="#form">{e(_t('ابدأ الطلب', 'Start your request', lang))}</a>
+      <a class="btn btn-ghost" href="{e(other_path)}" hreflang="{e(other)}" lang="{e(other)}">
+        {e(_t('English', 'العربية', lang))}
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container two-col">
+    <div>
+      <h2 class="section-title">{e(_t('معلومات السوق', 'Market information', lang))}</h2>
+      <ul class="highlights">{highlights}</ul>
+    </div>
+    <div class="aside-card">
+      <h3>{e(_t('ماذا يحدث بعد الإرسال؟', 'What happens after you submit?', lang))}</h3>
+      <ol class="mini-steps">
+        <li>{e(_t('نسجّل طلبك ونحدد السوق والخدمة تلقائيًا.', 'We record your request and classify market and service automatically.', lang))}</li>
+        <li>{e(_t('يوجّه الطلب داخليًا إلى الجهة المختصة.', 'The request is routed internally to the responsible team.', lang))}</li>
+        <li>{e(_t('يتواصل معك فريقنا لمتابعة التفاصيل.', 'Our team contacts you to follow up on the details.', lang))}</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+{body_section}"""
+
+
+# --------------------------------------------------------------------------
+# forms
+# --------------------------------------------------------------------------
+_FORM_LABELS: dict[str, dict[str, str]] = {
+    "full_name": {"ar": "الاسم", "en": "Full name"},
+    "email": {"ar": "البريد الإلكتروني", "en": "Email"},
+    "phone": {"ar": "رقم التواصل", "en": "Contact number"},
+    "nationality": {"ar": "الجنسية", "en": "Nationality"},
+    "company_name": {"ar": "اسم الشركة (إن وُجد)", "en": "Company name (if any)"},
+    "message": {"ar": "ملاحظات إضافية", "en": "Additional notes"},
+    "desired_activity": {"ar": "النشاط المطلوب", "en": "Desired activity"},
+    "number_of_partners": {"ar": "عدد الشركاء", "en": "Number of partners"},
+    "investor_type": {"ar": "نوع المستثمر", "en": "Investor type"},
+    "needs_office": {"ar": "هل تحتاج عنوانًا / مكتبًا؟", "en": "Do you need an address / office?"},
+    "investor_residency": {"ar": "مستثمر محلي / أجنبي", "en": "Local / foreign investor"},
+    "legal_entity": {"ar": "نوع الكيان المطلوب إن كان معروفًا", "en": "Desired legal entity (if known)"},
+    "target_city": {"ar": "المدينة المستهدفة", "en": "Target city"},
+    "project_idea": {"ar": "فكرة المشروع", "en": "Project idea"},
+    "sector": {"ar": "القطاع", "en": "Sector"},
+    "project_location": {"ar": "موقع المشروع إن وُجد", "en": "Project location (if any)"},
+    "approximate_capital": {"ar": "رأس المال التقريبي", "en": "Approximate capital"},
+    "project_stage": {"ar": "هل المشروع جديد أم قائم؟", "en": "New or existing project?"},
+    "study_type": {"ar": "نوع الدراسة المطلوبة", "en": "Type of study required"},
+    "investor_profile": {"ar": "نبذة عن المستثمر", "en": "Investor profile"},
+    "subject": {"ar": "الموضوع", "en": "Subject"},
+    "inquiry_type": {"ar": "نوع الاستفسار", "en": "Inquiry type"},
+    "consent": {"ar": "أوافق على معالجة بياناتي وفقًا لإشعار الخصوصية.", "en": "I consent to my data being processed in line with the privacy notice."},
+    "honeypot": {"ar": "اترك هذا الحقل فارغًا", "en": "Leave this field empty"},
+    "submit": {"ar": "إرسال", "en": "Submit"},
+}
+
+
+def _label(key: str, lang: str) -> str:
+    return _FORM_LABELS.get(key, {}).get(lang, key)
+
+
+def _field(
+    key: str,
+    lang: str,
+    *,
+    kind: str = "text",
+    required: bool = False,
+    options: list[tuple[str, str]] | None = None,
+    textarea: bool = False,
+    full: bool = False,
+) -> str:
+    label = _label(key, lang)
+    req = ' required aria-required="true"' if required else ""
+    req_mark = ' <span class="req" aria-hidden="true">*</span>' if required else ""
+    wrapper = ' class="field field-full"' if full else ' class="field"'
+    fid = f"f-{key}"
+    err_id = f"e-{key}"
+
+    if textarea:
+        control = (
+            f'<textarea id="{e(fid)}" name="{e(key)}"{req} rows="4" '
+            f'aria-describedby="{e(err_id)}"></textarea>'
+        )
+    elif kind == "select" and options:
+        opts = "".join(
+            f'<option value="{e(value)}">{e(text)}</option>' for value, text in options
+        )
+        control = (
+            f'<select id="{e(fid)}" name="{e(key)}"{req} aria-describedby="{e(err_id)}">'
+            f'<option value="" selected disabled>{e(_t("اختر", "Select", lang))}</option>{opts}</select>'
+        )
+    elif kind == "checkbox":
+        return (
+            f'<div class="field field-check">'
+            f'<input type="checkbox" id="{e(fid)}" name="{e(key)}"{req} aria-describedby="{e(err_id)}">'
+            f'<label for="{e(fid)}">{e(label)}{req_mark}</label>'
+            f'<p class="field-error" id="{e(err_id)}" role="alert" hidden></p></div>'
+        )
+    else:
+        control = (
+            f'<input type="{e(kind)}" id="{e(fid)}" name="{e(key)}"{req} '
+            f'aria-describedby="{e(err_id)}" autocomplete="off">'
+        )
+
+    return (
+        f'<div{wrapper}><label for="{e(fid)}">{e(label)}{req_mark}</label>'
+        f'{control}<p class="field-error" id="{e(err_id)}" role="alert" hidden></p></div>'
+    )
+
+
+def _form_section(lang: str, form_key: str, market: str, service: dict | None) -> str:
+    """Render the correct form for a market/service page."""
+    market_name = C.market_label(market, lang)
+    action = f"/api/v1/public/leads/{form_key}"
+    title = _t("أكمل الطلب", "Complete your request", lang)
+
+    fields: list[str] = []
+    if form_key == "company-formation":
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("nationality", lang, required=True),
+            _field("desired_activity", lang, required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("phone", lang, kind="tel", required=True),
+        ]
+        if market == "bahrain":
+            fields += [
+                _field("number_of_partners", lang, kind="number", required=True),
+                _field("investor_type", lang, kind="select", required=True, options=[
+                    ("individual", _t("فرد", "Individual", lang)),
+                    ("company", _t("شركة", "Company", lang)),
+                ]),
+                _field("needs_office", lang, kind="select", options=[
+                    ("yes", _t("نعم", "Yes", lang)),
+                    ("no", _t("لا", "No", lang)),
+                ]),
+            ]
+        else:
+            fields += [
+                _field("investor_residency", lang, kind="select", required=True, options=[
+                    ("local", _t("محلي", "Local", lang)),
+                    ("foreign", _t("أجنبي", "Foreign", lang)),
+                ]),
+                _field("legal_entity", lang),
+                _field("target_city", lang, required=True),
+            ]
+    elif form_key == "feasibility":
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("phone", lang, kind="tel", required=True),
+            _field("project_idea", lang, required=True, textarea=True, full=True),
+            _field("sector", lang, required=True),
+            _field("project_stage", lang, kind="select", required=True, options=[
+                ("new", _t("مشروع جديد", "New project", lang)),
+                ("existing", _t("مشروع قائم", "Existing project", lang)),
+            ]),
+            _field("study_type", lang, kind="select", required=True, options=[
+                ("feasibility", _t("دراسة جدوى", "Feasibility", lang)),
+                ("market", _t("دراسة سوق", "Market", lang)),
+                ("financial", _t("دراسة مالية", "Financial", lang)),
+                ("technical", _t("دراسة فنية", "Technical", lang)),
+            ]),
+            _field("approximate_capital", lang, kind="number"),
+        ]
+        if market == "saudi":
+            fields.append(_field("target_city", lang, required=True))
+        else:
+            fields.append(_field("project_location", lang))
+    elif form_key == "opportunity-interest":
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("phone", lang, kind="tel", required=True),
+            _field("company_name", lang),
+            _field("investor_profile", lang, textarea=True, full=True),
+            _field("message", lang, textarea=True, full=True),
+        ]
+    elif form_key == "contact":
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("phone", lang, kind="tel"),
+            _field("inquiry_type", lang, kind="select", required=True, options=[
+                ("general", _t("استفسار عام", "General inquiry", lang)),
+                ("company_formation", _t("تأسيس شركة", "Company formation", lang)),
+                ("feasibility", _t("دراسة جدوى", "Feasibility study", lang)),
+                ("opportunity", _t("فرصة أو مشروع", "Opportunity or project", lang)),
+                ("partnership", _t("شراكة", "Partnership", lang)),
+                ("investment", _t("استثمار", "Investment", lang)),
+                ("careers", _t("وظائف", "Careers", lang)),
+                ("media", _t("إعلام", "Media", lang)),
+            ]),
+            _field("subject", lang),
+            _field("message", lang, required=True, textarea=True, full=True),
+        ]
+
+    hidden = (
+        f'<input type="hidden" name="market" value="{e(market)}">'
+        f'<input type="hidden" name="locale" value="{e(lang)}">'
+        f'<input type="hidden" name="service_type" value="{e(form_key)}">'
+    )
+    # Honeypot: visually and programmatically hidden from real users.
+    honeypot = (
+        f'<div class="hp" aria-hidden="true">'
+        f'<label for="f-honeypot">{e(_label("honeypot", lang))}</label>'
+        f'<input type="text" id="f-honeypot" name="honeypot" tabindex="-1" autocomplete="off">'
+        f"</div>"
+    )
+
+    context_note = _t(
+        f"سيُسجَّل هذا الطلب تلقائيًا ضمن سوق {market_name}.",
+        f"This request will automatically be recorded under the {market_name} market.",
+        lang,
+    )
+
+    return f"""
+<section class="section section-alt" id="form">
+  <div class="container form-wrap">
+    <h2 class="section-title">{e(title)}</h2>
+    <p class="form-note">{e(context_note)}</p>
+    <form class="site-form" data-form="{e(form_key)}" action="{e(action)}" method="post" novalidate>
+      {hidden}
+      <div class="field-grid">{''.join(fields)}</div>
+      {_field("consent", lang, kind="checkbox", required=True)}
+      {honeypot}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" data-submit>{e(_label("submit", lang))}</button>
+        <p class="form-status" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# opportunities
+# --------------------------------------------------------------------------
+def _opportunities_section(lang: str, market: str) -> str:
+    market_name = C.market_label(market, lang)
+    return f"""
+<section class="section" id="opportunities">
+  <div class="container">
+    <h2 class="section-title">{e(_t('الفرص المتاحة', 'Available opportunities', lang))}</h2>
+    <p class="section-sub">{e(_t('لا نعرض معلومات سرية. التفاصيل الحساسة تُشارك بعد تسجيل الاهتمام ومراجعة الطرف المختص.',
+                                 'We do not display confidential information. Sensitive details are shared after interest is registered and reviewed by the responsible party.', lang))}</p>
+    <div class="opp-list" data-opportunities data-market="{e(market)}">
+      <p class="state">{e(_t('جارٍ تحميل الفرص…', 'Loading opportunities…', lang))}</p>
+    </div>
+    <div class="opp-interest">
+      <a class="btn btn-primary" href="#form">{e(_t('أنا مهتم — اطلب التفاصيل', "I'm interested — request details", lang))}</a>
+      <p class="muted">{e(_t(f'سيتم تسجيل اهتمامك ضمن سوق {market_name}.',
+                               f'Your interest will be recorded under the {market_name} market.', lang))}</p>
+    </div>
+  </div>
+</section>
+{_form_section(lang, "opportunity-interest", market, None)}"""
+
+
+def _opportunities_body(lang: str) -> str:
+    cards = []
+    for market in C.MARKETS:
+        label = C.market_label(market, lang)
+        path = C.market_service_path(market, "opportunities", lang)
+        flag = "🇧🇭" if market == "bahrain" else "🇸🇦"
+        cards.append(
+            f"""<a class="market-card" href="{e(path)}">
+  <span class="market-flag" aria-hidden="true">{flag}</span>
+  <span class="market-name">{e(label)}</span>
+  <span class="market-cta">{e(_t('استعرض الفرص', 'Browse opportunities', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('الفرص والمشاريع', 'Opportunities & Projects', lang))}</h1>
+    <p>{e(_t('يدخل المستثمر أولًا ثم يختار السوق.', 'The investor starts here, then chooses a market.', lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">{e(_t('اختر السوق', 'Choose your market', lang))}</h2>
+    <div class="market-grid">{''.join(cards)}</div>
+    <p class="muted center">{e(_t('لا نعرض معلومات سرية علنًا. التفاصيل الحساسة تُشارك بعد تسجيل الاهتمام ومراجعة الطرف المختص.',
+                                   'We do not display confidential information publicly. Sensitive details are shared after interest is registered and reviewed by the responsible party.', lang))}</p>
+  </div>
+</section>
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">{e(_t('لديك فرصة أو شركة للبيع؟', 'Have an opportunity or business to sell?', lang))}</h2>
+    <p class="section-sub">{e(_t('اعرض شركتك أو مشروعك على القابضة للبيع أو الشراكة أو الاستثمار.',
+                                 'Offer your business or project to the Holding for sale, partnership or investment.', lang))}</p>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض فرصة / شركة', 'List your business / opportunity', lang))}</a>
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# list your business (multi-step)
+# --------------------------------------------------------------------------
+def _list_body(lang: str) -> str:
+    steps = [
+        _t("الدولة", "Country", lang),
+        _t("صفة مقدم الطلب", "Applicant capacity", lang),
+        _t("نوع الفرصة", "Opportunity type", lang),
+        _t("بيانات النشاط", "Business details", lang),
+        _t("المطلوب", "Desired outcome", lang),
+        _t("إرسال", "Submit", lang),
+    ]
+    progress = "".join(
+        f'<li data-step="{i + 1}"><span class="step-num">{i + 1}</span><span class="step-label">{e(label)}</span></li>'
+        for i, label in enumerate(steps)
+    )
+
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('اعرض شركتك أو مشروعك', 'List your business or project', lang))}</h1>
+    <p>{e(_t('مسار لجذب المستثمرين وأصحاب الشركات والوسطاء إلى القابضة.',
+             'A path bringing investors, business owners and intermediaries to the Holding.', lang))}</p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container form-wrap">
+    <ol class="progress" aria-label="{e(_t('خطوات التقديم', 'Submission steps', lang))}">{progress}</ol>
+
+    <form class="site-form listing-form" data-form="business-listing"
+          action="/api/v1/public/leads/business-listing" method="post" novalidate>
+      <input type="hidden" name="locale" value="{e(lang)}">
+
+      <fieldset class="form-step" data-step="1">
+        <legend>{e(_t('الدولة', 'Country', lang))}</legend>
+        <div class="radio-row">
+          <label class="radio-card"><input type="radio" name="market" value="bahrain" required>
+            <span>🇧🇭 {e(C.market_label('bahrain', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="market" value="saudi" required>
+            <span>🇸🇦 {e(C.market_label('saudi', lang))}</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-step" data-step="2" hidden>
+        <legend>{e(_t('صفة مقدم الطلب', 'Applicant capacity', lang))}</legend>
+        <div class="radio-row">
+          <label class="radio-card"><input type="radio" name="applicant_capacity" value="owner" required>
+            <span>{e(_t('مالك', 'Owner', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="applicant_capacity" value="representative" required>
+            <span>{e(_t('ممثل', 'Representative', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="applicant_capacity" value="advisor" required>
+            <span>{e(_t('مستشار / وسيط', 'Advisor / Broker', lang))}</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-step" data-step="3" hidden>
+        <legend>{e(_t('نوع الفرصة', 'Opportunity type', lang))}</legend>
+        <div class="radio-row">
+          <label class="radio-card"><input type="radio" name="opportunity_type" value="full_sale" required>
+            <span>{e(_t('بيع كامل', 'Full Sale', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="opportunity_type" value="partial_sale" required>
+            <span>{e(_t('بيع حصة', 'Partial Sale', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="opportunity_type" value="strategic_partner" required>
+            <span>{e(_t('شريك استراتيجي', 'Strategic Partner', lang))}</span></label>
+          <label class="radio-card"><input type="radio" name="opportunity_type" value="investment" required>
+            <span>{e(_t('استثمار', 'Investment', lang))}</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-step" data-step="4" hidden>
+        <legend>{e(_t('بيانات النشاط', 'Business details', lang))}</legend>
+        <div class="field-grid">
+          {_field("full_name", lang, required=True)}
+          {_field("company_name", lang)}
+          {_field("sector", lang)}
+          {_field("email", lang, kind="email", required=True)}
+          {_field("phone", lang, kind="tel", required=True)}
+          {_field("description", lang, required=True, textarea=True, full=True)}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-step" data-step="5" hidden>
+        <legend>{e(_t('المطلوب', 'Desired outcome', lang))}</legend>
+        <div class="field-grid">
+          {_field("reason_for_listing", lang, textarea=True, full=True)}
+          {_field("desired_outcome", lang, textarea=True, full=True)}
+        </div>
+      </fieldset>
+
+      <fieldset class="form-step" data-step="6" hidden>
+        <legend>{e(_t('المراجعة والإرسال', 'Review & submit', lang))}</legend>
+        <div class="review-box" data-review></div>
+        {_field("consent", lang, kind="checkbox", required=True)}
+        <div class="hp" aria-hidden="true">
+          <label for="f-honeypot">{e(_label("honeypot", lang))}</label>
+          <input type="text" id="f-honeypot" name="honeypot" tabindex="-1" autocomplete="off">
+        </div>
+      </fieldset>
+
+      <div class="form-nav">
+        <button type="button" class="btn btn-ghost" data-prev hidden>{e(_t('السابق', 'Back', lang))}</button>
+        <button type="button" class="btn btn-primary" data-next>{e(_t('التالي', 'Next', lang))}</button>
+        <button type="submit" class="btn btn-primary" data-submit hidden>{e(_label("submit", lang))}</button>
+      </div>
+      <p class="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# group / about / contact
+# --------------------------------------------------------------------------
+def _group_body(lang: str) -> str:
+    cards = []
+    for company in C.GROUP_COMPANIES:
+        country = C.market_label(company["country"], lang)
+        cards.append(
+            f"""<article class="company-card">
+  <h3>{e(company['name_' + lang])}</h3>
+  <p class="company-meta">{e(country)} · {e(company['sector'][lang])}</p>
+  <p>{e(company['description'][lang])}</p>
+</article>"""
+        )
+    saudi_note = _t(
+        "كيانات المملكة العربية السعودية تُعرض فقط بعد التحقق من هيكلها القانوني.",
+        "Saudi entities are displayed only after their legal structure is verified.",
+        lang,
+    )
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('شركات المجموعة', 'Group Companies', lang))}</h1>
+    <p>{e(_t('تبقى موجودة لبناء الثقة، لكنها ليست طريقة التنقل الرئيسية للخدمات.',
+             'Present for trust and credibility — not the primary way to navigate services.', lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container">
+    <div class="company-grid">{''.join(cards)}</div>
+    <p class="muted center">{e(saudi_note)}</p>
+  </div>
+</section>
+<section class="section section-alt">
+  <div class="container center">
+    <h2 class="section-title">{e(_t('تبحث عن خدمة؟', 'Looking for a service?', lang))}</h2>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('تصفح خدمات الأعمال', 'Browse business services', lang))}</a>
+  </div>
+</section>"""
+
+
+def _about_body(lang: str) -> str:
+    pillars = [
+        (_t("التنسيق", "Orchestration", lang),
+         _t("نربط المستثمرين والشركات والفرص والخدمات المهنية في مسار واحد.",
+            "We connect investors, companies, opportunities and professional services in one path.", lang)),
+        (_t("الأسواق", "Markets", lang),
+         _t("نعمل عبر سوقين: مملكة البحرين والمملكة العربية السعودية.",
+            "We operate across two markets: the Kingdom of Bahrain and Saudi Arabia.", lang)),
+        (_t("الشفافية", "Clarity", lang),
+         _t("نوجّه كل طلب داخليًا إلى الجهة المختصة، دون أن يحتاج الزائر لمعرفة ذلك.",
+            "We route each request internally to the responsible team, without the visitor needing to know.", lang)),
+    ]
+    cards = "".join(
+        f'<article class="pillar"><h3>{e(t)}</h3><p>{e(d)}</p></article>'
+        for t, d in pillars
+    )
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('عن سفير القابضة', 'About Safir Holding', lang))}</h1>
+    <p>{e(_t('طبقة تنسيق تربط المستثمرين والشركات والفرص والخدمات في البحرين والسعودية.',
+             'An orchestration layer connecting investors, companies, opportunities and services across Bahrain and Saudi Arabia.', lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container prose">
+    <p>{e(_t('سفير القابضة كيان ينسّق بين احتياجات السوق والخدمات المهنية والفرص الاستثمارية. لا يقتصر دورنا على عرض الخدمات، بل على فهم احتياج الزائر ثم توجيهه داخليًا إلى الجهة القادرة على تنفيذه في السوق المختار.',
+             'Safir Holding coordinates between market needs, professional services and investment opportunities. Our role is not merely to list services, but to understand what a visitor needs and route it internally to the party able to deliver it in the chosen market.', lang))}</p>
+  </div>
+</section>
+<section class="section section-alt">
+  <div class="container">
+    <div class="pillar-grid">{cards}</div>
+  </div>
+</section>
+<section class="section">
+  <div class="container center">
+    <h2 class="section-title">{e(_t('ابدأ من احتياجك', 'Start from your need', lang))}</h2>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('تصفح الخدمات', 'Browse services', lang))}</a>
+  </div>
+</section>"""
+
+
+def _contact_body(lang: str) -> str:
+    return f"""
+<section class="page-hero">
+  <div class="container">
+    <h1>{e(_t('تواصل معنا', 'Contact us', lang))}</h1>
+    <p>{e(_t('اختر السوق ونوع الاستفسار، وسيتواصل معك الفريق المختص.',
+             'Choose your market and inquiry type, and the responsible team will get back to you.', lang))}</p>
+  </div>
+</section>
+{_form_section(lang, "contact", "bahrain", None)}"""
+
+
+# --------------------------------------------------------------------------
+# 404
+# --------------------------------------------------------------------------
+def not_found_body(lang: str) -> str:
+    return f"""
+<section class="page-hero notfound">
+  <div class="container">
+    <h1>{e(_t('الصفحة غير موجودة', 'Page not found', lang))}</h1>
+    <p>{e(_t('لم نتمكن من العثور على الصفحة المطلوبة.', 'We could not find the page you requested.', lang))}</p>
+    <div class="page-hero-actions">
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['home'][lang])}">{e(_t('العودة للرئيسية', 'Back to home', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('تصفح الخدمات', 'Browse services', lang))}</a>
+    </div>
+  </div>
+</section>"""
+
+
+# --------------------------------------------------------------------------
+# dispatch
+# --------------------------------------------------------------------------
+def render(meta: PageMeta) -> str:
+    """Render the full HTML document for a resolved page."""
+    lang = meta.lang
+    if meta.route == "home":
+        body = _home_body(lang)
+    elif meta.route == "services":
+        body = _services_body(lang)
+    elif meta.route == "opportunities":
+        body = _opportunities_body(lang)
+    elif meta.route == "group":
+        body = _group_body(lang)
+    elif meta.route == "about":
+        body = _about_body(lang)
+    elif meta.route == "contact":
+        body = _contact_body(lang)
+    elif meta.route == "list-your-business":
+        body = _list_body(lang)
+    elif meta.route == "not-found":
+        body = not_found_body(lang)
+    elif meta.route.startswith("market-service:"):
+        _, market, slug = meta.route.split(":", 2)
+        body = _market_service_body(lang, market, slug)
+    else:
+        body = _home_body(lang)
+    return render_page(meta, body)

@@ -249,3 +249,38 @@ __all__ += [
     "WebhookEndpointUpdateRequest",
     "WebhookSecretOut",
 ]
+
+# Phase 10: public website leads and opportunities
+from backend.schemas.website import (  # noqa: F401, E402
+    AttributionIn,
+    BusinessListingSubmission,
+    CompanyFormationSubmission,
+    ContactSubmission,
+    FeasibilitySubmission,
+    LeadAttachmentOut,
+    LeadOut,
+    LeadStatsOut,
+    LeadUpdateRequest,
+    OpportunityInterestSubmission,
+    OpportunityReviewRequest,
+    PublicOpportunityOut,
+    PublicSubmissionBase,
+    PublicSubmissionResult,
+)
+
+__all__ += [
+    "AttributionIn",
+    "BusinessListingSubmission",
+    "CompanyFormationSubmission",
+    "ContactSubmission",
+    "FeasibilitySubmission",
+    "LeadAttachmentOut",
+    "LeadOut",
+    "LeadStatsOut",
+    "LeadUpdateRequest",
+    "OpportunityInterestSubmission",
+    "OpportunityReviewRequest",
+    "PublicOpportunityOut",
+    "PublicSubmissionBase",
+    "PublicSubmissionResult",
+]

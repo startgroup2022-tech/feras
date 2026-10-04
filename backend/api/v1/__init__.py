@@ -11,7 +11,9 @@ from backend.api.v1 import (
     documents,
     forms,
     integrations,
+    leads,
     notifications,
+    public,
     reports,
     submissions,
     support,
@@ -39,5 +41,8 @@ api_router.include_router(notifications.router)
 api_router.include_router(analytics.router)
 # Phase 9: external integrations
 api_router.include_router(integrations.router)
+# Phase 10: public website (unauthenticated) and internal lead handling
+api_router.include_router(public.router)
+api_router.include_router(leads.router)
 
 __all__ = ["api_router"]

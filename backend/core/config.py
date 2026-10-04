@@ -49,6 +49,23 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     LOGIN_RATE_LIMIT: int = 10  # attempts
     LOGIN_RATE_WINDOW_SECONDS: int = 300
+    # Public website form submissions. Per-IP, sliding window. Kept separate
+    # from the login limiter so a busy marketing page cannot lock out sign-in.
+    PUBLIC_RATE_LIMIT: int = 20
+    PUBLIC_RATE_WINDOW_SECONDS: int = 600
+    # Maximum attachments accepted on one public submission.
+    PUBLIC_MAX_ATTACHMENTS: int = 5
+
+    # ---- public website ----
+    # Absolute origin used to build canonical URLs, hreflang alternates and the
+    # sitemap. Left blank in development, where relative URLs are emitted.
+    WEBSITE_BASE_URL: str = ""
+    # When true (production), the internal platform is served under PLATFORM_PATH
+    # and marked noindex; the public website owns the root. When false
+    # (development), the platform keeps the root so local workflows are
+    # unchanged.
+    SPLIT_PUBLIC_SITE: bool = False
+    PLATFORM_PATH: str = "/platform"
 
     # ---- attachments ----
     UPLOAD_DIR: str = "./uploads"

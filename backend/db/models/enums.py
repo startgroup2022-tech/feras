@@ -307,9 +307,116 @@ class WebhookEventType(str, enum.Enum):
     SUPPORT_CREATED = "support.created"
     SUPPORT_ASSIGNED = "support.assigned"
     NOTIFICATION_CREATED = "notification.created"
+    # Phase 10: public website leads
+    LEAD_CREATED = "lead.created"
+    LEAD_STATUS_CHANGED = "lead.status_changed"
+    LEAD_ASSIGNED = "lead.assigned"
 
 
 class DeliveryStatus(str, enum.Enum):
     PENDING = "pending"
     DELIVERED = "delivered"
     FAILED = "failed"
+
+
+# --------------------------------------------------------------------------
+# Phase 10: public website leads and opportunities
+# --------------------------------------------------------------------------
+class Market(str, enum.Enum):
+    """The two markets the public website serves.
+
+    Stored on every website lead so the Holding can measure demand per market
+    without parsing free text. Closed set: adding a market means a deliberate
+    change here, in the routing rules and in the website content model.
+    """
+
+    BAHRAIN = "bahrain"
+    SAUDI = "saudi"
+
+
+class WebsiteServiceType(str, enum.Enum):
+    """What the visitor asked for, independent of which subsidiary fulfils it.
+
+    This is the public-facing service taxonomy from the V2 concept. It is what
+    the visitor chooses; internal routing then maps it to a team. The visitor
+    never needs to know which company executes the request.
+    """
+
+    OPPORTUNITY_INTEREST = "opportunity_interest"
+    COMPANY_FORMATION = "company_formation"
+    FEASIBILITY_STUDY = "feasibility_study"
+    BUSINESS_LISTING = "business_listing"
+    INVESTMENT = "investment"
+    GENERAL_CONTACT = "general_contact"
+
+
+class LeadStatus(str, enum.Enum):
+    """Internal lifecycle of a website lead.
+
+    Deliberately short -- this is a lead pipeline, not a workflow engine. The
+    existing approval engine remains the place for multi-step review.
+    """
+
+    NEW = "new"
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    QUALIFIED = "qualified"
+    ESCALATED = "escalated"
+    CONVERTED = "converted"
+    CLOSED = "closed"
+
+
+class LeadPriority(str, enum.Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class OpportunityType(str, enum.Enum):
+    """How a business or opportunity is being offered.
+
+    Mirrors the V2 concept exactly. Stored as a short code so listings can be
+    filtered by type without free-text matching.
+    """
+
+    FULL_SALE = "full_sale"
+    PARTIAL_SALE = "partial_sale"
+    STRATEGIC_PARTNER = "strategic_partner"
+    INVESTMENT = "investment"
+    ACQUISITION = "acquisition"
+
+
+class ApplicantCapacity(str, enum.Enum):
+    """The capacity in which a visitor lists a business.
+
+    Determines who we are actually talking to -- owner, mandated
+    representative, or an intermediary -- which changes how the opportunity is
+    handled internally.
+    """
+
+    OWNER = "owner"
+    REPRESENTATIVE = "representative"
+    ADVISOR = "advisor"
+
+
+class PublicOpportunityStatus(str, enum.Enum):
+    """Lifecycle of a submitted opportunity listing.
+
+    A listing is private to the Holding until it is reviewed and published, so
+    nothing confidential is ever exposed on the public site by default.
+    """
+
+    SUBMITTED = "submitted"
+    UNDER_REVIEW = "under_review"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+    CLOSED = "closed"
+
+
+class WebsiteLeadSource(str, enum.Enum):
+    """Where a lead came from. ``WEBSITE`` is the only value V1 produces."""
+
+    WEBSITE = "website"
+    PLATFORM = "platform"
+    REFERRAL = "referral"
+    OTHER = "other"

@@ -92,6 +92,7 @@
       <div class="nav-item" data-view="bi" data-perm="ai.holding ai.company" role="button" tabindex="0"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
       <div class="nav-item" data-view="analytics" data-perm="analytics.holding analytics.company analytics.operations analytics.compliance" role="button" tabindex="0"><span class="ar">التحليلات</span><span class="en">Analytics</span></div>
       <div class="nav-item" data-view="inbox" data-perm="notification.read_own" role="button" tabindex="0"><span class="ar">الإشعارات</span><span class="en">Notifications</span></div>
+      <div class="nav-item" data-view="leads" data-perm="website_lead.read" role="button" tabindex="0"><span class="ar">طلبات الموقع</span><span class="en">Website Leads</span></div>
       <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
     </nav>
 
@@ -522,6 +523,23 @@
     </div>
   </div>
   <div id="inboxContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-leads" data-view="leads" data-perm="website_lead.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">طلبات الموقع</span><span class="en">Website Leads</span></h1>
+      <p><span class="ar">الطلبات الواردة من الموقع العام: التأسيس، دراسات الجدوى، الاهتمام بالفرص وعروض الشركات.</span><span class="en">Requests arriving from the public website: formation, feasibility, opportunity interest and business listings.</span></p>
+    </div>
+    <div class="av-toolbar" id="leadFilters">
+      <button class="chip on" data-lead-status=""><span class="ar">الكل</span><span class="en">All</span></button>
+      <button class="chip" data-lead-status="new"><span class="ar">جديد</span><span class="en">New</span></button>
+      <button class="chip" data-lead-status="in_progress"><span class="ar">قيد المعالجة</span><span class="en">In progress</span></button>
+      <button class="chip" data-lead-status="closed"><span class="ar">مغلق</span><span class="en">Closed</span></button>
+    </div>
+  </div>
+  <div id="leadStats" class="av-grid cols-1"></div>
+  <div id="leadContent" class="av-grid cols-1"></div>
 </section>
 
 <section class="app-view view-hidden" id="view-admin" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read">

@@ -45,6 +45,11 @@ from backend.db.models.workflows import (
     WorkflowStep,
     WorkflowVersion,
 )
+from backend.db.models.website import (
+    WebsiteLead,
+    WebsiteLeadAttachment,
+    WebsiteOpportunity,
+)
 
 __all__ = [
     "Base",
@@ -87,4 +92,8 @@ __all__ = [
     # Phase 9: external integrations
     "WebhookEndpoint",
     "WebhookDelivery",
+    # Phase 10: public website leads and opportunities
+    "WebsiteLead",
+    "WebsiteLeadAttachment",
+    "WebsiteOpportunity",
 ]
