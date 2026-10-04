@@ -236,3 +236,34 @@ purges options rows explicitly because forms/submissions/documents are
 holding-scoped and not company-cascaded, so deleting companies alone would
 leave them orphaned. Re-run with `--reset` after changing the operations seed.
 Demo accounts use password `SafirDemo!2027`.
+
+## Phase 6-9 — notifications, analytics, integrations
+
+- **Notification centre** (`notification_service`, `api/v1/notifications.py`) —
+  the inbox is always the caller's own (filtered by `recipient_id`, never a
+  query param). `POST /notifications/scan-expiring` is idempotent and gated by
+  `notification.manage`. Emitting an event that has no recipients is a no-op.
+- **Advanced analytics** (`analytics_service`, `api/v1/analytics.py`) — four
+  families (holding / operations / compliance / investment), each behind its
+  own permission so operational analytics can be granted without exposing group
+  financials. Every figure is computed inside the caller's company scope; query
+  params only ever narrow, never widen, that scope.
+- **Executive briefing** (`executive_intelligence_service`) — grounded and
+  permission-shaped. The null provider returns a deterministic Arabic/English
+  summary and never restates a figure that is not present in the context.
+  `Source: none` means no LLM provider is configured, not that data is missing.
+- **Integrations** (`integration_service`, `api/v1/integrations.py`) — webhook
+  endpoints with one-time signing secrets (returned only on create/rotate, never
+  from list/read) and a delivery log. Outbound URLs are validated for scheme,
+  host resolution and private ranges; `UnsafeUrlError` subclasses
+  `ValidationError` so it maps to 422. An unresolvable host is a 422, not a 500.
+- **Migration head** is now `5ff680970d75` (phase 6-9: `notifications`,
+  `webhook_endpoints`, `webhook_deliveries`). `tests/test_postgres.py` asserts
+  the linear chain, so adding a revision means updating that test.
+- **Existing dev DBs** need `bootstrap_rbac` re-run to pick up the new
+  permissions before the phase 6-9 endpoints return 200 instead of 403.
+- **Permission gating is two-layer**: nav/admin tabs and analytics sub-tabs are
+  hidden client-side by permission, and the endpoints enforce the same checks.
+  A `company_manager` sees only the executive briefing tab and no
+  integrations/audit tabs; a `holding_owner` sees everything.
+
