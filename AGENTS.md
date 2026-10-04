@@ -318,6 +318,15 @@ The public website is a second, distinct experience in the same repo and origin,
 - **Content rule** — never fabricate statistics, values, clients, awards,
   partnerships, years or locations. Group companies carry a `verified` flag;
   unverified entities stay out until confirmed.
+- **Public design system** — `website/assets/styles.css` is the single visual
+  layer for the public site (the internal platform has its own `styles.css`).
+  Both directions are driven by logical properties (`inline-start`/`end`), so
+  RTL and LTR share one sheet; `html[lang="en"]` only swaps the font stack and
+  eyebrow tracking. The header collapses to a drawer at 860px (driven by
+  `.header-menu.is-open`, toggled in `website/assets/app.js`), and the
+  language control is a two-option segmented switch (`.lang-switch` /
+  `.lang-opt.is-on`) where each option links to the current page's mirror.
+  Keep both options explicit rather than a single toggle link.
 
 ## Final UX/i18n pass (pre-production)
 

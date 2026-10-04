@@ -201,10 +201,34 @@
   var navToggle = document.querySelector("[data-nav-toggle]");
   var nav = document.querySelector("[data-nav]");
   if (navToggle && nav) {
+    var closeNav = function () {
+      nav.classList.remove("is-open");
+      navToggle.setAttribute("aria-expanded", "false");
+    };
     navToggle.addEventListener("click", function () {
       var open = nav.classList.toggle("is-open");
       navToggle.setAttribute("aria-expanded", open ? "true" : "false");
     });
+    // Close the drawer once a destination is chosen, or on Escape.
+    nav.addEventListener("click", function (event) {
+      if (event.target.closest("a")) closeNav();
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && nav.classList.contains("is-open")) {
+        closeNav();
+        navToggle.focus();
+      }
+    });
+  }
+
+  // A subtle elevation once the page scrolls under the sticky header.
+  var header = document.querySelector("[data-header]");
+  if (header) {
+    var onScroll = function () {
+      header.classList.toggle("is-stuck", window.scrollY > 8);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
   }
 
   // --------------------------------------------------- opportunities list

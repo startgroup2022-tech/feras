@@ -41,6 +41,18 @@ def _brand(lang: str) -> str:
 # --------------------------------------------------------------------------
 # shell
 # --------------------------------------------------------------------------
+def _brand_mark() -> str:
+    """The logo mark: a navy hexagon with a gold rim and centre."""
+    return (
+        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
+        'focusable="false" aria-hidden="true">'
+        '<path d="M12 1.8 21 6.9v10.2L12 22.2 3 17.1V6.9L12 1.8Z" fill="#DCBE72"/>'
+        '<path d="M12 5.1 18.4 8.7v6.6L12 18.9 5.6 15.3V8.7L12 5.1Z" fill="#0A1730"/>'
+        '<path d="M12 9.2 15.4 11v2.9L12 15.7 8.6 13.9V11L12 9.2Z" fill="#DCBE72"/>'
+        "</svg>"
+    )
+
+
 def _nav_html(meta: PageMeta) -> str:
     lang = meta.lang
     links = []
@@ -50,28 +62,27 @@ def _nav_html(meta: PageMeta) -> str:
         if item["key"] == meta.route or (
             meta.route.startswith("market-service") and item["key"] == "services"
         ):
-            active = ' aria-current="page" class="is-active"'
-        links.append(
-            f'<a href="{e(path)}"{active}>{e(item["label"][lang])}</a>'
+            active = ' class="is-active" aria-current="page"'
+        links.append(f'<a href="{e(path)}"{active}>{e(item["label"][lang])}</a>')
+
+    # Two explicit options so the active language reads as *selected* rather
+    # than as a lone label that happens to link elsewhere.
+    def option(code: str) -> str:
+        current = code == lang
+        href = meta.alternates.get(code) or C.PAGE_PATHS["home"][code]
+        label = "العربية" if code == "ar" else "English"
+        cls = "lang-opt is-on" if current else "lang-opt"
+        state = ' aria-current="true"' if current else ""
+        return (
+            f'<a class="{cls}" href="{e(href)}" hreflang="{e(code)}" '
+            f'lang="{e(code)}"{state}>{e(label)}</a>'
         )
 
-    # Language switch links to the same page in the other language.
-    other = "en" if lang == "ar" else "ar"
-    other_path = meta.alternates.get(other) or C.PAGE_PATHS["home"][other]
-    switch_label = "English" if lang == "ar" else "العربية"
-    switch_href = other_path
-
     return f"""
-<header class="site-header">
+<header class="site-header" data-header>
   <div class="container header-inner">
     <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(_brand(lang))}">
-      <span class="brand-mark" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" focusable="false">
-          <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
-          <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
-          <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
-        </svg>
-      </span>
+      <span class="brand-mark">{_brand_mark()}</span>
       <span class="brand-text">
         <span class="brand-name">{e(_brand(lang))}</span>
         <span class="brand-sub">{e(_t("بوابة البحرين والسعودية", "Bahrain & Saudi Gateway", lang))}</span>
@@ -84,10 +95,15 @@ def _nav_html(meta: PageMeta) -> str:
       <span class="nav-toggle-bars" aria-hidden="true"></span>
     </button>
 
-    <nav class="site-nav" id="primary-nav" aria-label="{e(_t('التنقل الرئيسي', 'Main navigation', lang))}" data-nav>
-      {' '.join(links)}
-      <a class="nav-lang" href="{e(switch_href)}" hreflang="{e(other)}" lang="{e(other)}">{e(switch_label)}</a>
-    </nav>
+    <div class="header-menu" id="primary-nav" data-nav>
+      <nav class="site-nav" aria-label="{e(_t('التنقل الرئيسي', 'Main navigation', lang))}">
+        {' '.join(links)}
+      </nav>
+      <div class="lang-switch" role="group"
+           aria-label="{e(_t('اختيار اللغة', 'Language selection', lang))}">
+        {option("ar")}{option("en")}
+      </div>
+    </div>
   </div>
 </header>"""
 
@@ -103,11 +119,13 @@ def _footer_html(meta: PageMeta) -> str:
 <footer class="site-footer">
   <div class="container footer-inner">
     <div class="footer-brand">
+      <span class="brand-mark brand-mark-lg">{_brand_mark()}</span>
       <div class="brand-name">{e(_brand(lang))}</div>
       <p class="footer-tag">{e(_t("بوابتك للأعمال والاستثمار في البحرين والسعودية",
                                    "Your business and investment gateway in Bahrain and Saudi Arabia", lang))}</p>
     </div>
     <nav class="footer-nav" aria-label="{e(_t('روابط التذييل', 'Footer links', lang))}">
+      <h2 class="footer-heading">{e(_t('روابط سريعة', 'Quick links', lang))}</h2>
       <ul>{nav_links}</ul>
     </nav>
   </div>
@@ -269,15 +287,34 @@ def _home_body(lang: str) -> str:
     return f"""
 <section class="hero">
   <div class="container hero-inner">
-    <p class="hero-eyebrow">{e(_t('بوابة مؤسسية', 'Corporate gateway', lang))}</p>
-    <h1 class="hero-title">{e(_brand(lang))}</h1>
-    <p class="hero-tagline">{e(_t('بوابتك للأعمال والاستثمار<br>في البحرين والسعودية',
-                                    'Your business and investment gateway<br>in Bahrain and Saudi Arabia', lang))}</p>
-    <p class="hero-values">{e(_t('فرص • تأسيس شركات • دراسات جدوى • شراكات',
-                                 'Opportunities • Company Formation • Feasibility Studies • Partnerships', lang))}</p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="#choose">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</a>
-      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('استعرض الفرص', 'Browse opportunities', lang))}</a>
+    <div class="hero-copy">
+      <p class="hero-eyebrow">{e(_t('بوابة مؤسسية', 'Corporate gateway', lang))}</p>
+      <h1 class="hero-title">{e(_brand(lang))}</h1>
+      <p class="hero-tagline">
+        <span class="hero-tagline-line">{e(_t('بوابتك للأعمال والاستثمار', 'Your business and investment gateway', lang))}</span>
+        <span class="hero-tagline-line">{e(_t('في البحرين والسعودية', 'in Bahrain and Saudi Arabia', lang))}</span>
+      </p>
+      <p class="hero-values">{e(_t('فرص • تأسيس شركات • دراسات جدوى • شراكات',
+                                   'Opportunities • Company Formation • Feasibility Studies • Partnerships', lang))}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#choose">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</a>
+        <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('استعرض الفرص', 'Browse opportunities', lang))}</a>
+      </div>
+    </div>
+    <div class="hero-panel" aria-hidden="true">
+      <div class="hero-panel-head">
+        <span class="hero-panel-dot"></span>
+        {e(_t('سوقان · مسار واحد', 'Two markets · one path', lang))}
+      </div>
+      <ul class="hero-panel-list">
+        <li><span class="hp-flag">🇧🇭</span>{e(C.market_label('bahrain', lang))}</li>
+        <li><span class="hp-flag">🇸🇦</span>{e(C.market_label('saudi', lang))}</li>
+      </ul>
+      <div class="hero-panel-foot">
+        <span>{e(_t('تأسيس شركات', 'Company formation', lang))}</span>
+        <span>{e(_t('دراسات جدوى', 'Feasibility', lang))}</span>
+        <span>{e(_t('فرص واستثمار', 'Opportunities', lang))}</span>
+      </div>
     </div>
   </div>
 </section>
