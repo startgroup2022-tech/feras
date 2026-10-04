@@ -319,3 +319,26 @@ The public website is a second, distinct experience in the same repo and origin,
   partnerships, years or locations. Group companies carry a `verified` flag;
   unverified entities stay out until confirmed.
 
+## Final UX/i18n pass (pre-production)
+
+- **Bilingual dynamic strings** — language switching toggles
+  `html.lang-ar` / `html.lang-en` in CSS (`.ar` hidden unless `lang-en`, and
+  vice-versa), so any markup emitted with `dual(ar, en)` flips without a
+  re-render. `dual()` in `frontend/app.js` is the canonical helper.
+- **Placeholders and tooltips** — a language switch must not require
+  re-rendering. `phAttr(key)` emits `placeholder` + `data-ph-ar` /
+  `data-ph-en`; header buttons use `title` + `data-title-ar` /
+  `data-title-en`. `applyI18n(root)` re-applies both and is called from
+  `setLang` alongside `refreshActiveView` (which no-ops when `USER` is null).
+- **Values baked into server-driven markup** — `refreshActiveView()` re-runs
+  the active renderer (`renderAdminTab(STATE.adminTab)` or `loadView(view)`)
+  on language change so any string not emitted through `dual()` is rebuilt.
+- **Permission metadata** — `backend/rbac/permission_metadata.py` is the
+  single source for the permission catalogue (`describe()`, `catalogue()`,
+  `unknown_codes()`, `category_order()`). The admin UI consumes
+  `/api/v1/admin/permissions/catalogue`; both name/description fields are
+  bilingual. `tests/test_permission_metadata.py` asserts every known code
+  resolves and categories stay ordered.
+- **Avatar initials** — department chips use `deptInitialHtml()` (Latin
+  initials under `lang-en`, Arabic under `lang-ar`); company/user avatars keep
+  the first letter of the Arabic name as a stable identity mark.

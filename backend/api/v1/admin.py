@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from backend.api.deps import CurrentUser, DbSession, require
+from backend.rbac import permission_metadata
 from backend.rbac.permissions import Perm
 from backend.schemas import (
     DepartmentCreateRequest,
@@ -23,6 +24,10 @@ from backend.schemas import (
     OwnershipOut,
     OwnershipUpdateRequest,
     PageOut,
+    PermissionActionOut,
+    PermissionCatalogueOut,
+    PermissionCategoryOut,
+    PermissionDetailOut,
     PermissionOut,
     RoleCreateRequest,
     RoleOut,
@@ -323,6 +328,24 @@ def list_permissions(db: DbSession, user: CurrentUser) -> list[PermissionOut]:
         PermissionOut(**row)
         for row in role_service.list_permission_catalogue(db, user=user)
     ]
+
+
+@router.get("/permissions/catalogue", response_model=PermissionCatalogueOut)
+def permission_catalogue(
+    user: CurrentUser,
+    db: DbSession,
+    actor=Depends(require(Perm.PERMISSION_READ)),
+) -> PermissionCatalogueOut:
+    """Bilingual, grouped permission catalogue for the admin UI.
+
+    Read-only presentation data. Authorization still happens against the codes
+    in :mod:`backend.rbac.permissions`; this endpoint only describes them.
+    """
+    return PermissionCatalogueOut(
+        categories=[PermissionCategoryOut(**c) for c in permission_metadata.CATEGORIES],
+        actions=[PermissionActionOut(**a) for a in permission_metadata.ACTIONS],
+        permissions=[PermissionDetailOut(**p) for p in permission_metadata.catalogue()],
+    )
 
 
 # --------------------------------------------------------------------------

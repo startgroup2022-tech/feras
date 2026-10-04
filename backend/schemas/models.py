@@ -731,6 +731,39 @@ class PermissionOut(BaseModel):
     description: str | None = None
 
 
+class PermissionCategoryOut(BaseModel):
+    key: str
+    name_ar: str
+    name_en: str
+    order: int
+
+
+class PermissionActionOut(BaseModel):
+    key: str
+    name_ar: str
+    name_en: str
+    order: int
+
+
+class PermissionDetailOut(BaseModel):
+    """Human-readable presentation of a permission for the admin UI."""
+
+    code: str
+    category: str
+    action: str
+    name_ar: str
+    name_en: str
+    description_ar: str
+    description_en: str
+    danger: bool = False
+
+
+class PermissionCatalogueOut(BaseModel):
+    categories: list[PermissionCategoryOut]
+    actions: list[PermissionActionOut]
+    permissions: list[PermissionDetailOut]
+
+
 class AuditLogOut(BaseModel):
     id: int
     actor_user_id: int | None

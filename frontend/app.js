@@ -105,6 +105,68 @@
   }
 
 
+  // ---- i18n for dynamic strings ---------------------------------------
+  //
+  // The static markup switches language with the `.ar` / `.en` span pair. That
+  // pattern cannot be used for attributes like placeholder/title, so dynamic
+  // elements carry `data-ph-ar` / `data-ph-en` (or `data-title-ar` / `-en`) and
+  // applyI18n() rewrites the attribute whenever the language changes. Keeping
+  // both strings in the DOM means a switch never loses a translation.
+  var I18N = {
+    "ph.search.permissions": {
+      ar: "ابحث بالاسم أو الوصف…",
+      en: "Search by name or description…",
+    },
+    "ph.shortTitle": { ar: "عنوان مختصر", en: "Short title" },
+    "ph.companyCode": { ar: "مثال: FIN", en: "e.g. FIN" },
+    "ph.integrationName": { ar: "مزامنة CRM", en: "CRM sync" },
+    "ph.endpointUrl": {
+      ar: "https://hooks.example.com/safir",
+      en: "https://hooks.example.com/safir",
+    },
+    "ph.formCode": { ar: "مثال: capex", en: "e.g. capex" },
+    "ph.fieldKey": { ar: "مثال: amount", en: "e.g. amount" },
+    "ph.requirementKey": { ar: "مثال: quote", en: "e.g. quote" },
+    "ph.workflowCode": { ar: "مثال: capex_flow", en: "e.g. capex_flow" },
+    "ph.comment": { ar: "أضف تعليقًا…", en: "Add a comment…" },
+    "ph.search": {
+      ar: "ابحث في الشركات والتقارير والدعم…",
+      en: "Search companies, reports, support…",
+    },
+  };
+
+  // Emit the current placeholder plus both languages so the value survives a
+  // language switch without re-rendering the view.
+  function phAttr(key) {
+    var e = I18N[key];
+    if (!e) return "";
+    return (
+      ' placeholder="' +
+      escAttr(STATE.lang === "ar" ? e.ar : e.en) +
+      '" data-ph-ar="' +
+      escAttr(e.ar) +
+      '" data-ph-en="' +
+      escAttr(e.en) +
+      '"'
+    );
+  }
+
+  function applyI18n(root) {
+    var scope = root || document;
+    scope.querySelectorAll("[data-ph-ar]").forEach(function (el) {
+      el.setAttribute(
+        "placeholder",
+        el.getAttribute(STATE.lang === "ar" ? "data-ph-ar" : "data-ph-en"),
+      );
+    });
+    scope.querySelectorAll("[data-title-ar]").forEach(function (el) {
+      el.setAttribute(
+        "title",
+        el.getAttribute(STATE.lang === "ar" ? "data-title-ar" : "data-title-en"),
+      );
+    });
+  }
+
   // ---- formatting ------------------------------------------------------
   var NUM = new Intl.NumberFormat("en-US");
 
@@ -630,16 +692,21 @@
 
   function deptInitial(name) {
     var map = {
-      business_development: "تط",
-      marketing: "تس",
-      design: "تص",
-      accounting: "مح",
-      general: "عم",
-      holding_owner: "عم",
-      designer: "تص",
-      accountant: "مح",
+      business_development: { ar: "تط", en: "BD" },
+      marketing: { ar: "تس", en: "MK" },
+      design: { ar: "تص", en: "DS" },
+      accounting: { ar: "مح", en: "FN" },
+      general: { ar: "عم", en: "HO" },
+      holding_owner: { ar: "عم", en: "HO" },
+      designer: { ar: "تص", en: "DS" },
+      accountant: { ar: "مح", en: "FN" },
     };
-    return map[name] || "عم";
+    return map[name] || { ar: "عم", en: "HO" };
+  }
+
+  function deptInitialHtml(name) {
+    var init = deptInitial(name);
+    return dual(init.ar, init.en);
   }
 
   function deptLabel(name) {
@@ -687,7 +754,7 @@
       date.en +
       "</span></td>" +
       '<td><span class="dept"><span class="av">' +
-      deptInitial(deptName) +
+      deptInitialHtml(deptName) +
       '</span><span class="ar">' +
       dept.ar +
       '</span><span class="en">' +
@@ -1129,6 +1196,20 @@
       /* storage disabled */
     }
     if (typeof STATE !== "undefined") STATE.lang = lang;
+    if (typeof applyI18n === "function") applyI18n();
+    if (typeof refreshActiveView === "function") refreshActiveView();
+  }
+
+  // Re-render the current view when the language changes, so any Arabic-only
+  // string baked into server-driven markup is rebuilt in the new language.
+  function refreshActiveView() {
+    if (!USER) return;
+    var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
+    if (view === "admin" && typeof renderAdminTab === "function") {
+      renderAdminTab(STATE.adminTab);
+      return;
+    }
+    if (typeof loadView === "function") loadView(view);
   }
 
   function bindLang() {
@@ -1847,8 +1928,8 @@
           '<div class="sec-title">' + dual("التعليقات", "Comments") + "</div>" +
           '<div id="cmtList">' + renderComments(comments) + "</div>" +
           (canComment
-            ? '<div class="av-field" style="margin-top:10px"><textarea class="av-textarea" id="cmtBody" placeholder="' +
-              (STATE.lang === "ar" ? "أضف تعليقًا…" : "Add a comment…") + '"></textarea>' +
+            ? '<div class="av-field" style="margin-top:10px"><textarea class="av-textarea" id="cmtBody"' +
+              phAttr("ph.comment") + "></textarea>" +
               '<div style="display:flex;gap:9px;align-items:center;margin-top:8px">' +
               '<label style="font-size:10.5px;color:var(--ink-500)"><input type="checkbox" id="cmtInternal"> ' + dual("داخلي", "Internal") + "</label>" +
               '<button class="btn-solid" id="cmtAdd" style="margin-inline-start:auto">' + dual("إضافة تعليق", "Add comment") + "</button></div></div>"
@@ -2264,7 +2345,7 @@
             field(
               "العنوان",
               "Title",
-              textInput("nrTitle", "", STATE.lang === "ar" ? "عنوان مختصر" : "Short title")
+              textInput("nrTitle", "", "ph.shortTitle")
             ) +
             '<p class="note-block" style="margin-top:8px"><span class="lbl">' +
             dual("ملاحظة", "Note") +
@@ -3775,9 +3856,15 @@
   }
 
   function textInput(id, value, placeholder) {
+    // A placeholder that matches an I18N key is emitted bilingually so it
+    // follows the language switch; anything else is a literal example token.
+    var ph =
+      placeholder && I18N[placeholder]
+        ? phAttr(placeholder)
+        : ' placeholder="' + escAttr(placeholder || "") + '"';
     return (
       '<input class="av-input" id="' + id + '" type="text" value="' +
-      escAttr(value || "") + '" placeholder="' + escAttr(placeholder || "") + '">'
+      escAttr(value || "") + '"' + ph + ">"
     );
   }
 
@@ -3969,7 +4056,7 @@
       var createForm = has("department.manage")
         ? '<form class="av-form av-form-inline" id="deptForm">' +
           field("الشركة", "Company", selectInput("dCompany", companies.map(function (c) { return { value: c.id, label: companyName(c) }; }), companies.length ? companies[0].id : "")) +
-          field("الكود", "Code", textInput("dCode", "", "FIN")) +
+          field("الكود", "Code", textInput("dCode", "", "ph.companyCode")) +
           field("الاسم (عربي)", "Name (AR)", textInput("dNameAr", "")) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("dNameEn", "")) +
           '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="add-department">' +
@@ -4045,34 +4132,428 @@
     });
   }
 
-  // ---- tab: roles ----
+  // ---- tab: roles & permissions ----
+  //
+  // The catalogue arrives from the API already described in Arabic and English
+  // (name, description, category, action, danger), so nothing is hard-coded
+  // here and a permission added on the backend appears immediately. The raw
+  // code is shown only as secondary help text. Authorization is unchanged: the
+  // editor only ever sends the same permission codes the API already enforces.
+  function permState() {
+    if (!STATE.perm) {
+      STATE.perm = {
+        catalogue: null,
+        byCode: {},
+        roleCode: null,
+        selected: {},
+        original: {},
+        query: "",
+        category: "all",
+        dirty: false,
+      };
+    }
+    return STATE.perm;
+  }
+
+  function loadPermissionCatalogue() {
+    var st = permState();
+    if (st.catalogue) return Promise.resolve(st.catalogue);
+    return get("/api/v1/admin/permissions/catalogue").then(function (data) {
+      st.catalogue = data || { categories: [], actions: [], permissions: [] };
+      st.byCode = {};
+      (st.catalogue.permissions || []).forEach(function (p) {
+        st.byCode[p.code] = p;
+      });
+      return st.catalogue;
+    });
+  }
+
+  function permMeta(code) {
+    var st = permState();
+    return (
+      st.byCode[code] || {
+        code: code,
+        name_ar: code,
+        name_en: code,
+        description_ar: "",
+        description_en: "",
+        category: "audit",
+        action: "manage",
+        danger: false,
+      }
+    );
+  }
+
+  function permRoleByCode(roles, code) {
+    for (var i = 0; i < roles.length; i++) {
+      if (roles[i].code === code) return roles[i];
+    }
+    return null;
+  }
+
   function renderAdminRoles() {
     var host = byId("adminContent");
-    return Promise.all([
-      get("/api/v1/admin/roles"),
-      get("/api/v1/admin/permissions").catch(function () { return []; }),
-    ]).then(function (res) {
-      var roles = res[0];
-      var allPerms = res[1];
-      var catalogue = allPerms.map(function (p) { return p.code; });
-      host.innerHTML = roles.map(function (role) {
-        var editable = has("permission.assign");
-        var body = '<div class="perm-grid">' + catalogue.map(function (code) {
-          var checked = role.permissions.indexOf(code) >= 0;
+    var st = permState();
+    return Promise.all([get("/api/v1/admin/roles"), loadPermissionCatalogue()]).then(
+      function (res) {
+        var roles = res[0] || [];
+        if (!roles.length) {
+          host.innerHTML =
+            '<p class="av-empty">' + dual("لا توجد أدوار.", "No roles.") + "</p>";
+          return;
+        }
+        var role = permRoleByCode(roles, st.roleCode) || roles[0];
+        st.roleCode = role.code;
+        st.selected = {};
+        (role.permissions || []).forEach(function (c) {
+          st.selected[c] = true;
+        });
+        st.original = Object.assign({}, st.selected);
+        st.dirty = false;
+        host.innerHTML = rolesBar(roles, role) + permEditor(role);
+        bindPermEditor(role);
+      },
+    );
+  }
+
+  function rolesBar(roles, active) {
+    return (
+      '<div class="av-panel" style="margin-bottom:12px"><h3>' +
+      dual("الأدوار", "Roles") +
+      "</h3>" +
+      '<div class="perm-cats">' +
+      roles
+        .map(function (r) {
+          var n = (r.permissions || []).length;
           return (
-            '<label class="perm-item"><input type="checkbox" data-perm-code="' + escAttr(code) + '"' +
-            (checked ? " checked" : "") + (editable ? "" : " disabled") + ">" +
-            '<span class="mono">' + escapeHtml(code) + "</span></label>"
+            '<button type="button" class="perm-cat-chip' +
+            (r.code === active.code ? " on" : "") +
+            '" data-admin-action="role-open" data-code="' +
+            escAttr(r.code) +
+            '">' +
+            dual(escapeHtml(r.name_ar), escapeHtml(r.name_en)) +
+            '<span class="c">' +
+            plainNum(n) +
+            "</span></button>"
           );
-        }).join("") + "</div>";
-        return adminPanel(role.name_ar, role.name_en, 
-          '<div class="s" style="margin-bottom:8px">' + escapeHtml(role.code) + (role.is_system ? " · " + dual("دور نظام", "System role") : "") + "</div>" +
-          body +
-          (editable
-            ? '<div class="av-form-actions"><button class="btn-outline" data-admin-action="save-role" data-code="' + escAttr(role.code) + '">' + dual("حفظ الصلاحيات", "Save permissions") + "</button></div>"
-            : "")
-        );
-      }).join("");
+        })
+        .join("") +
+      "</div></div>"
+    );
+  }
+
+  function permEditor(role) {
+    var st = permState();
+    var editable = has("permission.assign");
+    var cats = (st.catalogue.categories || []).slice().sort(function (a, b) {
+      return a.order - b.order;
+    });
+    var catChips =
+      '<button type="button" class="perm-cat-chip on" data-admin-action="perm-cat" data-cat="all">' +
+      dual("كل الأقسام", "All categories") +
+      "</button>" +
+      cats
+        .map(function (c) {
+          return (
+            '<button type="button" class="perm-cat-chip" data-admin-action="perm-cat" data-cat="' +
+            escAttr(c.key) +
+            '">' +
+            dual(escapeHtml(c.name_ar), escapeHtml(c.name_en)) +
+            "</button>"
+          );
+        })
+        .join("");
+
+    return (
+      '<div class="av-panel" id="permEditor" data-role="' +
+      escAttr(role.code) +
+      '">' +
+      '<div class="perm-role-head"><div class="perm-role-title">' +
+      dual(escapeHtml(role.name_ar), escapeHtml(role.name_en)) +
+      (role.is_system
+        ? '<span class="perm-badge">' + dual("دور نظام", "System role") + "</span>"
+        : "") +
+      "</div><div class=\"perm-role-desc\">" +
+      escapeHtml(role.description || "") +
+      '</div><div class="perm-code">' +
+      escapeHtml(role.code) +
+      "</div></div>" +
+      '<div class="perm-toolbar">' +
+      '<div class="perm-search">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+      '<input class="av-input" id="permSearch" type="search" autocomplete="off" value="' +
+      escAttr(st.query) +
+      '" aria-label="' +
+      escAttr(STATE.lang === "ar" ? "ابحث في الصلاحيات" : "Search permissions") +
+      '"' +
+      phAttr("ph.search.permissions") +
+      ">" +
+      "</div></div>" +
+      '<div class="perm-toolbar"><div class="perm-cats" id="permCats">' +
+      catChips +
+      "</div></div>" +
+      '<div class="perm-summary" id="permSummary"></div>' +
+      '<div id="permGroups"></div>' +
+      (editable
+        ? '<div class="perm-actions-bar">' +
+          '<div class="pmeta" id="permDirty"></div>' +
+          '<div class="pbtns">' +
+          '<button type="button" class="btn-outline" data-admin-action="perm-cancel">' +
+          dual("إلغاء", "Cancel") +
+          "</button>" +
+          '<button type="button" class="btn-solid" data-admin-action="perm-save">' +
+          dual("حفظ الصلاحيات", "Save permissions") +
+          "</button>" +
+          "</div></div>"
+        : '<p class="av-empty">' +
+          dual("لا تملك صلاحية تعديل الأدوار.", "You cannot edit roles.") +
+          "</p>") +
+      "</div>"
+    );
+  }
+
+  function permCard(code, editable) {
+    var st = permState();
+    var m = permMeta(code);
+    var checked = !!st.selected[code];
+    return (
+      '<label class="perm-card' +
+      (checked ? " on" : "") +
+      (m.danger ? " danger" : "") +
+      '">' +
+      '<input type="checkbox" data-perm-code="' +
+      escAttr(code) +
+      '"' +
+      (checked ? " checked" : "") +
+      (editable ? "" : " disabled") +
+      ">" +
+      '<span class="perm-body">' +
+      '<span class="perm-name">' +
+      dual(escapeHtml(m.name_ar), escapeHtml(m.name_en)) +
+      (m.danger
+        ? '<span class="perm-badge danger">' +
+          dual("حساس", "Sensitive") +
+          "</span>"
+        : "") +
+      "</span>" +
+      '<span class="perm-desc">' +
+      dual(escapeHtml(m.description_ar), escapeHtml(m.description_en)) +
+      "</span>" +
+      '<span class="perm-code">' +
+      escapeHtml(code) +
+      "</span>" +
+      "</span></label>"
+    );
+  }
+
+  function renderPermGroups() {
+    var st = permState();
+    var groupsHost = byId("permGroups");
+    if (!groupsHost) return;
+    var editable = has("permission.assign");
+    var q = (st.query || "").trim().toLowerCase();
+    var cats = (st.catalogue.categories || []).slice().sort(function (a, b) {
+      return a.order - b.order;
+    });
+    var acts = {};
+    (st.catalogue.actions || []).forEach(function (a) {
+      acts[a.key] = a;
+    });
+
+    var html = "";
+    cats.forEach(function (cat) {
+      if (st.category !== "all" && st.category !== cat.key) return;
+      var items = (st.catalogue.permissions || []).filter(function (p) {
+        if (p.category !== cat.key) return false;
+        if (!q) return true;
+        return permHaystack(p).indexOf(q) >= 0;
+      });
+      if (!items.length) return;
+      items.sort(function (a, b) {
+        var ao = acts[a.action] ? acts[a.action].order : 99;
+        var bo = acts[b.action] ? acts[b.action].order : 99;
+        return ao - bo || a.code.localeCompare(b.code);
+      });
+      var enabled = items.filter(function (p) {
+        return st.selected[p.code];
+      }).length;
+      html +=
+        '<div class="perm-group" data-cat="' +
+        escAttr(cat.key) +
+        '">' +
+        '<div class="perm-group-head"><h4>' +
+        dual(escapeHtml(cat.name_ar), escapeHtml(cat.name_en)) +
+        ' <span class="pcount">' +
+        plainNum(enabled) +
+        " / " +
+        plainNum(items.length) +
+        "</span></h4>" +
+        (editable
+          ? '<button type="button" class="perm-selectall" data-admin-action="perm-selectall" data-cat="' +
+            escAttr(cat.key) +
+            '">' +
+            dual("تحديد الكل", "Select all") +
+            "</button>"
+          : "") +
+        "</div>" +
+        '<div class="perm-list" role="group" aria-label="' +
+        escAttr(STATE.lang === "ar" ? cat.name_ar : cat.name_en) +
+        '">' +
+        items
+          .map(function (p) {
+            return permCard(p.code, editable);
+          })
+          .join("") +
+        "</div></div>";
+    });
+
+    groupsHost.innerHTML =
+      html ||
+      '<p class="perm-empty">' +
+        dual("لا توجد صلاحيات مطابقة.", "No matching permissions.") +
+        "</p>";
+    updatePermSummary();
+  }
+
+  function permHaystack(p) {
+    return (
+      p.code +
+      " " +
+      p.name_ar +
+      " " +
+      p.name_en +
+      " " +
+      p.description_ar +
+      " " +
+      p.description_en
+    ).toLowerCase();
+  }
+
+  function visiblePermCodes() {
+    var st = permState();
+    var q = (st.query || "").trim().toLowerCase();
+    return (st.catalogue.permissions || [])
+      .filter(function (p) {
+        if (st.category !== "all" && p.category !== st.category) return false;
+        if (!q) return true;
+        return permHaystack(p).indexOf(q) >= 0;
+      })
+      .map(function (p) {
+        return p.code;
+      });
+  }
+
+  function updatePermSummary() {
+    var st = permState();
+    var summary = byId("permSummary");
+    if (!summary) return;
+    var all = (st.catalogue.permissions || []).map(function (p) {
+      return p.code;
+    });
+    var enabled = all.filter(function (c) {
+      return st.selected[c];
+    }).length;
+    var dangerOn = all.filter(function (c) {
+      return st.selected[c] && permMeta(c).danger;
+    }).length;
+    var vis = visiblePermCodes();
+    var visOn = vis.filter(function (c) {
+      return st.selected[c];
+    }).length;
+    summary.innerHTML =
+      "<div><div class=\"pnum\">" +
+      plainNum(enabled) +
+      '</div><div class="plabel">' +
+      dual("صلاحية مُفعّلة", "permissions enabled") +
+      "</div></div>" +
+      '<div class="psep"></div>' +
+      "<div><div class=\"pnum\">" +
+      plainNum(all.length) +
+      '</div><div class="plabel">' +
+      dual("إجمالي الصلاحيات", "total permissions") +
+      "</div></div>" +
+      '<div class="psep"></div>' +
+      "<div><div class=\"pnum\">" +
+      plainNum(visOn) +
+      " / " +
+      plainNum(vis.length) +
+      '</div><div class="plabel">' +
+      dual("ضمن نتائج العرض الحالية", "in current view") +
+      "</div></div>" +
+      (dangerOn
+        ? '<span class="pdanger">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' +
+          dual(
+            toArabicDigits(String(dangerOn)) + " صلاحية حساسة مُفعّلة",
+            dangerOn + " sensitive permissions enabled",
+          ) +
+          "</span>"
+        : "") +
+      updatePermDirty();
+  }
+
+  function updatePermDirty() {
+    var st = permState();
+    var dirtyHost = byId("permDirty");
+    var changed = 0;
+    var all = (st.catalogue.permissions || []).map(function (p) {
+      return p.code;
+    });
+    all.forEach(function (c) {
+      if (!!st.selected[c] !== !!st.original[c]) changed += 1;
+    });
+    st.dirty = changed > 0;
+    if (dirtyHost) {
+      dirtyHost.innerHTML = changed
+        ? dual(
+            toArabicDigits(String(changed)) + " تغيير غير محفوظ",
+            changed + " unsaved change(s)",
+          )
+        : dual("لا تغييرات غير محفوظة", "No unsaved changes");
+    }
+    var saveBtn = document.querySelector('[data-admin-action="perm-save"]');
+    if (saveBtn) saveBtn.disabled = !changed;
+    return "";
+  }
+
+  function bindPermEditor(role) {
+    var st = permState();
+    renderPermGroups();
+    var search = byId("permSearch");
+    if (search) {
+      search.addEventListener(
+        "input",
+        debounce(function () {
+          st.query = search.value;
+          renderPermGroups();
+        }, 140),
+      );
+    }
+    var editor = byId("permEditor");
+    if (!editor) return;
+    editor.addEventListener("change", function (e) {
+      var cb = e.target.closest ? e.target.closest("[data-perm-code]") : null;
+      if (!cb) return;
+      var code = cb.getAttribute("data-perm-code");
+      st.selected[code] = cb.checked;
+      var card = cb.closest(".perm-card");
+      if (card) card.classList.toggle("on", cb.checked);
+      updatePermSummary();
+      updateGroupCounts();
+    });
+  }
+
+  function updateGroupCounts() {
+    var st = permState();
+    void st;
+    document.querySelectorAll("#permGroups .perm-group").forEach(function (g) {
+      var boxes = g.querySelectorAll("[data-perm-code]");
+      var on = 0;
+      boxes.forEach(function (b) {
+        if (b.checked) on += 1;
+      });
+      var count = g.querySelector(".pcount");
+      if (count) count.textContent = on + " / " + boxes.length;
     });
   }
 
@@ -4118,8 +4599,8 @@
       var deliveries = res[2] || [];
       var createForm = canManage
         ? '<form class="av-form av-form-inline" id="hookForm">' +
-          field("الاسم", "Name", textInput("hkName", "", "CRM sync")) +
-          field("الرابط", "Endpoint URL", textInput("hkUrl", "", "https://hooks.example.com/safir")) +
+          field("الاسم", "Name", textInput("hkName", "", "ph.integrationName")) +
+          field("الرابط", "Endpoint URL", textInput("hkUrl", "", "ph.endpointUrl")) +
           field("النطاق", "Scope",
             selectInput("hkScope", [
               { value: "holding", label: STATE.lang === "ar" ? "القابضة" : "Holding" },
@@ -4191,7 +4672,7 @@
       var canCreate = has("form.create");
       var createForm = canCreate
         ? '<form class="av-form av-form-inline" id="builderForm">' +
-          field("الكود", "Code", textInput("bfCode", "", "capex")) +
+          field("الكود", "Code", textInput("bfCode", "", "ph.formCode")) +
           field("الاسم (عربي)", "Name (AR)", textInput("bfNameAr", "")) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("bfNameEn", "")) +
           field("النطاق", "Scope",
@@ -4332,7 +4813,7 @@
   function addFieldForm() {
     return (
       '<div class="av-form av-form-inline" style="margin-top:10px">' +
-      field("المفتاح", "Key", textInput("afKey", "", "amount")) +
+      field("المفتاح", "Key", textInput("afKey", "", "ph.fieldKey")) +
       field("النوع", "Type", selectInput("afType", [
         { value: "short_text", label: "Short text" },
         { value: "long_text", label: "Long text" },
@@ -4380,7 +4861,7 @@
   function addRequirementForm() {
     return (
       '<div class="av-form av-form-inline" style="margin-top:10px">' +
-      field("المفتاح", "Key", textInput("arKey", "", "quote")) +
+      field("المفتاح", "Key", textInput("arKey", "", "ph.requirementKey")) +
       field("النوع", "Type", selectInput("arType", [
         { value: "document", label: STATE.lang === "ar" ? "مستند" : "Document" },
         { value: "field_value", label: STATE.lang === "ar" ? "قيمة حقل" : "Field value" },
@@ -4408,7 +4889,7 @@
       var canCreate = has("workflow.create");
       var createForm = canCreate
         ? '<form class="av-form av-form-inline" id="wfForm">' +
-          field("الكود", "Code", textInput("wfCode", "", "capex_flow")) +
+          field("الكود", "Code", textInput("wfCode", "", "ph.workflowCode")) +
           field("الاسم (عربي)", "Name (AR)", textInput("wfNameAr", "")) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("wfNameEn", "")) +
           field("النموذج", "Form", selectInput("wfFormId", forms.map(function (f) {
@@ -4618,18 +5099,97 @@
       }).catch(adminError);
     }
 
-    if (action === "save-role") {
-      var code = el.getAttribute("data-code");
-      var panel = el.closest(".av-panel");
-      var perms = [];
-      panel.querySelectorAll("[data-perm-code]").forEach(function (cb) {
-        if (cb.checked) perms.push(cb.getAttribute("data-perm-code"));
+    if (action === "role-open") {
+      var rc = el.getAttribute("data-code");
+      var st = permState();
+      if (st.dirty) {
+        var proceed = window.confirm(
+          STATE.lang === "ar"
+            ? "لديك تغييرات غير محفوظة. هل تريد المتابعة دون حفظها؟"
+            : "You have unsaved changes. Continue without saving?",
+        );
+        if (!proceed) return;
+      }
+      st.roleCode = rc;
+      st.query = "";
+      st.category = "all";
+      return renderAdminRoles();
+    }
+
+    if (action === "perm-cat") {
+      var stc = permState();
+      stc.category = el.getAttribute("data-cat") || "all";
+      document.querySelectorAll('[data-admin-action="perm-cat"]').forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-cat") === stc.category);
       });
-      return put("/api/v1/admin/roles/" + encodeURIComponent(code) + "/permissions", { permissions: perms })
+      renderPermGroups();
+      return;
+    }
+
+    if (action === "perm-selectall") {
+      var sts = permState();
+      var catKey = el.getAttribute("data-cat");
+      var group = document.querySelector(
+        '#permGroups .perm-group[data-cat="' + catKey + '"]',
+      );
+      if (!group) return;
+      var boxes = group.querySelectorAll("[data-perm-code]");
+      var allOn = true;
+      boxes.forEach(function (b) {
+        if (!b.checked) allOn = false;
+      });
+      boxes.forEach(function (b) {
+        b.checked = !allOn;
+        sts.selected[b.getAttribute("data-perm-code")] = b.checked;
+        var card = b.closest(".perm-card");
+        if (card) card.classList.toggle("on", b.checked);
+      });
+      updatePermSummary();
+      updateGroupCounts();
+      return;
+    }
+
+    if (action === "perm-cancel") {
+      var stcancel = permState();
+      stcancel.selected = Object.assign({}, stcancel.original);
+      stcancel.query = "";
+      stcancel.category = "all";
+      var editor = byId("permEditor");
+      if (editor) {
+        var search = byId("permSearch");
+        if (search) search.value = "";
+      }
+      document.querySelectorAll('[data-admin-action="perm-cat"]').forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-cat") === "all");
+      });
+      renderPermGroups();
+      toast(STATE.lang === "ar" ? "تم التراجع عن التغييرات." : "Changes discarded.", "ok");
+      return;
+    }
+
+    if (action === "perm-save") {
+      var stsave = permState();
+      var editorEl = byId("permEditor");
+      if (!editorEl) return;
+      var roleCode = editorEl.getAttribute("data-role");
+      var perms = [];
+      (stsave.catalogue.permissions || []).forEach(function (p) {
+        if (stsave.selected[p.code]) perms.push(p.code);
+      });
+      busy(el, true);
+      return put(
+        "/api/v1/admin/roles/" + encodeURIComponent(roleCode) + "/permissions",
+        { permissions: perms },
+      )
         .then(function () {
+          stsave.original = Object.assign({}, stsave.selected);
           toast(STATE.lang === "ar" ? "تم حفظ الصلاحيات." : "Permissions saved.", "ok");
           return renderAdminRoles();
-        }).catch(adminError);
+        })
+        .catch(function (err) {
+          adminError(err);
+          busy(el, false);
+        });
     }
 
     if (action === "save-company") {
@@ -4758,7 +5318,7 @@
     panel.innerHTML =
       '<div class="search-box"><div class="search-in">' +
       '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9DAABD" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
-      '<input id="searchInput" placeholder="' + (STATE.lang === "ar" ? "ابحث في الشركات والتقارير والدعم…" : "Search companies, reports, support…") + '" autocomplete="off">' +
+      '<input id="searchInput"' + phAttr("ph.search") + ' autocomplete="off">' +
       '<button class="modal-x" id="searchX">&times;</button></div>' +
       '<div class="search-res" id="searchRes"></div></div>';
     document.body.appendChild(panel);
