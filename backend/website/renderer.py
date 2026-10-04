@@ -12,6 +12,12 @@ title -- can inject markup.
 Arabic is the default language and RTL the default direction; English pages
 render with ``dir="ltr"``. The two are separate URLs, not a client-side toggle,
 which is what makes the hreflang pairing meaningful.
+
+The layout follows the V2 visitor journey: the visitor starts from a *need*
+(services hub / home journey cards), picks a *market* (Bahrain or Saudi), lands
+on a dedicated, indexable market/service page and completes the form for that
+market. The group companies and the Holding pages exist for trust, never as the
+primary navigation.
 """
 
 from __future__ import annotations
@@ -36,6 +42,10 @@ def _t(ar: str, en: str, lang: str) -> str:
 
 def _brand(lang: str) -> str:
     return _t(BRAND_AR, BRAND_EN, lang)
+
+
+def _flag(market: str) -> str:
+    return "🇧🇭" if market == "bahrain" else "🇸🇦"
 
 
 # --------------------------------------------------------------------------
@@ -138,6 +148,13 @@ def _footer_html(meta: PageMeta) -> str:
         f'{e(item["label"][lang])}</a></li>'
         for item in C.NAV
     )
+    services_links = "".join(
+        f'<li><a href="{e(C.market_service_path("bahrain", slug, lang))}">'
+        f'{e(service["title"][lang])} — {e(C.market_label("bahrain", lang))}</a></li>'
+        f'<li><a href="{e(C.market_service_path("saudi", slug, lang))}">'
+        f'{e(service["title"][lang])} — {e(C.market_label("saudi", lang))}</a></li>'
+        for slug, service in C.SERVICES.items()
+    )
     return f"""
 <footer class="site-footer">
   <div class="container footer-inner">
@@ -148,8 +165,14 @@ def _footer_html(meta: PageMeta) -> str:
                                    "Your business and investment gateway in Bahrain and Saudi Arabia", lang))}</p>
     </div>
     <nav class="footer-nav" aria-label="{e(_t('روابط التذييل', 'Footer links', lang))}">
-      <h2 class="footer-heading">{e(_t('روابط سريعة', 'Quick links', lang))}</h2>
-      <ul>{nav_links}</ul>
+      <div class="footer-col">
+        <h2 class="footer-heading">{e(_t('روابط سريعة', 'Quick links', lang))}</h2>
+        <ul>{nav_links}</ul>
+      </div>
+      <div class="footer-col">
+        <h2 class="footer-heading">{e(_t('الخدمات حسب السوق', 'Services by market', lang))}</h2>
+        <ul>{services_links}</ul>
+      </div>
     </nav>
   </div>
   <div class="container footer-legal">
@@ -167,6 +190,12 @@ def render_page(meta: PageMeta, body: str, branding: dict | None = None) -> str:
     crumbs = seo.breadcrumb_jsonld(meta.breadcrumbs)
     if crumbs:
         jsonld.append(crumbs)
+    service_node = seo.service_jsonld(meta)
+    if service_node:
+        jsonld.append(service_node)
+    faq_node = seo.faq_jsonld(meta)
+    if faq_node:
+        jsonld.append(faq_node)
     jsonld_html = "".join(seo.jsonld_script(node) for node in jsonld)
 
     return f"""<!DOCTYPE html>
@@ -200,47 +229,6 @@ def render_page(meta: PageMeta, body: str, branding: dict | None = None) -> str:
 # --------------------------------------------------------------------------
 # shared building blocks
 # --------------------------------------------------------------------------
-def _market_choice(lang: str, service_slug: str, heading: str | None = None) -> str:
-    """The two market buttons shown inside every service."""
-    cards = []
-    for market in C.MARKETS:
-        label = C.market_label(market, lang)
-        path = C.market_service_path(market, service_slug, lang)
-        flag = "🇧🇭" if market == "bahrain" else "🇸🇦"
-        cards.append(
-            f"""<a class="market-card" href="{e(path)}">
-  <span class="market-flag" aria-hidden="true">{flag}</span>
-  <span class="market-name">{e(label)}</span>
-  <span class="market-cta">{e(_t('ابدأ الآن', 'Get started', lang))} <span aria-hidden="true">←</span></span>
-</a>"""
-        )
-    title = heading or _t("اختر السوق", "Choose your market", lang)
-    return f"""
-<section class="section market-choice">
-  <div class="container">
-    <h2 class="section-title">{e(title)}</h2>
-    <div class="market-grid">{''.join(cards)}</div>
-  </div>
-</section>"""
-
-
-def _service_cards(lang: str) -> str:
-    cards = []
-    for slug, service in C.SERVICES.items():
-        # Each card leads into the market choice for that service, so the
-        # visitor always picks a market explicitly.
-        target = C.PAGE_PATHS["services"][lang] + "#" + service["slug"]
-        cards.append(
-            f"""<a class="service-card" href="{e(target)}" data-service="{e(slug)}">
-  <span class="service-icon" aria-hidden="true">{_icon(service['icon'])}</span>
-  <h3 class="service-title">{e(service['title'][lang])}</h3>
-  <p class="service-blurb">{e(service['blurb'][lang])}</p>
-  <span class="service-link">{e(_t('اختر السوق', 'Choose market', lang))} <span aria-hidden="true">←</span></span>
-</a>"""
-        )
-    return f'<div class="service-grid">{"".join(cards)}</div>'
-
-
 def _icon(name: str) -> str:
     icons = {
         "opportunities": (
@@ -270,8 +258,109 @@ def _icon(name: str) -> str:
             'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
             '<path d="M12 5v14"/><path d="M5 12h14"/></svg>'
         ),
+        "group": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/></svg>'
+        ),
+        "contact": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M4 5h16v14H4z"/><path d="m4 6 8 6 8-6"/></svg>'
+        ),
+        "shield": (
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>'
+        ),
     }
     return icons.get(name, "")
+
+
+def _market_choice(
+    lang: str, service_slug: str, heading: str | None = None, sub: str | None = None
+) -> str:
+    """The two market buttons shown inside every service."""
+    cards = []
+    for market in C.MARKETS:
+        label = C.market_label(market, lang)
+        path = C.market_service_path(market, service_slug, lang)
+        cards.append(
+            f"""<a class="market-card" href="{e(path)}">
+  <span class="market-flag" aria-hidden="true">{_flag(market)}</span>
+  <span class="market-name">{e(label)}</span>
+  <span class="market-cta">{e(_t('ابدأ الآن', 'Get started', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+    title = heading or _t("اختر السوق", "Choose your market", lang)
+    sub_html = f'<p class="section-sub">{e(sub)}</p>' if sub else ""
+    return f"""
+<section class="section market-choice">
+  <div class="container">
+    <h2 class="section-title">{e(title)}</h2>
+    {sub_html}
+    <div class="market-grid">{''.join(cards)}</div>
+  </div>
+</section>"""
+
+
+def _service_cards(lang: str) -> str:
+    cards = []
+    for slug, service in C.SERVICES.items():
+        # Each card leads into the market choice for that service, so the
+        # visitor always picks a market explicitly.
+        target = C.PAGE_PATHS["services"][lang] + "#" + service["slug"]
+        cards.append(
+            f"""<a class="service-card" href="{e(target)}" data-service="{e(slug)}">
+  <span class="service-icon" aria-hidden="true">{_icon(service['icon'])}</span>
+  <h3 class="service-title">{e(service['title'][lang])}</h3>
+  <p class="service-blurb">{e(service['blurb'][lang])}</p>
+  <span class="service-link">{e(_t('اختر السوق', 'Choose market', lang))} <span aria-hidden="true">←</span></span>
+</a>"""
+        )
+    return f'<div class="service-grid">{"".join(cards)}</div>'
+
+
+def _steps_list(lang: str, steps: list[tuple[str, str]]) -> str:
+    return (
+        '<ol class="steps">'
+        + "".join(
+            f'<li><span class="step-title">{e(title)}</span>'
+            f'<span class="step-desc">{e(desc)}</span></li>'
+            for title, desc in steps
+        )
+        + "</ol>"
+    )
+
+
+def _steps_section(lang: str, steps: list[tuple[str, str]], heading: str | None = None) -> str:
+    if not steps:
+        return ""
+    title = heading or _t("كيف تسير الخدمة", "How the service works", lang)
+    return f"""
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">{e(title)}</h2>
+    {_steps_list(lang, steps)}
+  </div>
+</section>"""
+
+
+def _faq_block(lang: str, pairs: list[tuple[str, str]]) -> str:
+    items = "".join(
+        f"""<details class="faq-item">
+  <summary>{e(question)}<span class="faq-caret" aria-hidden="true"></span></summary>
+  <p>{e(answer)}</p>
+</details>"""
+        for question, answer in pairs
+    )
+    return f"""
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">{e(_t('أسئلة متكررة', 'Frequently asked questions', lang))}</h2>
+    <div class="faq">{items}</div>
+  </div>
+</section>"""
 
 
 # --------------------------------------------------------------------------
@@ -306,6 +395,26 @@ def _home_body(lang: str) -> str:
   <span class="journey-cta">{e(_t('ابدأ', 'Start', lang))} <span aria-hidden="true">←</span></span>
 </a>"""
         )
+
+    trust = [
+        ("shield", _t("توجيه داخلي", "Internal routing", lang),
+         _t("نوجّه كل طلب إلى الجهة المختصة داخل القابضة دون أن تحتاج لمعرفتها.",
+            "We route each request to the responsible team inside the Holding, without you needing to know it.", lang)),
+        ("opportunities", _t("سوقان", "Two markets", lang),
+         _t("البحرين والمملكة العربية السعودية، بمحتوى ونماذج مناسبة لكل سوق.",
+            "Bahrain and Saudi Arabia, with content and forms suited to each market.", lang)),
+        ("group", _t("شركات المجموعة", "Group companies", lang),
+         _t("شركات قائمة تدعم التنفيذ، وتظهر لبناء الثقة لا للتنقل.",
+            "Established companies that support delivery, shown for trust rather than navigation.", lang)),
+    ]
+    trust_cards = "".join(
+        f"""<article class="trust-card">
+  <span class="trust-icon" aria-hidden="true">{_icon(icon)}</span>
+  <h3>{e(title)}</h3>
+  <p>{e(desc)}</p>
+</article>"""
+        for icon, title, desc in trust
+    )
 
     return f"""
 <section class="hero">
@@ -351,17 +460,29 @@ def _home_body(lang: str) -> str:
   </div>
 </section>
 
-{_market_choice(lang, 'company-formation', _t('اختر السوق لخدماتنا', 'Choose your market', lang))}
+{_market_choice(lang, 'company-formation', _t('اختر السوق لخدماتنا', 'Choose your market', lang),
+                _t('لكل سوق صفحة ونموذج خاصان به.', 'Each market has its own page and form.', lang))}
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">{e(_t('لماذا سفير القابضة', 'Why Safir Holding', lang))}</h2>
+    <div class="trust-grid">{trust_cards}</div>
+  </div>
+</section>
 
 <section class="section section-alt">
   <div class="container">
     <h2 class="section-title">{e(_t('كيف تعمل البوابة', 'How the gateway works', lang))}</h2>
-    <ol class="steps">
-      <li>{e(_t('اختر احتياجك', 'Choose your need', lang))}</li>
-      <li>{e(_t('حدّد السوق: البحرين أو السعودية', 'Select the market: Bahrain or Saudi Arabia', lang))}</li>
-      <li>{e(_t('أكمل النموذج المناسب', 'Complete the relevant form', lang))}</li>
-      <li>{e(_t('تتواصل معك الجهة المختصة', 'The responsible team contacts you', lang))}</li>
-    </ol>
+    {_steps_list(lang, [
+        (_t('اختر احتياجك', 'Choose your need', lang),
+         _t('ابدأ من الخدمة التي تبحث عنها.', 'Start from the service you are looking for.', lang)),
+        (_t('حدّد السوق: البحرين أو السعودية', 'Select the market: Bahrain or Saudi Arabia', lang),
+         _t('لكل سوق صفحة ونموذج ومتطلبات خاصة.', 'Each market has its own page, form and requirements.', lang)),
+        (_t('أكمل النموذج المناسب', 'Complete the relevant form', lang),
+         _t('أسئلة مخصصة للخدمة والسوق.', 'Questions tailored to the service and the market.', lang)),
+        (_t('تتواصل معك الجهة المختصة', 'The responsible team contacts you', lang),
+         _t('نوجّه الطلب داخليًا ونحدد المصدر والسوق تلقائيًا.', 'We route it internally and record the source and market automatically.', lang)),
+    ])}
   </div>
 </section>"""
 
@@ -419,23 +540,31 @@ def _services_body(lang: str) -> str:
 # --------------------------------------------------------------------------
 def _market_service_body(lang: str, market: str, slug: str) -> str:
     service = C.service_def(slug)
-    market_content = C.MARKET_CONTENT[market]
+    content = C.service_market_content(slug, market) or {}
     market_name = C.market_label(market, lang)
-    highlights = "".join(
-        f"<li>{e(item)}</li>" for item in market_content["highlights"][lang]
-    )
     other = "en" if lang == "ar" else "ar"
     other_path = C.market_service_path(market, slug, other)
 
-    # The form for this page. Opportunities/investment use the interest form.
+    intro = content.get("intro", {}).get(lang) or C.MARKET_CONTENT[market]["intro"][lang]
+    highlights = content.get("highlights", {}).get(lang) or C.MARKET_CONTENT[market]["highlights"][lang]
+    deliverables = content.get("deliverables", {}).get(lang, [])
+    steps = content.get("steps", {}).get(lang, [])
+    faq = content.get("faq", {}).get(lang, [])
+
+    highlights_html = "".join(f"<li>{e(item)}</li>" for item in highlights)
+    deliverables_html = (
+        '<ul class="check-list">'
+        + "".join(f"<li>{e(item)}</li>" for item in deliverables)
+        + "</ul>"
+        if deliverables
+        else ""
+    )
+
+    # The form for this page. Opportunities use the interest flow; every other
+    # service has its own form (investment now has a dedicated one).
     form_key = service["form"]
-    if form_key in (None, "opportunity-interest"):
-        # No listing form here: opportunities pages show the live listings and
-        # a link to the interest flow; investment pages show the interest form.
-        if slug == "opportunities":
-            body_section = _opportunities_section(lang, market)
-        else:
-            body_section = _form_section(lang, "opportunity-interest", market, service)
+    if slug == "opportunities":
+        body_section = _opportunities_section(lang, market)
     else:
         body_section = _form_section(lang, form_key, market, service)
 
@@ -449,8 +578,9 @@ def _market_service_body(lang: str, market: str, slug: str) -> str:
       <span aria-hidden="true">/</span>
       <span>{e(market_name)}</span>
     </nav>
+    <p class="page-hero-eyebrow">{_flag(market)} {e(market_name)}</p>
     <h1>{e(service['title'][lang])} — {e(market_name)}</h1>
-    <p class="page-hero-sub">{e(market_content['intro'][lang])}</p>
+    <p class="page-hero-sub">{e(intro)}</p>
     <div class="page-hero-actions">
       <a class="btn btn-primary" href="#form">{e(_t('ابدأ الطلب', 'Start your request', lang))}</a>
       <a class="btn btn-ghost" href="{e(other_path)}" hreflang="{e(other)}" lang="{e(other)}">
@@ -464,7 +594,8 @@ def _market_service_body(lang: str, market: str, slug: str) -> str:
   <div class="container two-col">
     <div>
       <h2 class="section-title">{e(_t('معلومات السوق', 'Market information', lang))}</h2>
-      <ul class="highlights">{highlights}</ul>
+      <ul class="highlights">{highlights_html}</ul>
+      {deliverables_html}
     </div>
     <div class="aside-card">
       <h3>{e(_t('ماذا يحدث بعد الإرسال؟', 'What happens after you submit?', lang))}</h3>
@@ -477,7 +608,11 @@ def _market_service_body(lang: str, market: str, slug: str) -> str:
   </div>
 </section>
 
-{body_section}"""
+{body_section}
+
+{_steps_section(lang, steps)}
+
+{_faq_block(lang, faq) if faq else ''}"""
 
 
 # --------------------------------------------------------------------------
@@ -506,6 +641,13 @@ _FORM_LABELS: dict[str, dict[str, str]] = {
     "investor_profile": {"ar": "نبذة عن المستثمر", "en": "Investor profile"},
     "subject": {"ar": "الموضوع", "en": "Subject"},
     "inquiry_type": {"ar": "نوع الاستفسار", "en": "Inquiry type"},
+    # Business-listing wizard fields.
+    "description": {"ar": "نبذة عن النشاط", "en": "Business description"},
+    "reason_for_listing": {"ar": "سبب العرض", "en": "Reason for listing"},
+    "desired_outcome": {"ar": "المطلوب (بيع / شراكة / استثمار)", "en": "Desired outcome (sale / partnership / investment)"},
+    "business_age_years": {"ar": "عمر النشاط (بالسنوات)", "en": "Business age (years)"},
+    "value_min": {"ar": "نطاق القيمة — من", "en": "Value range — from"},
+    "value_max": {"ar": "نطاق القيمة — إلى", "en": "Value range — to"},
     "consent": {"ar": "أوافق على معالجة بياناتي وفقًا لإشعار الخصوصية.", "en": "I consent to my data being processed in line with the privacy notice."},
     "honeypot": {"ar": "اترك هذا الحقل فارغًا", "en": "Leave this field empty"},
     "submit": {"ar": "إرسال", "en": "Submit"},
@@ -624,7 +766,18 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
             fields.append(_field("target_city", lang, required=True))
         else:
             fields.append(_field("project_location", lang))
+    elif form_key == "investment":
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("phone", lang, kind="tel", required=True),
+            _field("company_name", lang),
+            _field("investor_profile", lang, textarea=True, full=True),
+            _field("message", lang, textarea=True, full=True),
+        ]
     elif form_key == "opportunity-interest":
+        # Only reached from an opportunity page, where the listing id is set by
+        # the client when the visitor picks a specific opportunity.
         fields = [
             _field("full_name", lang, required=True),
             _field("email", lang, kind="email", required=True),
@@ -719,10 +872,9 @@ def _opportunities_body(lang: str) -> str:
     for market in C.MARKETS:
         label = C.market_label(market, lang)
         path = C.market_service_path(market, "opportunities", lang)
-        flag = "🇧🇭" if market == "bahrain" else "🇸🇦"
         cards.append(
             f"""<a class="market-card" href="{e(path)}">
-  <span class="market-flag" aria-hidden="true">{flag}</span>
+  <span class="market-flag" aria-hidden="true">{_flag(market)}</span>
   <span class="market-name">{e(label)}</span>
   <span class="market-cta">{e(_t('استعرض الفرص', 'Browse opportunities', lang))} <span aria-hidden="true">←</span></span>
 </a>"""
@@ -828,6 +980,7 @@ def _list_body(lang: str) -> str:
           {_field("full_name", lang, required=True)}
           {_field("company_name", lang)}
           {_field("sector", lang)}
+          {_field("business_age_years", lang, kind="number")}
           {_field("email", lang, kind="email", required=True)}
           {_field("phone", lang, kind="tel", required=True)}
           {_field("description", lang, required=True, textarea=True, full=True)}
@@ -837,6 +990,8 @@ def _list_body(lang: str) -> str:
       <fieldset class="form-step" data-step="5" hidden>
         <legend>{e(_t('المطلوب', 'Desired outcome', lang))}</legend>
         <div class="field-grid">
+          {_field("value_min", lang, kind="number")}
+          {_field("value_max", lang, kind="number")}
           {_field("reason_for_listing", lang, textarea=True, full=True)}
           {_field("desired_outcome", lang, textarea=True, full=True)}
         </div>
@@ -872,6 +1027,7 @@ def _group_body(lang: str) -> str:
         country = C.market_label(company["country"], lang)
         cards.append(
             f"""<article class="company-card">
+  <span class="company-flag" aria-hidden="true">{_flag(company['country'])}</span>
   <h3>{e(company['name_' + lang])}</h3>
   <p class="company-meta">{e(country)} · {e(company['sector'][lang])}</p>
   <p>{e(company['description'][lang])}</p>
@@ -959,18 +1115,16 @@ def _contact_body(lang: str) -> str:
 {_form_section(lang, "contact", "bahrain", None)}"""
 
 
-# --------------------------------------------------------------------------
-# 404
-# --------------------------------------------------------------------------
 def not_found_body(lang: str) -> str:
     return f"""
-<section class="page-hero notfound">
-  <div class="container">
+<section class="page-hero">
+  <div class="container center">
     <h1>{e(_t('الصفحة غير موجودة', 'Page not found', lang))}</h1>
-    <p>{e(_t('لم نتمكن من العثور على الصفحة المطلوبة.', 'We could not find the page you requested.', lang))}</p>
-    <div class="page-hero-actions">
-      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['home'][lang])}">{e(_t('العودة للرئيسية', 'Back to home', lang))}</a>
-      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('تصفح الخدمات', 'Browse services', lang))}</a>
+    <p>{e(_t('تعذّر العثور على الصفحة المطلوبة. يمكنك العودة إلى الرئيسية أو تصفح الخدمات.',
+             'We could not find the page you requested. You can return home or browse the services.', lang))}</p>
+    <div class="page-hero-actions" style="justify-content:center">
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['home'][lang])}">{e(_t('الرئيسية', 'Home', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('الخدمات', 'Services', lang))}</a>
     </div>
   </div>
 </section>"""
@@ -979,28 +1133,32 @@ def not_found_body(lang: str) -> str:
 # --------------------------------------------------------------------------
 # dispatch
 # --------------------------------------------------------------------------
-def render(meta: PageMeta, branding: dict | None = None) -> str:
-    """Render the full HTML document for a resolved page."""
+def _body_for(meta: PageMeta) -> str:
+    route = meta.route
     lang = meta.lang
-    if meta.route == "home":
-        body = _home_body(lang)
-    elif meta.route == "services":
-        body = _services_body(lang)
-    elif meta.route == "opportunities":
-        body = _opportunities_body(lang)
-    elif meta.route == "group":
-        body = _group_body(lang)
-    elif meta.route == "about":
-        body = _about_body(lang)
-    elif meta.route == "contact":
-        body = _contact_body(lang)
-    elif meta.route == "list-your-business":
-        body = _list_body(lang)
-    elif meta.route == "not-found":
-        body = not_found_body(lang)
-    elif meta.route.startswith("market-service:"):
-        _, market, slug = meta.route.split(":", 2)
-        body = _market_service_body(lang, market, slug)
-    else:
-        body = _home_body(lang)
-    return render_page(meta, body, branding)
+    if route == "home":
+        return _home_body(lang)
+    if route.startswith("market-service:"):
+        _, market, slug = route.split(":", 2)
+        return _market_service_body(lang, market, slug)
+    if route == "services":
+        return _services_body(lang)
+    if route == "opportunities":
+        return _opportunities_body(lang)
+    if route == "list-your-business":
+        return _list_body(lang)
+    if route == "group":
+        return _group_body(lang)
+    if route == "about":
+        return _about_body(lang)
+    if route == "contact":
+        return _contact_body(lang)
+    return not_found_body(lang)
+
+
+def render(meta: PageMeta, branding: dict | None = None) -> str:
+    """Render a full page for a resolved route."""
+    return render_page(meta, _body_for(meta), branding)
+
+
+__all__ = ["render", "render_page", "not_found_body", "e"]

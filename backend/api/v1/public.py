@@ -42,6 +42,7 @@ from backend.schemas import (
     CompanyFormationSubmission,
     ContactSubmission,
     FeasibilitySubmission,
+    InvestmentSubmission,
     OpportunityInterestSubmission,
     PublicOpportunityOut,
     PublicSubmissionResult,
@@ -154,6 +155,26 @@ def submit_opportunity_interest(
     lead = website_lead_service.create_lead(
         db,
         service_type=WebsiteServiceType.OPPORTUNITY_INTEREST.value,
+        payload=payload,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _result(lead)
+
+
+@router.post(
+    "/leads/investment",
+    response_model=PublicSubmissionResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_investment(
+    payload: InvestmentSubmission, request: Request, db: DbSession
+) -> PublicSubmissionResult:
+    _enforce_rate_limit(request)
+    ctx = audit_service.request_context(request)
+    lead = website_lead_service.create_lead(
+        db,
+        service_type=WebsiteServiceType.INVESTMENT.value,
         payload=payload,
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],

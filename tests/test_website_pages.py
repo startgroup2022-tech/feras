@@ -270,6 +270,16 @@ def test_platform_shell_is_served_under_the_platform_path(client):
     assert "safir" in html.lower()
 
 
+def test_bare_platform_path_redirects_to_the_slashed_url(client):
+    # Regression: at ``/platform`` (no trailing slash) the shell's relative
+    # asset references resolved against the root and 404'd, breaking login.
+    response = client.get("/platform", follow_redirects=False)
+    assert response.status_code in (307, 308)
+    assert response.headers["location"].endswith("/platform/")
+    # And the assets must be reachable under the canonical prefix.
+    assert client.get("/platform/auth.js").status_code == 200
+
+
 # --------------------------------------------------------------------------
 # content integrity
 # --------------------------------------------------------------------------
@@ -290,3 +300,94 @@ def test_no_placeholder_or_demo_markers_in_rendered_pages(public_client):
     forbidden = re.compile(r"lorem ipsum|placeholder text|demo data|TODO", re.I)
     for path in ("/", "/ar", "/services", "/about", "/contact"):
         assert not forbidden.search(public_client.get(path).text), path
+
+
+# --------------------------------------------------------------------------
+# V2 visitor journey: per market+service pages
+# --------------------------------------------------------------------------
+def test_every_market_service_page_has_its_own_title_and_description():
+    seen_titles: dict[str, str] = {}
+    seen_descriptions: dict[str, str] = {}
+    for market, slug in C.all_market_service_pages():
+        for lang in ("en", "ar"):
+            meta = pages.resolve_route(C.market_service_path(market, slug, lang))
+            assert meta is not None
+            assert meta.title.strip()
+            assert meta.description.strip()
+            # Each page must be genuinely distinct, not a country label swap.
+            key_t = f"{market}/{slug}/{lang}"
+            assert meta.title not in seen_titles, f"{key_t} duplicates {seen_titles[meta.title]}"
+            assert meta.description not in seen_descriptions, (
+                f"{key_t} duplicates {seen_descriptions[meta.description]}"
+            )
+            seen_titles[meta.title] = key_t
+            seen_descriptions[meta.description] = key_t
+
+
+def test_every_market_service_page_has_rich_local_content():
+    for market, slug in C.all_market_service_pages():
+        content = C.service_market_content(slug, market)
+        assert content is not None, f"{market}/{slug} has no content"
+        for lang in ("en", "ar"):
+            assert content["meta"][lang]["title"]
+            assert content["meta"][lang]["description"]
+            assert content["intro"][lang]
+            assert content["highlights"][lang]
+            assert content["deliverables"][lang]
+            assert content["steps"][lang]
+            assert content["faq"][lang]
+            # FAQ entries must be (question, answer) pairs with real text.
+            for question, answer in content["faq"][lang]:
+                assert question.strip() and answer.strip()
+
+
+def test_market_service_pages_differ_between_markets():
+    # The V2 rule: the same service in Bahrain and Saudi must not share copy.
+    for slug in C.SERVICES:
+        bh = C.service_market_content(slug, "bahrain")
+        sa = C.service_market_content(slug, "saudi")
+        assert bh and sa
+        for lang in ("en", "ar"):
+            assert bh["intro"][lang] != sa["intro"][lang]
+            assert bh["meta"][lang]["description"] != sa["meta"][lang]["description"]
+
+
+def test_market_service_page_emits_service_and_faq_structured_data(public_client):
+    html = public_client.get("/bahrain/company-formation").text
+    assert '"@type": "Service"' in html
+    assert '"@type": "FAQPage"' in html
+    assert '"@type": "BreadcrumbList"' in html
+
+
+def test_market_service_page_renders_faq_and_steps(public_client):
+    html = public_client.get("/saudi/feasibility-study").text
+    assert 'class="faq"' in html
+    assert 'class="faq-item"' in html
+    assert 'class="steps"' in html
+    assert 'class="check-list"' in html
+
+
+def test_investment_page_uses_the_investment_form(public_client):
+    # Regression: the investment page used to post to the opportunity-interest
+    # form, which requires an opportunity_id the visitor could not supply.
+    html = public_client.get("/saudi/investment").text
+    assert 'data-form="investment"' in html
+    assert "/api/v1/public/leads/investment" in html
+    assert "opportunity_id" not in html
+
+
+def test_listing_wizard_has_all_its_field_labels(public_client):
+    # Regression: three wizard fields had no label and rendered their raw key.
+    html = public_client.get("/list-your-business").text
+    assert "Business description" in html
+    assert "Reason for listing" in html
+    assert "Desired outcome" in html
+    assert ">description<" not in html
+    assert ">reason_for_listing<" not in html
+    assert ">desired_outcome<" not in html
+
+
+def test_footer_links_to_services_by_market(public_client):
+    html = public_client.get("/").text
+    assert "/bahrain/company-formation" in html
+    assert "/saudi/company-formation" in html

@@ -119,6 +119,58 @@ def breadcrumb_jsonld(crumbs: list[tuple[str, str]]) -> dict | None:
     }
 
 
+def service_jsonld(meta: C.PageMeta) -> dict | None:
+    """A ``Service`` node for a market/service page.
+
+    The service is described by name, provider and area served only. No price,
+    rating or availability is asserted, because none of those are verified.
+    """
+    if not meta.market or not meta.service_slug:
+        return None
+    service = C.service_def(meta.service_slug)
+    if service is None:
+        return None
+    market_name = C.market_label(meta.market, meta.lang)
+    return {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": f"{service['title'][meta.lang]} — {market_name}",
+        "serviceType": service["title"][meta.lang],
+        "description": meta.description,
+        "provider": {
+            "@type": "Organization",
+            "name": "سفير القابضة" if meta.lang == "ar" else "Safir Holding",
+            "url": absolute("/"),
+        },
+        "areaServed": {"@type": "Country", "name": market_name},
+        "url": absolute(meta.canonical_path),
+    }
+
+
+def faq_jsonld(meta: C.PageMeta) -> dict | None:
+    """A ``FAQPage`` node built from the page's real on-page FAQ."""
+    if not meta.market or not meta.service_slug:
+        return None
+    content = C.service_market_content(meta.service_slug, meta.market)
+    if not content:
+        return None
+    pairs = content.get("faq", {}).get(meta.lang, [])
+    if not pairs:
+        return None
+    return {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": question,
+                "acceptedAnswer": {"@type": "Answer", "text": answer},
+            }
+            for question, answer in pairs
+        ],
+    }
+
+
 def jsonld_script(data: dict) -> str:
     # ``</`` is escaped so the payload can never terminate the script element.
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")

@@ -17,6 +17,9 @@ from __future__ import annotations
 from backend.website import content as C
 from backend.website.content import PageMeta
 
+# Brand suffix appended to every page title, per language.
+_BRAND = {"ar": "سفير القابضة", "en": "Safir Holding"}
+
 # Localized top-level path -> (page key, language).
 _TOP_LEVEL: dict[str, tuple[str, str]] = {}
 for _key, _paths in C.PAGE_PATHS.items():
@@ -139,15 +142,21 @@ def resolve_route(path: str) -> PageMeta | None:
     if path in _MARKET_SERVICE:
         market, slug, lang = _MARKET_SERVICE[path]
         service = C.service_def(slug)
-        market_meta = C.MARKET_CONTENT[market]["meta"][lang]
+        content = C.service_market_content(slug, market)
         market_name = C.market_label(market, lang)
         service_name = service["title"][lang]
-        title = (
-            f"{service_name} في {market_name} | سفير القابضة"
-            if lang == "ar"
-            else f"{service_name} in {market_name} | Safir Holding"
-        )
-        description = market_meta["description"]
+        # Prefer the dedicated per market+service copy so no two pages share a
+        # title or a description (the V2 concept's "real local page" rule).
+        if content is not None:
+            title = f"{content['meta'][lang]['title']} | {_BRAND[lang]}"
+            description = content["meta"][lang]["description"]
+        else:
+            title = (
+                f"{service_name} في {market_name} | سفير القابضة"
+                if lang == "ar"
+                else f"{service_name} in {market_name} | Safir Holding"
+            )
+            description = C.MARKET_CONTENT[market]["meta"][lang]["description"]
         return PageMeta(
             route=f"market-service:{market}:{slug}",
             lang=lang,
@@ -163,6 +172,8 @@ def resolve_route(path: str) -> PageMeta | None:
                 (C.PAGE_PATHS["services"][lang], C.PAGE_PATHS["services"][lang]),
                 (service_name, C.market_service_path(market, slug, lang)),
             ],
+            market=market,
+            service_slug=slug,
         )
 
     # ---- top level ----

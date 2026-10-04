@@ -163,6 +163,21 @@ class OpportunityInterestSubmission(PublicSubmissionBase):
 
 
 # --------------------------------------------------------------------------
+# investment interest
+# --------------------------------------------------------------------------
+class InvestmentSubmission(PublicSubmissionBase):
+    """A general investment / partnership interest in a chosen market.
+
+    Unlike :class:`OpportunityInterestSubmission` this is not tied to a
+    specific published listing: the visitor is signalling interest in the
+    market, not in one opportunity. Kept separate so the public endpoint never
+    requires an ``opportunity_id`` the visitor cannot supply.
+    """
+
+    investor_profile: str | None = Field(default=None, max_length=_SHORT_MAX)
+
+
+# --------------------------------------------------------------------------
 # business listing
 # --------------------------------------------------------------------------
 class BusinessListingSubmission(PublicSubmissionBase):
@@ -335,6 +350,7 @@ __all__ = [
     "CompanyFormationSubmission",
     "FeasibilitySubmission",
     "OpportunityInterestSubmission",
+    "InvestmentSubmission",
     "BusinessListingSubmission",
     "ContactSubmission",
     "PublicSubmissionResult",

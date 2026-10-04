@@ -32,6 +32,7 @@
     tooMany: AR ? "محاولات كثيرة. يرجى المحاولة لاحقًا." : "Too many attempts. Please try again later.",
     noOpps: AR ? "لا توجد فرص منشورة حاليًا في هذا السوق." : "No published opportunities in this market right now.",
     stepRequired: AR ? "يرجى إكمال هذا القسم." : "Please complete this section.",
+    pickOpp: AR ? "يرجى اختيار الفرصة التي تهمك أولًا." : "Please choose the opportunity you are interested in first.",
   };
 
   // --------------------------------------------------------- attribution
@@ -193,6 +194,18 @@
     if (form.dataset.form === "business-listing") return; // handled by wizard
     form.addEventListener("submit", function (event) {
       event.preventDefault();
+      // The interest form only makes sense against a chosen listing. The id is
+      // set when the visitor clicks "I'm interested" on a specific card.
+      if (form.dataset.form === "opportunity-interest") {
+        var oppId = form.querySelector('input[name="opportunity_id"]');
+        if (!oppId || !oppId.value) {
+          var s = form.querySelector(".form-status");
+          if (s) { s.textContent = T.pickOpp; s.className = "form-status err"; }
+          var list = document.querySelector("[data-opportunities]");
+          if (list) list.scrollIntoView({ block: "center", behavior: "smooth" });
+          return;
+        }
+      }
       submitForm(form);
     });
   });
@@ -326,11 +339,29 @@
         opportunity_type: AR ? "نوع الفرصة" : "Opportunity type",
         company_name: AR ? "اسم الشركة" : "Company name",
         sector: AR ? "القطاع" : "Sector",
+        business_age_years: AR ? "عمر النشاط" : "Business age",
+        value_min: AR ? "القيمة من" : "Value from",
+        value_max: AR ? "القيمة إلى" : "Value to",
+      };
+      var choiceLabels = {
+        applicant_capacity: {
+          owner: AR ? "مالك" : "Owner",
+          representative: AR ? "ممثل" : "Representative",
+          advisor: AR ? "مستشار / وسيط" : "Advisor / Broker",
+        },
+        opportunity_type: {
+          full_sale: AR ? "بيع كامل" : "Full Sale",
+          partial_sale: AR ? "بيع حصة" : "Partial Sale",
+          strategic_partner: AR ? "شريك استراتيجي" : "Strategic Partner",
+          investment: AR ? "استثمار" : "Investment",
+        },
       };
       Object.keys(labels).forEach(function (key) {
         if (!data.get(key)) return;
+        var value = String(data.get(key));
+        if (choiceLabels[key] && choiceLabels[key][value]) value = choiceLabels[key][value];
         var dt = el("dt", null, labels[key]);
-        var dd = el("dd", null, String(data.get(key)));
+        var dd = el("dd", null, value);
         dl.appendChild(dt);
         dl.appendChild(dd);
       });

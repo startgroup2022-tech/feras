@@ -116,6 +116,21 @@ def test_contact_submission_creates_lead(client, db):
     assert db.query(WebsiteLead).count() == 1
 
 
+def test_investment_submission_routes_to_the_investment_desk(client, db):
+    # A market-level investment interest has no opportunity_id and must still
+    # be accepted and routed.
+    response = client.post(
+        f"{PUBLIC}/leads/investment",
+        json=_base("saudi", investor_profile="Family office"),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["reference"].startswith("SAF-IN-")
+    lead = db.query(WebsiteLead).one()
+    assert lead.service_type == WebsiteServiceType.INVESTMENT.value
+    assert lead.market == Market.SAUDI.value
+    assert lead.routed_team == "investment_desk"
+
+
 # --------------------------------------------------------------------------
 # consent, honeypot, attribution
 # --------------------------------------------------------------------------

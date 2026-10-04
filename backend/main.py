@@ -298,6 +298,12 @@ def _mount_platform(app: FastAPI) -> None:
     prefix = _platform_prefix()
 
     @app.get(prefix, include_in_schema=False)
+    def platform_index_redirect() -> Response:
+        # A bare ``/platform`` has no trailing slash, so the shell's relative
+        # asset references (``styles.css``, ``auth.js``) would resolve against
+        # the root and 404. Redirect to the canonical slashed URL instead.
+        return RedirectResponse(url=prefix + "/", status_code=307)
+
     @app.get(prefix + "/", include_in_schema=False)
     def platform_index() -> Response:
         return FileResponse(str(FRONTEND_DIR / "index.html"))

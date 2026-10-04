@@ -307,6 +307,11 @@ def _service_fields(service_type: str, payload) -> dict:
             "opportunity_id": payload.opportunity_id,
             "investor_profile": payload.investor_profile,
         }
+    if service_type == WebsiteServiceType.INVESTMENT.value:
+        return {
+            **common,
+            "investor_profile": payload.investor_profile,
+        }
     if service_type == WebsiteServiceType.BUSINESS_LISTING.value:
         return {
             **common,
