@@ -5,10 +5,13 @@ from fastapi import APIRouter
 from backend.api.v1 import (
     admin,
     ai,
+    analytics,
     auth,
     dashboard,
     documents,
     forms,
+    integrations,
+    notifications,
     reports,
     submissions,
     support,
@@ -30,5 +33,11 @@ api_router.include_router(workflows.router)
 api_router.include_router(submissions.router)
 api_router.include_router(submissions.approvals_router)
 api_router.include_router(documents.router)
+# Phase 6: notification centre
+api_router.include_router(notifications.router)
+# Phase 7-8: analytics and executive intelligence
+api_router.include_router(analytics.router)
+# Phase 9: external integrations
+api_router.include_router(integrations.router)
 
 __all__ = ["api_router"]

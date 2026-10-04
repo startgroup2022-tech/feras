@@ -143,7 +143,45 @@ def submit_report(
         user_agent=user_agent,
         metadata={"period": f"{report.period_year}-{report.period_month:02d}"},
     )
+
+    _notify_report_submitted(db, report=report, actor=user)
     return report
+
+
+def _notify_report_submitted(db: Session, *, report, actor: User) -> None:
+    """Tell the Holding's finance reviewers a subsidiary report has arrived."""
+    from backend.db.models.identity import Company
+    from backend.services import integration_service, notification_service
+
+    try:
+        recipients = notification_service.finance_reviewer_ids(db)
+        company = db.get(Company, report.company_id)
+        notification_service.notify_report_submitted(
+            db,
+            recipient_ids=recipients,
+            report_id=report.id,
+            company_id=report.company_id,
+            company_name_ar=company.name_ar if company else "",
+            company_name_en=(company.name_en if company else "") or "",
+            year=report.period_year,
+            month=report.period_month,
+            actor_user_id=actor.id,
+        )
+        integration_service.emit(
+            db,
+            event_type="report.submitted",
+            payload={
+                "report_id": report.id,
+                "company_id": report.company_id,
+                "period_year": report.period_year,
+                "period_month": report.period_month,
+            },
+            company_id=report.company_id,
+        )
+    except Exception:  # noqa: BLE001 - best-effort
+        import logging
+
+        logging.getLogger("safir.reports").exception("report submitted notification failed")
 
 
 def review_financially(

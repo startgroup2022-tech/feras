@@ -252,6 +252,68 @@ def _open_step(
         )
     db.flush()
 
+    # Tell each approver a request has landed in their queue. The notification
+    # is written after the task rows exist; it never blocks the workflow.
+    _notify_step_assignees(
+        db,
+        instance=instance,
+        submission=submission,
+        step=step,
+        assignee_ids=assignee_ids,
+    )
+
+
+def _notify_step_assignees(
+    db: Session,
+    *,
+    instance: WorkflowInstance,
+    submission: FormSubmission,
+    step: WorkflowStep,
+    assignee_ids: list[int],
+) -> None:
+    from backend.services import notification_service
+
+    try:
+        notification_service.notify_approval_assigned(
+            db,
+            assignee_ids=assignee_ids,
+            submission_id=submission.id,
+            company_id=submission.company_id,
+            title=submission.title or submission.reference,
+            step_name_ar=step.name_ar,
+            step_name_en=step.name_en,
+            actor_user_id=submission.submitted_by_id,
+        )
+        _emit_request_event(db, "request.submitted", submission, {"step": step.key})
+    except Exception:  # noqa: BLE001 - notifications are best-effort
+        import logging
+
+        logging.getLogger("safir.approvals").exception("approval notification failed")
+
+
+def _emit_request_event(
+    db: Session, event_type: str, submission: FormSubmission, extra: dict | None = None
+) -> None:
+    try:
+        from backend.services import integration_service
+
+        payload = {
+            "submission_id": submission.id,
+            "reference": submission.reference,
+            "company_id": submission.company_id,
+            "status": submission.status,
+            "title": submission.title,
+        }
+        if extra:
+            payload.update(extra)
+        integration_service.emit(
+            db, event_type=event_type, payload=payload, company_id=submission.company_id
+        )
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger("safir.approvals").exception("request webhook emit failed")
+
 
 def _advance_past_skipped(
     db: Session, *, instance: WorkflowInstance, submission: FormSubmission
@@ -562,7 +624,47 @@ def act(
         ip_address=ip_address,
         user_agent=user_agent,
     )
+
+    _notify_decision(db, instance=instance, submission=submission, decision=decision, actor=actor)
     return instance
+
+
+def _notify_decision(
+    db: Session,
+    *,
+    instance: WorkflowInstance,
+    submission: FormSubmission,
+    decision: str,
+    actor: User,
+) -> None:
+    from backend.services import notification_service
+
+    try:
+        notification_service.notify_decision(
+            db,
+            submitter_id=submission.submitted_by_id,
+            decision=decision,
+            submission_id=submission.id,
+            company_id=submission.company_id,
+            title=submission.title or submission.reference,
+            actor_user_id=actor.id,
+        )
+        event_type = {
+            ApprovalDecision.APPROVE.value: "request.approved",
+            ApprovalDecision.REJECT.value: "request.rejected",
+            ApprovalDecision.RETURN.value: "request.returned",
+        }.get(decision)
+        if event_type:
+            _emit_request_event(
+                db,
+                event_type,
+                submission,
+                {"decision": decision, "actor_user_id": actor.id},
+            )
+    except Exception:  # noqa: BLE001 - notifications are best-effort
+        import logging
+
+        logging.getLogger("safir.approvals").exception("decision notification failed")
 
 
 # --------------------------------------------------------------------------

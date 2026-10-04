@@ -90,6 +90,8 @@
       <div class="nav-item" data-view="approvals" data-perm="approval.read_own approval.read_all" role="button" tabindex="0"><span class="ar">الموافقات</span><span class="en">Approvals</span></div>
       <div class="nav-item" data-view="documents" data-perm="document.read" role="button" tabindex="0"><span class="ar">المستندات</span><span class="en">Documents</span></div>
       <div class="nav-item" data-view="bi" data-perm="ai.holding ai.company" role="button" tabindex="0"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></div>
+      <div class="nav-item" data-view="analytics" data-perm="analytics.holding analytics.company analytics.operations analytics.compliance" role="button" tabindex="0"><span class="ar">التحليلات</span><span class="en">Analytics</span></div>
+      <div class="nav-item" data-view="inbox" data-perm="notification.read_own" role="button" tabindex="0"><span class="ar">الإشعارات</span><span class="en">Notifications</span></div>
       <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
     </nav>
 
@@ -490,6 +492,38 @@
   <div id="biContent"></div>
 </section>
 
+<section class="app-view view-hidden" id="view-analytics" data-view="analytics" data-perm="analytics.holding analytics.company analytics.operations analytics.compliance">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">التحليلات والتقارير المتقدمة</span><span class="en">Advanced Analytics</span></h1>
+      <p><span class="ar">اتجاهات المجموعة، الأداء التشغيلي، الالتزام، والملخص التنفيذي المُستمد من البيانات الحيّة.</span><span class="en">Group trends, operational performance, compliance and the executive briefing derived from live data.</span></p>
+    </div>
+    <div class="av-toolbar" id="anTabs">
+      <button class="chip on" data-an-tab="briefing"><span class="ar">الملخص التنفيذي</span><span class="en">Executive briefing</span></button>
+      <button class="chip" data-an-tab="holding" data-perm="analytics.holding"><span class="ar">نظرة المجموعة</span><span class="en">Holding overview</span></button>
+      <button class="chip" data-an-tab="operations" data-perm="analytics.operations"><span class="ar">التشغيل</span><span class="en">Operations</span></button>
+      <button class="chip" data-an-tab="compliance" data-perm="analytics.compliance"><span class="ar">الالتزام</span><span class="en">Compliance</span></button>
+      <button class="chip" data-an-tab="investments" data-perm="analytics.holding"><span class="ar">الاستثمار</span><span class="en">Investment</span></button>
+    </div>
+  </div>
+  <div id="anContent"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-inbox" data-view="inbox" data-perm="notification.read_own">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">مركز الإشعارات</span><span class="en">Notification Centre</span></h1>
+      <p><span class="ar">أحداث حقيقية من النظام: موافقات، طلبات دعم، تقارير شهرية ومستندات.</span><span class="en">Real system events: approvals, support requests, monthly reports and documents.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <button class="chip on" id="inboxAll"><span class="ar">الكل</span><span class="en">All</span></button>
+      <button class="chip" id="inboxUnread"><span class="ar">غير المقروء</span><span class="en">Unread</span></button>
+      <button class="btn-outline" id="inboxReadAll"><span class="ar">تعليم الكل كمقروء</span><span class="en">Mark all read</span></button>
+    </div>
+  </div>
+  <div id="inboxContent" class="av-grid cols-1"></div>
+</section>
+
 <section class="app-view view-hidden" id="view-admin" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read">
   <div class="av-head">
     <div>
@@ -504,6 +538,7 @@
       <button class="chip" data-admin-tab="roles" data-perm="role.read"><span class="ar">الأدوار والصلاحيات</span><span class="en">Roles &amp; permissions</span></button>
       <button class="chip" data-admin-tab="builder" data-perm="form.read form.create"><span class="ar">منشئ النماذج</span><span class="en">Form builder</span></button>
       <button class="chip" data-admin-tab="workflows" data-perm="workflow.read"><span class="ar">مسارات الموافقات</span><span class="en">Workflows</span></button>
+      <button class="chip" data-admin-tab="integrations" data-perm="integration.read"><span class="ar">التكاملات</span><span class="en">Integrations</span></button>
       <button class="chip" data-admin-tab="audit" data-perm="audit.read"><span class="ar">سجل النشاط</span><span class="en">Audit trail</span></button>
     </div>
   </div>

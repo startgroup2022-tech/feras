@@ -106,6 +106,21 @@ class Perm:
     DOCUMENT_ARCHIVE = "document.archive"
     DOCUMENT_CATEGORY_MANAGE = "document.category.manage"
 
+    # ---- Phase 6: notification centre ----
+    NOTIFICATION_READ_OWN = "notification.read_own"  # read your own inbox
+    NOTIFICATION_MANAGE = "notification.manage"  # trigger/inspect any inbox
+
+    # ---- Phase 7: advanced reporting & analytics ----
+    ANALYTICS_HOLDING = "analytics.holding"  # group-wide reporting
+    ANALYTICS_COMPANY = "analytics.company"  # reporting within your companies
+    ANALYTICS_OPERATIONS = "analytics.operations"  # requests/approvals analytics
+    ANALYTICS_COMPLIANCE = "analytics.compliance"  # documents/compliance analytics
+    ANALYTICS_EXPORT = "analytics.export"  # CSV / export endpoints
+
+    # ---- Phase 9: external integrations ----
+    INTEGRATION_READ = "integration.read"  # view configured integrations
+    INTEGRATION_MANAGE = "integration.manage"  # create/edit/disable integrations
+
 
 ALL_PERMISSIONS: dict[str, str] = {
     Perm.USER_READ: "View users",
@@ -174,6 +189,15 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.DOCUMENT_UPDATE: "Edit document metadata",
     Perm.DOCUMENT_ARCHIVE: "Archive documents",
     Perm.DOCUMENT_CATEGORY_MANAGE: "Manage document categories",
+    Perm.NOTIFICATION_READ_OWN: "Read your own notifications",
+    Perm.NOTIFICATION_MANAGE: "Inspect and trigger notifications in scope",
+    Perm.ANALYTICS_HOLDING: "View group-wide reporting and analytics",
+    Perm.ANALYTICS_COMPANY: "View reporting and analytics for your companies",
+    Perm.ANALYTICS_OPERATIONS: "View operational reporting (requests, approvals)",
+    Perm.ANALYTICS_COMPLIANCE: "View compliance reporting (documents, expiry)",
+    Perm.ANALYTICS_EXPORT: "Export reports as CSV",
+    Perm.INTEGRATION_READ: "View configured integrations",
+    Perm.INTEGRATION_MANAGE: "Create, edit and disable integrations",
 }
 
 
@@ -196,6 +220,11 @@ _HOLDING_READ = {
     Perm.AI_COMPANY,
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
+    Perm.ANALYTICS_HOLDING,
+    Perm.ANALYTICS_COMPANY,
+    Perm.ANALYTICS_OPERATIONS,
+    Perm.ANALYTICS_COMPLIANCE,
+    Perm.ANALYTICS_EXPORT,
 }
 
 # Every role that can *operate* the dynamic platform (read forms/submissions
@@ -210,6 +239,7 @@ _OPERATOR_READ = {
     Perm.APPROVAL_ACT,
     Perm.DOCUMENT_READ,
     Perm.DOCUMENT_UPLOAD,
+    Perm.NOTIFICATION_READ_OWN,
 }
 
 # Holding Finance: group-wide financial oversight and read-only admin views.
@@ -225,6 +255,8 @@ HOLDING_FINANCE = _HOLDING_READ | _OPERATOR_READ | {
     Perm.SUBMISSION_READ_ALL,
     Perm.APPROVAL_READ_ALL,
     Perm.FORM_SUBMIT,
+    Perm.NOTIFICATION_MANAGE,
+    Perm.INTEGRATION_READ,
 }
 
 # Company-level configuration rights: an administrator (Company Owner) may
@@ -253,6 +285,7 @@ _COMPANY_READ = {
     Perm.AI_COMPANY,
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
+    Perm.ANALYTICS_COMPANY,
 }
 
 COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
@@ -274,6 +307,7 @@ COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.SUBMISSION_CANCEL,
     Perm.APPROVAL_READ_ALL,
     Perm.DOCUMENT_CATEGORY_MANAGE,
+    Perm.NOTIFICATION_MANAGE,
 }
 
 CEO = _COMPANY_READ | _OPERATOR_READ | {
@@ -289,6 +323,7 @@ CEO = _COMPANY_READ | _OPERATOR_READ | {
     Perm.FORM_SUBMIT,
     Perm.SUBMISSION_READ_COMPANY,
     Perm.APPROVAL_READ_ALL,
+    Perm.NOTIFICATION_MANAGE,
 }
 
 FINANCE_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
@@ -340,6 +375,7 @@ EMPLOYEE = {
     Perm.APPROVAL_ACT,
     Perm.DOCUMENT_READ,
     Perm.DOCUMENT_UPLOAD,
+    Perm.NOTIFICATION_READ_OWN,
 }
 
 COMPANY_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
@@ -371,6 +407,10 @@ ACCOUNTANT = _OPERATOR_READ | {
     Perm.AI_COMPANY,
     Perm.APPROVAL_READ_ALL,
     Perm.SUBMISSION_READ_ALL,
+    Perm.ANALYTICS_HOLDING,
+    Perm.ANALYTICS_COMPANY,
+    Perm.ANALYTICS_OPERATIONS,
+    Perm.ANALYTICS_COMPLIANCE,
 }
 
 BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
@@ -382,6 +422,7 @@ BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
     Perm.APPROVAL_READ_ALL,
+    Perm.ANALYTICS_OPERATIONS,
 }
 
 MARKETING = _OPERATOR_READ | {
@@ -393,6 +434,7 @@ MARKETING = _OPERATOR_READ | {
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
     Perm.APPROVAL_READ_ALL,
+    Perm.ANALYTICS_OPERATIONS,
 }
 
 DESIGNER = _OPERATOR_READ | {
@@ -404,6 +446,7 @@ DESIGNER = _OPERATOR_READ | {
     Perm.DASHBOARD_HOLDING,
     Perm.AI_HOLDING,
     Perm.APPROVAL_READ_ALL,
+    Perm.ANALYTICS_OPERATIONS,
 }
 
 

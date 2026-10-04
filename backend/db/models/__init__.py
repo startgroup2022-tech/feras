@@ -24,6 +24,8 @@ from backend.db.models.identity import (
     User,
     UserCompanyAccess,
 )
+from backend.db.models.integrations import WebhookDelivery, WebhookEndpoint
+from backend.db.models.notifications import Notification
 from backend.db.models.report import (
     MonthlyReport,
     MonthlyReportAttachment,
@@ -80,4 +82,9 @@ __all__ = [
     "SubmissionRequirement",
     "Document",
     "DocumentCategory",
+    # Phase 6: notification centre
+    "Notification",
+    # Phase 9: external integrations
+    "WebhookEndpoint",
+    "WebhookDelivery",
 ]

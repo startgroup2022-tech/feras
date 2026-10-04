@@ -105,5 +105,22 @@ class AuditAction:
     DOCUMENT_CATEGORY_CREATED = "document_category.created"
     DOCUMENT_CATEGORY_UPDATED = "document_category.updated"
 
+    # Phase 6: notification centre
+    NOTIFICATION_CREATED = "notification.created"
+    NOTIFICATION_READ = "notification.read"
+    NOTIFICATION_READ_ALL = "notification.read_all"
+    NOTIFICATION_EMAIL_QUEUED = "notification.email_queued"
+
+    # Phase 7: reporting & analytics
+    ANALYTICS_VIEWED = "analytics.viewed"
+    ANALYTICS_EXPORTED = "analytics.exported"
+
+    # Phase 9: external integrations
+    INTEGRATION_CREATED = "integration.created"
+    INTEGRATION_UPDATED = "integration.updated"
+    INTEGRATION_DISABLED = "integration.disabled"
+    INTEGRATION_SECRET_ROTATED = "integration.secret_rotated"
+    INTEGRATION_DELIVERY_ATTEMPTED = "integration.delivery_attempted"
+
     # security
     ACCESS_DENIED = "security.access_denied"

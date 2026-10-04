@@ -41,16 +41,20 @@ from backend.db.models import (  # noqa: E402
     FormVersion,
     Holding,
     MonthlyReport,
+    Notification,
     Ownership,
     SubmissionRequirement,
     SupportRequest,
     User,
     UserCompanyAccess,
+    WebhookDelivery,
+    WebhookEndpoint,
     WorkflowDefinition,
     WorkflowInstance,
     WorkflowStep,
     WorkflowVersion,
 )
+
 from backend.db.models.enums import (  # noqa: E402
     CompanyHealth,
     ReportStatus,
@@ -84,6 +88,9 @@ def _clean_data(_database):
         # before companies. Custom roles created by a test are removed too;
         # the bootstrap catalogue is re-synced just after.
         for model in (
+            WebhookDelivery,
+            WebhookEndpoint,
+            Notification,
             ApprovalEvent,
             ApprovalTask,
             WorkflowInstance,

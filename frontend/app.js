@@ -38,6 +38,11 @@
     reqStatus: "",
     docCategory: "",
     docExpiry: "",
+    notifications: [],
+    notificationsUnread: 0,
+    notifFilter: "all",
+    anTab: "briefing",
+    integrationSecret: null,
     loaded: {},
   };
 
@@ -1222,6 +1227,8 @@
     "approvals",
     "documents",
     "bi",
+    "analytics",
+    "inbox",
     "admin",
   ];
   var NAV_PERM = {
@@ -1234,6 +1241,13 @@
     approvals: ["approval.read_own", "approval.read_all"],
     documents: ["document.read"],
     bi: ["ai.holding", "ai.company"],
+    analytics: [
+      "analytics.holding",
+      "analytics.company",
+      "analytics.operations",
+      "analytics.compliance",
+    ],
+    inbox: ["notification.read_own"],
     admin: [
       "company.read",
       "ownership.read",
@@ -1314,6 +1328,8 @@
     if (view === "documents") return renderDocumentsView();
     if (view === "investments") return renderInvestments();
     if (view === "bi") return renderBi();
+    if (view === "analytics") return renderAnalytics();
+    if (view === "inbox") return renderInbox();
     if (view === "admin") return renderAdmin();
     return Promise.resolve();
   }
@@ -2954,12 +2970,467 @@
     );
   }
 
+  // ---- advanced analytics view -----------------------------------------
+  //
+  // Each tab is gated by the permission its endpoint requires, so a user with
+  // only `analytics.company` never issues a request the API would reject. All
+  // figures come straight from the API; nothing here invents a number.
+  var AN_TABS = ["briefing", "holding", "operations", "compliance", "investments"];
+  var AN_TAB_PERM = {
+    briefing: ["analytics.holding", "analytics.company", "analytics.operations"],
+    holding: ["analytics.holding"],
+    operations: ["analytics.operations"],
+    compliance: ["analytics.compliance"],
+    investments: ["analytics.holding"],
+  };
+
+  function canAnTab(tab) {
+    return (AN_TAB_PERM[tab] || []).some(has);
+  }
+
+  function renderAnalytics() {
+    var host = byId("anContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.anTab || !canAnTab(STATE.anTab)) STATE.anTab = "briefing";
+    if (!STATE.anBound) {
+      STATE.anBound = true;
+      document.querySelectorAll("[data-an-tab]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var tab = btn.getAttribute("data-an-tab");
+          if (!canAnTab(tab)) return;
+          STATE.anTab = tab;
+          document.querySelectorAll("[data-an-tab]").forEach(function (b) {
+            b.classList.toggle("on", b === btn);
+          });
+          renderAnalyticsTab(tab);
+        });
+      });
+    }
+    document.querySelectorAll("[data-an-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-an-tab") === STATE.anTab);
+    });
+    return renderAnalyticsTab(STATE.anTab);
+  }
+
+  function renderAnalyticsTab(tab) {
+    var host = byId("anContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    if (tab === "briefing") return renderBriefing(host);
+    if (tab === "holding") return renderHoldingOverview(host);
+    if (tab === "operations") return renderOperations(host);
+    if (tab === "compliance") return renderCompliance(host);
+    if (tab === "investments") return renderInvestmentReport(host);
+    return Promise.resolve();
+  }
+
+  // A compact bar chart. ``values`` are raw numbers; the caller supplies the
+  // label pair for each bar. Zero-height bars are drawn as a hairline so an
+  // empty month reads as "no data" rather than "missing".
+  function barChart(values, labels, opts) {
+    var o = opts || {};
+    var max = Math.max.apply(null, values.concat([0]));
+    var scale = max > 0 ? max : 1;
+    return (
+      '<div class="an-chart">' +
+      values.map(function (v, i) {
+        var h = v <= 0 ? 2 : Math.max(4, Math.round((v / scale) * 100));
+        var tone = o.tone ? o.tone(v, i) : "";
+        return (
+          '<div class="an-bar" title="' + escAttr(labels[i].en) + '">' +
+          '<div class="an-bar-fill ' + tone + '" style="height:' + h + '%"></div>' +
+          '<span class="an-bar-x">' + labels[i].short + "</span>" +
+          "</div>"
+        );
+      }).join("") +
+      "</div>"
+    );
+  }
+
+  function trendLabels(points) {
+    return points.map(function (p) {
+      return {
+        short: toArabicDigits(String(p.month)) + "/" + String(p.year).slice(2),
+        en: p.year + "-" + String(p.month).padStart(2, "0"),
+      };
+    });
+  }
+
+  function renderHoldingOverview(host) {
+    return get("/api/v1/analytics/holding" + period)
+      .then(function (data) {
+        var trend = data.trend || [];
+        var c = data.compliance || {};
+        var movers = data.movers || { top: [], bottom: [] };
+        host.innerHTML =
+          '<div class="av-panel" style="margin-bottom:11px"><h3>' +
+          dual("اتجاه الإيرادات · آخر ١٢ شهراً", "Revenue trend · last 12 months") +
+          "</h3>" +
+          barChart(
+            trend.map(function (p) { return p.revenue; }),
+            trendLabels(trend),
+            { tone: function () { return "gold"; } },
+          ) +
+          "</div>" +
+          '<div class="av-grid cols-3">' +
+          '<div class="av-panel"><h3>' + dual("الالتزام بالتقارير", "Reporting compliance") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("إجمالي الشركات", "Companies"), plainNum(c.companies_total)) +
+          kv(dual("أرسلت التقرير", "Reported"), plainNum(c.companies_reported)) +
+          kv(dual("بانتظار التقرير", "Missing"), plainNum(c.companies_missing)) +
+          kv(dual("نسبة الالتزام", "Compliance"), dual(toArabicDigits(String(c.compliance_pct)) + "٪", String(c.compliance_pct) + "%")) +
+          "</div></div>" +
+          '<div class="av-panel"><h3>' + dual("أعلى نمو", "Top movers") + "</h3>" + moverList(movers.top) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("أدنى أداء", "Bottom movers") + "</h3>" + moverList(movers.bottom) + "</div>" +
+          "</div>" +
+          '<div class="av-grid cols-2" style="margin-top:11px">' +
+          '<div class="av-panel"><h3>' + dual("توزيع القطاعات", "Sector mix") + "</h3>" + sectorMix(data.sectors) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("الحالة التشغيلية", "Health distribution") + "</h3>" + healthMix(data.health_distribution) + "</div>" +
+          "</div>";
+      })
+      .catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function moverList(rows) {
+    if (!rows || !rows.length) {
+      return '<p class="av-empty">' + dual("لا توجد بيانات كافية للمقارنة.", "Not enough data to compare.") + "</p>";
+    }
+    return (
+      '<div class="av-list">' + rows.map(function (m) {
+        return (
+          '<div class="av-row" data-an-co="' + m.company_id + '" style="cursor:default">' +
+          '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? m.name_ar : m.name_en || m.name_ar) + "</div>" +
+          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(money(m.revenue).ar, money(m.revenue).en) + "</div></div>" +
+          growthHtml(m.change_pct) + "</div>"
+        );
+      }).join("") + "</div>"
+    );
+  }
+
+  function sectorMix(rows) {
+    if (!rows || !rows.length) {
+      return '<p class="av-empty">' + dual("لا توجد بيانات قطاعات.", "No sector data.") + "</p>";
+    }
+    return (
+      '<div class="av-list">' + rows.map(function (s) {
+        return (
+          '<div class="av-row" style="cursor:default"><div class="grow">' +
+          '<div class="t">' + escapeHtml(s.sector || "—") + "</div>" +
+          '<div class="s">' + dual(plainNum(s.companies) + " شركة", plainNum(s.companies) + " companies") + "</div></div>" +
+          '<span class="ins-tag gold">' + dual(money(s.revenue).ar, money(s.revenue).en) + "</span></div>"
+        );
+      }).join("") + "</div>"
+    );
+  }
+
+  function healthMix(rows) {
+    if (!rows || !rows.length) {
+      return '<p class="av-empty">' + dual("لا توجد بيانات.", "No data.") + "</p>";
+    }
+    return (
+      '<div class="av-list">' + rows.map(function (h) {
+        return (
+          '<div class="av-row" style="cursor:default">' + healthBadge(h.health) +
+          '<div class="grow"></div><span class="num">' + plainNum(h.companies) + "</span></div>"
+        );
+      }).join("") + "</div>"
+    );
+  }
+
+  function renderOperations(host) {
+    return get("/api/v1/analytics/operations" + period)
+      .then(function (data) {
+        var cyc = data.approval_cycle || {};
+        var thr = data.support_throughput || {};
+        host.innerHTML =
+          '<div class="av-grid cols-3">' +
+          '<div class="av-panel"><h3>' + dual("دورة الموافقات", "Approval cycle") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("مكتملة", "Completed"), plainNum(cyc.completed)) +
+          kv(dual("متوسط الساعات", "Average hours"), hours(cyc.average_hours)) +
+          kv(dual("الأسرع", "Fastest"), hours(cyc.fastest_hours)) +
+          kv(dual("الأبطأ", "Slowest"), hours(cyc.slowest_hours)) +
+          "</div></div>" +
+          '<div class="av-panel"><h3>' + dual("إنتاجية الدعم", "Support throughput") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("طلبات مغلقة", "Closed requests"), plainNum(thr.closed_requests)) +
+          kv(dual("متوسط الإغلاق", "Average close"), hours(thr.average_hours)) +
+          "</div></div>" +
+          '<div class="av-panel"><h3>' + dual("طلبات حسب الحالة", "Requests by status") + "</h3>" + statusCounts(data.requests_by_status) + "</div>" +
+          "</div>" +
+          '<div class="av-grid cols-2" style="margin-top:11px">' +
+          '<div class="av-panel"><h3>' + dual("اختناقات الموافقات", "Approval bottlenecks") + "</h3>" + bottlenecks(data.approval_bottlenecks) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("الدعم حسب النوع", "Support by category") + "</h3>" + supportByCategory(data.support_by_category) + "</div>" +
+          "</div>";
+      })
+      .catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function hours(v) {
+    return v === null || v === undefined ? dual("—", "—") : dual(toArabicDigits(String(v)), String(v));
+  }
+
+  function statusCounts(rows) {
+    if (!rows || !rows.length) return '<p class="av-empty">' + dual("لا توجد بيانات.", "No data.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (r) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(statusLabel(r.status).ar) + "</div></div>" + '<span class="num">' + plainNum(r.count) + "</span></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  function bottlenecks(rows) {
+    if (!rows || !rows.length) return '<p class="av-empty">' + dual("لا توجد اختناقات.", "No bottlenecks.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (b) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? b.name_ar || "—" : b.name_en || b.name_ar || "—") + "</div></div>" + '<span class="ins-tag warn">' + dual(plainNum(b.pending) + " معلّق", plainNum(b.pending) + " pending") + "</span></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  function supportByCategory(rows) {
+    if (!rows || !rows.length) return '<p class="av-empty">' + dual("لا توجد طلبات.", "No requests.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (r) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml((CATEGORY[r.category] || CATEGORY.general).ar) + '</div><div class="s">' + dual("مفتوحة ", "Open ") + plainNum(r.open) + " · " + dual("مغلقة ", "Closed ") + plainNum(r.closed) + "</div></div>" + '<span class="num">' + plainNum(r.total) + "</span></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  function renderCompliance(host) {
+    return get("/api/v1/analytics/compliance" + period)
+      .then(function (data) {
+        var d = data.documents || {};
+        var r = data.reporting || {};
+        host.innerHTML =
+          '<div class="av-grid cols-2">' +
+          '<div class="av-panel"><h3>' + dual("حالة المستندات", "Document exposure") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("منتهية", "Expired"), plainNum(d.expired)) +
+          kv(dual("قاربت الانتهاء", "Expiring soon"), plainNum(d.expiring_soon)) +
+          kv(dual("سارية", "Valid"), plainNum(d.valid)) +
+          kv(dual("بدون تاريخ", "No expiry"), plainNum(d.none)) +
+          "</div></div>" +
+          '<div class="av-panel"><h3>' + dual("الالتزام بالتقارير", "Reporting compliance") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("إجمالي الشركات", "Companies"), plainNum(r.companies_total)) +
+          kv(dual("أرسلت", "Reported"), plainNum(r.companies_reported)) +
+          kv(dual("قيد المراجعة", "Reviewed"), plainNum(r.companies_reviewed)) +
+          kv(dual("نسبة الالتزام", "Compliance"), dual(toArabicDigits(String(r.compliance_pct)) + "٪", String(r.compliance_pct) + "%")) +
+          "</div></div>" +
+          "</div>" +
+          '<div class="av-grid cols-2" style="margin-top:11px">' +
+          '<div class="av-panel"><h3>' + dual("المستندات حسب التصنيف", "Documents by category") + "</h3>" + docCategories(data.documents_by_category) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("بيانات مالية تحتاج مراجعة", "Financials flagged for review") + "</h3>" + flagged(data.flagged_financials) + "</div>" +
+          "</div>";
+      })
+      .catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function docCategories(rows) {
+    if (!rows || !rows.length) return '<p class="av-empty">' + dual("لا توجد مستندات.", "No documents.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (c) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) + "</div></div>" + '<span class="num">' + plainNum(c.count) + "</span></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  function flagged(rows) {
+    if (!rows || !rows.length) return '<p class="av-empty">' + dual("لا توجد بيانات مالية معلَّمة.", "No flagged financials.") + "</p>";
+    return (
+      '<div class="av-list">' + rows.map(function (f) {
+        return '<div class="av-row" data-an-co="' + f.company_id + '"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? f.name_ar : f.name_en || f.name_ar) + "</div></div>" + '<span class="ins-tag risk">' + dual(plainNum(f.flagged_reviews) + " مراجعة", plainNum(f.flagged_reviews) + " reviews") + "</span></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  function renderInvestmentReport(host) {
+    return get("/api/v1/analytics/investments" + period)
+      .then(function (data) {
+        host.innerHTML =
+          '<div class="av-panel" style="margin-bottom:11px"><h3>' + dual("مؤشرات المحفظة", "Portfolio indicators") + "</h3>" +
+          '<div class="kv">' +
+          kv(dual("إيرادات المحفظة", "Portfolio revenue"), dual(money(data.portfolio_revenue).ar, money(data.portfolio_revenue).en)) +
+          kv(dual("صافي المحفظة", "Portfolio net"), dual(money(data.portfolio_net).ar, money(data.portfolio_net).en)) +
+          kv(dual("متوسط الهامش", "Average margin"), data.average_margin_pct === null ? dual("—", "—") : dual(toArabicDigits(String(data.average_margin_pct)) + "٪", String(data.average_margin_pct) + "%")) +
+          kv(dual("فرص مرصودة", "Opportunities reported"), plainNum(data.opportunities_reported)) +
+          "</div></div>" +
+          '<div class="av-panel"><h3>' + dual("الشركات الاستثمارية", "Investment companies") + "</h3>" +
+          ((data.companies || []).length
+            ? '<div class="av-list">' + data.companies.map(function (c) {
+                return (
+                  '<div class="av-row" data-an-co="' + c.company_id + '">' +
+                  '<div class="co-dot" style="background:' + PALETTE[c.company_id % PALETTE.length] + '">' + initial(c.name_ar) + "</div>" +
+                  '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en) + "</div>" +
+                  '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(money(c.revenue).ar, money(c.revenue).en) + " · " + dual("مستحقات ", "Receivables ") + dual(money(c.outstanding_receivables).ar, money(c.outstanding_receivables).en) + "</div></div>" +
+                  (c.has_opportunity ? '<span class="ins-tag gold">' + dual("فرصة", "Opportunity") + "</span>" : "") +
+                  healthBadge(c.health) + "</div>"
+                );
+              }).join("") + "</div>"
+            : '<p class="av-empty">' + dual("لا توجد بيانات.", "No data.") + "</p>") +
+          "</div>";
+        host.querySelectorAll("[data-an-co]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openCompany(parseInt(el.getAttribute("data-an-co"), 10));
+          });
+        });
+      })
+      .catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- executive briefing ----------------------------------------------
+  function renderBriefing(host) {
+    return get("/api/v1/analytics/briefing" + period)
+      .then(function (data) {
+        var toneTag = { positive: "up", caution: "warn", risk: "risk", opportunity: "gold" };
+        host.innerHTML =
+          '<div class="av-grid cols-2">' +
+          '<div class="av-panel brief-hero">' +
+          '<div class="brief-head">' +
+          '<span class="brief-badge">' + dual("مُستمد من البيانات الحيّة", "Grounded in live data") + "</span>" +
+          (data.degraded ? '<span class="ins-tag warn">' + dual("مزوّد الذكاء غير مهيّأ — ملخص تحليلي", "AI provider not configured — analytical summary") + "</span>" : "") +
+          "</div>" +
+          '<p class="brief-summary"><span class="ar">' + escapeHtml(data.summary_ar) + '</span><span class="en">' + escapeHtml(data.summary_en) + "</span></p>" +
+          '<div class="brief-meta">' + dual("الفترة ", "Period ") + dual(periodLabel().ar, periodLabel().en) + " · " + dual("المصدر ", "Source ") + escapeHtml(data.provider) + "</div>" +
+          "</div>" +
+          '<div class="av-panel"><h3>' + dual("أبرز النقاط", "Highlights") + "</h3>" + briefingList(data.highlights, toneTag) + "</div>" +
+          "</div>" +
+          '<div class="av-grid cols-3" style="margin-top:11px">' +
+          '<div class="av-panel"><h3>' + dual("المخاطر", "Risks") + "</h3>" + briefingList(data.risks, toneTag) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("الفرص", "Opportunities") + "</h3>" + briefingList(data.opportunities, toneTag) + "</div>" +
+          '<div class="av-panel"><h3>' + dual("إجراءات مقترحة", "Recommended actions") + "</h3>" + actionList(data.recommended_actions) + "</div>" +
+          "</div>";
+      })
+      .catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function briefingList(items, toneTag) {
+    if (!items || !items.length) return '<p class="av-empty">' + dual("لا توجد عناصر.", "Nothing to report.") + "</p>";
+    return (
+      '<div class="av-list">' + items.map(function (i) {
+        var tone = toneTag[i.tone] || "";
+        return (
+          '<div class="av-row" style="cursor:default"><div class="grow">' +
+          '<div class="t">' + escapeHtml(STATE.lang === "ar" ? i.text_ar : i.text_en) + "</div></div>" +
+          (tone ? '<span class="ins-tag ' + tone + '">' + escapeHtml(i.key) + "</span>" : "") +
+          "</div>"
+        );
+      }).join("") + "</div>"
+    );
+  }
+
+  function actionList(items) {
+    if (!items || !items.length) return '<p class="av-empty">' + dual("لا توجد إجراءات.", "No actions.") + "</p>";
+    return (
+      '<div class="av-list">' + items.map(function (a) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? a.text_ar : a.text_en) + "</div></div></div>";
+      }).join("") + "</div>"
+    );
+  }
+
+  // ---- notification centre ---------------------------------------------
+  function renderInbox() {
+    var host = byId("inboxContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.inboxBound) {
+      STATE.inboxBound = true;
+      var all = byId("inboxAll");
+      var unread = byId("inboxUnread");
+      var readAll = byId("inboxReadAll");
+      if (all) all.addEventListener("click", function () {
+        STATE.notifFilter = "all";
+        all.classList.add("on");
+        if (unread) unread.classList.remove("on");
+        renderInboxList();
+      });
+      if (unread) unread.addEventListener("click", function () {
+        STATE.notifFilter = "unread";
+        unread.classList.add("on");
+        if (all) all.classList.remove("on");
+        renderInboxList();
+      });
+      if (readAll) readAll.addEventListener("click", function () {
+        post("/api/v1/notifications/read-all", {}).then(function () {
+          refreshNotifications();
+          renderInboxList();
+        });
+      });
+    }
+    host.innerHTML = loadingHtml();
+    return refreshNotifications().then(renderInboxList);
+  }
+
+  function renderInboxList() {
+    var host = byId("inboxContent");
+    if (!host) return Promise.resolve();
+    var items = STATE.notifications || [];
+    if (STATE.notifFilter === "unread") {
+      items = items.filter(function (n) { return !n.is_read; });
+    }
+    if (!items.length) {
+      host.innerHTML = '<div class="av-panel">' + emptyHtml("لا توجد إشعارات.", "No notifications.") + "</div>";
+      return Promise.resolve();
+    }
+    host.innerHTML =
+      '<div class="av-panel"><div class="av-list">' + items.map(function (n) {
+        return (
+          '<div class="av-row notif-row' + (n.is_read ? "" : " unread") + '" data-notif="' + n.id + '">' +
+          '<span class="notif-pri ' + n.priority + '"></span>' +
+          '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? n.title_ar : n.title_en) + "</div>" +
+          '<div class="s">' + escapeHtml(STATE.lang === "ar" ? n.message_ar : n.message_en) + "</div>" +
+          '<div class="s notif-time">' + fmtDateTime(n.created_at) + "</div></div>" +
+          "</div>"
+        );
+      }).join("") + "</div></div>";
+    host.querySelectorAll("[data-notif]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var id = parseInt(el.getAttribute("data-notif"), 10);
+        var row = (STATE.notifications || []).filter(function (n) { return n.id === id; })[0];
+        post("/api/v1/notifications/" + id + "/read", {}).then(function () {
+          if (row) row.is_read = true;
+          refreshNotifications();
+          renderInboxList();
+        });
+      });
+    });
+    return Promise.resolve();
+  }
+
+  function refreshNotifications() {
+    if (!has("notification.read_own")) return Promise.resolve();
+    return Promise.all([
+      get("/api/v1/notifications?limit=50"),
+      get("/api/v1/notifications/summary"),
+    ])
+      .then(function (res) {
+        STATE.notifications = (res[0] && res[0].items) || [];
+        STATE.notificationsUnread = (res[1] && res[1].unread) || 0;
+        paintNotifBadge();
+        return STATE.notifications;
+      })
+      .catch(function () { return []; });
+  }
+
+  function paintNotifBadge() {
+    var dot = byId("notifDot");
+    if (!dot) return;
+    var n = STATE.notificationsUnread || 0;
+    if (n > 0) {
+      dot.textContent = n > 9 ? "9+" : String(n);
+      dot.classList.add("count");
+    } else {
+      dot.textContent = "";
+      dot.classList.remove("count");
+    }
+  }
+
   // ---- group administration view ---------------------------------------
   //
   // One delegated click handler drives every admin action, so cards can be
   // re-rendered freely without rebinding. Each tab is loaded lazily and only
   // if the caller holds the permission that tab needs.
-  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "builder", "workflows", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "builder", "workflows", "integrations", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
@@ -2968,6 +3439,7 @@
     roles: ["role.read"],
     builder: ["form.read", "form.create"],
     workflows: ["workflow.read"],
+    integrations: ["integration.read"],
     audit: ["audit.read"],
   };
 
@@ -3024,6 +3496,7 @@
     if (tab === "roles") return renderAdminRoles();
     if (tab === "builder") return renderAdminBuilder();
     if (tab === "workflows") return renderAdminWorkflows();
+    if (tab === "integrations") return renderAdminIntegrations();
     if (tab === "audit") return renderAdminAudit();
     return Promise.resolve();
   }
@@ -3365,6 +3838,90 @@
         '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
         '<button class="btn-outline" data-admin-action="audit-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
       host.innerHTML = adminPanel("سجل النشاط", "Audit trail", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
+    });
+  }
+
+  // ---- tab: integrations ----
+  //
+  // The signing secret is shown exactly once, in a dismissible banner after a
+  // create or rotate. It is never rendered from a list read, matching the API
+  // contract.
+  function renderAdminIntegrations() {
+    var host = byId("adminContent");
+    var canManage = has("integration.manage");
+    return Promise.all([
+      get("/api/v1/integrations"),
+      get("/api/v1/integrations/events"),
+      get("/api/v1/integrations/deliveries?limit=20"),
+    ]).then(function (res) {
+      var endpoints = res[0] || [];
+      var events = res[1] || { events: [], email_provider: "none", webhooks_enabled: false };
+      var deliveries = res[2] || [];
+      var createForm = canManage
+        ? '<form class="av-form av-form-inline" id="hookForm">' +
+          field("الاسم", "Name", textInput("hkName", "", "CRM sync")) +
+          field("الرابط", "Endpoint URL", textInput("hkUrl", "", "https://hooks.example.com/safir")) +
+          field("النطاق", "Scope",
+            selectInput("hkScope", [
+              { value: "holding", label: STATE.lang === "ar" ? "القابضة" : "Holding" },
+              { value: "company", label: STATE.lang === "ar" ? "شركة" : "Company" },
+            ], "holding")) +
+          field("الأحداث", "Events",
+            '<select class="av-select av-input" id="hkEvents" multiple size="5">' +
+            events.events.map(function (e) {
+              return '<option value="' + escAttr(e) + '">' + escapeHtml(e) + "</option>";
+            }).join("") + "</select>") +
+          '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
+          dual("إضافة نقطة نهاية", "Add endpoint") + "</button></div></form>"
+        : "";
+      var secretBanner = STATE.integrationSecret
+        ? '<div class="secret-banner"><div class="grow">' +
+          '<div class="t">' + dual("سر التوقيع — يُعرض مرة واحدة فقط", "Signing secret — shown once only") + "</div>" +
+          '<code class="mono">' + escapeHtml(STATE.integrationSecret) + "</code></div>" +
+          '<button class="btn-outline" data-admin-action="hook-dismiss">' + dual("إخفاء", "Dismiss") + "</button></div>"
+        : "";
+      var list = endpoints.length
+        ? '<div class="av-list">' + endpoints.map(function (e) {
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t">' + escapeHtml(e.name) + "</div>" +
+              '<div class="s">' + escapeHtml(e.url) + " · " + escapeHtml(e.scope) +
+              " · " + dual("التسليمات ", "deliveries ") + plainNum(e.delivery_count) + "</div></div>" +
+              '<span class="status ' + (e.status === "active" ? "ok" : "late") + '"><i></i>' + escapeHtml(e.status) + "</span>" +
+              (canManage
+                ? '<button class="btn-outline" data-admin-action="hook-rotate" data-id="' + e.id + '">' + dual("تجديد السر", "Rotate secret") + "</button>" +
+                  (e.status === "active"
+                    ? '<button class="btn-outline" data-admin-action="hook-disable" data-id="' + e.id + '">' + dual("تعطيل", "Disable") + "</button>"
+                    : "")
+                : "") +
+              "</div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد نقاط نهاية.", "No endpoints yet.") + "</p>";
+      var deliveryList = deliveries.length
+        ? '<div class="av-list">' + deliveries.map(function (d) {
+            return (
+              '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t mono">' + escapeHtml(d.event_type) + "</div>" +
+              '<div class="s">' + fmtDateTime(d.created_at) + (d.error ? " · " + escapeHtml(d.error) : "") + "</div></div>" +
+              '<span class="status ' + (d.status === "delivered" ? "ok" : d.status === "failed" ? "late" : "warn") + '"><i></i>' + escapeHtml(d.status) + "</span></div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد تسليمات.", "No deliveries yet.") + "</p>";
+      var env = '<div class="kv">' +
+        kv(dual("مزوّد البريد", "Email provider"), escapeHtml(events.email_provider)) +
+        kv(dual("الويب هوكس", "Webhooks"), dual(events.webhooks_enabled ? "مُفعّل" : "معطّل", events.webhooks_enabled ? "enabled" : "disabled")) +
+        "</div>";
+      host.className = "av-grid cols-1";
+      host.innerHTML =
+        secretBanner +
+        adminPanel("نقاط النهاية", "Endpoints", createForm + list) +
+        '<div class="av-grid cols-2">' +
+        adminPanel("سجل التسليمات", "Delivery log", deliveryList) +
+        adminPanel("حالة التكامل", "Integration status", env) +
+        "</div>";
+    }).catch(function (err) {
+      host.innerHTML = errorHtml(errText(err));
     });
   }
 
@@ -3750,6 +4307,24 @@
     if (action === "builder-open") return openFormBuilder(parseInt(id, 10));
     if (action === "workflow-open") return openWorkflowBuilder(parseInt(id, 10));
 
+    if (action === "hook-dismiss") {
+      STATE.integrationSecret = null;
+      return renderAdminIntegrations();
+    }
+    if (action === "hook-rotate") {
+      return post("/api/v1/integrations/" + id + "/rotate-secret", {}).then(function (res) {
+        STATE.integrationSecret = res.signing_secret;
+        toast(STATE.lang === "ar" ? "تم تجديد السر." : "Secret rotated.", "ok");
+        return renderAdminIntegrations();
+      }).catch(adminError);
+    }
+    if (action === "hook-disable") {
+      return post("/api/v1/integrations/" + id + "/disable", {}).then(function () {
+        toast(STATE.lang === "ar" ? "تم تعطيل نقطة النهاية." : "Endpoint disabled.", "ok");
+        return renderAdminIntegrations();
+      }).catch(adminError);
+    }
+
     if (action === "end-stake") {
       return confirmDialog({
         title: dual("إنهاء الحصة", "End stake"),
@@ -3817,6 +4392,33 @@
   function onAdminSubmit(e) {
     var form = e.target;
     if (!form || !form.getAttribute) return;
+    if (form.id === "hookForm") {
+      e.preventDefault();
+      var selected = [];
+      var select = byId("hkEvents");
+      if (select) {
+        Array.prototype.forEach.call(select.options, function (o) {
+          if (o.selected) selected.push(o.value);
+        });
+      }
+      if (!selected.length) {
+        toast(STATE.lang === "ar" ? "اختر حدثاً واحداً على الأقل." : "Select at least one event.", "warn");
+        return;
+      }
+      var payload = {
+        name: byId("hkName").value.trim(),
+        url: byId("hkUrl").value.trim(),
+        scope: byId("hkScope").value,
+        subscribed_events: selected,
+      };
+      return post("/api/v1/integrations", payload)
+        .then(function (res) {
+          STATE.integrationSecret = res.signing_secret;
+          toast(STATE.lang === "ar" ? "تمت إضافة نقطة النهاية." : "Endpoint added.", "ok");
+          return renderAdminIntegrations();
+        })
+        .catch(adminError);
+    }
     if (form.id === "builderForm") {
       e.preventDefault();
       return post("/api/v1/forms", {
@@ -4124,6 +4726,7 @@
     if (has("support_request.read_own") || has("support_request.read_all")) {
       jobs.push(loadSupport().catch(handleLoadError));
     }
+    jobs.push(refreshNotifications());
     return Promise.all(jobs).then(function () {
       setPeriodLabels();
     });

@@ -251,3 +251,65 @@ class DocumentEntityType(str, enum.Enum):
     SUBMISSION_REQUIREMENT = "submission_requirement"
     REQUIREMENT = "requirement"
     OTHER = "other"
+
+
+# --------------------------------------------------------------------------
+# Phase 6: notification centre
+# --------------------------------------------------------------------------
+class NotificationType(str, enum.Enum):
+    """What a notification is about.
+
+    A closed set: the frontend maps each value to an icon and a target view, so
+    an unknown type would silently fail to route. Adding a value means adding a
+    branch in the UI as well.
+    """
+
+    APPROVAL_ASSIGNED = "approval.assigned"
+    APPROVAL_APPROVED = "approval.approved"
+    APPROVAL_REJECTED = "approval.rejected"
+    APPROVAL_RETURNED = "approval.returned"
+    SUBMISSION_INCOMPLETE = "submission.incomplete"
+    DOCUMENT_EXPIRING = "document.expiring"
+    DOCUMENT_EXPIRED = "document.expired"
+    REPORT_SUBMITTED = "report.submitted"
+    SUPPORT_ASSIGNED = "support.assigned"
+    SUPPORT_STATUS_CHANGED = "support.status_changed"
+    SYSTEM = "system"
+
+
+class NotificationPriority(str, enum.Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+# --------------------------------------------------------------------------
+# Phase 9: external integrations
+# --------------------------------------------------------------------------
+class WebhookStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class WebhookEventType(str, enum.Enum):
+    """The business events an outbound webhook can subscribe to.
+
+    Names are dotted and stable -- they are part of the integration contract, so
+    a subscriber can match on them without reading SAFIR internals.
+    """
+
+    REQUEST_SUBMITTED = "request.submitted"
+    REQUEST_APPROVED = "request.approved"
+    REQUEST_REJECTED = "request.rejected"
+    REQUEST_RETURNED = "request.returned"
+    DOCUMENT_EXPIRING = "document.expiring"
+    REPORT_SUBMITTED = "report.submitted"
+    SUPPORT_CREATED = "support.created"
+    SUPPORT_ASSIGNED = "support.assigned"
+    NOTIFICATION_CREATED = "notification.created"
+
+
+class DeliveryStatus(str, enum.Enum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"

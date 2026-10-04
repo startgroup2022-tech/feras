@@ -64,6 +64,30 @@ class Settings(BaseSettings):
     AI_BASE_URL: str = ""  # e.g. https://api.openai.com/v1 or http://localhost:11434/v1
     AI_TIMEOUT_SECONDS: float = 30.0
 
+    # ---- notification centre ----
+    # Days before a document's expiry date that an "expiring soon" notification
+    # is raised. Mirrors EXPIRING_SOON_DAYS but is configurable per deployment.
+    NOTIFICATION_EXPIRY_WINDOW_DAYS: int = 30
+    # When true, a notification also queues an email delivery (adapter chosen by
+    # EMAIL_PROVIDER). Off by default so no outbound call happens unless asked.
+    NOTIFICATION_EMAIL_ENABLED: bool = False
+
+    # ---- external integrations ----
+    # none | console | smtp. "console" logs the message (safe in dev/staging);
+    # "smtp" performs a real send using the SMTP_* settings below.
+    EMAIL_PROVIDER: str = "none"
+    EMAIL_FROM: str = "no-reply@safir.local"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+    # Outbound webhooks. When false, events are recorded but not delivered, so
+    # the feature can be demonstrated without egress.
+    WEBHOOKS_ENABLED: bool = False
+    WEBHOOK_TIMEOUT_SECONDS: float = 10.0
+    WEBHOOK_MAX_ATTEMPTS: int = 3
+
     @field_validator("SECRET_KEY")
     @classmethod
     def _guard_secret(cls, v: str, info) -> str:

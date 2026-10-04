@@ -70,7 +70,29 @@ def create_request(
         user_agent=user_agent,
         metadata={"category": category},
     )
+    _emit_support_created(db, request=request, actor=user)
     return request
+
+
+def _emit_support_created(db: Session, *, request: SupportRequest, actor: User) -> None:
+    try:
+        from backend.services import integration_service
+
+        integration_service.emit(
+            db,
+            event_type="support.created",
+            payload={
+                "request_id": request.id,
+                "company_id": request.company_id,
+                "category": request.category,
+                "title": request.title,
+            },
+            company_id=request.company_id,
+        )
+    except Exception:  # noqa: BLE001 - best-effort
+        import logging
+
+        logging.getLogger("safir.support").exception("support created webhook emit failed")
 
 
 def change_status(
@@ -153,7 +175,56 @@ def assign_request(
         user_agent=user_agent,
         metadata={"assigned_to": assigned_to_id, "department": responsible_department},
     )
+
+    _notify_assignment(db, request=request, assignee_id=assigned_to_id, actor=user)
     return request
+
+
+def _notify_assignment(
+    db: Session, *, request: SupportRequest, assignee_id: int | None, actor: User
+) -> None:
+    from backend.db.models.support import CATEGORY_OWNER_ROLE
+    from backend.services import integration_service, notification_service
+
+    department = responsible_department_label(request.category)
+    try:
+        notification_service.notify_support_assigned(
+            db,
+            assignee_id=assignee_id,
+            request_id=request.id,
+            company_id=request.company_id,
+            request_title=request.title,
+            department_ar=department[0],
+            department_en=department[1],
+            actor_user_id=actor.id,
+        )
+        integration_service.emit(
+            db,
+            event_type="support.assigned",
+            payload={
+                "request_id": request.id,
+                "company_id": request.company_id,
+                "category": request.category,
+                "assigned_to_id": assignee_id,
+            },
+            company_id=request.company_id,
+        )
+    except Exception:  # noqa: BLE001 - best-effort
+        import logging
+
+        logging.getLogger("safir.support").exception("support assignment notification failed")
+
+
+def responsible_department_label(category: str) -> tuple[str, str]:
+    """Bilingual label for the department that owns a support category."""
+    labels = {
+        "accounting": ("الحسابات والدعم المالي", "Accounting & Financial Support"),
+        "business_development": ("تطوير الأعمال", "Business Development"),
+        "marketing": ("التسويق", "Marketing"),
+        "design": ("التصميم", "Design"),
+        "general": ("إدارة المجموعة", "Holding Management"),
+    }
+    return labels.get(category, labels["general"])
 
 
 def add_comment(
