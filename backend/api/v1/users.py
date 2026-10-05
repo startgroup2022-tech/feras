@@ -289,6 +289,7 @@ def list_roles(user: CurrentUser, db: DbSession) -> list[dict]:
             "name_ar": r.name_ar,
             "name_en": r.name_en,
             "description": r.description,
+            "description_ar": r.description_ar,
             "permissions": sorted(p.code for p in r.permissions),
         }
         for r in roles

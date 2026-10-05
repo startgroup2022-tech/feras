@@ -384,6 +384,15 @@ The public website is a second, distinct experience in the same repo and origin,
   `/api/v1/admin/permissions/catalogue`; both name/description fields are
   bilingual. `tests/test_permission_metadata.py` asserts every known code
   resolves and categories stay ordered.
+- **Role metadata** — `ROLE_DEFINITIONS` in `backend/rbac/permissions.py`
+  carries `name_ar`/`name_en` and `description`/`description_ar` for every
+  role; `rbac_service.sync_roles()` seeds both descriptions into the `roles`
+  table (`description` is the English text, `description_ar` the Arabic
+  counterpart). `RoleOut`, `RoleCreateRequest`, `RoleUpdateRequest` and the
+  `/api/v1/admin/roles` + `/api/v1/rbac/roles` payloads expose both, and the
+  Roles & Permissions UI renders them with `dual()` so a language switch
+  updates the role card without a reload. `tests/test_rbac.py` asserts every
+  definition is bilingual and the endpoint returns both descriptions.
 - **Avatar initials** — department chips use `deptInitialHtml()` (Latin
   initials under `lang-en`, Arabic under `lang-ar`); company/user avatars keep
   the first letter of the Arabic name as a stable identity mark.

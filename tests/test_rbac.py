@@ -10,7 +10,12 @@ from backend.rbac.authorization import (
     is_holding_wide,
     role_permissions,
 )
-from backend.rbac.permissions import HOLDING_WIDE_ROLES, ROLE_PERMISSIONS, Perm
+from backend.rbac.permissions import (
+    HOLDING_WIDE_ROLES,
+    ROLE_DEFINITIONS,
+    ROLE_PERMISSIONS,
+    Perm,
+)
 
 ALL_ROLES = list(ROLE_PERMISSIONS)
 
@@ -18,6 +23,13 @@ ALL_ROLES = list(ROLE_PERMISSIONS)
 def test_every_role_has_a_permission_set():
     for role in ALL_ROLES:
         assert ROLE_PERMISSIONS[role], f"{role} has no permissions"
+
+
+def test_every_role_definition_is_bilingual():
+    """Each role carries both names and both descriptions for the AR/EN UI."""
+    for definition in ROLE_DEFINITIONS:
+        for field in ("name_ar", "name_en", "description", "description_ar"):
+            assert definition.get(field), f"{definition['code']} missing {field}"
 
 
 def test_holding_owner_holds_the_widest_set():
@@ -202,6 +214,17 @@ def test_roles_endpoint_lists_the_catalogue(client, auth, make_user):
     assert response.status_code == 200
     codes = {r["code"] for r in response.json()}
     assert codes == set(ALL_ROLES)
+
+
+def test_roles_endpoint_exposes_bilingual_descriptions(client, auth, make_user):
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.get("/api/v1/admin/roles", headers=auth(owner))
+
+    assert response.status_code == 200
+    for role in response.json():
+        assert role["description"], f"{role['code']} missing English description"
+        assert role["description_ar"], f"{role['code']} missing Arabic description"
 
 
 def test_manager_cannot_list_roles(client, auth, make_user):

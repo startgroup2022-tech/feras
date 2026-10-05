@@ -720,6 +720,7 @@ class RoleOut(BaseModel):
     name_ar: str
     name_en: str
     description: str | None = None
+    description_ar: str | None = None
     permissions: list[str] = []
     is_system: bool = True
 
@@ -729,6 +730,7 @@ class RoleCreateRequest(BaseModel):
     name_ar: str = Field(min_length=1, max_length=120)
     name_en: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
+    description_ar: str | None = Field(default=None, max_length=500)
     permissions: list[str] = []
 
 
@@ -736,6 +738,7 @@ class RoleUpdateRequest(BaseModel):
     name_ar: str | None = Field(default=None, min_length=1, max_length=120)
     name_en: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
+    description_ar: str | None = Field(default=None, max_length=500)
 
 
 class RolePermissionsRequest(BaseModel):

@@ -34,6 +34,7 @@ def _serialize(role: Role) -> dict:
         "name_ar": role.name_ar,
         "name_en": role.name_en,
         "description": role.description,
+        "description_ar": role.description_ar,
         "permissions": sorted(p.code for p in role.permissions),
         "is_system": role.code in _SYSTEM_CODES,
     }
@@ -107,6 +108,7 @@ def create_role(
         name_ar=payload["name_ar"],
         name_en=payload["name_en"],
         description=payload.get("description"),
+        description_ar=payload.get("description_ar"),
     )
     db.add(role)
     db.flush()
@@ -143,7 +145,7 @@ def update_role(
         raise NotFoundError("Role not found.")
     _assert_can_touch_role(actor, role)
 
-    for field in ("name_ar", "name_en", "description"):
+    for field in ("name_ar", "name_en", "description", "description_ar"):
         if field in payload and payload[field] is not None:
             setattr(role, field, payload[field])
 

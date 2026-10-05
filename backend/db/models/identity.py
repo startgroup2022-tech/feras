@@ -40,7 +40,11 @@ class Role(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
     name_ar: Mapped[str] = mapped_column(String(120), nullable=False)
     name_en: Mapped[str] = mapped_column(String(120), nullable=False)
+    # ``description`` holds the English text for backwards compatibility; the
+    # Arabic counterpart is stored separately so the admin UI can switch
+    # languages without a reload.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_ar: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     permissions: Mapped[list["Permission"]] = relationship(
         secondary="role_permissions", back_populates="roles", lazy="selectin"

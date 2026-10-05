@@ -46,6 +46,7 @@ def sync_roles(db: Session) -> dict[str, Role]:
                 name_ar=definition["name_ar"],
                 name_en=definition["name_en"],
                 description=definition["description"],
+                description_ar=definition.get("description_ar"),
             )
             db.add(role)
             existing[definition["code"]] = role
@@ -53,6 +54,7 @@ def sync_roles(db: Session) -> dict[str, Role]:
             role.name_ar = definition["name_ar"]
             role.name_en = definition["name_en"]
             role.description = definition["description"]
+            role.description_ar = definition.get("description_ar")
     db.flush()
     return existing
 

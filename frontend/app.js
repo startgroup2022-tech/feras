@@ -4309,7 +4309,10 @@
         ? '<span class="perm-badge">' + dual("دور نظام", "System role") + "</span>"
         : "") +
       "</div><div class=\"perm-role-desc\">" +
-      escapeHtml(role.description || "") +
+      dual(
+        escapeHtml(role.description_ar || role.description || ""),
+        escapeHtml(role.description || ""),
+      ) +
       '</div><div class="perm-code">' +
       escapeHtml(role.code) +
       "</div></div>" +
