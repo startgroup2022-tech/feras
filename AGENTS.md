@@ -150,7 +150,10 @@ AI answer included), since a real LLM provider could otherwise emit markup.
   `/api/v1/users` (no free-typed ids).
 - `createReportForm()` validates year (2000–2100), month (1–12) and requires at
   least one of revenue/expenses before POSTing.
-- Responsive: the 1920×1080 `.stage` scales down; at ≤820px the stage reflows
+- Responsive: the `.stage` fills the viewport on desktop
+  (`height:calc(100vh - 28px)`, `max-width:1920px`) so the live app reads as an
+  application, not a fixed design board. Only `?export=1` renders the
+  historical 1920×1080 canvas at 1:1. At ≤1180px the stage reflows
   (board becomes one column, `.app-view` becomes in-document instead of an
   absolute overlay) so nothing clips. Overflow guards (`min-width:0`) on
   dynamic text cells, and the support table drops its department column at

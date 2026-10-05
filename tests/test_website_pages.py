@@ -280,6 +280,41 @@ def test_bare_platform_path_redirects_to_the_slashed_url(client):
     assert client.get("/platform/auth.js").status_code == 200
 
 
+def test_platform_shell_is_the_live_app_not_a_fixed_design_board(client):
+    """The authenticated platform must load the live application.
+
+    Regression: the platform entry point must be the real ``frontend/`` app --
+    auth gate plus the live data scripts -- and not a fixed 1920x1080 design
+    board scaled to fit the viewport (which reads as a static "screenshot").
+    """
+    html = client.get("/platform/").text
+    # The live application hooks.
+    assert 'id="loginForm"' in html
+    assert "auth.js" in html
+    assert "app.js" in html
+    # The dashboard board must be the live board, populated from the API.
+    assert 'id="board"' in html
+    assert 'data-kpi="companies_count"' in html
+
+
+def test_platform_no_longer_scales_the_board_to_fit(client):
+    """The live view is fluid; only export mode uses the fixed canvas.
+
+    Regression: the old inline script resized ``#stage`` with
+    ``transform: scale(...)`` so the app looked like a baked board. The live
+    entry point must not scale the stage, and must reserve the 1:1 canvas for
+    ``?export=1``.
+    """
+    html = client.get("/platform/").text
+    assert "scale(" not in html.replace(" ", "")
+    assert "export" in html
+    # The fixed canvas dimensions are preserved for export mode only.
+    css = client.get("/platform/styles.css").text
+    assert "--stage-w:1920px" in css
+    assert "--stage-h:1080px" in css
+    assert "body.export .stage" in css
+
+
 # --------------------------------------------------------------------------
 # content integrity
 # --------------------------------------------------------------------------

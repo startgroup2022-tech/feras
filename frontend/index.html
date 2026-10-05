@@ -569,26 +569,13 @@
 
 <script>
 (function(){
-  // Scale the fixed 1920x1080 stage to fit the viewport (export mode renders 1:1).
-  // All other behaviour (routing, language, data) lives in app.js.
-  var stage=document.getElementById('stage');
-  var isExport=/[?&]export=1/.test(location.search);
-  function fit(){
-    if(isExport){
-      document.body.classList.add('export');
-      stage.style.transform='none';
-      stage.style.marginBottom='0';
-      return;
-    }
-    var pad=44;
-    var s=Math.min((window.innerWidth-pad)/1920, (window.innerHeight-pad)/1080);
-    s=Math.min(s,1.35);
-    stage.style.transform='scale('+s+')';
-    stage.style.marginBottom=(1080*(s-1))+'px';
+  // The live application is a fluid, full-viewport surface (styles.css).
+  // Export mode (?export=1) restores the historical fixed 16:9 canvas at 1:1
+  // for pixel-exact executive exports. All other behaviour (routing, language,
+  // data) lives in app.js.
+  if(/[?&]export=1/.test(location.search)){
+    document.body.classList.add('export');
   }
-  window.addEventListener('resize',fit);
-  window.addEventListener('load',fit);
-  fit();
 })();
 </script>
 <script src="auth.js"></script>
