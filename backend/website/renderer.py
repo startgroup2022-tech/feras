@@ -29,8 +29,18 @@ from backend.website import group_companies
 from backend.website import seo
 from backend.website.content import PageMeta
 
-BRAND_AR = "سفير القابضة"
-BRAND_EN = "Safir Holding"
+BRAND_AR = "ستارت أب سفير القابضة"
+BRAND_EN = "Start Upsphere Holding"
+
+# The original owner-supplied logo, shipped as a static asset (handoff §1,
+# assets/ASSETS.md). It is never recoloured or re-proportioned; the header
+# constrains it with ``object-fit: contain`` so no display size distorts it.
+BRAND_LOGO_URL = "/website/assets/holding-logo.png"
+
+# The owner-selected visual reference for the hero (handoff assets/ASSETS.md).
+# Used as a background image only; the layout must remain legible if it fails
+# to load, so the hero carries its own background colour underneath.
+BRAND_HERO_URL = "/website/assets/bahrain-bay.jpg"
 
 
 def e(value: object) -> str:
@@ -69,20 +79,32 @@ def _brand_mark() -> str:
 
 
 def _brand_visual(lang: str, branding: dict | None, logo_url: str | None = None) -> str:
-    """The header logo slot: the uploaded logo, or the built-in fallback mark.
+    """The header logo slot: the uploaded logo, or the shipped original mark.
 
-    The container has a fixed height and the image is constrained by
+    The admin-uploaded logo (CMS) wins when present; otherwise the original
+    owner-supplied logo ships as a static asset (handoff assets/ASSETS.md). The
+    container has a fixed height and the image is constrained by
     ``object-fit: contain`` with a max width, so a logo of any aspect ratio or
     dimension can never distort or break the header layout.
     """
-    logo_url = logo_url or (branding or {}).get("logo_url")
-    if logo_url:
-        return (
-            '<span class="brand-logo">'
-            f'<img src="{e(logo_url)}" alt="{e(_brand(lang))}" '
-            'decoding="async" data-brand-logo></span>'
-        )
-    return f'<span class="brand-mark" data-brand-fallback>{_brand_mark()}</span>'
+    logo_url = logo_url or (branding or {}).get("logo_url") or BRAND_LOGO_URL
+    return (
+        '<span class="brand-logo">'
+        f'<img src="{e(logo_url)}" alt="{e(_brand(lang))}" '
+        'decoding="async" data-brand-logo></span>'
+    )
+
+
+def _brand_logo_img(lang: str) -> str:
+    """An instance of the shipped original logo, for the footer.
+
+    Uses the same static asset as the header so the identity is consistent and
+    the owner-supplied mark is never redrawn or recoloured (handoff §1).
+    """
+    return (
+        f'<img src="{e(BRAND_LOGO_URL)}" alt="{e(_brand(lang))}" '
+        'decoding="async" data-brand-logo>'
+    )
 
 
 def _nav_html(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
@@ -132,10 +154,6 @@ def _nav_html(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
   <div class="container header-inner">
     <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(brand_name)}">
       {_brand_visual(lang, branding, logo_url)}
-      <span class="brand-text">
-        <span class="brand-name">{e(brand_name)}</span>
-        <span class="brand-sub">{e(_t("بوابة البحرين والسعودية", "Bahrain & Saudi Gateway", lang))}</span>
-      </span>
     </a>
 
     <div class="header-menu" id="primary-nav" data-nav>
@@ -199,32 +217,58 @@ def _footer_html(meta: PageMeta, cms=None) -> str:
         f'{e(service["title"][lang])} — {e(C.market_label("saudi", lang))}</a></li>'
         for slug, service in C.SERVICES.items()
     )
+    holding = C.HOLDING
+    holding_name = holding["name_ar"] if lang == "ar" else holding["name_en"]
+    holding_address = holding["address_ar"] if lang == "ar" else holding["address_en"]
+    holding_tagline = holding["tagline_ar"] if lang == "ar" else holding["tagline_en"]
     return f"""
 <footer class="site-footer">
   <div class="container footer-inner">
     <div class="footer-brand">
-      <span class="brand-mark brand-mark-lg">{_brand_mark()}</span>
-      <div class="brand-name">{e(brand_name)}</div>
-      <p class="footer-tag">{e(_t("بوابتك للأعمال والاستثمار في البحرين والسعودية",
-                                   "Your business and investment gateway in Bahrain and Saudi Arabia", lang))}</p>
+      <span class="brand-logo brand-logo-lg">{_brand_logo_img(lang)}</span>
+      <div class="brand-name">{e(holding_name)}</div>
+      <p class="footer-tag">{e(holding_tagline)}</p>
     </div>
     <nav class="footer-nav" aria-label="{e(_t('روابط التذييل', 'Footer links', lang))}">
       <div class="footer-col">
-        <h2 class="footer-heading">{e(_t('روابط سريعة', 'Quick links', lang))}</h2>
+        <h2 class="footer-heading">{e(_t('الروابط السريعة', 'Quick links', lang))}</h2>
         <ul>{nav_links}</ul>
       </div>
       <div class="footer-col">
         <h2 class="footer-heading">{e(_t('الخدمات حسب السوق', 'Services by market', lang))}</h2>
         <ul>{services_links}</ul>
       </div>
+      <div class="footer-col">
+        <h2 class="footer-heading">{e(_t('تواصل معنا', 'Contact us', lang))}</h2>
+        <ul>
+          <li>{e(holding_address)}</li>
+          <li><a href="tel:{e(holding['phone_href'])}" dir="ltr">{e(holding['phone'])}</a></li>
+          <li><a href="mailto:{e(holding['email'])}">{e(holding['email'])}</a></li>
+        </ul>
+      </div>
       {contact_lines}
     </nav>
   </div>
   <div class="container footer-legal">
-    <p>&copy; {e(brand_name)} — {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
-    <a href="{e('/' if lang == 'en' else '/ar')}">{e(_t('الرئيسية', 'Home', lang))}</a>
+    <p>&copy; {e(_t('السنة الحالية — ', 'Current year — ', lang))}{e(holding_name)} {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
+    <p class="footer-legal-links">
+      <a href="{e(C.PAGE_PATHS['privacy'][lang])}">{e(_t('سياسة الخصوصية', 'Privacy Policy', lang))}</a>
+      <span aria-hidden="true"> · </span>
+      <a href="{e(C.PAGE_PATHS['terms'][lang])}">{e(_t('الشروط والأحكام', 'Terms & Conditions', lang))}</a>
+    </p>
   </div>
+  <a class="whatsapp-float" href="https://wa.me/{e(str(holding['whatsapp']))}" rel="noopener noreferrer" target="_blank">
+    {e(_t('واتساب القابضة', 'Holding WhatsApp', lang))}
+  </a>
 </footer>"""
+
+
+def _brand_logo_img(lang: str) -> str:
+    """The footer instance of the original logo (shared asset)."""
+    return (
+        f'<img src="{e(BRAND_LOGO_URL)}" alt="{e(_brand(lang))}" '
+        'decoding="async" data-brand-logo>'
+    )
 
 
 def render_page(meta: PageMeta, body: str, branding: dict | None = None, cms=None) -> str:
@@ -412,130 +456,67 @@ def _faq_block(lang: str, pairs: list[tuple[str, str]]) -> str:
 # home
 # --------------------------------------------------------------------------
 def _home_body(lang: str, cms_companies=None) -> str:
-    journeys = [
-        ("opportunities", C.SERVICES["opportunities"], "opportunities"),
-        ("company-formation", C.SERVICES["company-formation"], "formation"),
-        ("feasibility-study", C.SERVICES["feasibility-study"], "feasibility"),
-        ("list-your-business", None, "listing"),
-    ]
-    cards = []
-    for slug, service, icon in journeys:
-        if service is None:
-            title = _t("اعرض فرصة / شركة", "List Your Business / Opportunity", lang)
-            blurb = _t(
-                "قدّم مشروعك أو شركتك للشراكة أو الاستحواذ.",
-                "Offer your project or company for partnership or acquisition.",
-                lang,
-            )
-            href = C.PAGE_PATHS["list-your-business"][lang]
-        else:
-            title = service["title"][lang]
-            blurb = service["blurb"][lang]
-            href = C.PAGE_PATHS["services"][lang] + "#" + service["slug"]
-        cards.append(
-            f"""<a class="journey-card" href="{e(href)}">
-  <span class="journey-icon" aria-hidden="true">{_icon(icon)}</span>
-  <h3>{e(title)}</h3>
-  <p>{e(blurb)}</p>
-  <span class="journey-cta">{e(_t('ابدأ', 'Start', lang))} <span aria-hidden="true">←</span></span>
-</a>"""
-        )
+    """The approved home page: Hero → About → Companies → Opportunities → Help.
 
-    trust = [
-        ("shield", _t("توجيه داخلي", "Internal routing", lang),
-         _t("نوجّه كل طلب إلى الجهة المختصة داخل القابضة دون أن تحتاج لمعرفتها.",
-            "We route each request to the responsible team inside the Holding, without you needing to know it.", lang)),
-        ("opportunities", _t("سوقان", "Two markets", lang),
-         _t("البحرين والمملكة العربية السعودية، بمحتوى ونماذج مناسبة لكل سوق.",
-            "Bahrain and Saudi Arabia, with content and forms suited to each market.", lang)),
-        ("group", _t("شركات المجموعة", "Group companies", lang),
-         _t("شركات قائمة تدعم التنفيذ، وتظهر لبناء الثقة لا للتنقل.",
-            "Established companies that support delivery, shown for trust rather than navigation.", lang)),
-    ]
-    trust_cards = "".join(
-        f"""<article class="trust-card">
-  <span class="trust-icon" aria-hidden="true">{_icon(icon)}</span>
-  <h3>{e(title)}</h3>
-  <p>{e(desc)}</p>
-</article>"""
-        for icon, title, desc in trust
-    )
+    Order and copy follow the handoff exactly (SPECIFICATION.md §3 الرئيسية).
+    The hero carries the fixed name/definition and a single "Group Companies"
+    button; the company section is the interactive selector; the opportunities
+    section shows the latest published listings (the client fills them from the
+    API) and the group-services form closes the page.
+    """
+    text = C.PAGE_TEXT["home"]
+    holding = C.HOLDING
+    name = holding["name_ar"] if lang == "ar" else holding["name_en"]
 
     return f"""
-<section class="hero">
+<section class="hero hero-home" id="home-hero" style="background-image:url('{e(BRAND_HERO_URL)}')">
   <div class="container hero-inner">
     <div class="hero-copy">
-      <p class="hero-eyebrow">{e(_t('بوابة مؤسسية', 'Corporate gateway', lang))}</p>
-      <h1 class="hero-title">{e(_brand(lang))}</h1>
-      <p class="hero-tagline">
-        <span class="hero-tagline-line">{e(_t('بوابتك للأعمال والاستثمار', 'Your business and investment gateway', lang))}</span>
-        <span class="hero-tagline-line">{e(_t('في البحرين والسعودية', 'in Bahrain and Saudi Arabia', lang))}</span>
-      </p>
-      <p class="hero-values">{e(_t('فرص • تأسيس شركات • دراسات جدوى • شراكات',
-                                   'Opportunities • Company Formation • Feasibility Studies • Partnerships', lang))}</p>
+      <h1 class="hero-title">{e(name)}</h1>
+      <p class="hero-intro">{e(text['intro'][lang])}</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#choose">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</a>
-        <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('استعرض الفرص', 'Browse opportunities', lang))}</a>
-      </div>
-    </div>
-    <div class="hero-panel" aria-hidden="true">
-      <div class="hero-panel-head">
-        <span class="hero-panel-dot"></span>
-        {e(_t('سوقان · مسار واحد', 'Two markets · one path', lang))}
-      </div>
-      <ul class="hero-panel-list">
-        <li><span class="hp-flag">🇧🇭</span>{e(C.market_label('bahrain', lang))}</li>
-        <li><span class="hp-flag">🇸🇦</span>{e(C.market_label('saudi', lang))}</li>
-      </ul>
-      <div class="hero-panel-foot">
-        <span>{e(_t('تأسيس شركات', 'Company formation', lang))}</span>
-        <span>{e(_t('دراسات جدوى', 'Feasibility', lang))}</span>
-        <span>{e(_t('فرص واستثمار', 'Opportunities', lang))}</span>
+        <a class="btn btn-primary" href="{e(C.PAGE_PATHS['group'][lang])}">{e(_t('شركات المجموعة', 'Group Companies', lang))}</a>
       </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="choose">
-  <div class="container">
-    <h2 class="section-title">{e(_t('ابدأ باختيار ما تحتاجه', 'Start by choosing what you need', lang))}</h2>
-    <p class="section-sub">{e(_t('اختر الخدمة، ثم السوق — ونحن نتولى التوجيه داخليًا.',
-                                 'Choose a service, then a market — we handle the routing internally.', lang))}</p>
-    <div class="journey-grid">{''.join(cards)}</div>
-  </div>
-</section>
-
-{_market_choice(lang, 'company-formation', _t('اختر السوق لخدماتنا', 'Choose your market', lang),
-                _t('لكل سوق صفحة ونموذج خاصان به.', 'Each market has its own page and form.', lang))}
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">{e(_t('لماذا سفير القابضة', 'Why Safir Holding', lang))}</h2>
-    <div class="trust-grid">{trust_cards}</div>
+<section class="section about-teaser">
+  <div class="container narrow center">
+    <h2 class="section-title">{e(_t('من نحن', 'About Us', lang))}</h2>
+    <p class="section-lead">{e(text['about_teaser'][lang])}</p>
+    <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['about'][lang])}">{e(_t('اعرف المزيد', 'Learn More', lang))}</a>
   </div>
 </section>
 
 {_group_companies_section(lang,
     heading=_t('شركات المجموعة', 'Group Companies', lang),
     intro=_t('تضم محفظتنا شركات في قطاعات متنوعة، تقدم منتجات وخدمات متخصصة للأفراد والأعمال.',
-             'Our portfolio spans companies in diverse sectors, offering specialised products and services to individuals and businesses.', lang),
+             'Our portfolio brings together companies across diverse sectors, offering specialised products and services to individuals and businesses.', lang),
     cms_companies=cms_companies)}
 
-<section class="section section-alt">
+<section class="section section-alt" id="opportunities">
   <div class="container">
-    <h2 class="section-title">{e(_t('كيف تعمل البوابة', 'How the gateway works', lang))}</h2>
-    {_steps_list(lang, [
-        (_t('اختر احتياجك', 'Choose your need', lang),
-         _t('ابدأ من الخدمة التي تبحث عنها.', 'Start from the service you are looking for.', lang)),
-        (_t('حدّد السوق: البحرين أو السعودية', 'Select the market: Bahrain or Saudi Arabia', lang),
-         _t('لكل سوق صفحة ونموذج ومتطلبات خاصة.', 'Each market has its own page, form and requirements.', lang)),
-        (_t('أكمل النموذج المناسب', 'Complete the relevant form', lang),
-         _t('أسئلة مخصصة للخدمة والسوق.', 'Questions tailored to the service and the market.', lang)),
-        (_t('تتواصل معك الجهة المختصة', 'The responsible team contacts you', lang),
-         _t('نوجّه الطلب داخليًا ونحدد المصدر والسوق تلقائيًا.', 'We route it internally and record the source and market automatically.', lang)),
-    ])}
+    <h2 class="section-title">{e(_t('الفرص التجارية', 'Business Opportunities', lang))}</h2>
+    <p class="section-lead">{e(C.PAGE_TEXT['opportunities']['intro'][lang])}</p>
+    <div class="opp-list" data-opportunities data-limit="3">
+      <p class="state">{e(_t('جارٍ تحميل الفرص…', 'Loading opportunities…', lang))}</p>
+    </div>
+    <div class="opp-cta">
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('عرض جميع الفرص', 'View All Opportunities', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}#submit-project">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+    </div>
   </div>
-</section>"""
+</section>
+
+<section class="section" id="help">
+  <div class="container narrow center">
+    <h2 class="section-title">{e(_t('كيف يمكننا مساعدتك؟', 'How Can We Help?', lang))}</h2>
+    <p class="section-lead">{e(text['help_intro'][lang])}</p>
+  </div>
+</section>
+
+{_form_section(lang, "group-service", "gulf", None)}"""
 
 
 # --------------------------------------------------------------------------
@@ -702,6 +683,17 @@ _FORM_LABELS: dict[str, dict[str, str]] = {
     "consent": {"ar": "أوافق على معالجة بياناتي وفقًا لإشعار الخصوصية.", "en": "I consent to my data being processed in line with the privacy notice."},
     "honeypot": {"ar": "اترك هذا الحقل فارغًا", "en": "Leave this field empty"},
     "submit": {"ar": "إرسال", "en": "Submit"},
+    # Group-services ("كيف يمكننا مساعدتك؟") form (handoff §4).
+    "phone_intl": {"ar": "رقم الهاتف مع مفتاح الدولة", "en": "Phone number with country code"},
+    "service": {"ar": "الخدمة", "en": "Service"},
+    "country": {"ar": "الدولة", "en": "Country"},
+    # Careers form (handoff §3 الوظائف).
+    "residence_country": {"ar": "دولة الإقامة", "en": "Country of residence"},
+    "city": {"ar": "المدينة", "en": "City"},
+    "job_title": {"ar": "المسمى الوظيفي / مجال التخصص", "en": "Job title / field of specialisation"},
+    "years_experience": {"ar": "سنوات الخبرة", "en": "Years of experience"},
+    "preferred_company": {"ar": "الشركة التي ترغب في العمل لديها", "en": "Company you would like to work for"},
+    "cv": {"ar": "رفع السيرة الذاتية", "en": "Upload your CV"},
 }
 
 
@@ -718,8 +710,10 @@ def _field(
     options: list[tuple[str, str]] | None = None,
     textarea: bool = False,
     full: bool = False,
+    accept: str | None = None,
+    key_alias: str | None = None,
 ) -> str:
-    label = _label(key, lang)
+    label = _label(key_alias or key, lang)
     req = ' required aria-required="true"' if required else ""
     req_mark = ' <span class="req" aria-hidden="true">*</span>' if required else ""
     wrapper = ' class="field field-full"' if full else ' class="field"'
@@ -735,9 +729,16 @@ def _field(
         opts = "".join(
             f'<option value="{e(value)}">{e(text)}</option>' for value, text in options
         )
+        placeholder = _t("اختر", "Select", lang)
         control = (
             f'<select id="{e(fid)}" name="{e(key)}"{req} aria-describedby="{e(err_id)}">'
-            f'<option value="" selected disabled>{e(_t("اختر", "Select", lang))}</option>{opts}</select>'
+            f'<option value="" selected disabled>{e(placeholder)}</option>{opts}</select>'
+        )
+    elif kind == "file":
+        accept_attr = f' accept="{e(accept)}"' if accept else ""
+        control = (
+            f'<input type="file" id="{e(fid)}" name="{e(key)}"{req}{accept_attr} '
+            f'aria-describedby="{e(err_id)}">'
         )
     elif kind == "checkbox":
         return (
@@ -762,7 +763,11 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
     """Render the correct form for a market/service page."""
     market_name = C.market_label(market, lang)
     action = f"/api/v1/public/leads/{form_key}"
-    title = _t("أكمل الطلب", "Complete your request", lang)
+    titles = {
+        "group-service": _t("كيف يمكننا مساعدتك؟", "How Can We Help?", lang),
+        "careers": _t("انضم إلى فريق ستارت أب سفير", "Join the Startup Safeer Team", lang),
+    }
+    title = titles.get(form_key) or _t("أكمل الطلب", "Complete your request", lang)
 
     fields: list[str] = []
     if form_key == "company-formation":
@@ -855,6 +860,46 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
             _field("subject", lang),
             _field("message", lang, required=True, textarea=True, full=True),
         ]
+    elif form_key == "group-service":
+        # Handoff §4 "كيف يمكننا مساعدتك؟": name, phone (with country code),
+        # email, one of six services and one of seven countries. No market: the
+        # country the visitor picks is the answer, and the Holding routes the
+        # enquiry internally.
+        service_opts = [(s["id"], s[lang]) for s in C.SERVICE_OPTIONS]
+        country_opts = [(c["id"], c[lang]) for c in C.SERVICE_COUNTRIES]
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("phone", lang, kind="tel", required=True, key_alias="phone_intl"),
+            _field("email", lang, kind="email", required=True),
+            _field("service", lang, kind="select", required=True, options=service_opts),
+            _field("country", lang, kind="select", required=True, options=country_opts),
+            _field("message", lang, textarea=True, full=True),
+        ]
+    elif form_key == "careers":
+        # Handoff §3 الوظائف: no vacancies list, one form; CV + notes span the
+        # form width. Residence country is a free list (not the service-country
+        # restriction). The preferred company is one of the nine group
+        # companies plus "any suitable opportunity".
+        from backend.website import group_companies as G
+
+        company_opts = [("", _t("أي فرصة مناسبة", "Any suitable opportunity", lang))]
+        company_opts += [
+            (c["id"], _localized_name(c, lang)) for c in G.ordered()
+        ]
+        country_opts = [(c["id"], c[lang]) for c in C.SERVICE_COUNTRIES]
+        country_opts.append(("other", _t("دولة أخرى", "Other country", lang)))
+        fields = [
+            _field("full_name", lang, required=True),
+            _field("phone", lang, kind="tel", required=True),
+            _field("email", lang, kind="email", required=True),
+            _field("residence_country", lang, kind="select", required=True, options=country_opts),
+            _field("city", lang),
+            _field("job_title", lang, required=True),
+            _field("years_experience", lang, required=True),
+            _field("preferred_company", lang, kind="select", options=company_opts),
+            _field("cv", lang, kind="file", required=True, full=True, accept=".pdf,.doc,.docx"),
+            _field("message", lang, textarea=True, full=True),
+        ]
 
     hidden = (
         f'<input type="hidden" name="market" value="{e(market)}">'
@@ -869,18 +914,31 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
         f"</div>"
     )
 
-    context_note = _t(
-        f"سيُسجَّل هذا الطلب تلقائيًا ضمن سوق {market_name}.",
-        f"This request will automatically be recorded under the {market_name} market.",
-        lang,
-    )
+    # The careers form carries a CV, so it must submit as multipart. The other
+    # forms send JSON, which lets the client surface per-field server errors.
+    multipart = form_key == "careers"
+    enctype = ' enctype="multipart/form-data"' if multipart else ""
+    multipart_attr = ' data-multipart="1"' if multipart else ""
+
+    if multipart:
+        context_note = _t(
+            "تُرسل السيرة الذاتية إلى القابضة، ونتواصل معك عند توفر فرصة مناسبة.",
+            "Your CV is sent to the Holding, and we contact you when a suitable opportunity arises.",
+            lang,
+        )
+    else:
+        context_note = _t(
+            f"سيُسجَّل هذا الطلب تلقائيًا ضمن سوق {market_name}.",
+            f"This request will automatically be recorded under the {market_name} market.",
+            lang,
+        )
 
     return f"""
 <section class="section section-alt" id="form">
   <div class="container form-wrap">
     <h2 class="section-title">{e(title)}</h2>
     <p class="form-note">{e(context_note)}</p>
-    <form class="site-form" data-form="{e(form_key)}" action="{e(action)}" method="post" novalidate>
+    <form class="site-form" data-form="{e(form_key)}"{multipart_attr} action="{e(action)}" method="post"{enctype} novalidate>
       {hidden}
       <div class="field-grid">{''.join(fields)}</div>
       {_field("consent", lang, kind="checkbox", required=True)}
@@ -1290,58 +1348,155 @@ def _group_body(lang: str, cms_companies=None) -> str:
 
 
 def _about_body(lang: str) -> str:
-    pillars = [
-        (_t("التنسيق", "Orchestration", lang),
-         _t("نربط المستثمرين والشركات والفرص والخدمات المهنية في مسار واحد.",
-            "We connect investors, companies, opportunities and professional services in one path.", lang)),
-        (_t("الأسواق", "Markets", lang),
-         _t("نعمل عبر سوقين: مملكة البحرين والمملكة العربية السعودية.",
-            "We operate across two markets: the Kingdom of Bahrain and Saudi Arabia.", lang)),
-        (_t("الشفافية", "Clarity", lang),
-         _t("نوجّه كل طلب داخليًا إلى الجهة المختصة، دون أن يحتاج الزائر لمعرفة ذلك.",
-            "We route each request internally to the responsible team, without the visitor needing to know.", lang)),
-    ]
-    cards = "".join(
-        f'<article class="pillar"><h3>{e(t)}</h3><p>{e(d)}</p></article>'
-        for t, d in pillars
+    """The approved about page: intro → role → portfolio → growth → links.
+
+    Copy is the handoff's approved Arabic and reviewed English
+    (content/ARABIC.md, ENGLISH.md). On desktop the heading sits beside the
+    text; the CSS handles the mobile stack. There is no profile download until
+    the owner supplies the document.
+    """
+    text = C.PAGE_TEXT["about"]
+
+    row = lambda heading_ar, heading_en, body: f"""
+<section class="about-row">
+  <div class="container about-row-inner">
+    <h2 class="about-row-heading">{e(_t(heading_ar, heading_en, lang))}</h2>
+    <div class="about-row-body">{body}</div>
+  </div>
+</section>"""
+
+    portfolio = "".join(
+        f"<p>{e(text[k][lang])}</p>" for k in ("portfolio_1", "portfolio_2")
     )
+    grow = "".join(
+        f"<p>{e(text[k][lang])}</p>" for k in ("grow_1", "grow_2")
+    )
+
     return f"""
-<section class="page-hero">
-  <div class="container">
-    <h1>{e(_t('عن سفير القابضة', 'About Safir Holding', lang))}</h1>
-    <p>{e(_t('طبقة تنسيق تربط المستثمرين والشركات والفرص والخدمات في البحرين والسعودية.',
-             'An orchestration layer connecting investors, companies, opportunities and services across Bahrain and Saudi Arabia.', lang))}</p>
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(_t('من نحن', 'About Us', lang))}</h1>
+    <p class="section-lead">{e(text['intro'][lang])}</p>
   </div>
 </section>
-<section class="section">
-  <div class="container prose">
-    <p>{e(_t('سفير القابضة كيان ينسّق بين احتياجات السوق والخدمات المهنية والفرص الاستثمارية. لا يقتصر دورنا على عرض الخدمات، بل على فهم احتياج الزائر ثم توجيهه داخليًا إلى الجهة القادرة على تنفيذه في السوق المختار.',
-             'Safir Holding coordinates between market needs, professional services and investment opportunities. Our role is not merely to list services, but to understand what a visitor needs and route it internally to the party able to deliver it in the chosen market.', lang))}</p>
-  </div>
-</section>
-<section class="section section-alt">
-  <div class="container">
-    <div class="pillar-grid">{cards}</div>
-  </div>
-</section>
+
+{row("دورنا داخل المجموعة", "Our Role Within the Group", f"<p>{e(text['role'][lang])}</p>")}
+{row("محفظتنا الحالية", "Our Current Portfolio", portfolio)}
+{row("كيف ننمو", "How We Grow", grow)}
+
 <section class="section">
   <div class="container center">
-    <h2 class="section-title">{e(_t('ابدأ من احتياجك', 'Start from your need', lang))}</h2>
-    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['services'][lang])}">{e(_t('تصفح الخدمات', 'Browse services', lang))}</a>
+    <div class="page-hero-actions" style="justify-content:center">
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['group'][lang])}">{e(_t('شركات المجموعة', 'Group Companies', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['contact'][lang])}">{e(_t('تواصل معنا', 'Contact Us', lang))}</a>
+    </div>
   </div>
 </section>"""
 
 
 def _contact_body(lang: str) -> str:
+    """The approved contact page: holding details and WhatsApp.
+
+    The handoff (§3 التواصل) specifies contact details with no form and no
+    opening hours, and the map is hidden until a link is confirmed -- so a
+    neutral placeholder stands in for it rather than an embedded map.
+    """
+    holding = C.HOLDING
+    name = holding["name_ar"] if lang == "ar" else holding["name_en"]
+    address = holding["address_ar"] if lang == "ar" else holding["address_en"]
+    legum = "START UPSPHERE HOLDING CO W.L.L"
     return f"""
-<section class="page-hero">
-  <div class="container">
-    <h1>{e(_t('تواصل معنا', 'Contact us', lang))}</h1>
-    <p>{e(_t('اختر السوق ونوع الاستفسار، وسيتواصل معك الفريق المختص.',
-             'Choose your market and inquiry type, and the responsible team will get back to you.', lang))}</p>
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(_t('تواصل معنا', 'Contact Us', lang))}</h1>
+    <p class="section-lead">{e(C.PAGE_TEXT['contact']['intro'][lang])}</p>
   </div>
 </section>
-{_form_section(lang, "contact", "bahrain", None)}"""
+
+<section class="section">
+  <div class="container two-col contact-grid">
+    <div class="contact-card">
+      <h2 class="section-title">{e(name)}</h2>
+      <p class="contact-legal" dir="ltr">{e(legum)}</p>
+      <p><strong>{e(_t('المقر الرئيسي:', 'Head Office:', lang))}</strong> {e(address)}</p>
+      <p><strong>{e(_t('الهاتف:', 'Phone:', lang))}</strong> <a href="tel:{e(holding['phone_href'])}" dir="ltr">{e(holding['phone'])}</a></p>
+      <p><strong>{e(_t('البريد الإلكتروني:', 'Email:', lang))}</strong> <a href="mailto:{e(holding['email'])}" dir="ltr">{e(holding['email'])}</a></p>
+      <div class="page-hero-actions">
+        <a class="btn btn-primary" href="https://wa.me/{e(str(holding['whatsapp']))}" rel="noopener noreferrer" target="_blank">{e(_t('تواصل عبر واتساب', 'Contact via WhatsApp', lang))}</a>
+      </div>
+    </div>
+    <div class="map-placeholder" role="img" aria-label="{e(_t('موضع خريطة المقر الرئيسي عند توفير الرابط', 'Head office map placeholder, shown once a link is provided', lang))}">
+      {e(_t('موقع المقر على الخريطة', 'Head office location', lang))}
+    </div>
+  </div>
+</section>"""
+
+
+def _careers_body(lang: str) -> str:
+    """The approved careers page: intro + single CV form, no vacancies list."""
+    text = C.PAGE_TEXT["careers"]
+    return f"""
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(text['title'][lang])}</h1>
+    <p class="section-lead">{e(text['intro'][lang])}</p>
+    <p>{e(text['submit'][lang])}</p>
+  </div>
+</section>
+{_form_section(lang, "careers", "gulf", None)}"""
+
+
+def _legal_sections(lang: str, sections: list[dict]) -> str:
+    blocks = []
+    for section in sections:
+        paras = "".join(f"<p>{e(p)}</p>" for p in section["body"][lang])
+        blocks.append(
+            f'<section class="legal-block"><h2>{e(section["heading"][lang])}</h2>{paras}</section>'
+        )
+    return "".join(blocks)
+
+
+def _legal_body(lang: str, *, title_ar: str, title_en: str, intro_ar: str,
+                intro_en: str, sections: list[dict]) -> str:
+    holding = C.HOLDING
+    name = holding["name_ar"] if lang == "ar" else holding["name_en"]
+    address = holding["address_ar"] if lang == "ar" else holding["address_en"]
+    return f"""
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(_t(title_ar, title_en, lang))}</h1>
+    <p class="section-lead">{e(_t(intro_ar, intro_en, lang))}</p>
+  </div>
+</section>
+<section class="section legal-copy">
+  <div class="container narrow">
+    {_legal_sections(lang, sections)}
+    <p class="contact-legal">{e(name)}<br>{e(address)}<br>
+      <a href="mailto:{e(holding['email'])}" dir="ltr">{e(holding['email'])}</a></p>
+  </div>
+</section>"""
+
+
+def _privacy_body(lang: str) -> str:
+    return _legal_body(
+        lang,
+        title_ar="سياسة الخصوصية",
+        title_en="Privacy Policy",
+        intro_ar="توضح هذه السياسة كيفية تعامل شركة ستارت أب سفير القابضة ذ.م.م مع البيانات الشخصية المقدمة عبر الموقع.",
+        intro_en="This policy explains how START UPSPHERE HOLDING CO W.L.L handles personal data submitted through this website.",
+        sections=C.PRIVACY_SECTIONS,
+    )
+
+
+def _terms_body(lang: str) -> str:
+    return _legal_body(
+        lang,
+        title_ar="الشروط والأحكام",
+        title_en="Terms and Conditions",
+        intro_ar="شروط استخدام موقع شركة ستارت أب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع.",
+        intro_en="The terms of use for the START UPSPHERE HOLDING website, covering service and career requests and the listing of businesses.",
+        sections=C.TERMS_SECTIONS,
+    )
 
 
 def maintenance_page(lang: str, message: str | None = None) -> str:
@@ -1492,6 +1647,12 @@ def _body_for(meta: PageMeta, cms=None) -> str:
         body = _group_body(lang, cms_companies)
     elif route == "about":
         body = _about_body(lang)
+    elif route == "careers":
+        body = _careers_body(lang)
+    elif route == "terms":
+        body = _terms_body(lang)
+    elif route == "privacy":
+        body = _privacy_body(lang)
     elif route == "contact":
         body = _contact_body(lang)
     else:

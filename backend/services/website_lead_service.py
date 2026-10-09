@@ -59,9 +59,11 @@ from backend.rbac.authorization import require_permission
 from backend.rbac.permissions import Perm
 from backend.schemas.website import (
     BusinessListingSubmission,
+    CareersSubmission,
     CompanyFormationSubmission,
     ContactSubmission,
     FeasibilitySubmission,
+    GroupServiceSubmission,
     OpportunityInterestSubmission,
 )
 from backend.services import audit_service
@@ -75,30 +77,54 @@ logger = logging.getLogger("safir.website")
 # Which internal team owns each service, per market. This is the whole point of
 # the gateway: the visitor picks a need and a market; SAFIR decides internally.
 # The mapping is data, not logic, so it is easy to review and change.
+# Market-less forms (the handoff's group-services and careers forms are not
+# scoped to Bahrain/Saudi) are recorded under ``Market.GULF`` so the routing
+# table stays total and the integrity test can assert every service/market pair
+# is handled. The country the visitor actually chose lives in the service
+# fields, not in the market column.
 ROUTING_TABLE: dict[str, dict[str, str]] = {
     WebsiteServiceType.COMPANY_FORMATION.value: {
         Market.BAHRAIN.value: "formation_bahrain",
         Market.SAUDI.value: "formation_saudi",
+        Market.GULF.value: "formation_bahrain",
     },
     WebsiteServiceType.FEASIBILITY_STUDY.value: {
         Market.BAHRAIN.value: "feasibility_bahrain",
         Market.SAUDI.value: "feasibility_saudi",
+        Market.GULF.value: "feasibility_bahrain",
     },
     WebsiteServiceType.OPPORTUNITY_INTEREST.value: {
         Market.BAHRAIN.value: "investment_desk",
         Market.SAUDI.value: "investment_desk",
+        Market.GULF.value: "investment_desk",
     },
     WebsiteServiceType.BUSINESS_LISTING.value: {
         Market.BAHRAIN.value: "investment_desk",
         Market.SAUDI.value: "investment_desk",
+        Market.GULF.value: "investment_desk",
     },
     WebsiteServiceType.INVESTMENT.value: {
         Market.BAHRAIN.value: "investment_desk",
         Market.SAUDI.value: "investment_desk",
+        Market.GULF.value: "investment_desk",
     },
     WebsiteServiceType.GENERAL_CONTACT.value: {
         Market.BAHRAIN.value: "holding_front_desk",
         Market.SAUDI.value: "holding_front_desk",
+        Market.GULF.value: "holding_front_desk",
+    },
+    # Handoff §4: the visitor picks a service and a country; the Holding routes
+    # it internally to the responsible group company.
+    WebsiteServiceType.GROUP_SERVICE.value: {
+        Market.BAHRAIN.value: "holding_front_desk",
+        Market.SAUDI.value: "holding_front_desk",
+        Market.GULF.value: "holding_front_desk",
+    },
+    # Handoff §3 الوظائف: CVs go to the people team, not a market desk.
+    WebsiteServiceType.CAREERS.value: {
+        Market.BAHRAIN.value: "people_team",
+        Market.SAUDI.value: "people_team",
+        Market.GULF.value: "people_team",
     },
 }
 
@@ -112,6 +138,8 @@ SERVICE_NOTIFY_ROLES: dict[str, list[str]] = {
     WebsiteServiceType.BUSINESS_LISTING.value: ["business_development", "holding_owner"],
     WebsiteServiceType.INVESTMENT.value: ["business_development", "holding_owner"],
     WebsiteServiceType.GENERAL_CONTACT.value: ["business_development"],
+    WebsiteServiceType.GROUP_SERVICE.value: ["business_development", "holding_owner"],
+    WebsiteServiceType.CAREERS.value: ["business_development", "holding_owner"],
 }
 
 
@@ -132,6 +160,8 @@ def _new_reference(service_type: str) -> str:
         WebsiteServiceType.BUSINESS_LISTING.value: "SAF-BL",
         WebsiteServiceType.INVESTMENT.value: "SAF-IN",
         WebsiteServiceType.GENERAL_CONTACT.value: "SAF-CT",
+        WebsiteServiceType.GROUP_SERVICE.value: "SAF-GS",
+        WebsiteServiceType.CAREERS.value: "SAF-CV",
     }.get(service_type, "SAF-WEB")
     return f"{prefix}-{secrets.token_hex(3).upper()}"
 
@@ -147,8 +177,11 @@ def create_lead(
         CompanyFormationSubmission
         | FeasibilitySubmission
         | OpportunityInterestSubmission
+        | InvestmentSubmission
         | BusinessListingSubmission
         | ContactSubmission
+        | GroupServiceSubmission
+        | CareersSubmission
     ),
     ip_address: str | None = None,
     user_agent: str | None = None,
@@ -268,6 +301,8 @@ def _initial_priority(service_type: str) -> str:
         WebsiteServiceType.BUSINESS_LISTING.value,
         WebsiteServiceType.INVESTMENT.value,
         WebsiteServiceType.OPPORTUNITY_INTEREST.value,
+        WebsiteServiceType.GROUP_SERVICE.value,
+        WebsiteServiceType.CAREERS.value,
     }:
         return LeadPriority.HIGH.value
     return LeadPriority.NORMAL.value
@@ -328,6 +363,21 @@ def _service_fields(service_type: str, payload) -> dict:
         }
     if service_type == WebsiteServiceType.GENERAL_CONTACT.value:
         return {**common, "inquiry_type": payload.inquiry_type, "subject": payload.subject}
+    if service_type == WebsiteServiceType.GROUP_SERVICE.value:
+        return {
+            **common,
+            "service": payload.service,
+            "country": payload.country,
+        }
+    if service_type == WebsiteServiceType.CAREERS.value:
+        return {
+            **common,
+            "residence_country": payload.residence_country,
+            "city": payload.city,
+            "job_title": payload.job_title,
+            "years_experience": payload.years_experience,
+            "preferred_company": payload.preferred_company,
+        }
     return common
 
 

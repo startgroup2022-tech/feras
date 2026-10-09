@@ -264,9 +264,11 @@ __all__ += [
 from backend.schemas.website import (  # noqa: F401, E402
     AttributionIn,
     BusinessListingSubmission,
+    CareersSubmission,
     CompanyFormationSubmission,
     ContactSubmission,
     FeasibilitySubmission,
+    GroupServiceSubmission,
     InvestmentSubmission,
     LeadAttachmentOut,
     LeadOut,
@@ -282,9 +284,11 @@ from backend.schemas.website import (  # noqa: F401, E402
 __all__ += [
     "AttributionIn",
     "BusinessListingSubmission",
+    "CareersSubmission",
     "CompanyFormationSubmission",
     "ContactSubmission",
     "FeasibilitySubmission",
+    "GroupServiceSubmission",
     "InvestmentSubmission",
     "LeadAttachmentOut",
     "LeadOut",

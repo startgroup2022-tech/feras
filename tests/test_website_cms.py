@@ -215,8 +215,8 @@ def test_published_content_is_added_to_the_public_site(client, auth, make_user, 
     client.post(f"/api/v1/website/pages/{page_id}/publish", headers=auth(owner))
 
     html = public_client.get("/").text
-    # The built-in V2 content is still present...
-    assert "Why Safir Holding" in html
+    # The built-in (approved) home content is still present...
+    assert "How Can We Help?" in html
     # ...and the published CMS block is appended.
     assert "PUBLISHEDMARKER" in html
 

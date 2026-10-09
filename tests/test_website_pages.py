@@ -187,10 +187,18 @@ def test_header_has_a_single_brand_and_a_language_switch(public_client):
     assert ">English</a>" in html
 
 
-def test_header_uses_the_fallback_mark_when_no_logo_is_set(public_client):
+def test_header_uses_the_original_shipped_logo_when_no_cms_logo_is_set(public_client):
+    """The owner-supplied logo ships as a static asset (handoff §1).
+
+    Regression against the old behaviour: the header used to fall back to a
+    generated hexagon mark when no logo was uploaded through the CMS. The
+    approved design requires the *original* owner mark, never a substitute, so
+    the shipped asset is the default and the generated mark is gone.
+    """
     html = public_client.get("/").text
-    assert "data-brand-fallback" in html
-    assert "data-brand-logo" not in html
+    assert "data-brand-fallback" not in html
+    assert "data-brand-logo" in html
+    assert "/website/assets/holding-logo.png" in html
 
 
 def test_header_renders_the_uploaded_logo(client, auth, make_user, tmp_path, monkeypatch):
@@ -504,11 +512,12 @@ def test_group_company_actions_only_render_when_a_value_exists(public_client):
     # Provided contact details become real links (the selected first company)...
     assert "tel:+97317595522" in html          # alreyada phone
     assert "mailto:info@alreyada-law.com" in html
-    # ...and every tel:/mailto: that does appear is one of the provided values,
-    # never an empty or fabricated one.
+    # ...and every tel:/mailto: that does appear is a real value: either one of
+    # the provided company numbers or the Holding's own published number
+    # (footer/contact). Never an empty or fabricated one.
     provided_tel = {
         "+97317595522", "+97317826990", "+97337088373", "+97317001555",
-        "+97339848990", "+97339808990", "+966505688912",
+        "+97339848990", "+97339808990", "+966505688912", "+97317626990",
     }
     found_tel = set(re.findall(r'href="tel:([^"]+)"', html))
     assert found_tel <= provided_tel
@@ -523,3 +532,116 @@ def test_mobile_group_accordion_css_is_present():
     assert ".company-list { display: block; }" in block
     assert ".desktop-detail { display: none; }" in block
     assert ".inline-detail[hidden] { display: none; }" in block
+
+
+# --------------------------------------------------------------------------
+# original approved design: assets, new pages and the home journey
+# --------------------------------------------------------------------------
+def test_shipped_original_assets_are_served(public_client):
+    # The owner-supplied logo and hero image are real static assets.
+    for asset in ("holding-logo.png", "bahrain-bay.jpg"):
+        response = public_client.get(f"/website/assets/{asset}")
+        assert response.status_code == 200, asset
+        assert response.content, asset
+
+
+def test_home_uses_the_original_logo_and_hero_image(public_client):
+    html = public_client.get("/").text
+    assert "/website/assets/holding-logo.png" in html
+    assert "/website/assets/bahrain-bay.jpg" in html
+
+
+def test_home_follows_the_approved_section_order(public_client):
+    html = public_client.get("/").text
+    # Hero → About Us → Group Companies → Business Opportunities → Help.
+    # Section-specific markers, so the header nav labels are not matched.
+    order = [
+        'class="hero hero-home"',
+        'class="section about-teaser"',
+        "data-company-selector",
+        'id="opportunities"',
+        'id="help"',
+    ]
+    positions = [html.find(marker) for marker in order]
+    assert all(p != -1 for p in positions), positions
+    assert positions == sorted(positions), positions
+
+
+def test_home_hero_carries_the_holding_name_and_definition(public_client):
+    html = public_client.get("/").text
+    assert "START UPSPHERE HOLDING CO W.L.L" in html
+    assert "Based in Bahrain" in html
+
+
+def test_home_group_services_form_is_present_in_both_languages(public_client):
+    en = public_client.get("/").text
+    ar = public_client.get("/ar").text
+    assert 'data-form="group-service"' in en
+    assert "/api/v1/public/leads/group-service" in en
+    assert 'data-form="group-service"' in ar
+    # The six services and seven countries are offered as real options.
+    for service in C.SERVICE_OPTIONS:
+        assert service["en"] in en
+    for country in C.SERVICE_COUNTRIES:
+        assert country["ar"] in ar
+
+
+def test_home_offers_the_two_group_cta_actions(public_client):
+    html = public_client.get("/").text
+    assert "View All Opportunities" in html
+    assert "Submit Your Business" in html
+
+
+def test_careers_page_has_a_cv_form_no_vacancies_list(public_client):
+    en = public_client.get("/careers").text
+    ar = public_client.get("/ar/الوظائف").text
+    assert 'data-form="careers"' in en
+    assert 'enctype="multipart/form-data"' in en
+    assert 'data-multipart="1"' in en
+    assert 'type="file"' in en
+    assert "/api/v1/public/leads/careers" in en
+    assert "Join the Startup Safeer Team" in en
+    assert "انضم إلى فريق ستارت أب سفير" in ar
+
+
+def test_terms_and_privacy_pages_render_their_approved_sections(public_client):
+    terms = public_client.get("/terms").text
+    assert "About This Website" in terms
+    assert "Business Listings" in terms
+    privacy = public_client.get("/ar/سياسة-الخصوصية").text
+    assert "البيانات التي نجمعها واستخدامها" in privacy
+    assert "مشاركة البيانات" in privacy
+    # The internal review note from the handoff draft is never published.
+    assert "ملاحظة داخلية" not in privacy
+    assert "Owner note" not in privacy
+
+
+def test_contact_page_has_the_holding_details_and_no_form(public_client):
+    html = public_client.get("/contact").text
+    assert "START UPSPHERE HOLDING CO W.L.L" in html
+    assert "Info@sup-edu.com" in html
+    assert "tel:+97317626990" in html
+    # The handoff specifies contact details with no enquiry form.
+    assert 'class="site-form"' not in html
+    assert 'class="map-placeholder"' in html
+
+
+def test_about_page_reflects_the_approved_copy(public_client):
+    html = public_client.get("/about").text
+    assert "Our Role Within the Group" in html
+    assert "Our Current Portfolio" in html
+    assert "How We Grow" in html
+    ar = public_client.get("/ar/عن-القابضة").text
+    assert "دورنا داخل المجموعة" in ar
+    assert "محفظتنا الحالية" in ar
+    assert "كيف ننمو" in ar
+
+
+def test_new_pages_declare_rtl_in_arabic_and_ltr_in_english(public_client):
+    for ar_path, en_path in (
+        ("/ar/الوظائف", "/careers"),
+        ("/ar/الشروط-والأحكام", "/terms"),
+        ("/ar/سياسة-الخصوصية", "/privacy"),
+    ):
+        assert 'dir="rtl"' in public_client.get(ar_path).text
+        assert 'dir="ltr"' in public_client.get(en_path).text

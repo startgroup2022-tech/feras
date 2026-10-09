@@ -937,3 +937,105 @@ ul, ol { margin: 0 0 1em; padding-inline-start: 1.25em; }
     transition-duration: .001ms !important;
   }
 }
+
+/* ==========================================================================
+   Original approved design — home hero, about rows, contact, legal, careers
+   --------------------------------------------------------------------------
+   These extend the base system above for the handoff's approved layout. All
+   offsets use logical properties so the RTL (Arabic) and LTR (English) views
+   mirror cleanly from the one stylesheet.
+   ========================================================================== */
+
+/* ---------------------------------------------------- home hero (image) -- */
+.hero-home {
+  background-color: var(--navy);
+  /* The owner-selected Bahrain Bay image sits over a navy wash so the fixed
+     heading and definition always stay legible, in both directions. */
+  background-image: linear-gradient(100deg, rgba(10, 23, 48, .93) 0%, rgba(10, 23, 48, .72) 48%, rgba(10, 23, 48, .45) 100%);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
+.hero-home::after { display: none; }
+.hero-home .hero-inner { grid-template-columns: 1fr; max-width: 900px; }
+.hero-home .hero-copy { max-width: 760px; }
+.hero-intro {
+  font-size: clamp(1.02rem, .92rem + .55vw, 1.22rem);
+  color: rgba(255, 255, 255, .9); line-height: 1.75; margin: 0 0 2rem; max-width: 62ch;
+}
+
+/* --------------------------------------------------------- section lead --- */
+.section-lead {
+  color: var(--ink-2); font-size: 1.06rem; line-height: 1.8;
+  max-width: 70ch; margin: 0 0 1.4rem;
+}
+.center .section-lead { margin-inline: auto; }
+
+/* -------------------------------------------------------------- narrow ---- */
+.narrow { max-width: 820px; }
+
+/* ----------------------------------------------------------- about rows --- */
+.about-row { padding-block: clamp(34px, 4vw, 52px); }
+.about-row + .about-row { border-top: 1px solid var(--line); }
+.about-row-inner {
+  display: grid; gap: clamp(16px, 3vw, 52px);
+  grid-template-columns: .7fr 1.3fr; align-items: start;
+}
+.about-row-heading { font-size: clamp(1.2rem, 1rem + .8vw, 1.55rem); color: var(--navy); margin: 0; }
+.about-row-body p { color: var(--ink-2); font-size: 1.02rem; line-height: 1.85; margin: 0 0 1rem; }
+.about-row-body p:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------------- contact ------ */
+.contact-card {
+  padding: 34px; border-radius: var(--radius-xl);
+  background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+}
+.contact-card p { color: var(--ink-2); margin: 0 0 .7rem; font-size: 1rem; }
+.contact-card strong { color: var(--navy); }
+.contact-legal {
+  color: var(--muted); font-size: .9rem; letter-spacing: .02em; margin-bottom: 1.2rem;
+}
+.map-placeholder {
+  display: grid; place-items: center; min-height: 320px; padding: 30px;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-xl);
+  background: repeating-linear-gradient(45deg, var(--mist), var(--mist) 12px, var(--mist-2) 12px, var(--mist-2) 24px);
+  color: var(--muted); font-weight: 600; text-align: center;
+}
+
+/* ------------------------------------------------------ floating WhatsApp -- */
+.whatsapp-float {
+  position: fixed; inset-block-end: 22px; inset-inline-end: 22px; z-index: 40;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 18px; border-radius: 999px;
+  background: #25D366; color: #04331a; font-weight: 700; font-size: .9rem;
+  box-shadow: 0 12px 30px rgba(37, 211, 102, .35);
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.whatsapp-float:hover { transform: translateY(-2px); box-shadow: 0 16px 38px rgba(37, 211, 102, .45); }
+
+/* ----------------------------------------------------------- legal copy -- */
+.legal-copy .legal-block { margin-bottom: 2.2rem; }
+.legal-block h2 { font-size: 1.22rem; color: var(--navy); margin: 0 0 .7rem; }
+.legal-block p { color: var(--ink-2); font-size: 1rem; line-height: 1.85; margin: 0 0 .8rem; }
+
+/* --------------------------------------------------------- footer logo ---- */
+.footer-brand .brand-logo {
+  height: auto; max-width: 220px; margin-bottom: 16px;
+  background: #fff; border-radius: 14px; padding: 10px 14px;
+}
+.footer-brand .brand-logo img { max-height: 52px; max-width: 190px; }
+
+/* --------------------------------------------------------- opportunities -- */
+.opp-cta { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 1.6rem; }
+.opp-list { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.opp-list .state { grid-column: 1 / -1; color: var(--muted); }
+
+/* ---------------------------------------------------------- file input ---- */
+.field input[type="file"] { padding: 11px 13px; background: var(--mist); cursor: pointer; }
+
+@media (max-width: 900px) {
+  .about-row-inner { grid-template-columns: 1fr; gap: 14px; }
+}
+@media (max-width: 480px) {
+  .whatsapp-float { inset-inline: 16px; inset-block-end: 16px; justify-content: center; }
+}

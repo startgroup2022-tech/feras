@@ -69,7 +69,11 @@ class PublicSubmissionBase(BaseModel):
     is never reflected anywhere.
     """
 
-    market: Market
+    # Market-less journeys (the handoff's group-services form offers a Gulf
+    # country list, and careers residence is unrestricted) default to ``gulf``
+    # rather than forcing a false Bahrain/Saudi choice. The visitor's actual
+    # country is carried in the service fields.
+    market: Market = Market.GULF
     locale: str = Field(default="ar", pattern="^(ar|en)$")
     full_name: str = Field(min_length=1, max_length=_NAME_MAX)
     email: EmailStr = Field(max_length=_EMAIL_MAX)
@@ -207,6 +211,44 @@ class BusinessListingSubmission(PublicSubmissionBase):
         ):
             raise ValueError("value_max must be greater than or equal to value_min.")
         return self
+
+
+# --------------------------------------------------------------------------
+# group services ("كيف يمكننا مساعدتك؟") -- handoff §4
+# --------------------------------------------------------------------------
+class GroupServiceSubmission(PublicSubmissionBase):
+    """The single group-services form.
+
+    Unlike the market/service pages this is not scoped to Bahrain or Saudi:
+    the form offers a Gulf country list (``options.json``). ``service`` and
+    ``country`` are stable ids from the content model, validated here so a
+    client cannot post an unknown option. ``full_name`` and ``email`` already
+    come from :class:`PublicSubmissionBase`; the phone is required here.
+    """
+
+    phone: str = Field(min_length=1, max_length=_PHONE_MAX)
+    service: str = Field(min_length=1, max_length=40)
+    country: str = Field(min_length=1, max_length=40)
+
+
+# --------------------------------------------------------------------------
+# careers (CV submission) -- handoff §3 الوظائف
+# --------------------------------------------------------------------------
+class CareersSubmission(PublicSubmissionBase):
+    """Join-the-team application.
+
+    Residence country is intentionally *open text*: the handoff says career
+    residence is not restricted to the service-country list, so this field is
+    validated for length only. The CV attachment arrives separately
+    (multipart) and is validated by the storage layer.
+    """
+
+    phone: str = Field(min_length=1, max_length=_PHONE_MAX)
+    residence_country: str = Field(min_length=1, max_length=80)
+    city: str | None = Field(default=None, max_length=120)
+    job_title: str = Field(min_length=1, max_length=160)
+    years_experience: str = Field(min_length=1, max_length=40)
+    preferred_company: str | None = Field(default=None, max_length=160)
 
 
 # --------------------------------------------------------------------------

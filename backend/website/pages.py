@@ -18,7 +18,7 @@ from backend.website import content as C
 from backend.website.content import PageMeta
 
 # Brand suffix appended to every page title, per language.
-_BRAND = {"ar": "سفير القابضة", "en": "Safir Holding"}
+_BRAND = {"ar": "ستارت أب سفير القابضة", "en": "Start Upsphere Holding"}
 
 # Localized top-level path -> (page key, language).
 _TOP_LEVEL: dict[str, tuple[str, str]] = {}
@@ -41,22 +41,22 @@ for _market, _slug in C.all_market_service_pages():
 _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     "home": {
         "ar": {
-            "title": "سفير القابضة — بوابتك للأعمال والاستثمار في البحرين والسعودية",
-            "description": "بوابة أعمال واستثمار تربط المستثمرين والشركات والفرص في البحرين والسعودية.",
+            "title": "ستارت أب سفير القابضة — شركة قابضة في مملكة البحرين",
+            "description": "شركة ستارت أب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من الشركات والاستثمارات في قطاعات متعددة.",
         },
         "en": {
-            "title": "Safir Holding — Your Business & Investment Gateway in Bahrain and Saudi Arabia",
-            "description": "A business and investment gateway connecting investors, companies and opportunities in Bahrain and Saudi Arabia.",
+            "title": "Start Upsphere Holding — A holding company in the Kingdom of Bahrain",
+            "description": "Start Upsphere Holding Co W.L.L, based in the Kingdom of Bahrain, holds a portfolio of companies and investments across diverse sectors.",
         },
     },
     "opportunities": {
         "ar": {
-            "title": "الفرص والمشاريع | سفير القابضة",
-            "description": "استعرض فرص الأعمال والمشاريع المتاحة في البحرين والسعودية.",
+            "title": "الفرص التجارية | ستارت أب سفير القابضة",
+            "description": "استكشف مشاريع قائمة معروضة للبيع في دول الخليج، أو قدّم مشروعك للمراجعة والنشر.",
         },
         "en": {
-            "title": "Opportunities & Projects | Safir Holding",
-            "description": "Browse business and project opportunities available in Bahrain and Saudi Arabia.",
+            "title": "Business Opportunities | Start Upsphere Holding",
+            "description": "Explore existing businesses offered for sale across the Gulf, or submit your project for review and publication.",
         },
     },
     "services": {
@@ -107,6 +107,36 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
         "en": {
             "title": "List Your Business | Safir Holding",
             "description": "Offer your business or project for sale, partnership or investment through Safir Holding.",
+        },
+    },
+    "careers": {
+        "ar": {
+            "title": "الوظائف | ستارت أب سفير القابضة",
+            "description": "انضم إلى فريق ستارت أب سفير القابضة وشركات المجموعة، وأرسل سيرتك الذاتية للنظر فيها عند توفر فرصة مناسبة.",
+        },
+        "en": {
+            "title": "Careers | Start Upsphere Holding",
+            "description": "Join the Start Upsphere Holding team and its group companies. Submit your CV to be considered when a suitable opportunity arises.",
+        },
+    },
+    "terms": {
+        "ar": {
+            "title": "الشروط والأحكام | ستارت أب سفير القابضة",
+            "description": "شروط استخدام موقع ستارت أب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع على الموقع.",
+        },
+        "en": {
+            "title": "Terms & Conditions | Start Upsphere Holding",
+            "description": "The terms of use for the Start Upsphere Holding website, covering service and career requests and the listing of businesses.",
+        },
+    },
+    "privacy": {
+        "ar": {
+            "title": "سياسة الخصوصية | ستارت أب سفير القابضة",
+            "description": "كيف تتعامل ستارت أب سفير القابضة مع البيانات المقدمة عبر النماذج على موقعها.",
+        },
+        "en": {
+            "title": "Privacy Policy | Start Upsphere Holding",
+            "description": "How Start Upsphere Holding handles the data submitted through the forms on its website.",
         },
     },
 }

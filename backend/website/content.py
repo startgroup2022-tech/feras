@@ -39,6 +39,302 @@ MARKET_LABELS: dict[str, dict[str, str]] = {
     "saudi": {"ar": "المملكة العربية السعودية", "en": "Saudi Arabia"},
 }
 
+# --------------------------------------------------------------------------
+# Holding identity (approved handoff §1). Only these facts are published; the
+# English legal name and the WhatsApp number are exactly as supplied, never
+# translated or derived from the phone number.
+# --------------------------------------------------------------------------
+HOLDING: dict[str, object] = {
+    "name_ar": "شركة ستارت أب سفير القابضة ذ.م.م",
+    "name_en": "START UPSPHERE HOLDING CO W.L.L",
+    "brand_ar": "ستارت أب سفير القابضة",
+    "brand_en": "Start Upsphere Holding",
+    "address_ar": "السيف – مملكة البحرين",
+    "address_en": "Seef – Kingdom of Bahrain",
+    "phone": "+973 17626990",
+    "phone_href": "+97317626990",
+    "email": "Info@sup-edu.com",
+    "whatsapp": "97317626990",
+    "tagline_ar": "نطوّر شركات المجموعة ونعمل على تنمية محفظتنا من الشركات والاستثمارات في قطاعات متعددة.",
+    "tagline_en": "We develop our group companies and grow our portfolio of companies and investments across diverse sectors.",
+}
+
+# --------------------------------------------------------------------------
+# Approved page copy (handoff content/ARABIC.md + ENGLISH.md).
+# Verbatim Arabic from the approved conversation; the English is the reviewed
+# translation draft from the package. Kept as data, not markup, so the renderer
+# stays free of prose and a copy edit never touches HTML.
+# --------------------------------------------------------------------------
+PAGE_TEXT: dict[str, object] = {
+    "home": {
+        "intro": {
+            "ar": "مقرها مملكة البحرين، تمتلك محفظة من الشركات والاستثمارات في قطاعات "
+                  "متعددة، وتعمل على تطوير أعمالها وتنمية محفظتها عبر الاستثمار والشراكات "
+                  "واستكشاف فرص النمو في أسواق جديدة.",
+            "en": "Based in Bahrain, we hold a portfolio of companies and investments "
+                  "across multiple sectors. We develop our businesses and grow our "
+                  "portfolio through investment, partnerships and opportunities in new "
+                  "markets.",
+        },
+        "about_teaser": {
+            "ar": "نعمل مع شركات المجموعة على تطوير أدائها ودعم نموها، من خلال المتابعة "
+                  "المالية والاستراتيجية وتطوير الأعمال والتسويق. وتتولى كل شركة إدارة "
+                  "أعمالها وتقديم منتجاتها وخدماتها ضمن تخصصها.",
+            "en": "We work with our group companies to improve performance and support "
+                  "growth through financial and strategic oversight, business "
+                  "development and marketing. Each company manages its own operations "
+                  "and delivers products and services within its specialism.",
+        },
+        "help_intro": {
+            "ar": "أخبرنا بما تحتاج إليه، وسنوجّه طلبك إلى الجهة المختصة ضمن شركات المجموعة.",
+            "en": "Tell us what you need, and we will direct your enquiry to the "
+                  "appropriate company within our group.",
+        },
+    },
+    "about": {
+        "intro": {
+            "ar": "شركة ستارت أب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من "
+                  "الشركات والاستثمارات في قطاعات متعددة، وتعمل على تطوير شركات المجموعة "
+                  "وتنمية محفظتها.",
+            "en": "START UPSPHERE HOLDING CO W.L.L is based in Bahrain and holds a "
+                  "portfolio of companies and investments across multiple sectors. We "
+                  "work to develop our group companies and grow our portfolio.",
+        },
+        "role": {
+            "ar": "ندعم شركات المجموعة من خلال تطوير الأعمال والتسويق والمتابعة المالية "
+                  "والاستراتيجية، ونعمل معها على تحسين الأداء وتحديد فرص النمو. وتتولى كل "
+                  "شركة إدارة أعمالها اليومية وتقديم منتجاتها وخدماتها ضمن تخصصها.",
+            "en": "We support our group companies through business development, "
+                  "marketing, and financial and strategic oversight. We work with them "
+                  "to improve performance and identify growth opportunities. Each "
+                  "company manages its day-to-day operations and provides products and "
+                  "services within its specialism.",
+        },
+        "portfolio_1": {
+            "ar": "تشمل أعمال شركات المجموعة خدمات الأعمال ودعم المستثمرين، والمحاماة "
+                  "والاستشارات القانونية، والاستشارات الإدارية، والتجارة والتوزيع والتجارة "
+                  "الإلكترونية، والدعاية والإعلان، والمقاولات، والاتصالات والتقنية.",
+            "en": "Our group companies operate in business services and investor support, "
+                  "law and legal consultancy, management consultancy, trading, "
+                  "distribution and e-commerce, advertising, contracting, and "
+                  "telecommunications and technology.",
+        },
+        "portfolio_2": {
+            "ar": "وتعكس هذه الأنشطة محفظتنا الحالية، مع انفتاحنا على قطاعات وأسواق جديدة "
+                  "تتناسب مع فرص النمو وتوجه المجموعة.",
+            "en": "These activities reflect our current portfolio. We remain open to new "
+                  "sectors and markets aligned with the group's direction and "
+                  "opportunities for growth.",
+        },
+        "grow_1": {
+            "ar": "ننطلق من تطوير الشركات الحالية، وإعادة استثمار رأس المال حيث تتوافر فرص "
+                  "مناسبة. وندرس فرص الاستثمار في شركات قائمة، والاستحواذ، والشراكات، "
+                  "وتأسيس أعمال جديدة، والتوسع بالنماذج الناجحة إلى أسواق أخرى.",
+            "en": "We start by developing our existing companies and reinvesting capital "
+                  "where suitable opportunities arise. We assess investment in "
+                  "established businesses, acquisitions, partnerships, the creation of "
+                  "new businesses, and expansion of successful models into other "
+                  "markets.",
+        },
+        "grow_2": {
+            "ar": "ويشمل تطوير المحفظة مراجعة الاستثمارات وإمكانية التخارج منها، بما يخدم "
+                  "توجه المجموعة على المدى الطويل.",
+            "en": "Developing our portfolio also involves reviewing investments and "
+                  "considering exits where they serve the group's long-term direction.",
+        },
+    },
+    "careers": {
+        "title": {"ar": "انضم إلى فريق ستارت أب سفير", "en": "Join the Startup Safeer Team"},
+        "intro": {
+            "ar": "نبحث عن كفاءات طموحة تشاركنا بناء المرحلة القادمة من نمو ستارت أب سفير "
+                  "وشركات المجموعة.",
+            "en": "We welcome ambitious professionals who want to help build the next "
+                  "stage of growth for Startup Safeer and its group companies.",
+        },
+        "submit": {
+            "ar": "أرسل سيرتك الذاتية للنظر فيها عند توفر فرصة مناسبة.",
+            "en": "Submit your CV for consideration when a suitable opportunity becomes "
+                  "available.",
+        },
+    },
+    "contact": {
+        "intro": {
+            "ar": "للاستفسارات ومناقشة فرص التعاون والشراكات، تواصل معنا مباشرة.",
+            "en": "For enquiries and to discuss cooperation and partnership "
+                  "opportunities, contact us directly.",
+        },
+    },
+    "opportunities": {
+        "intro": {
+            "ar": "استكشف مشاريع قائمة معروضة للبيع في دول الخليج، أو قدّم مشروعك للمراجعة "
+                  "والنشر.",
+            "en": "Explore established businesses for sale across the GCC, or submit your "
+                  "business for review and listing.",
+        },
+    },
+}
+
+# The approved privacy sections (handoff content/PRIVACY-AR.md + the reviewed
+# English translation). Operational sections (retention, hosting, processors)
+# are intentionally absent until the owner completes them; the internal review
+# note is never published.
+PRIVACY_SECTIONS: list[dict] = [
+    {
+        "heading": {"ar": "البيانات التي نجمعها واستخدامها", "en": "Data We Collect and How We Use It"},
+        "body": {
+            "ar": [
+                "طلبات الخدمات: بيانات التواصل والخدمة المطلوبة والدولة والملاحظات، لمراجعة الطلب وتوجيهه إلى الشركة المختصة ضمن المجموعة.",
+                "طلبات التوظيف: بيانات التواصل والمؤهلات والخبرة والسيرة الذاتية، لدراسة الطلب والنظر في فرص العمل المناسبة لدى القابضة وشركات المجموعة.",
+                "طلبات عرض المشاريع: بيانات مقدم الطلب والمشروع ومستند إثبات علاقته به، لمراجعة الإعلان والتواصل بشأنه وتجهيزه للنشر عند قبوله.",
+            ],
+            "en": [
+                "Service enquiries: contact details, requested service, country and notes, to review the enquiry and direct it to the appropriate group company.",
+                "Job applications: contact details, qualifications, experience and CVs, to assess applications and consider suitable opportunities with the holding company and its group companies.",
+                "Business listing submissions: applicant and business details, together with proof of the applicant's connection to the business, to review the listing, communicate about it and prepare it for publication if accepted.",
+            ],
+        },
+    },
+    {
+        "heading": {"ar": "ما يظهر للعامة", "en": "Information Displayed Publicly"},
+        "body": {
+            "ar": [
+                "عند قبول إعلان المشروع، تُنشر بيانات العرض ورقم التواصل مع البائع، مع مراعاة اختياره بشأن إظهار اسم المشروع. ولا يُنشر البريد الإلكتروني أو مستند الإثبات أو طلبات الخدمات والتوظيف.",
+            ],
+            "en": [
+                "When a business listing is accepted, its listing details and the seller's contact number are published, taking account of the choice about displaying the business name. Email addresses, supporting documents, service enquiries and job applications are not published.",
+            ],
+        },
+    },
+    {
+        "heading": {"ar": "الحقول المطلوبة", "en": "Required Fields"},
+        "body": {
+            "ar": ["تُميّز الحقول الإلزامية بعلامة (*)، ويستلزم إرسال الطلب استكمالها."],
+            "en": ["Required fields are marked with an asterisk (*). They must be completed to submit a request."],
+        },
+    },
+    {
+        "heading": {"ar": "مشاركة البيانات", "en": "Sharing Data"},
+        "body": {
+            "ar": [
+                "تُحال بيانات طلب الخدمة إلى الجهة المختصة ضمن شركات المجموعة بالقدر اللازم لدراسة الطلب ومتابعته. وقد تُشارك بيانات التوظيف مع الشركة المعنية بالنظر في طلب المتقدم.",
+            ],
+            "en": [
+                "Service enquiry details are passed to the appropriate group company to the extent necessary to assess and follow up the enquiry. Job application details may be shared with the company considering the application.",
+            ],
+        },
+    },
+    {
+        "heading": {"ar": "التواصل بشأن بياناتك", "en": "Contacting Us About Your Data"},
+        "body": {
+            "ar": [
+                "يمكنك التواصل معنا للاستفسار عن معالجة بياناتك أو طلب الوصول إليها أو تصحيحها أو حذفها أو الاعتراض على معالجتها، وفق الشروط والحدود المقررة قانونًا. وقد نطلب ما يلزم للتحقق من هويتك قبل تنفيذ الطلب.",
+            ],
+            "en": [
+                "You may contact us with questions about the processing of your data or to request access, correction or deletion, or to object to processing, subject to applicable legal conditions and limits. We may request information needed to verify your identity before acting on your request.",
+            ],
+        },
+    },
+]
+
+# The approved terms sections (handoff content/ARABIC.md + ENGLISH.md).
+TERMS_SECTIONS: list[dict] = [
+    {
+        "heading": {"ar": "عن الموقع", "en": "About This Website"},
+        "body": {
+            "ar": ["هذا الموقع تابع لشركة ستارت أب سفير القابضة ذ.م.م، ويعرّف بالقابضة وشركات المجموعة، ويستقبل طلبات الخدمات والتوظيف، ويتيح عرض المشاريع المعروضة للبيع."],
+            "en": ["This website belongs to START UPSPHERE HOLDING CO W.L.L. It introduces the holding company and its group companies, receives service enquiries and job applications, and allows businesses for sale to be listed."],
+        },
+    },
+    {
+        "heading": {"ar": "طلبات الخدمات", "en": "Service Enquiries"},
+        "body": {
+            "ar": [
+                "تستقبل القابضة الطلبات وتوجّهها إلى الجهة المختصة ضمن شركات المجموعة. وتتولى الجهة المقدمة للخدمة تحديد نطاق العمل والأتعاب وشروط التعاقد مع العميل.",
+                "إرسال الطلب لا يُعد قبولًا لتنفيذ الخدمة أو إبرامًا لعقد.",
+            ],
+            "en": [
+                "The holding company receives enquiries and directs them to the appropriate group company. The service provider determines the scope of work, fees and contract terms with the client.",
+                "Submitting an enquiry does not constitute acceptance to provide a service or the formation of a contract.",
+            ],
+        },
+    },
+    {
+        "heading": {"ar": "طلبات التوظيف", "en": "Job Applications"},
+        "body": {
+            "ar": ["تقديم السيرة الذاتية لا يُعد عرضًا وظيفيًا أو ضمانًا لإجراء مقابلة أو التوظيف."],
+            "en": ["Submitting a CV does not constitute a job offer or guarantee an interview or employment."],
+        },
+    },
+    {
+        "heading": {"ar": "عرض المشاريع", "en": "Business Listings"},
+        "body": {
+            "ar": [
+                "يلتزم مقدم الطلب بصحة المعلومات والمستندات المقدمة، وأن يكون مالكًا للمشروع أو مخوّلًا بعرضه، وله صلاحية تقديم المواد والصور للنشر.",
+                "تخضع الطلبات للمراجعة، وللإدارة قبول الإعلان أو رفضه، وتحرير صياغته دون تغيير جوهر المعلومات، وإزالته عند عدم توافره أو مخالفة شروط النشر.",
+                "يلتزم مقدم الإعلان بإبلاغ الإدارة عند بيع المشروع أو سحبه من العرض، أو حدوث تغيير جوهري في بياناته.",
+                "المعلومات مقدمة من صاحب المشروع، ونشرها لا يمثل ضمانًا أو توصية استثمارية من الإدارة.",
+                "يتواصل المهتم مباشرة مع البائع، ويتولى الطرفان التحقق والتفاوض والاتفاق على شروط الصفقة. ولا تصبح القابضة طرفًا في الصفقة بمجرد نشر الإعلان.",
+                "أي مساعدة متخصصة تُطلب من شركات المجموعة تخضع لاتفاق مستقل مع الجهة المقدمة لها.",
+            ],
+            "en": [
+                "Applicants must provide accurate information and documents, own the business or be authorised to offer it for sale, and have authority to submit materials and images for publication.",
+                "Submissions are subject to review. The management may accept or reject a listing, edit its wording without changing the substance of the information, and remove it when it is no longer available or breaches the listing conditions.",
+                "The applicant must inform the management when the business is sold or withdrawn from sale, or when its details change materially.",
+                "The information is provided by the business owner. Publication does not constitute a guarantee or an investment recommendation by the management.",
+                "Interested parties contact the seller directly. The parties are responsible for verification, negotiation and agreement on the transaction terms. The holding company does not become a party to the transaction merely by publishing the listing.",
+                "Any specialist assistance requested from a group company is subject to a separate agreement with the service provider.",
+            ],
+        },
+    },
+    {
+        "heading": {"ar": "استخدام الموقع", "en": "Use of This Website"},
+        "body": {
+            "ar": ["يُمنع تقديم طلبات أو إعلانات مضللة، أو رفع مواد دون صلاحية، أو إساءة استخدام النماذج، أو محاولة تعطيل الموقع أو الوصول غير المصرح به إلى بياناته."],
+            "en": ["Misleading submissions or listings, uploading materials without authority, misuse of forms, disruption of the website and unauthorised access to its data are prohibited."],
+        },
+    },
+    {
+        "heading": {"ar": "الروابط الخارجية", "en": "External Links"},
+        "body": {
+            "ar": ["قد يتضمن الموقع روابط لمواقع شركات المجموعة وخدمات خارجية. ويخضع استخدام هذه المواقع والخدمات لشروطها وسياسات الخصوصية الخاصة بها."],
+            "en": ["The website may link to group company websites and external services. Their use is subject to their own terms and privacy policies."],
+        },
+    },
+    {
+        "heading": {"ar": "التواصل", "en": "Contact"},
+        "body": {
+            "ar": ["للاستفسارات المتعلقة بهذه الشروط:"],
+            "en": ["For questions about these terms:"],
+        },
+    },
+]
+
+# The six service options offered by the group-services form (handoff §4).
+# ``id`` is a stable identifier so app copy and routing never key off a label.
+SERVICE_OPTIONS: list[dict] = [
+    {"id": "formation", "ar": "تأسيس الشركات وخدمات المستثمرين", "en": "Company Formation and Investor Services"},
+    {"id": "government", "ar": "المعاملات الحكومية وخدمات الأعمال", "en": "Government Transactions and Business Services"},
+    {"id": "legal", "ar": "استشارة قانونية", "en": "Legal Consultation"},
+    {"id": "feasibility", "ar": "دراسة جدوى وخطة عمل", "en": "Feasibility Study and Business Plan"},
+    {"id": "management", "ar": "استشارات إدارية وتطوير أعمال", "en": "Management Consultancy and Business Development"},
+    {"id": "marketing", "ar": "دعاية وإعلان وتسويق", "en": "Advertising and Marketing"},
+]
+
+# Service countries (handoff §4, options.json) and the narrower opportunity
+# list (six Gulf countries). Career residence countries are unrestricted and
+# therefore not drawn from this list.
+SERVICE_COUNTRIES: list[dict] = [
+    {"id": "BH", "ar": "البحرين", "en": "Bahrain"},
+    {"id": "SA", "ar": "السعودية", "en": "Saudi Arabia"},
+    {"id": "AE", "ar": "الإمارات", "en": "United Arab Emirates"},
+    {"id": "KW", "ar": "الكويت", "en": "Kuwait"},
+    {"id": "QA", "ar": "قطر", "en": "Qatar"},
+    {"id": "OM", "ar": "عُمان", "en": "Oman"},
+    {"id": "JO", "ar": "الأردن", "en": "Jordan"},
+]
+
+OPPORTUNITY_COUNTRIES: list[dict] = SERVICE_COUNTRIES[:6]
+
 # The services that have a dedicated, indexable page per market. ``slug`` is the
 # English URL segment; ``slug_ar`` is the Arabic one. Keeping both means the
 # Arabic site has genuinely Arabic URLs rather than transliterations.
@@ -808,20 +1104,17 @@ GROUP_COMPANIES: list[dict] = [
 ]
 
 # Navigation. ``path`` is the canonical English route; ``path_ar`` is its
-# Arabic mirror.
+# Arabic mirror. The order and set follow the approved handoff exactly
+# (الرئيسية · من نحن · شركات المجموعة · الفرص التجارية · الوظائف · تواصل معنا).
+# ``services`` is a valid, indexable page and stays reachable from content and
+# the footer, but is not part of the primary handoff navigation.
 NAV: list[dict] = [
     {"key": "home", "path": "/", "path_ar": "/ar", "label": {"ar": "الرئيسية", "en": "Home"}},
     {
-        "key": "opportunities",
-        "path": "/opportunities",
-        "path_ar": "/ar/الفرص-والمشاريع",
-        "label": {"ar": "الفرص والمشاريع", "en": "Opportunities & Projects"},
-    },
-    {
-        "key": "services",
-        "path": "/services",
-        "path_ar": "/ar/خدمات-الأعمال",
-        "label": {"ar": "خدمات الأعمال", "en": "Business Services"},
+        "key": "about",
+        "path": "/about",
+        "path_ar": "/ar/عن-القابضة",
+        "label": {"ar": "من نحن", "en": "About"},
     },
     {
         "key": "group",
@@ -830,28 +1123,37 @@ NAV: list[dict] = [
         "label": {"ar": "شركات المجموعة", "en": "Group Companies"},
     },
     {
-        "key": "about",
-        "path": "/about",
-        "path_ar": "/ar/عن-القابضة",
-        "label": {"ar": "عن القابضة", "en": "About SAFIR Holding"},
+        "key": "opportunities",
+        "path": "/opportunities",
+        "path_ar": "/ar/الفرص-التجارية",
+        "label": {"ar": "الفرص التجارية", "en": "Business Opportunities"},
+    },
+    {
+        "key": "careers",
+        "path": "/careers",
+        "path_ar": "/ar/الوظائف",
+        "label": {"ar": "الوظائف", "en": "Careers"},
     },
     {
         "key": "contact",
         "path": "/contact",
         "path_ar": "/ar/تواصل",
-        "label": {"ar": "تواصل", "en": "Contact"},
+        "label": {"ar": "تواصل معنا", "en": "Contact"},
     },
 ]
 
 # Top-level page keys and their localized paths, used by the router and sitemap.
 PAGE_PATHS: dict[str, dict[str, str]] = {
     "home": {"ar": "/ar", "en": "/"},
-    "opportunities": {"ar": "/ar/الفرص-والمشاريع", "en": "/opportunities"},
-    "services": {"ar": "/ar/خدمات-الأعمال", "en": "/services"},
-    "group": {"ar": "/ar/شركات-المجموعة", "en": "/group-companies"},
     "about": {"ar": "/ar/عن-القابضة", "en": "/about"},
+    "group": {"ar": "/ar/شركات-المجموعة", "en": "/group-companies"},
+    "opportunities": {"ar": "/ar/الفرص-التجارية", "en": "/opportunities"},
+    "careers": {"ar": "/ar/الوظائف", "en": "/careers"},
     "contact": {"ar": "/ar/تواصل", "en": "/contact"},
+    "services": {"ar": "/ar/خدمات-الأعمال", "en": "/services"},
     "list-your-business": {"ar": "/ar/اعرض-شركتك", "en": "/list-your-business"},
+    "terms": {"ar": "/ar/الشروط-والأحكام", "en": "/terms"},
+    "privacy": {"ar": "/ar/سياسة-الخصوصية", "en": "/privacy"},
 }
 
 

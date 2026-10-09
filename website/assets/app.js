@@ -189,6 +189,54 @@
       });
   }
 
+  // A multipart submission for forms that carry files (the careers CV). The
+  // structured fields travel as one JSON part under "payload"; the file inputs
+  // are appended under their own field names. The API validates the JSON part
+  // with the same strict schema used by the JSON forms.
+  function submitMultipart(form) {
+    var status = form.querySelector(".form-status");
+    var button = form.querySelector("[data-submit]");
+    clearErrors(form);
+
+    if (!form.reportValidity()) return;
+    if (status) { status.textContent = T.sending; status.className = "form-status"; }
+    if (button) button.disabled = true;
+
+    var data = collect(form);
+    // File inputs are sent separately below; drop them from the JSON part so
+    // the schema sees only scalar fields.
+    form.querySelectorAll('input[type="file"]').forEach(function (input) {
+      delete data[input.name];
+    });
+    var fd = new FormData();
+    fd.append("payload", JSON.stringify(data));
+    form.querySelectorAll('input[type="file"]').forEach(function (input) {
+      for (var i = 0; i < input.files.length; i++) {
+        if (input.files[i] && input.files[i].name) fd.append(input.name, input.files[i]);
+      }
+    });
+
+    fetch(form.action, { method: "POST", body: fd, headers: { "Accept": "application/json" } })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      })
+      .then(function (r) {
+        if (button) button.disabled = false;
+        if (r.ok) { successPanel(form, r.body); return; }
+        if (r.status === 429) {
+          if (status) { status.textContent = T.tooMany; status.className = "form-status err"; }
+          return;
+        }
+        handleServerErrors(form, r.body);
+      })
+      .catch(function () {
+        if (button) button.disabled = false;
+        if (status) { status.textContent = T.error; status.className = "form-status err"; }
+      });
+  }
+
   // ------------------------------------------------------- form binding
   document.querySelectorAll("form.site-form").forEach(function (form) {
     if (form.dataset.form === "business-listing") return; // handled by wizard
@@ -205,6 +253,12 @@
           if (list) list.scrollIntoView({ block: "center", behavior: "smooth" });
           return;
         }
+      }
+      // The careers form carries a CV, so it submits as multipart: the
+      // structured fields go as one JSON part, the file(s) alongside.
+      if (form.dataset.multipart === "1") {
+        submitMultipart(form);
+        return;
       }
       submitForm(form);
     });

@@ -462,3 +462,104 @@ def test_references_are_unique_across_many_submissions(client, db):
         )
     refs = [lead.reference for lead in db.query(WebsiteLead).all()]
     assert len(refs) == len(set(refs)) == 12
+
+
+# --------------------------------------------------------------------------
+# handoff forms: group services (market-less) and careers (CV)
+# --------------------------------------------------------------------------
+def test_group_service_submission_is_market_less_and_routed_to_the_front_desk(client, db):
+    payload = {
+        "locale": "ar",
+        "full_name": "أحمد العلي",
+        "email": "ahmed@example.com",
+        "phone": "+9731234567",
+        "service": "legal",
+        "country": "BH",
+        "consent": True,
+    }
+    response = client.post(f"{PUBLIC}/leads/group-service", json=payload)
+    assert response.status_code == 201, response.text
+    assert response.json()["reference"].startswith("SAF-GS-")
+
+    lead = db.query(WebsiteLead).one()
+    # No false Bahrain/Saudi choice: the market-less form is recorded as gulf.
+    assert lead.market == Market.GULF.value
+    assert lead.service_type == WebsiteServiceType.GROUP_SERVICE.value
+    assert lead.routed_team == "holding_front_desk"
+    # The visitor's actual service and country are preserved in the payload.
+    stored = json.loads(lead.payload_json)
+    assert stored["service"] == "legal"
+    assert stored["country"] == "BH"
+
+
+def test_group_service_requires_the_service_and_country(client):
+    incomplete = {
+        "locale": "ar",
+        "full_name": "أحمد",
+        "email": "a@example.com",
+        "phone": "+9731234567",
+        "consent": True,
+    }
+    assert client.post(f"{PUBLIC}/leads/group-service", json=incomplete).status_code == 422
+
+
+def test_careers_submission_accepts_a_cv_and_routes_to_the_people_team(client, db):
+    payload = json.dumps(
+        {
+            "locale": "en",
+            "full_name": "Sam Applicant",
+            "email": "sam@example.com",
+            "phone": "+9731234567",
+            "residence_country": "BH",
+            "job_title": "Engineer",
+            "years_experience": "5",
+            "consent": True,
+        }
+    )
+    response = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": payload},
+        files={"cv": ("cv.pdf", b"%PDF-1.4 minimal", "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["reference"].startswith("SAF-CV-")
+
+    lead = db.query(WebsiteLead).one()
+    assert lead.service_type == WebsiteServiceType.CAREERS.value
+    assert lead.market == Market.GULF.value
+    assert lead.routed_team == "people_team"
+    stored = json.loads(lead.payload_json)
+    assert stored["job_title"] == "Engineer"
+
+
+def test_careers_payload_must_be_valid_json(client):
+    response = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": "not-json"},
+        files={"cv": ("cv.pdf", b"x", "application/pdf")},
+    )
+    assert response.status_code == 422
+
+
+def test_careers_marks_the_residence_country_as_open_text(client, db):
+    # The handoff does not restrict career residence to the service-country
+    # list, so an unlisted country is accepted as free text.
+    payload = json.dumps(
+        {
+            "locale": "en",
+            "full_name": "Dana",
+            "email": "dana@example.com",
+            "phone": "+444",
+            "residence_country": "United Kingdom",
+            "job_title": "Analyst",
+            "years_experience": "2",
+            "consent": True,
+        }
+    )
+    response = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": payload},
+        files={"cv": ("cv.pdf", b"x", "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    assert json.loads(db.query(WebsiteLead).one().payload_json)["residence_country"] == "United Kingdom"

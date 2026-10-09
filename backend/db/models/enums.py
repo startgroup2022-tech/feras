@@ -332,6 +332,11 @@ class Market(str, enum.Enum):
 
     BAHRAIN = "bahrain"
     SAUDI = "saudi"
+    # The handoff's group-services form is not market-scoped: the visitor may
+    # be outside the two operating markets (the form offers a Gulf country
+    # list). "gulf" keeps the routing table total without pretending the lead
+    # belongs to Bahrain or Saudi Arabia.
+    GULF = "gulf"
 
 
 class WebsiteServiceType(str, enum.Enum):
@@ -348,6 +353,11 @@ class WebsiteServiceType(str, enum.Enum):
     BUSINESS_LISTING = "business_listing"
     INVESTMENT = "investment"
     GENERAL_CONTACT = "general_contact"
+    # Handoff §4 "كيف يمكننا مساعدتك؟" -- the single group-services form that
+    # routes the visitor to the responsible group company.
+    GROUP_SERVICE = "group_service"
+    # Handoff §3 الوظائف -- the careers CV submission.
+    CAREERS = "careers"
 
 
 class LeadStatus(str, enum.Enum):

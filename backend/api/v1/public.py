@@ -39,9 +39,11 @@ from backend.core import storage
 from backend.schemas import (
     BrandingOut,
     BusinessListingSubmission,
+    CareersSubmission,
     CompanyFormationSubmission,
     ContactSubmission,
     FeasibilitySubmission,
+    GroupServiceSubmission,
     InvestmentSubmission,
     OpportunityInterestSubmission,
     PublicOpportunityOut,
@@ -204,6 +206,27 @@ def submit_contact(
 
 
 @router.post(
+    "/leads/group-service",
+    response_model=PublicSubmissionResult,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_group_service(
+    payload: GroupServiceSubmission, request: Request, db: DbSession
+) -> PublicSubmissionResult:
+    """The handoff's single group-services form ("كيف يمكننا مساعدتك؟")."""
+    _enforce_rate_limit(request)
+    ctx = audit_service.request_context(request)
+    lead = website_lead_service.create_lead(
+        db,
+        service_type=WebsiteServiceType.GROUP_SERVICE.value,
+        payload=payload,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _result(lead)
+
+
+@router.post(
     "/leads/business-listing",
     response_model=PublicSubmissionResult,
     status_code=status.HTTP_201_CREATED,
@@ -253,26 +276,88 @@ async def submit_business_listing(
 
     # Only persist files for a genuine submission (a honeypot drop returns a
     # synthetic lead whose status is closed and whose id is not persisted).
-    if lead.id is not None:
-        for upload in files:
-            if not upload.filename:
-                continue
-            content = await upload.read()
-            extension = storage.validate_upload(
-                filename=upload.filename,
-                content_type=upload.content_type,
-                size=len(content),
-            )
-            key = storage.store_bytes(data=content, extension=extension)
-            website_lead_service.add_attachment(
-                db,
-                lead=lead,
-                original_filename=upload.filename,
-                storage_key=key,
-                content_type=upload.content_type,
-                size_bytes=len(content),
-            )
+    await _persist_uploads(db, lead=lead, files=files)
 
+    return _result(lead)
+
+
+async def _persist_uploads(
+    db: DbSession, *, lead, files: list[UploadFile]
+) -> None:
+    """Validate and store public attachments for a persisted lead.
+
+    Shared by the business-listing and careers endpoints so the upload
+    discipline (count cap, content-type allow-list, opaque storage key) cannot
+    diverge between forms. A honeypot-dropped lead has no id and stores
+    nothing.
+    """
+    if lead.id is None:
+        return
+    for upload in files:
+        if not upload.filename:
+            continue
+        content = await upload.read()
+        extension = storage.validate_upload(
+            filename=upload.filename,
+            content_type=upload.content_type,
+            size=len(content),
+        )
+        key = storage.store_bytes(data=content, extension=extension)
+        website_lead_service.add_attachment(
+            db,
+            lead=lead,
+            original_filename=upload.filename,
+            storage_key=key,
+            content_type=upload.content_type,
+            size_bytes=len(content),
+        )
+
+
+@router.post(
+    "/leads/careers",
+    response_model=PublicSubmissionResult,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_careers(
+    request: Request,
+    db: DbSession,
+    payload: Annotated[str, Form()],
+    files: Annotated[list[UploadFile], File()] = [],
+) -> PublicSubmissionResult:
+    """Careers application (handoff §3 الوظائف).
+
+    Multipart because it carries a CV. The structured fields arrive as a JSON
+    string in ``payload`` exactly like the business-listing endpoint, so the
+    same strict schema validates the data regardless of transport.
+    """
+    _enforce_rate_limit(request)
+
+    try:
+        data = json.loads(payload)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("The submission payload is not valid JSON.") from exc
+    if not isinstance(data, dict):
+        raise ValidationError("The submission payload must be a JSON object.")
+
+    try:
+        submission = CareersSubmission.model_validate(data)
+    except PydanticValidationError as exc:
+        raise ValidationError(_format_pydantic_errors(exc)) from exc
+
+    if len(files) > settings.PUBLIC_MAX_ATTACHMENTS:
+        raise ValidationError(
+            f"At most {settings.PUBLIC_MAX_ATTACHMENTS} attachments are allowed."
+        )
+
+    ctx = audit_service.request_context(request)
+    lead = website_lead_service.create_lead(
+        db,
+        service_type=WebsiteServiceType.CAREERS.value,
+        payload=submission,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    await _persist_uploads(db, lead=lead, files=files)
     return _result(lead)
 
 
