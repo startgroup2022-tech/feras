@@ -407,3 +407,31 @@ The public website is a second, distinct experience in the same repo and origin,
 - **Avatar initials** — department chips use `deptInitialHtml()` (Latin
   initials under `lang-en`, Arabic under `lang-ar`); company/user avatars keep
   the first letter of the Arabic name as a stable identity mark.
+
+## Handoff v1 — group companies (interactive)
+
+The approved `Startup_Safeer_Developer_Handoff_v1` package specifies a *holding-company*
+site that **conflicts with the deployed V2 visitor-journey site** (different navigation,
+service model, markets and group-company list). Per the handoff's own rule ("preserve
+existing functionality and document the conflict"), only the non-conflicting, faithful
+slice has been implemented; the full matrix and the conflict analysis live in
+`docs/SAFIR_HANDOFF_IMPLEMENTATION_MATRIX.md`. Do not silently replace the V2 site.
+
+- **Canonical dataset** — `backend/website/group_companies.py` holds the nine approved
+  companies (order 1–9) extracted verbatim from the handoff's `content/companies.json`.
+  It is the single source of truth; `ordered()` returns them in approved order. A
+  `null` field means "not provided" and is never rendered as a value or a fake logo.
+- **Component** — `_group_companies_section()` in `renderer.py` renders a selectable
+  name list beside the selected company's detail (desktop) that becomes an accordion at
+  `≤600px` (`website/assets/styles.css`, `.company-list` / `.company-choice` /
+  `.inline-detail`). The first company is selected by default; all nine names stay
+  visible with no horizontal scroll and no filters. Interaction is in
+  `website/assets/app.js` (`[data-company-selector]`, `[data-company-choice]`,
+  `[data-company-panel]`, `[data-company-detail]`).
+- **Names** — `_localized_name()` falls back to the Arabic legal name when `name_en` is
+  `null` (one company in the dataset); a translation is never invented. `null`
+  phone/email/whatsapp/website emits no contact link.
+- **Placement** — shown on `/` and `/group-companies` and their Arabic mirrors (`/ar`,
+  `/ar/شركات-المجموعة`).
+- **Tests** — `tests/test_website_pages.py` (dataset order, all-nine rendering, both
+  languages, null-safety, mobile accordion CSS).

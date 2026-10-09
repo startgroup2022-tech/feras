@@ -432,4 +432,31 @@
 
     show(0);
   }
+
+  // ------------------------------------------------------ group companies
+  // Desktop: the choice list drives one detail panel. Mobile (<=600px): the
+  // same markup becomes an accordion -- the chosen name opens its inline panel
+  // and the previous one closes, with every name kept visible (no horizontal
+  // scroll, no filters). The first company is selected by default server-side.
+  var selector = document.querySelector("[data-company-selector]");
+  if (selector) {
+    var choices = selector.querySelectorAll("[data-company-choice]");
+    var panels = selector.querySelectorAll("[data-company-panel]");
+    var desktopDetail = selector.querySelector("[data-company-detail]");
+    var chooseCompany = function (index) {
+      choices.forEach(function (b, i) {
+        b.setAttribute("aria-expanded", i === index ? "true" : "false");
+      });
+      panels.forEach(function (p, i) {
+        if (i === index) { p.removeAttribute("hidden"); }
+        else { p.setAttribute("hidden", ""); }
+      });
+      if (desktopDetail && panels[index]) {
+        desktopDetail.innerHTML = panels[index].innerHTML;
+      }
+    };
+    choices.forEach(function (b, i) {
+      b.addEventListener("click", function () { chooseCompany(i); });
+    });
+  }
 })();

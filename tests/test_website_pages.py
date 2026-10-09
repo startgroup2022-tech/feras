@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -450,3 +451,75 @@ def test_footer_links_to_services_by_market(public_client):
     html = public_client.get("/").text
     assert "/bahrain/company-formation" in html
     assert "/saudi/company-formation" in html
+
+
+# --------------------------------------------------------------------------
+# group companies (handoff: interactive selector + mobile accordion)
+# --------------------------------------------------------------------------
+def test_group_companies_dataset_matches_the_handoff():
+    # The canonical dataset is the approved nine, in order, with both legal
+    # names supplied. Nothing is invented and nothing is dropped.
+    from backend.website import group_companies as G
+
+    companies = G.ordered()
+    assert [c["order"] for c in companies] == list(range(1, 10))
+    assert [c["id"] for c in companies] == [
+        "alreyada", "damac-business", "damac-trading", "bait-al-rayhan",
+        "digital-rocket", "najmat-business", "wealth-first",
+        "najmat-contracting", "allamasat",
+    ]
+    for c in companies:
+        assert c["name_ar"].strip()
+        assert c["country"] in ("bahrain", "saudi")
+        assert c["card_ar"] and c["about_ar"] and c["services_ar"]
+
+
+def test_group_selector_renders_all_nine_with_first_selected(public_client):
+    for path in ("/", "/group-companies"):
+        html = public_client.get(path).text
+        assert html.count("data-company-choice") == 9, path
+        assert html.count("data-company-panel") == 9, path
+        # The first company is expanded by default; the other eight start
+        # collapsed (the header nav toggle is another aria-expanded="false").
+        assert html.count('aria-expanded="true"') == 1, path
+        assert html.count('aria-expanded="false"') == 9, path
+        assert "data-company-detail" in html
+
+
+def test_group_companies_render_in_both_languages(public_client):
+    import html as html_mod
+
+    from backend.website import group_companies as G
+    import backend.website.renderer as R
+
+    for path, lang in (("/group-companies", "en"), ("/ar/شركات-المجموعة", "ar")):
+        html = public_client.get(path).text
+        for c in G.ordered():
+            name = html_mod.escape(R._localized_name(c, lang))
+            assert name in html, (path, c["id"])
+
+
+def test_group_company_actions_only_render_when_a_value_exists(public_client):
+    html = public_client.get("/group-companies").text
+    # Provided contact details become real links (the selected first company)...
+    assert "tel:+97317595522" in html          # alreyada phone
+    assert "mailto:info@alreyada-law.com" in html
+    # ...and every tel:/mailto: that does appear is one of the provided values,
+    # never an empty or fabricated one.
+    provided_tel = {
+        "+97317595522", "+97317826990", "+97337088373", "+97317001555",
+        "+97339848990", "+97339808990", "+966505688912",
+    }
+    found_tel = set(re.findall(r'href="tel:([^"]+)"', html))
+    assert found_tel <= provided_tel
+    # A null field must not surface as the string "None" anywhere.
+    assert ">None<" not in html
+
+
+def test_mobile_group_accordion_css_is_present():
+    css = (Path(renderer.__file__).resolve().parent.parent.parent
+           / "website" / "assets" / "styles.css").read_text(encoding="utf-8")
+    block = css.split("@media (max-width: 600px)", 1)[1]
+    assert ".company-list { display: block; }" in block
+    assert ".desktop-detail { display: none; }" in block
+    assert ".inline-detail[hidden] { display: none; }" in block

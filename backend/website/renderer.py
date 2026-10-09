@@ -25,6 +25,7 @@ from __future__ import annotations
 import html
 
 from backend.website import content as C
+from backend.website import group_companies
 from backend.website import seo
 from backend.website.content import PageMeta
 
@@ -469,6 +470,11 @@ def _home_body(lang: str) -> str:
     <div class="trust-grid">{trust_cards}</div>
   </div>
 </section>
+
+{_group_companies_section(lang,
+    heading=_t('شركات المجموعة', 'Group Companies', lang),
+    intro=_t('تضم محفظتنا شركات في قطاعات متنوعة، تقدم منتجات وخدمات متخصصة للأفراد والأعمال.',
+             'Our portfolio spans companies in diverse sectors, offering specialised products and services to individuals and businesses.', lang))}
 
 <section class="section section-alt">
   <div class="container">
@@ -1021,37 +1027,171 @@ def _list_body(lang: str) -> str:
 # --------------------------------------------------------------------------
 # group / about / contact
 # --------------------------------------------------------------------------
-def _group_body(lang: str) -> str:
-    cards = []
-    for company in C.GROUP_COMPANIES:
-        country = C.market_label(company["country"], lang)
-        cards.append(
-            f"""<article class="company-card">
-  <span class="company-flag" aria-hidden="true">{_flag(company['country'])}</span>
-  <h3>{e(company['name_' + lang])}</h3>
-  <p class="company-meta">{e(country)} · {e(company['sector'][lang])}</p>
-  <p>{e(company['description'][lang])}</p>
-</article>"""
+def _company_logo(company: dict, lang: str, *, large: bool = False) -> str:
+    """A neutral logo slot.
+
+    Company logos were not supplied in the handoff, so this is deliberately a
+    neutral placeholder. It never invents a mark and never carries the word
+    "logo" as if it were the real one: it is a labelled empty slot that the
+    admin can later replace with an uploaded logo.
+    """
+    cls = "company-logo company-logo-lg" if large else "company-logo"
+    label = _t("الشعار", "Logo", lang)
+    return f'<span class="{cls}" aria-hidden="true">{e(label)}</span>'
+
+
+def _localized_name(company: dict, lang: str) -> str:
+    """The company name in ``lang``.
+
+    ``name_en`` is ``null`` for one company in the approved dataset (a legal
+    English name was not supplied). The handoff forbids inventing a translation,
+    and requires all nine companies to appear in both languages, so the Arabic
+    legal name is shown as-is rather than a fabricated English one.
+    """
+    return company.get("name_" + lang) or company["name_ar"]
+
+
+def _company_detail_inner(company: dict, lang: str) -> str:
+    """The detail body for one company, in the visitor's language.
+
+    Only facts supplied in the handoff are rendered. A ``null`` field is
+    omitted entirely -- never shown as an empty value, a dash or a placeholder.
+    """
+    name = _localized_name(company, lang)
+    country = company["country_" + lang]
+    area = company["area_" + lang]
+    about = company["about_" + lang]
+    services = company["services_" + lang]
+    card = company["card_" + lang]
+
+    meta_bits = [e(country)]
+    if area:
+        meta_bits.append(e(area))
+
+    services_html = ""
+    if services:
+        items = "".join(f"<li>{e(s)}</li>" for s in services)
+        services_html = (
+            f'<h4 class="company-sub">{e(_t("أبرز الأنشطة والخدمات", "Key activities and services", lang))}</h4>'
+            f'<ul class="company-services">{items}</ul>'
         )
-    saudi_note = _t(
-        "كيانات المملكة العربية السعودية تُعرض فقط بعد التحقق من هيكلها القانوني.",
-        "Saudi entities are displayed only after their legal structure is verified.",
-        lang,
+
+    # Contact actions -- each only rendered when the value exists.
+    actions = []
+    whatsapp = company.get("whatsapp")
+    phone = company.get("phone")
+    email = company.get("email")
+    website = company.get("website")
+    if phone:
+        # tel: needs the raw digits with a leading +; strip spaces only.
+        tel = "+" + "".join(ch for ch in phone if ch.isdigit())
+        actions.append(
+            f'<a class="company-action" href="tel:{e(tel)}">'
+            f'<span class="company-action-label">{e(_t("هاتف", "Phone", lang))}</span>'
+            f'<span class="company-action-value" dir="ltr">{e(phone)}</span></a>'
+        )
+    if whatsapp:
+        wa = "+" + "".join(ch for ch in whatsapp if ch.isdigit())
+        actions.append(
+            f'<a class="company-action" href="https://wa.me/{e(wa.lstrip("+"))}" '
+            f'target="_blank" rel="noopener">'
+            f'<span class="company-action-label">{e(_t("واتساب", "WhatsApp", lang))}</span>'
+            f'<span class="company-action-value" dir="ltr">{e(whatsapp)}</span></a>'
+        )
+    if email:
+        actions.append(
+            f'<a class="company-action" href="mailto:{e(email)}">'
+            f'<span class="company-action-label">{e(_t("البريد الإلكتروني", "Email", lang))}</span>'
+            f'<span class="company-action-value" dir="ltr">{e(email)}</span></a>'
+        )
+    if website:
+        actions.append(
+            f'<a class="company-action" href="{e(website)}" target="_blank" rel="noopener">'
+            f'<span class="company-action-label">{e(_t("الموقع", "Website", lang))}</span>'
+            f'<span class="company-action-value" dir="ltr">{e(website)}</span></a>'
+        )
+    actions_html = ""
+    if actions:
+        actions_html = (
+            f'<div class="company-actions">{"".join(actions)}</div>'
+        )
+
+    return (
+        f'{_company_logo(company, lang, large=True)}'
+        f'<h3 class="company-name">{e(name)}</h3>'
+        f'<p class="company-meta">{" · ".join(meta_bits)}</p>'
+        f'<p class="company-about">{e(about)}</p>'
+        f'<p class="company-card-text">{e(card)}</p>'
+        f'{services_html}'
+        f'{actions_html}'
     )
+
+
+def _group_companies_section(lang: str, *, heading: str, intro: str) -> str:
+    """The interactive group-companies component.
+
+    Desktop: a selectable list (names) beside the selected company's detail.
+    Mobile (<= 600px): the same component becomes an accordion -- the chosen
+    name expands its detail beneath it and the previous one closes. All nine
+    names are always visible, with no horizontal scrolling and no filters, as
+    the approved handoff requires. The first company is selected by default.
+    """
+    companies = group_companies.ordered()
+    choices = []
+    panels = []
+    for index, company in enumerate(companies):
+        selected = index == 0
+        name = _localized_name(company, lang)
+        panel_id = f"company-panel-{index}"
+        logo = _company_logo(company, lang)
+        choices.append(
+            f'<button type="button" class="company-choice" data-company-choice '
+            f'data-company-index="{index}" aria-expanded="{"true" if selected else "false"}" '
+            f'aria-controls="{panel_id}">'
+            f'{logo}<span class="company-choice-name">{e(name)}</span>'
+            f'</button>'
+        )
+        panels.append(
+            f'<div class="company-detail inline-detail" id="{panel_id}" '
+            f'data-company-panel="{index}"{"" if selected else " hidden"}>'
+            f'{_company_detail_inner(company, lang)}</div>'
+        )
+
+    # The desktop detail panel mirrors the selected company; it is filled by
+    # the interaction script and marked aria-live so a keyboard user hears the
+    # change. On mobile it is hidden and the inline panels above are used.
+    first = companies[0]
+    return f"""
+<section class="section company-section" id="companies" data-company-selector>
+  <div class="container">
+    <h2 class="section-title">{e(heading)}</h2>
+    <p class="section-sub">{e(intro)}</p>
+    <div class="company-list">
+      <div class="company-choices" role="group" aria-label="{e(_t('شركات المجموعة', 'Group companies', lang))}">
+        {''.join(choices)}
+      </div>
+      <div class="company-detail desktop-detail" data-company-detail aria-live="polite">
+        {_company_detail_inner(first, lang)}
+      </div>
+      <div class="company-inline">{''.join(panels)}</div>
+    </div>
+  </div>
+</section>"""
+
+
+def _group_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
     <h1>{e(_t('شركات المجموعة', 'Group Companies', lang))}</h1>
-    <p>{e(_t('تبقى موجودة لبناء الثقة، لكنها ليست طريقة التنقل الرئيسية للخدمات.',
-             'Present for trust and credibility — not the primary way to navigate services.', lang))}</p>
+    <p>{e(_t('تضم محفظتنا شركات في قطاعات متنوعة، تقدم منتجات وخدمات متخصصة للأفراد والأعمال.',
+             'Our portfolio spans companies in diverse sectors, offering specialised products and services to individuals and businesses.', lang))}</p>
   </div>
 </section>
-<section class="section">
-  <div class="container">
-    <div class="company-grid">{''.join(cards)}</div>
-    <p class="muted center">{e(saudi_note)}</p>
-  </div>
-</section>
+{_group_companies_section(lang,
+    heading=_t('شركات المجموعة', 'Group Companies', lang),
+    intro=_t('اختر شركة لعرض نبذتها وقطاعها وبيانات التواصل المتاحة.',
+             'Select a company to view its overview, sector and available contact details.', lang))}
 <section class="section section-alt">
   <div class="container center">
     <h2 class="section-title">{e(_t('تبحث عن خدمة؟', 'Looking for a service?', lang))}</h2>

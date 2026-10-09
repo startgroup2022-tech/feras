@@ -672,6 +672,75 @@ ul, ol { margin: 0 0 1em; padding-inline-start: 1.25em; }
 }
 .company-card p { color: var(--ink-2); font-size: .94rem; margin: 0; }
 
+/* --------------------------- group companies (interactive selector) ------- */
+/* Desktop: a selectable list of every group company beside the selected
+   company's detail. Mobile (<=600px): the same markup becomes an accordion.
+   All nine names stay visible -- no horizontal scrolling and no filters. */
+.company-list {
+  display: grid; gap: 30px; margin-top: 2.2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.28fr);
+  align-items: start;
+}
+.company-choices { display: flex; flex-direction: column; }
+.company-inline { display: none; }
+
+.company-choice {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  text-align: start; font: inherit; font-size: .98rem; color: var(--ink);
+  background: transparent; border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 15px 12px; cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+.company-choice:hover { background: var(--mist); }
+.company-choice[aria-expanded="true"] {
+  background: var(--gold-tint); color: var(--ink);
+  border-inline-start: 3px solid var(--gold);
+}
+.company-choice:focus-visible { outline: 3px solid var(--gold-soft); outline-offset: -3px; }
+.company-choice-name { flex: 1 1 auto; }
+
+.company-logo {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 54px; padding: 9px 8px;
+  border: 1px dashed var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--paper); color: var(--muted); font-size: .72rem;
+}
+.company-logo-lg { min-width: 92px; padding: 20px 18px; font-size: .8rem; margin-bottom: 1.1rem; }
+
+.company-detail {
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius-xl); padding: 34px;
+  box-shadow: var(--shadow-sm); min-height: 340px;
+}
+.company-name { font-size: 1.45rem; margin: 0 0 .4rem; }
+.company-about { color: var(--ink-2); margin: 1rem 0 .7rem; }
+.company-card-text { color: var(--muted); font-size: .95rem; margin: 0 0 1rem; }
+.company-sub { font-size: .95rem; margin: 1.2rem 0 .5rem; }
+.company-services { margin: 0; padding-inline-start: 1.1rem; color: var(--ink-2); }
+.company-services li { margin-bottom: .35rem; }
+
+.company-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 1.4rem; }
+.company-action {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--mist); text-decoration: none; color: var(--ink);
+  transition: border-color .18s ease, background .18s ease;
+}
+.company-action:hover { border-color: var(--gold-line); background: var(--paper); }
+.company-action-label { font-size: .72rem; font-weight: 600; color: var(--gold-strong); text-transform: uppercase; letter-spacing: .03em; }
+.company-action-value { font-size: .92rem; }
+
+@media (max-width: 600px) {
+  /* Accordion: stack names and reveal the chosen company's detail beneath it. */
+  .company-list { display: block; }
+  .desktop-detail { display: none; }
+  .company-inline { display: block; }
+  .company-choice { border-radius: var(--radius-sm); }
+  .inline-detail[hidden] { display: none; }
+  .inline-detail:not([hidden]) { display: block; border-radius: 0; box-shadow: none; border: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; min-height: 0; }
+}
+
 .pillar-grid { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
 .pillar {
   padding: 30px 28px; background: var(--paper);
