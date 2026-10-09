@@ -672,6 +672,9 @@ ul, ol { margin: 0 0 1em; padding-inline-start: 1.25em; }
   font-size: .94rem; line-height: 1.7;
 }
 [dir="rtl"] .listing-notice { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.opp-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+.opp-photos img { width: 100%; height: 96px; object-fit: cover; border-radius: var(--radius-sm); }
+.field-hint { color: var(--muted); font-size: .85rem; margin: 4px 0 8px; line-height: 1.6; }
 .state { color: var(--muted); }
 
 /* -------------------------------------------------------- company cards -- */

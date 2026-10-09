@@ -435,3 +435,29 @@ slice has been implemented; the full matrix and the conflict analysis live in
   `/ar/شركات-المجموعة`).
 - **Tests** — `tests/test_website_pages.py` (dataset order, all-nine rendering, both
   languages, null-safety, mobile accordion CSS).
+
+## Revision brief — listing attachments and careers CV (items 06, 14)
+
+- **Two upload purposes, two rules** — a business listing may carry one internal
+  *proof-of-relationship* document and up to `PUBLIC_MAX_LISTING_PHOTOS` (10)
+  project *photos*. They are separate multipart parts (`proof`, `photos`) with
+  separate allow-lists in `backend/core/storage.py` (`validate_proof_upload`,
+  `validate_image_upload`) so a document can never be smuggled in as a photo or
+  the reverse. `WebsiteLeadAttachment.is_public` (migration `d1e2f3a4b5c6`,
+  default false) marks photos; proof and CV uploads stay private.
+- **Public photo endpoint** — `GET /api/v1/public/opportunities/{id}/photos/{attachment_id}`
+  streams a photo only when the listing is published *and* the attachment belongs
+  to its lead *and* is public; otherwise the same 404 as a missing photo. Proof
+  documents and CVs are never reachable, and `PublicOpportunityOut.photo_urls`
+  only ever lists public photos. Regression: `tests/test_website_leads.py`
+  (proof+photos, unpublished 404, proof never served, published shape).
+- **Careers CV** — the form sends the file as the `cv` part; `submit_careers`
+  reads `cv` (with `files` kept as a fallback) and validates it against
+  `CV_CONTENT_TYPES` (PDF/DOC/DOCX, 10 MB), matching what the form advertises
+  (item 14). Regression: `tests/test_website_leads.py`
+  (`test_careers_accepts_the_advertised_cv_formats_and_rejects_images`).
+- **Form hints** — `_field()` in `renderer.py` accepts `multiple`, per-field
+  `label_ar`/`label_en` and `hint_ar`/`hint_en`, so the accepted formats and
+  size limits sit next to each file control in the visitor's language.
+- When adding a migration, update the single-head assertion in
+  `tests/test_postgres.py`.

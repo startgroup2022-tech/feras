@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     PUBLIC_RATE_WINDOW_SECONDS: int = 600
     # Maximum attachments accepted on one public submission.
     PUBLIC_MAX_ATTACHMENTS: int = 5
+    # Maximum project photos accepted on one business listing (item 06). The
+    # brief's proposed limit is ten photos per listing.
+    PUBLIC_MAX_LISTING_PHOTOS: int = 10
 
     # ---- public website ----
     # Absolute origin used to build canonical URLs, hreflang alternates and the

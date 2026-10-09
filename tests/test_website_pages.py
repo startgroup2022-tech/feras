@@ -730,3 +730,28 @@ def test_revision_brief_hero_keeps_a_dark_scrim_for_readability(public_client):
     html = public_client.get("/").text
     assert "linear-gradient(100deg, rgba(10,23,48,.94)" in html
     assert "bahrain-bay.jpg" in html
+
+
+def test_revision_brief_listing_offers_proof_and_photos_in_both_languages(public_client):
+    # Item 06: the listing form accepts an internal proof document and public
+    # project photos, and explains each. Both are clearly optional.
+    en = public_client.get("/list-your-business").text
+    ar = public_client.get("/ar/اعرض-شركتك").text
+    for html in (en, ar):
+        assert 'enctype="multipart/form-data"' in html
+        assert 'name="proof"' in html
+        assert 'name="photos"' in html
+        assert 'multiple' in html
+    assert "Proof of relationship to the project (optional)" in en
+    assert "Project photos (optional)" in en
+    assert "إثبات العلاقة بالمشروع (اختياري)" in ar
+    assert "صور المشروع (اختيارية)" in ar
+
+
+def test_revision_brief_careers_states_the_cv_formats_and_limit(public_client):
+    # Item 14: the accepted CV formats and size limit are shown next to the
+    # field, in the visitor's language.
+    en = public_client.get("/careers").text
+    ar = public_client.get("/ar/الوظائف").text
+    assert "Accepted formats: PDF, DOC or DOCX, up to 10 MB." in en
+    assert "الصيغ المقبولة: PDF أو DOC أو DOCX، وبحد أقصى 10 ميجابايت." in ar

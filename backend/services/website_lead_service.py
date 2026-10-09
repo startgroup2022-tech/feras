@@ -513,9 +513,15 @@ def list_public_opportunities(
     db: Session, *, market: str | None = None, opportunity_type: str | None = None
 ) -> list[dict]:
     """Published listings only, in the narrow public shape."""
-    stmt = select(WebsiteOpportunity).where(
-        WebsiteOpportunity.is_public.is_(True),
-        WebsiteOpportunity.status == PublicOpportunityStatus.PUBLISHED.value,
+    stmt = (
+        select(WebsiteOpportunity)
+        .options(
+            selectinload(WebsiteOpportunity.lead).selectinload(WebsiteLead.attachments)
+        )
+        .where(
+            WebsiteOpportunity.is_public.is_(True),
+            WebsiteOpportunity.status == PublicOpportunityStatus.PUBLISHED.value,
+        )
     )
     if market:
         stmt = stmt.where(WebsiteOpportunity.market == market)
@@ -526,7 +532,48 @@ def list_public_opportunities(
     return [_public_opportunity_shape(row) for row in db.execute(stmt).scalars()]
 
 
+def public_opportunity_photo(db: Session, *, opportunity_id: int, attachment_id: int):
+    """A single public photo for a published listing, or ``None``.
+
+    Returns ``(storage_key, content_type)`` only when the opportunity is
+    published and the attachment belongs to its lead and is marked public. A
+    proof document or CV on the same lead can therefore never be fetched
+    through this path, and an unpublished listing reveals nothing.
+    """
+    row = db.execute(
+        select(WebsiteOpportunity)
+        .options(selectinload(WebsiteOpportunity.lead))
+        .where(
+            WebsiteOpportunity.id == opportunity_id,
+            WebsiteOpportunity.is_public.is_(True),
+            WebsiteOpportunity.status == PublicOpportunityStatus.PUBLISHED.value,
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    attachment = (
+        db.query(WebsiteLeadAttachment)
+        .filter(
+            WebsiteLeadAttachment.id == attachment_id,
+            WebsiteLeadAttachment.lead_id == row.lead_id,
+            WebsiteLeadAttachment.is_public.is_(True),
+        )
+        .one_or_none()
+    )
+    if attachment is None:
+        return None
+    return attachment.storage_key, attachment.content_type
+
+
 def _public_opportunity_shape(row: WebsiteOpportunity) -> dict:
+    photos = []
+    lead = row.lead
+    if lead is not None:
+        photos = [
+            f"/api/v1/public/opportunities/{row.id}/photos/{a.id}"
+            for a in lead.attachments
+            if a.is_public
+        ]
     return {
         "id": row.id,
         "market": row.market,
@@ -536,6 +583,7 @@ def _public_opportunity_shape(row: WebsiteOpportunity) -> dict:
         "title_en": row.public_title_en,
         "summary_ar": row.public_summary_ar,
         "summary_en": row.public_summary_en,
+        "photo_urls": photos,
         "published_at": row.updated_at,
     }
 
@@ -821,6 +869,7 @@ def add_attachment(
     storage_key: str,
     content_type: str | None,
     size_bytes: int,
+    is_public: bool = False,
 ) -> WebsiteLeadAttachment:
     attachment = WebsiteLeadAttachment(
         lead_id=lead.id,
@@ -828,6 +877,7 @@ def add_attachment(
         storage_key=storage_key,
         content_type=content_type,
         size_bytes=size_bytes,
+        is_public=is_public,
     )
     db.add(attachment)
     db.commit()
@@ -844,6 +894,7 @@ __all__ = [
     "lead_stats",
     "serialise_lead",
     "list_public_opportunities",
+    "public_opportunity_photo",
     "add_attachment",
     "routed_team_for",
     "ROUTING_TABLE",

@@ -23,7 +23,7 @@ from backend.db.models.enums import (
     PublicOpportunityStatus,
     WebsiteServiceType,
 )
-from backend.db.models.website import WebsiteLead, WebsiteOpportunity
+from backend.db.models.website import WebsiteLead, WebsiteLeadAttachment, WebsiteOpportunity
 from backend.services import website_lead_service
 
 PUBLIC = "/api/v1/public"
@@ -326,6 +326,125 @@ def test_public_opportunities_can_be_filtered_by_market(client, db):
     assert rows[0]["market"] == "saudi"
 
 
+def test_listing_accepts_a_proof_document_and_photos(client, db):
+    # Revision brief item 06: a listing may carry one internal proof document
+    # and several project photos, each validated by its own allow-list.
+    payload = json.dumps(_listing_payload())
+    response = client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=[
+            ("proof", ("deed.pdf", b"%PDF-1.4 proof", "application/pdf")),
+            ("photos", ("front.png", b"\x89PNG\r\n", "image/png")),
+            ("photos", ("side.jpg", b"\xff\xd8\xff", "image/jpeg")),
+        ],
+    )
+    assert response.status_code == 201, response.text
+
+    attachments = {a.original_filename: a for a in db.query(WebsiteLeadAttachment).all()}
+    assert attachments["deed.pdf"].is_public is False
+    assert attachments["front.png"].is_public is True
+    assert attachments["side.jpg"].is_public is True
+
+
+def test_listing_photos_are_not_served_until_the_listing_is_published(client, db):
+    payload = json.dumps(_listing_payload())
+    client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=[("photos", ("front.png", b"\x89PNG\r\n", "image/png"))],
+    )
+    opportunity = db.query(WebsiteOpportunity).one()
+    photo = db.query(WebsiteLeadAttachment).one()
+    url = f"{PUBLIC}/opportunities/{opportunity.id}/photos/{photo.id}"
+
+    # Unpublished: indistinguishable from missing.
+    assert client.get(url).status_code == 404
+
+    opportunity.status = PublicOpportunityStatus.PUBLISHED.value
+    opportunity.is_public = True
+    opportunity.public_title_ar = "فرصة"
+    db.commit()
+    assert client.get(url).status_code == 200
+
+
+def test_proof_document_is_never_served_publicly(client, db):
+    # A proof document sits on the same lead as the photos but must never be
+    # fetchable, even after the listing is published.
+    payload = json.dumps(_listing_payload())
+    client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=[
+            ("proof", ("deed.pdf", b"%PDF-1.4 proof", "application/pdf")),
+            ("photos", ("front.png", b"\x89PNG\r\n", "image/png")),
+        ],
+    )
+    opportunity = db.query(WebsiteOpportunity).one()
+    opportunity.status = PublicOpportunityStatus.PUBLISHED.value
+    opportunity.is_public = True
+    opportunity.public_title_ar = "فرصة"
+    db.commit()
+
+    proof = (
+        db.query(WebsiteLeadAttachment)
+        .filter(WebsiteLeadAttachment.original_filename == "deed.pdf")
+        .one()
+    )
+    response = client.get(f"{PUBLIC}/opportunities/{opportunity.id}/photos/{proof.id}")
+    assert response.status_code == 404
+
+
+def test_published_listing_shape_lists_only_public_photos(client, db):
+    payload = json.dumps(_listing_payload())
+    client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=[
+            ("proof", ("deed.pdf", b"%PDF-1.4 proof", "application/pdf")),
+            ("photos", ("front.png", b"\x89PNG\r\n", "image/png")),
+        ],
+    )
+    opportunity = db.query(WebsiteOpportunity).one()
+    opportunity.status = PublicOpportunityStatus.PUBLISHED.value
+    opportunity.is_public = True
+    opportunity.public_title_ar = "فرصة"
+    db.commit()
+
+    row = client.get(f"{PUBLIC}/opportunities").json()[0]
+    assert len(row["photo_urls"]) == 1
+    assert row["photo_urls"][0].endswith("/photos/%d" % (
+        db.query(WebsiteLeadAttachment)
+        .filter(WebsiteLeadAttachment.is_public.is_(True))
+        .one()
+        .id
+    ))
+
+
+def test_listing_rejects_a_disallowed_photo_type(client):
+    payload = json.dumps(_listing_payload())
+    response = client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=[("photos", ("payload.exe", b"MZ", "application/x-msdownload"))],
+    )
+    assert response.status_code == 422
+
+
+def test_listing_rejects_more_than_the_photo_limit(client):
+    # The brief's proposed cap is ten photos per listing.
+    payload = json.dumps(_listing_payload())
+    files = [
+        ("photos", ("shot%d.png" % i, b"\x89PNG\r\n", "image/png")) for i in range(11)
+    ]
+    response = client.post(
+        f"{PUBLIC}/leads/business-listing",
+        data={"payload": payload},
+        files=files,
+    )
+    assert response.status_code == 422
+
+
 # --------------------------------------------------------------------------
 # internal endpoints: permissions
 # --------------------------------------------------------------------------
@@ -530,6 +649,38 @@ def test_careers_submission_accepts_a_cv_and_routes_to_the_people_team(client, d
     assert lead.routed_team == "people_team"
     stored = json.loads(lead.payload_json)
     assert stored["job_title"] == "Engineer"
+
+
+def test_careers_accepts_the_advertised_cv_formats_and_rejects_images(client):
+    # Revision brief item 14: the form advertises PDF, DOC and DOCX, so the
+    # server must accept all three -- and must not accept an image as a CV.
+    base = {
+        "locale": "en",
+        "full_name": "Sam Applicant",
+        "email": "sam@example.com",
+        "phone": "+9731234567",
+        "residence_country": "BH",
+        "job_title": "Engineer",
+        "years_experience": "0",
+        "consent": True,
+    }
+    for name, ctype in (
+        ("cv.doc", "application/msword"),
+        ("cv.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ):
+        response = client.post(
+            f"{PUBLIC}/leads/careers",
+            data={"payload": json.dumps(base)},
+            files={"cv": (name, b"document-bytes", ctype)},
+        )
+        assert response.status_code == 201, (name, response.text)
+
+    rejected = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": json.dumps(base)},
+        files={"cv": ("photo.png", b"\x89PNG\r\n", "image/png")},
+    )
+    assert rejected.status_code == 422
 
 
 def test_careers_payload_must_be_valid_json(client):

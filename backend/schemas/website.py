@@ -311,6 +311,9 @@ class PublicOpportunityOut(BaseModel):
     title_en: str | None = None
     summary_ar: str | None = None
     summary_en: str | None = None
+    # Public photos supplied with the listing (item 06). Empty until the
+    # Holding publishes the listing; proof documents are never included.
+    photo_urls: list[str] = []
     published_at: datetime | None = None
 
 

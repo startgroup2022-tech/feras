@@ -156,6 +156,12 @@ class WebsiteLeadAttachment(Base, TimestampMixin):
     storage_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Public website uploads only (revision brief item 06): listing photos are
+    # shown after the listing is published, whereas proof documents and CVs
+    # stay internal for review. Internal uploads never set this.
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
     lead: Mapped[WebsiteLead] = relationship(back_populates="attachments")
 

@@ -33,6 +33,11 @@
     noOpps: AR ? "لا توجد فرص منشورة حاليًا في هذا السوق." : "No published opportunities in this market right now.",
     stepRequired: AR ? "يرجى إكمال هذا القسم." : "Please complete this section.",
     pickOpp: AR ? "يرجى اختيار الفرصة التي تهمك أولًا." : "Please choose the opportunity you are interested in first.",
+    // Approved listing acknowledgement (revision brief item 04): receiving a
+    // request is explicitly not an acceptance or publication of the listing.
+    listingSent: AR
+      ? "تم استلام مشروعك للمراجعة. استلام الطلب لا يعني قبول الإعلان أو نشره."
+      : "Your project has been received for review. Receiving the request does not mean the listing is accepted or published.",
   };
 
   // --------------------------------------------------------- attribution
@@ -102,6 +107,8 @@
     var data = {};
     new FormData(form).forEach(function (value, key) {
       if (key === "honeypot") return;
+      // Files are sent as their own multipart parts, never JSON-serialised.
+      if (typeof File !== "undefined" && value instanceof File) return;
       data[key] = value;
     });
     // Booleans and numbers must be typed correctly for the API schemas.
@@ -127,7 +134,10 @@
   function successPanel(form, result) {
     var wrap = el("div", "form-success");
     wrap.setAttribute("role", "status");
-    wrap.appendChild(el("p", null, T.sent));
+    // The listing journey uses the approved acknowledgement; other journeys
+    // keep the generic confirmation.
+    var message = form.dataset.form === "business-listing" ? T.listingSent : T.sent;
+    wrap.appendChild(el("p", null, message));
     if (result && result.reference) {
       wrap.appendChild(el("p", "muted", T.ref));
       wrap.appendChild(el("span", "ref", result.reference));
@@ -362,6 +372,17 @@
           card.appendChild(tags);
           var summary = AR ? row.summary_ar : row.summary_en;
           if (summary) card.appendChild(el("p", null, summary));
+          if (row.photo_urls && row.photo_urls.length) {
+            var shots = el("div", "opp-photos");
+            row.photo_urls.slice(0, 3).forEach(function (url) {
+              var img = document.createElement("img");
+              img.src = url;
+              img.alt = title || (AR ? "صورة المشروع" : "Project photo");
+              img.loading = "lazy";
+              shots.appendChild(img);
+            });
+            card.appendChild(shots);
+          }
           var link = el("a", "service-link", AR ? "أنا مهتم" : "I'm interested");
           link.href = "#form";
           link.addEventListener("click", function () {
@@ -484,11 +505,22 @@
       for (var i = 0; i < steps.length - 1; i++) {
         if (!fieldsetValid(steps[i])) { show(i); return; }
       }
-      // Multipart is required because a listing may carry attachments; the
-      // structured fields go as one JSON part.
+      // Multipart is required because a listing may carry a proof document and
+      // project photos; the structured fields go as one JSON part, the files as
+      // their own parts (item 06).
       var data = collect(wizard);
       var fd = new FormData();
       fd.append("payload", JSON.stringify(data));
+      var proof = wizard.querySelector('input[name="proof"]');
+      if (proof && proof.files && proof.files.length) {
+        fd.append("proof", proof.files[0]);
+      }
+      var photos = wizard.querySelector('input[name="photos"]');
+      if (photos && photos.files) {
+        for (var p = 0; p < photos.files.length; p++) {
+          fd.append("photos", photos.files[p]);
+        }
+      }
       var honeypot = wizard.querySelector('input[name="honeypot"]');
       if (honeypot && honeypot.value) fd.append("honeypot", honeypot.value);
 

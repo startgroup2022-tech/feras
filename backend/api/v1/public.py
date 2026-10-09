@@ -235,14 +235,24 @@ async def submit_business_listing(
     request: Request,
     db: DbSession,
     payload: Annotated[str, Form()],
+    photos: Annotated[list[UploadFile], File()] = [],
+    proof: Annotated[UploadFile | None, File()] = None,
     files: Annotated[list[UploadFile], File()] = [],
 ) -> PublicSubmissionResult:
     """Business/opportunity listing.
 
-    Sent as ``multipart/form-data`` because it may carry attachments: the
-    structured fields arrive as a JSON string in ``payload`` and the files in
-    ``files``. The JSON is parsed into the same schema used elsewhere, so the
-    validation rules cannot diverge between transports.
+    Sent as ``multipart/form-data`` because it carries attachments: the
+    structured fields arrive as a JSON string in ``payload``.
+
+    Two upload purposes (revision brief item 06), each with its own rule:
+
+    * ``proof`` -- one proof-of-relationship document, internal review only,
+      never shown publicly; and
+    * ``photos`` -- up to :data:`settings.PUBLIC_MAX_LISTING_PHOTOS` project
+      photos, shown on the published listing only.
+
+    ``files`` is the original generic attachment part, still accepted so the
+    endpoint stays backward compatible, and treated as internal documents.
     """
     _enforce_rate_limit(request)
 
@@ -260,6 +270,14 @@ async def submit_business_listing(
         # identical to the JSON-body endpoints (which FastAPI validates itself).
         raise ValidationError(_format_pydantic_errors(exc)) from exc
 
+    # A proof document is optional; an empty file part is ignored.
+    proof_files = [proof] if proof is not None and proof.filename else []
+    if len(proof_files) > 1:
+        raise ValidationError("At most one proof document is allowed.")
+    if len(photos) > settings.PUBLIC_MAX_LISTING_PHOTOS:
+        raise ValidationError(
+            f"At most {settings.PUBLIC_MAX_LISTING_PHOTOS} photos are allowed."
+        )
     if len(files) > settings.PUBLIC_MAX_ATTACHMENTS:
         raise ValidationError(
             f"At most {settings.PUBLIC_MAX_ATTACHMENTS} attachments are allowed."
@@ -276,20 +294,41 @@ async def submit_business_listing(
 
     # Only persist files for a genuine submission (a honeypot drop returns a
     # synthetic lead whose status is closed and whose id is not persisted).
+    await _persist_uploads(
+        db,
+        lead=lead,
+        files=proof_files,
+        validator=storage.validate_proof_upload,
+        is_public=False,
+    )
+    await _persist_uploads(
+        db,
+        lead=lead,
+        files=photos,
+        validator=storage.validate_image_upload,
+        is_public=True,
+    )
     await _persist_uploads(db, lead=lead, files=files)
 
     return _result(lead)
 
 
 async def _persist_uploads(
-    db: DbSession, *, lead, files: list[UploadFile]
+    db: DbSession,
+    *,
+    lead,
+    files: list[UploadFile],
+    validator=storage.validate_upload,
+    is_public: bool = False,
 ) -> None:
     """Validate and store public attachments for a persisted lead.
 
     Shared by the business-listing and careers endpoints so the upload
     discipline (count cap, content-type allow-list, opaque storage key) cannot
-    diverge between forms. A honeypot-dropped lead has no id and stores
-    nothing.
+    diverge between forms. ``validator`` selects the allow-list and size cap for
+    the purpose (internal document, proof, or public photo); ``is_public``
+    marks photos that may be shown once the listing is published. A
+    honeypot-dropped lead has no id and stores nothing.
     """
     if lead.id is None:
         return
@@ -297,7 +336,7 @@ async def _persist_uploads(
         if not upload.filename:
             continue
         content = await upload.read()
-        extension = storage.validate_upload(
+        extension = validator(
             filename=upload.filename,
             content_type=upload.content_type,
             size=len(content),
@@ -310,6 +349,7 @@ async def _persist_uploads(
             storage_key=key,
             content_type=upload.content_type,
             size_bytes=len(content),
+            is_public=is_public,
         )
 
 
@@ -322,13 +362,16 @@ async def submit_careers(
     request: Request,
     db: DbSession,
     payload: Annotated[str, Form()],
+    cv: Annotated[UploadFile | None, File()] = None,
     files: Annotated[list[UploadFile], File()] = [],
 ) -> PublicSubmissionResult:
     """Careers application (handoff §3 الوظائف).
 
     Multipart because it carries a CV. The structured fields arrive as a JSON
     string in ``payload`` exactly like the business-listing endpoint, so the
-    same strict schema validates the data regardless of transport.
+    same strict schema validates the data regardless of transport. The CV
+    arrives under the form field ``cv`` (the input's name), with ``files`` kept
+    as a generic fallback.
     """
     _enforce_rate_limit(request)
 
@@ -344,7 +387,8 @@ async def submit_careers(
     except PydanticValidationError as exc:
         raise ValidationError(_format_pydantic_errors(exc)) from exc
 
-    if len(files) > settings.PUBLIC_MAX_ATTACHMENTS:
+    cv_files = [cv] if cv is not None and cv.filename else []
+    if len(cv_files) + len(files) > settings.PUBLIC_MAX_ATTACHMENTS:
         raise ValidationError(
             f"At most {settings.PUBLIC_MAX_ATTACHMENTS} attachments are allowed."
         )
@@ -357,7 +401,9 @@ async def submit_careers(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
-    await _persist_uploads(db, lead=lead, files=files)
+    await _persist_uploads(
+        db, lead=lead, files=cv_files + list(files), validator=storage.validate_cv_upload
+    )
     return _result(lead)
 
 
@@ -375,6 +421,34 @@ def public_opportunities(
         db, market=market, opportunity_type=type
     )
     return [PublicOpportunityOut(**row) for row in rows]
+
+
+@router.get(
+    "/opportunities/{opportunity_id}/photos/{attachment_id}",
+    include_in_schema=False,
+)
+def public_opportunity_photo(
+    opportunity_id: int, attachment_id: int, db: DbSession
+) -> Response:
+    """Stream one photo of a *published* listing.
+
+    Unauthenticated by design, but gated at every step: the listing must be
+    published, the attachment must belong to its lead and be marked public.
+    Proof documents and CVs are never public, and an unpublished listing
+    reveals nothing (the same 404 as a missing photo).
+    """
+    resolved = website_lead_service.public_opportunity_photo(
+        db, opportunity_id=opportunity_id, attachment_id=attachment_id
+    )
+    if resolved is None:
+        raise NotFoundError("Photo not found.")
+    storage_key, content_type = resolved
+    path = storage.resolve_stored_path(storage_key)
+    return FileResponse(
+        path,
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 # --------------------------------------------------------------------------

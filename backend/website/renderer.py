@@ -727,8 +727,17 @@ def _field(
     accept: str | None = None,
     key_alias: str | None = None,
     attrs: str = "",
+    multiple: bool = False,
+    label_ar: str | None = None,
+    label_en: str | None = None,
+    hint_ar: str | None = None,
+    hint_en: str | None = None,
 ) -> str:
-    label = _label(key_alias or key, lang)
+    if label_ar is not None or label_en is not None:
+        label = (label_en if lang == "en" else label_ar) or _label(key_alias or key, lang)
+    else:
+        label = _label(key_alias or key, lang)
+    hint = (hint_en if lang == "en" else hint_ar) if (hint_ar or hint_en) else None
     req = ' required aria-required="true"' if required else ""
     req_mark = ' <span class="req" aria-hidden="true">*</span>' if required else ""
     wrapper = ' class="field field-full"' if full else ' class="field"'
@@ -752,8 +761,9 @@ def _field(
         )
     elif kind == "file":
         accept_attr = f' accept="{e(accept)}"' if accept else ""
+        multiple_attr = " multiple" if multiple else ""
         control = (
-            f'<input type="file" id="{e(fid)}" name="{e(key)}"{req}{accept_attr}{extra} '
+            f'<input type="file" id="{e(fid)}" name="{e(key)}"{req}{accept_attr}{multiple_attr}{extra} '
             f'aria-describedby="{e(err_id)}">'
         )
     elif kind == "checkbox":
@@ -769,9 +779,10 @@ def _field(
             f'aria-describedby="{e(err_id)}" autocomplete="off">'
         )
 
+    hint_html = f'<p class="field-hint">{e(hint)}</p>' if hint else ""
     return (
         f'<div{wrapper}><label for="{e(fid)}">{e(label)}{req_mark}</label>'
-        f'{control}<p class="field-error" id="{e(err_id)}" role="alert" hidden></p></div>'
+        f'{hint_html}{control}<p class="field-error" id="{e(err_id)}" role="alert" hidden></p></div>'
     )
 
 
@@ -924,7 +935,9 @@ def _form_section(
             _field("job_title", lang, required=True),
             _field("years_experience", lang, required=True),
             _field("preferred_company", lang, kind="select", options=company_opts),
-            _field("cv", lang, kind="file", required=True, full=True, accept=".pdf,.doc,.docx"),
+            _field("cv", lang, kind="file", required=True, full=True, accept=".pdf,.doc,.docx",
+                   hint_ar="الصيغ المقبولة: PDF أو DOC أو DOCX، وبحد أقصى 10 ميجابايت. تبقى السيرة لدى القابضة ولا تُعرض للعامة.",
+                   hint_en="Accepted formats: PDF, DOC or DOCX, up to 10 MB. Your CV stays with the Holding and is never shown publicly."),
             _field("message", lang, textarea=True, full=True),
         ]
 
@@ -1080,8 +1093,9 @@ def _list_body(lang: str) -> str:
   <div class="container form-wrap">
     <ol class="progress" aria-label="{e(_t('خطوات التقديم', 'Submission steps', lang))}">{progress}</ol>
 
-    <form class="site-form listing-form" data-form="business-listing"
-          action="/api/v1/public/leads/business-listing" method="post" novalidate>
+    <form class="site-form listing-form" data-form="business-listing" data-multipart="1"
+          action="/api/v1/public/leads/business-listing" method="post"
+          enctype="multipart/form-data" novalidate>
       <input type="hidden" name="locale" value="{e(lang)}">
 
       <fieldset class="form-step" data-step="1">
@@ -1146,6 +1160,19 @@ def _list_body(lang: str) -> str:
       <fieldset class="form-step" data-step="6" hidden>
         <legend>{e(_t('المراجعة والإرسال', 'Review & submit', lang))}</legend>
         <div class="review-box" data-review></div>
+        <div class="field-grid">
+          {_field("proof", lang, kind="file", full=True, accept=".pdf,.png,.jpg,.jpeg",
+                  label_ar="إثبات العلاقة بالمشروع (اختياري)",
+                  label_en="Proof of relationship to the project (optional)",
+                  hint_ar="مستند يوضح صفتك تجاه المشروع (ملاك، تمثيل، أو وساطة). لا يُنشر إطلاقًا، ويُستخدم للمراجعة الداخلية فقط. حتى 10 ميجابايت (PDF أو صورة).",
+                  hint_en="A document evidencing your capacity towards the project (owner, representative or intermediary). Never published; used for internal review only. Up to 10 MB (PDF or image).")}
+          {_field("photos", lang, kind="file", full=True, multiple=True,
+                  accept=".png,.jpg,.jpeg,.webp",
+                  label_ar="صور المشروع (اختيارية)",
+                  label_en="Project photos (optional)",
+                  hint_ar="حتى 10 صور بصيغة PNG أو JPG أو WebP، وبحد أقصى 5 ميجابايت للصورة. تظهر فقط بعد الموافقة على الإعلان ونشره.",
+                  hint_en="Up to 10 images in PNG, JPG or WebP, at most 5 MB each. Shown only after the listing is approved and published.")}
+        </div>
         {_field("consent", lang, kind="checkbox", required=True)}
         <div class="hp" aria-hidden="true">
           <label for="f-honeypot">{e(_label("honeypot", lang))}</label>
