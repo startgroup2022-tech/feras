@@ -225,6 +225,10 @@ def _maintenance_state() -> tuple[bool, str | None, str | None]:
     except Exception:  # noqa: BLE001
         logger.warning("Maintenance lookup failed; serving the site.", exc_info=True)
         return False, None, None
+    finally:
+        # Always release the session. The public page route calls this on every
+        # request; without this the pool is exhausted and the site returns 504.
+        db.close()
 
 
 def _render_or_404(path: str) -> Response:

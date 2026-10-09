@@ -160,6 +160,12 @@ def _nav_html(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
       <nav class="site-nav" aria-label="{e(_t('التنقل الرئيسي', 'Main navigation', lang))}">
         {' '.join(links)}
       </nav>
+      <div class="menu-lang">
+        <div class="lang-switch" role="group"
+             aria-label="{e(_t('اختيار اللغة', 'Language selection', lang))}">
+          {option("ar")}{option("en")}
+        </div>
+      </div>
     </div>
 
     <div class="header-actions">
@@ -174,7 +180,8 @@ def _nav_html(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
       </button>
     </div>
   </div>
-</header>"""
+</header>
+<div class="nav-backdrop" data-nav-backdrop hidden></div>"""
 
 
 def _footer_html(meta: PageMeta, cms=None) -> str:

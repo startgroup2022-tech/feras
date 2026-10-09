@@ -267,15 +267,24 @@
   // -------------------------------------------------------- mobile nav
   var navToggle = document.querySelector("[data-nav-toggle]");
   var nav = document.querySelector("[data-nav]");
+  var backdrop = document.querySelector("[data-nav-backdrop]");
   if (navToggle && nav) {
+    var setNav = function (open) {
+      nav.classList.toggle("is-open", open);
+      navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      document.body.classList.toggle("nav-open", open);
+      if (backdrop) {
+        backdrop.hidden = !open;
+        backdrop.classList.toggle("is-open", open);
+      }
+    };
     var closeNav = function () {
-      nav.classList.remove("is-open");
-      navToggle.setAttribute("aria-expanded", "false");
+      setNav(false);
     };
     navToggle.addEventListener("click", function () {
-      var open = nav.classList.toggle("is-open");
-      navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      setNav(!nav.classList.contains("is-open"));
     });
+    if (backdrop) backdrop.addEventListener("click", closeNav);
     // Close the drawer once a destination is chosen, or on Escape.
     nav.addEventListener("click", function (event) {
       if (event.target.closest("a")) closeNav();
@@ -285,6 +294,10 @@
         closeNav();
         navToggle.focus();
       }
+    });
+    // Returning to a wide viewport must not leave a stale locked scroll.
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 640 && nav.classList.contains("is-open")) closeNav();
     });
   }
 
