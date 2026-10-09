@@ -245,10 +245,25 @@ class CareersSubmission(PublicSubmissionBase):
 
     phone: str = Field(min_length=1, max_length=_PHONE_MAX)
     residence_country: str = Field(min_length=1, max_length=80)
+    residence_country_other: str | None = Field(default=None, max_length=80)
     city: str | None = Field(default=None, max_length=120)
     job_title: str = Field(min_length=1, max_length=160)
     years_experience: str = Field(min_length=1, max_length=40)
     preferred_company: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def _require_other_country_name(self) -> "CareersSubmission":
+        """When the visitor picks "other country", the name is required.
+
+        The UI reveals a companion text field for this case; enforcing it here
+        too means the actual country reaches the Holding instead of the literal
+        value ``other`` (revision brief item 13).
+        """
+        if self.residence_country == "other" and not (
+            self.residence_country_other or ""
+        ).strip():
+            raise ValueError("Please enter the name of your country of residence.")
+        return self
 
 
 # --------------------------------------------------------------------------

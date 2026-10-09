@@ -563,3 +563,37 @@ def test_careers_marks_the_residence_country_as_open_text(client, db):
     )
     assert response.status_code == 201, response.text
     assert json.loads(db.query(WebsiteLead).one().payload_json)["residence_country"] == "United Kingdom"
+
+
+def test_careers_other_country_requires_a_name_and_stores_it(client, db):
+    # Revision brief item 13: choosing "other country" must carry the actual
+    # country name, not the literal value "other", and the server enforces it.
+    missing = json.dumps(
+        {
+            "locale": "en",
+            "full_name": "Nour",
+            "email": "nour@example.com",
+            "phone": "+962",
+            "residence_country": "other",
+            "job_title": "Designer",
+            "years_experience": "0",
+            "consent": True,
+        }
+    )
+    rejected = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": missing},
+        files={"cv": ("cv.pdf", b"%PDF", "application/pdf")},
+    )
+    assert rejected.status_code == 422
+
+    provided = json.loads(missing)
+    provided["residence_country_other"] = "Jordan"
+    accepted = client.post(
+        f"{PUBLIC}/leads/careers",
+        data={"payload": json.dumps(provided)},
+        files={"cv": ("cv.pdf", b"%PDF", "application/pdf")},
+    )
+    assert accepted.status_code == 201, accepted.text
+    stored = json.loads(db.query(WebsiteLead).one().payload_json)
+    assert stored["residence_country"] == "Jordan"

@@ -370,9 +370,14 @@ def _service_fields(service_type: str, payload) -> dict:
             "country": payload.country,
         }
     if service_type == WebsiteServiceType.CAREERS.value:
+        # Item 13: when the visitor chose "other country", store the actual
+        # name they typed instead of the literal value "other".
+        residence = payload.residence_country
+        if residence == "other" and (payload.residence_country_other or "").strip():
+            residence = payload.residence_country_other.strip()
         return {
             **common,
-            "residence_country": payload.residence_country,
+            "residence_country": residence,
             "city": payload.city,
             "job_title": payload.job_title,
             "years_experience": payload.years_experience,

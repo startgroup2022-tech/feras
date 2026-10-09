@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -623,7 +624,10 @@ def test_contact_page_has_the_holding_details_and_no_form(public_client):
     assert "tel:+97317626990" in html
     # The handoff specifies contact details with no enquiry form.
     assert 'class="site-form"' not in html
-    assert 'class="map-placeholder"' in html
+    # Revision brief item 12: the placeholder map is hidden until the owner
+    # provides the real location link, so no stand-in location is shown.
+    assert 'class="map-placeholder"' not in html
+    assert "Head office location" not in html
 
 
 def test_about_page_reflects_the_approved_copy(public_client):
@@ -645,3 +649,84 @@ def test_new_pages_declare_rtl_in_arabic_and_ltr_in_english(public_client):
     ):
         assert 'dir="rtl"' in public_client.get(ar_path).text
         assert 'dir="ltr"' in public_client.get(en_path).text
+
+
+# --------------------------------------------------------------------------
+# Revision brief (Safeer_Website_Revision_Brief.docx)
+# --------------------------------------------------------------------------
+def test_revision_brief_footer_shows_the_real_year_not_a_placeholder(public_client):
+    for path in ("/", "/ar"):
+        html = public_client.get(path).text
+        assert "السنة الحالية" not in html
+        assert "Current year" not in html
+        assert f"&copy; {datetime.now(timezone.utc).year}" in html
+
+
+def test_revision_brief_submit_cta_reaches_the_form_in_one_click(public_client):
+    # Item 01: the home "Submit Your Business" button must go straight to the
+    # listing form page; the dead #submit-project anchor is gone site-wide.
+    home_en = public_client.get("/").text
+    home_ar = public_client.get("/ar").text
+    assert 'href="/list-your-business"' in home_en
+    assert 'href="/ar/اعرض-شركتك"' in home_ar
+    assert "#submit-project" not in home_en
+    assert "#submit-project" not in home_ar
+
+
+def test_revision_brief_opportunities_use_approved_copy(public_client):
+    en = public_client.get("/opportunities").text
+    ar = public_client.get("/ar/الفرص-التجارية").text
+    # Approved heading + intro (item 04).
+    assert "Submit Your Business" in en
+    assert "اعرض مشروعك" in ar
+    assert "after review and approval" in en
+    assert "بعد المراجعة والموافقة" in ar
+    # Planning phrases are removed (item 04).
+    assert "investor starts here" not in en
+    assert "يدخل المستثمر أولًا" not in ar
+
+    # Non-warranty notice appears in the listing context (item 07), i.e. on a
+    # market's published-opportunities page.
+    listing_en = public_client.get("/bahrain/opportunities").text
+    listing_ar = public_client.get("/ar/البحرين/الفرص-والمشاريع").text
+    assert "not a guarantee or an investment recommendation" in listing_en
+    assert "لا يمثل ضمانًا أو توصية استثمارية" in listing_ar
+
+
+def test_revision_brief_contact_hides_the_placeholder_map_in_both_languages(public_client):
+    for path in ("/contact", "/ar/تواصل"):
+        html = public_client.get(path).text
+        assert "map-placeholder" not in html
+        # The textual address, phone, email and WhatsApp stay.
+        assert "Info@sup-edu.com" in html
+        assert "tel:+97317626990" in html
+
+
+def test_revision_brief_careers_heading_is_not_duplicated_and_has_other_country(public_client):
+    en = public_client.get("/careers").text
+    ar = public_client.get("/ar/الوظائف").text
+    # Item 17: one clear section heading; the form gets a functional heading.
+    # (The phrase also appears in <title>/JSON-LD, so count the rendered <h1>.)
+    assert en.count("Join the Startup Safeer Team</h1>") == 1
+    assert ar.count("انضم إلى فريق ستارت أب سفير</h1>") == 1
+    assert "Application details" in en
+    assert "بيانات التقديم" in ar
+    # Item 13: an "other country" choice reveals a required country-name field.
+    assert 'data-other-for="residence_country"' in en
+    assert "Other country" in en
+    assert "دولة أخرى" in ar
+
+
+def test_revision_brief_no_internal_market_note_is_published(public_client):
+    # Item 15: the internal "recorded under the gulf market" note is removed.
+    for path in ("/", "/ar", "/contact", "/ar/تواصل"):
+        html = public_client.get(path).text
+        assert "automatically be recorded under" not in html
+        assert "سيُسجَّل هذا الطلب تلقائيًا" not in html
+
+
+def test_revision_brief_hero_keeps_a_dark_scrim_for_readability(public_client):
+    # Item 18: the hero text sits on a gradient scrim over the approved image.
+    html = public_client.get("/").text
+    assert "linear-gradient(100deg, rgba(10,23,48,.94)" in html
+    assert "bahrain-bay.jpg" in html

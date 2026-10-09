@@ -664,6 +664,14 @@ ul, ol { margin: 0 0 1em; padding-inline-start: 1.25em; }
 }
 .tag.gold { background: var(--gold-tint); color: var(--gold-strong); border: 1px solid var(--gold-line); }
 .opp-interest { margin-top: 2.4rem; }
+.listing-notice {
+  margin-top: 1.8rem; padding: 14px 18px;
+  border-inline-start: 3px solid var(--gold-line);
+  background: var(--gold-tint); color: var(--ink-2);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-size: .94rem; line-height: 1.7;
+}
+[dir="rtl"] .listing-notice { border-radius: var(--radius-md) 0 0 var(--radius-md); }
 .state { color: var(--muted); }
 
 /* -------------------------------------------------------- company cards -- */

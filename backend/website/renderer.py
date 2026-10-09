@@ -23,6 +23,7 @@ primary navigation.
 from __future__ import annotations
 
 import html
+from datetime import datetime, timezone
 
 from backend.website import content as C
 from backend.website import group_companies
@@ -41,6 +42,11 @@ BRAND_LOGO_URL = "/website/assets/holding-logo.png"
 # Used as a background image only; the layout must remain legible if it fails
 # to load, so the hero carries its own background colour underneath.
 BRAND_HERO_URL = "/website/assets/bahrain-bay.jpg"
+
+
+def _current_year() -> int:
+    """The real copyright year, computed per request rather than hard-coded."""
+    return datetime.now(timezone.utc).year
 
 
 def e(value: object) -> str:
@@ -257,7 +263,7 @@ def _footer_html(meta: PageMeta, cms=None) -> str:
     </nav>
   </div>
   <div class="container footer-legal">
-    <p>&copy; {e(_t('السنة الحالية — ', 'Current year — ', lang))}{e(holding_name)} {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
+    <p>&copy; {_current_year()} {e(holding_name)} {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
     <p class="footer-legal-links">
       <a href="{e(C.PAGE_PATHS['privacy'][lang])}">{e(_t('سياسة الخصوصية', 'Privacy Policy', lang))}</a>
       <span aria-hidden="true"> · </span>
@@ -476,7 +482,7 @@ def _home_body(lang: str, cms_companies=None) -> str:
     name = holding["name_ar"] if lang == "ar" else holding["name_en"]
 
     return f"""
-<section class="hero hero-home" id="home-hero" style="background-image:url('{e(BRAND_HERO_URL)}')">
+<section class="hero hero-home" id="home-hero" style="background-image:linear-gradient(100deg, rgba(10,23,48,.94) 0%, rgba(10,23,48,.80) 46%, rgba(10,23,48,.55) 100%), linear-gradient(180deg, rgba(10,23,48,.30) 0%, rgba(10,23,48,.10) 45%, rgba(10,23,48,.45) 100%), url('{e(BRAND_HERO_URL)}')">
   <div class="container hero-inner">
     <div class="hero-copy">
       <h1 class="hero-title">{e(name)}</h1>
@@ -511,7 +517,7 @@ def _home_body(lang: str, cms_companies=None) -> str:
     </div>
     <div class="opp-cta">
       <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('عرض جميع الفرص', 'View All Opportunities', lang))}</a>
-      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['opportunities'][lang])}#submit-project">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
     </div>
   </div>
 </section>
@@ -523,7 +529,7 @@ def _home_body(lang: str, cms_companies=None) -> str:
   </div>
 </section>
 
-{_form_section(lang, "group-service", "gulf", None)}"""
+{_form_section(lang, "group-service", "gulf", None, heading=_t('بيانات الطلب', 'Request details', lang))}"""
 
 
 # --------------------------------------------------------------------------
@@ -696,6 +702,7 @@ _FORM_LABELS: dict[str, dict[str, str]] = {
     "country": {"ar": "الدولة", "en": "Country"},
     # Careers form (handoff §3 الوظائف).
     "residence_country": {"ar": "دولة الإقامة", "en": "Country of residence"},
+    "residence_country_other": {"ar": "اسم الدولة", "en": "Country name"},
     "city": {"ar": "المدينة", "en": "City"},
     "job_title": {"ar": "المسمى الوظيفي / مجال التخصص", "en": "Job title / field of specialisation"},
     "years_experience": {"ar": "سنوات الخبرة", "en": "Years of experience"},
@@ -719,17 +726,19 @@ def _field(
     full: bool = False,
     accept: str | None = None,
     key_alias: str | None = None,
+    attrs: str = "",
 ) -> str:
     label = _label(key_alias or key, lang)
     req = ' required aria-required="true"' if required else ""
     req_mark = ' <span class="req" aria-hidden="true">*</span>' if required else ""
     wrapper = ' class="field field-full"' if full else ' class="field"'
+    extra = f" {attrs}" if attrs else ""
     fid = f"f-{key}"
     err_id = f"e-{key}"
 
     if textarea:
         control = (
-            f'<textarea id="{e(fid)}" name="{e(key)}"{req} rows="4" '
+            f'<textarea id="{e(fid)}" name="{e(key)}"{req} rows="4"{extra} '
             f'aria-describedby="{e(err_id)}"></textarea>'
         )
     elif kind == "select" and options:
@@ -738,25 +747,25 @@ def _field(
         )
         placeholder = _t("اختر", "Select", lang)
         control = (
-            f'<select id="{e(fid)}" name="{e(key)}"{req} aria-describedby="{e(err_id)}">'
+            f'<select id="{e(fid)}" name="{e(key)}"{req}{extra} aria-describedby="{e(err_id)}">'
             f'<option value="" selected disabled>{e(placeholder)}</option>{opts}</select>'
         )
     elif kind == "file":
         accept_attr = f' accept="{e(accept)}"' if accept else ""
         control = (
-            f'<input type="file" id="{e(fid)}" name="{e(key)}"{req}{accept_attr} '
+            f'<input type="file" id="{e(fid)}" name="{e(key)}"{req}{accept_attr}{extra} '
             f'aria-describedby="{e(err_id)}">'
         )
     elif kind == "checkbox":
         return (
-            f'<div class="field field-check">'
+            f'<div class="field field-check"{extra}>'
             f'<input type="checkbox" id="{e(fid)}" name="{e(key)}"{req} aria-describedby="{e(err_id)}">'
             f'<label for="{e(fid)}">{e(label)}{req_mark}</label>'
             f'<p class="field-error" id="{e(err_id)}" role="alert" hidden></p></div>'
         )
     else:
         control = (
-            f'<input type="{e(kind)}" id="{e(fid)}" name="{e(key)}"{req} '
+            f'<input type="{e(kind)}" id="{e(fid)}" name="{e(key)}"{req}{extra} '
             f'aria-describedby="{e(err_id)}" autocomplete="off">'
         )
 
@@ -766,15 +775,21 @@ def _field(
     )
 
 
-def _form_section(lang: str, form_key: str, market: str, service: dict | None) -> str:
-    """Render the correct form for a market/service page."""
-    market_name = C.market_label(market, lang)
+def _form_section(
+    lang: str, form_key: str, market: str, service: dict | None, *, heading: str | None = None
+) -> str:
+    """Render the correct form for a market/service page.
+
+    ``heading`` overrides the form's own title so a page whose hero already
+    carries the section name can label the form functionally (item 17: avoid a
+    duplicate heading).
+    """
     action = f"/api/v1/public/leads/{form_key}"
     titles = {
         "group-service": _t("كيف يمكننا مساعدتك؟", "How Can We Help?", lang),
         "careers": _t("انضم إلى فريق ستارت أب سفير", "Join the Startup Safeer Team", lang),
     }
-    title = titles.get(form_key) or _t("أكمل الطلب", "Complete your request", lang)
+    title = heading or titles.get(form_key) or _t("أكمل الطلب", "Complete your request", lang)
 
     fields: list[str] = []
     if form_key == "company-formation":
@@ -900,6 +915,11 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
             _field("phone", lang, kind="tel", required=True),
             _field("email", lang, kind="email", required=True),
             _field("residence_country", lang, kind="select", required=True, options=country_opts),
+            _field(
+                "residence_country_other",
+                lang,
+                attrs='data-other-for="residence_country" hidden',
+            ),
             _field("city", lang),
             _field("job_title", lang, required=True),
             _field("years_experience", lang, required=True),
@@ -933,10 +953,18 @@ def _form_section(lang: str, form_key: str, market: str, service: dict | None) -
             "Your CV is sent to the Holding, and we contact you when a suitable opportunity arises.",
             lang,
         )
+    elif form_key == "group-service":
+        # The visitor's chosen country is the answer; there is no market to
+        # name here (item 15 removed the internal "recorded under gulf" note).
+        context_note = _t(
+            "سنوجّه طلبك إلى الجهة المختصة داخل شركات المجموعة وفق الخدمة والدولة المختارتين.",
+            "We will direct your request to the responsible team within our group, based on the service and country you choose.",
+            lang,
+        )
     else:
         context_note = _t(
-            f"سيُسجَّل هذا الطلب تلقائيًا ضمن سوق {market_name}.",
-            f"This request will automatically be recorded under the {market_name} market.",
+            "سنوجّه طلبك إلى الجهة المختصة داخل شركات المجموعة.",
+            "We will direct your request to the responsible team within our group.",
             lang,
         )
 
@@ -973,6 +1001,8 @@ def _opportunities_section(lang: str, market: str) -> str:
     <div class="opp-list" data-opportunities data-market="{e(market)}">
       <p class="state">{e(_t('جارٍ تحميل الفرص…', 'Loading opportunities…', lang))}</p>
     </div>
+    <p class="listing-notice">{e(_t('المعلومات مقدمة من صاحب المشروع، ونشرها لا يمثل ضمانًا أو توصية استثمارية من الإدارة.',
+                                        'Information is provided by the project owner; publishing it is not a guarantee or an investment recommendation from the management.', lang))}</p>
     <div class="opp-interest">
       <a class="btn btn-primary" href="#form">{e(_t('أنا مهتم — اطلب التفاصيل', "I'm interested — request details", lang))}</a>
       <p class="muted">{e(_t(f'سيتم تسجيل اهتمامك ضمن سوق {market_name}.',
@@ -999,7 +1029,7 @@ def _opportunities_body(lang: str) -> str:
 <section class="page-hero">
   <div class="container">
     <h1>{e(_t('الفرص والمشاريع', 'Opportunities & Projects', lang))}</h1>
-    <p>{e(_t('يدخل المستثمر أولًا ثم يختار السوق.', 'The investor starts here, then chooses a market.', lang))}</p>
+    <p>{e(_t('استعرض المشاريع المعروضة للبيع في دول الخليج.', 'Browse businesses offered for sale across the Gulf.', lang))}</p>
   </div>
 </section>
 <section class="section">
@@ -1012,10 +1042,10 @@ def _opportunities_body(lang: str) -> str:
 </section>
 <section class="section section-alt">
   <div class="container">
-    <h2 class="section-title">{e(_t('لديك فرصة أو شركة للبيع؟', 'Have an opportunity or business to sell?', lang))}</h2>
-    <p class="section-sub">{e(_t('اعرض شركتك أو مشروعك على القابضة للبيع أو الشراكة أو الاستثمار.',
-                                 'Offer your business or project to the Holding for sale, partnership or investment.', lang))}</p>
-    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض فرصة / شركة', 'List your business / opportunity', lang))}</a>
+    <h2 class="section-title">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</h2>
+    <p class="section-sub">{e(_t('أرسل بيانات مشروعك لعرضه للبيع في دول الخليج، بعد المراجعة والموافقة.',
+                                 'Send your project details to be listed for sale in the Gulf, after review and approval.', lang))}</p>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
   </div>
 </section>"""
 
@@ -1432,9 +1462,6 @@ def _contact_body(lang: str) -> str:
         <a class="btn btn-primary" href="https://wa.me/{e(str(holding['whatsapp']))}" rel="noopener noreferrer" target="_blank">{e(_t('تواصل عبر واتساب', 'Contact via WhatsApp', lang))}</a>
       </div>
     </div>
-    <div class="map-placeholder" role="img" aria-label="{e(_t('موضع خريطة المقر الرئيسي عند توفير الرابط', 'Head office map placeholder, shown once a link is provided', lang))}">
-      {e(_t('موقع المقر على الخريطة', 'Head office location', lang))}
-    </div>
   </div>
 </section>"""
 
@@ -1450,7 +1477,7 @@ def _careers_body(lang: str) -> str:
     <p>{e(text['submit'][lang])}</p>
   </div>
 </section>
-{_form_section(lang, "careers", "gulf", None)}"""
+{_form_section(lang, "careers", "gulf", None, heading=_t('بيانات التقديم', 'Application details', lang))}"""
 
 
 def _legal_sections(lang: str, sections: list[dict]) -> str:

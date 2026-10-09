@@ -311,6 +311,26 @@
     window.addEventListener("scroll", onScroll, { passive: true });
   }
 
+  // ------------------------------------------- conditional "other" fields
+  // A field that only applies for one option of a controlling select (e.g.
+  // "other country" in the careers form). The wrapper is hidden and the input
+  // is not required until the option is chosen; the server enforces the same
+  // rule (revision brief item 13).
+  document.querySelectorAll("[data-other-for]").forEach(function (input) {
+    var control = document.querySelector('[name="' + CSS.escape(input.dataset.otherFor) + '"]');
+    if (!control) return;
+    var wrap = input.closest(".field");
+    var sync = function () {
+      var active = control.value === "other";
+      input.required = active;
+      input.setAttribute("aria-required", active ? "true" : "false");
+      if (wrap) wrap.hidden = !active;
+      if (!active) input.value = "";
+    };
+    control.addEventListener("change", sync);
+    sync();
+  });
+
   // --------------------------------------------------- opportunities list
   var oppHost = document.querySelector("[data-opportunities]");
   if (oppHost) {
