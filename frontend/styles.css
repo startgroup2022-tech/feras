@@ -788,6 +788,23 @@ body:not(.authed) .stage-wrap{display:none;}
 .perm-actions-bar .pbtns{display:flex;gap:8px;}
 .perm-empty{padding:30px;text-align:center;color:var(--ink-400);font-size:12px;}
 
+/* Phase 11 — website management (CMS) */
+.av-hint{font-size:10.5px;color:var(--ink-400);margin:0 0 10px;line-height:1.6;}
+.web-panel .av-panel{margin-bottom:0;}
+.web-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:6px 0 4px;}
+.web-stat{background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;text-align:center;}
+.web-stat .n{font-family:var(--f-display);font-size:22px;font-weight:700;color:var(--navy-800);direction:ltr;}
+.web-stat .l{font-size:10.5px;color:var(--ink-400);margin-top:2px;}
+.web-warning{margin-top:10px;padding:9px 12px;border-radius:10px;background:var(--amber-soft,#fdf3e2);color:#9a6b00;font-size:11px;font-weight:600;}
+.web-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.web-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;}
+.web-row-main{flex:1;min-width:160px;}
+.web-row-title{font-size:12.5px;font-weight:600;color:var(--navy-900);}
+.web-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 14px;margin-top:6px;}
+.web-upload{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;padding:10px;border:1px dashed var(--line);border-radius:11px;}
+.web-upload input[type=file]{font-size:11px;max-width:100%;}
+.web-upload .av-select{max-width:130px;}
+
 
 /* ============================================================
    RESPONSIVE — the application shell is fluid down to the point

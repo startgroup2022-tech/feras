@@ -420,3 +420,46 @@ class WebsiteLeadSource(str, enum.Enum):
     PLATFORM = "platform"
     REFERRAL = "referral"
     OTHER = "other"
+
+
+# --------------------------------------------------------------------------
+# Phase 11: website CMS
+# --------------------------------------------------------------------------
+class ContentStatus(str, enum.Enum):
+    """Draft/published lifecycle shared by pages, slides and service content.
+
+    Nothing is rendered on the public site until ``PUBLISHED``; the editor can
+    still preview a draft. This keeps an incomplete edit from leaking.
+    """
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
+class MediaVisibility(str, enum.Enum):
+    """Where an uploaded media asset may be served from.
+
+    ``PUBLIC`` assets are streamed by the unauthenticated public endpoint;
+    ``PRIVATE`` assets are only ever served to an authenticated session with
+    the media permission. The separation is enforced server-side.
+    """
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class SectionKind(str, enum.Enum):
+    """The kind of a homepage section.
+
+    A closed set, so the renderer knows exactly how to render each one and an
+    editor can never introduce arbitrary markup. Unknown kinds fall back to a
+    plain text block.
+    """
+
+    HERO = "hero"
+    CARDS = "cards"
+    STATS = "stats"
+    STEPS = "steps"
+    CTA = "cta"
+    TEXT = "text"
+

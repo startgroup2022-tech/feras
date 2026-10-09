@@ -3770,13 +3770,14 @@
   // One delegated click handler drives every admin action, so cards can be
   // re-rendered freely without rebinding. Each tab is loaded lazily and only
   // if the caller holds the permission that tab needs.
-  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "builder", "workflows", "integrations", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "website", "builder", "workflows", "integrations", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
     departments: ["department.read"],
     users: ["user.read_all"],
     roles: ["role.read"],
+    website: ["website.content.read"],
     builder: ["form.read", "form.create"],
     workflows: ["workflow.read"],
     integrations: ["integration.read"],
@@ -3827,13 +3828,14 @@
     document.querySelectorAll("[data-admin-tab]").forEach(function (b) {
       b.classList.toggle("on", b.getAttribute("data-admin-tab") === tab);
     });
-    host.className = "av-grid " + (tab === "users" || tab === "roles" || tab === "builder" ? "cols-1" : "cols-2");
+    host.className = "av-grid " + (tab === "users" || tab === "roles" || tab === "builder" || tab === "website" ? "cols-1" : "cols-2");
     host.innerHTML = loadingHtml();
     if (tab === "structure") return renderAdminStructure();
     if (tab === "companies") return renderAdminCompanies();
     if (tab === "departments") return renderAdminDepartments();
     if (tab === "users") return renderAdminUsers();
     if (tab === "roles") return renderAdminRoles();
+    if (tab === "website") return renderAdminWebsite();
     if (tab === "builder") return renderAdminBuilder();
     if (tab === "workflows") return renderAdminWorkflows();
     if (tab === "integrations") return renderAdminIntegrations();
@@ -4595,6 +4597,296 @@
     });
   }
 
+  // ---- tab: website management (Phase 11 CMS) --------------------------
+  //
+  // A compact, bilingual editor for the public site. Every section reloads
+  // from the API and the whole surface follows the language switch, so the
+  // admin UI turns RTL/LTR with the rest of the platform. Writes are gated by
+  // the same website.* permissions the API enforces; the editor never invents
+  // a code the backend does not already check.
+  function webVal(id) {
+    var el = byId(id);
+    return el ? el.value : "";
+  }
+
+  function websiteState() {
+    if (!STATE.website) {
+      STATE.website = { data: null, section: "overview" };
+    }
+    return STATE.website;
+  }
+
+  function renderAdminWebsite() {
+    var host = byId("adminContent");
+    var st = websiteState();
+    return Promise.all([
+      get("/api/v1/website/overview").catch(function () { return null; }),
+      get("/api/v1/website/settings").catch(function () { return null; }),
+      get("/api/v1/website/pages").catch(function () { return []; }),
+      get("/api/v1/website/slides").catch(function () { return []; }),
+      get("/api/v1/website/companies").catch(function () { return []; }),
+      get("/api/v1/website/media").catch(function () { return []; }),
+    ]).then(function (res) {
+      st.data = {
+        overview: res[0],
+        settings: res[1],
+        pages: res[2] || [],
+        slides: res[3] || [],
+        companies: res[4] || [],
+        media: res[5] || [],
+      };
+      host.innerHTML = websitePanel();
+      bindWebsiteTabs();
+      renderWebsiteSection();
+    });
+  }
+
+  function bindWebsiteTabs() {
+    document.querySelectorAll("[data-web-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var section = btn.getAttribute("data-web-tab");
+        websiteState().section = section;
+        document.querySelectorAll("[data-web-tab]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        renderWebsiteSection();
+      });
+    });
+  }
+
+  function renderWebsiteSection() {
+    var body = byId("webSection");
+    if (!body) return;
+    var section = websiteState().section;
+    if (section === "overview") body.innerHTML = webOverviewHtml();
+    else if (section === "settings") body.innerHTML = webSettingsHtml();
+    else if (section === "pages") body.innerHTML = webPagesHtml();
+    else if (section === "slides") body.innerHTML = webSlidesHtml();
+    else if (section === "companies") body.innerHTML = webCompaniesHtml();
+    else if (section === "media") body.innerHTML = webMediaHtml();
+  }
+
+  function websitePanel() {
+    var st = websiteState();
+    var tabs = [
+      ["overview", "نظرة عامة", "Overview"],
+      ["settings", "الإعدادات وSEO", "Settings & SEO"],
+      ["pages", "الصفحات", "Pages"],
+      ["slides", "الشرائح", "Slides"],
+      ["companies", "الشركات", "Companies"],
+      ["media", "الوسائط", "Media"],
+    ];
+    var chips = tabs
+      .map(function (t) {
+        return (
+          '<button type="button" class="perm-cat-chip' +
+          (st.section === t[0] ? " on" : "") +
+          '" data-web-tab="' + t[0] + '">' + dual(t[1], t[2]) + "</button>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="av-panel web-panel"><h3>' +
+      dual("إدارة الموقع العام", "Public website management") +
+      "</h3>" +
+      '<p class="av-hint">' +
+      dual(
+        "تحكّم في محتوى الموقع المنشور. التعديلات لا تظهر للزوار حتى يتم النشر.",
+        "Manage the published site content. Changes stay hidden until published.",
+      ) +
+      "</p>" +
+      '<div class="perm-cats" id="webTabs">' + chips + "</div>" +
+      '<div id="webSection"></div></div>'
+    );
+  }
+
+  function webStat(labelAr, labelEn, value) {
+    return (
+      '<div class="web-stat"><div class="n">' + plainNum(value) + "</div>" +
+      '<div class="l">' + dual(labelAr, labelEn) + "</div></div>"
+    );
+  }
+
+  function webOverviewHtml() {
+    var o = websiteState().data.overview;
+    if (!o) {
+      return '<p class="av-empty">' + dual("تعذّر تحميل البيانات.", "Could not load data.") + "</p>";
+    }
+    return (
+      '<div class="web-stats">' +
+      webStat("الصفحات", "Pages", o.pages) +
+      webStat("منشورة", "Published", o.published_pages) +
+      webStat("الشرائح النشطة", "Active slides", o.active_slides) +
+      webStat("الشركات الظاهرة", "Visible companies", o.visible_companies) +
+      webStat("وسائط عامة", "Public media", o.public_media) +
+      webStat("وسائط خاصة", "Private media", o.private_media) +
+      "</div>" +
+      (o.maintenance_mode
+        ? '<p class="web-warning">' +
+          dual("وضع الصيانة مُفعّل: الموقع العام معطّل حاليًا.", "Maintenance mode is on: the public site is offline.") +
+          "</p>"
+        : "")
+    );
+  }
+
+  function webSettingsHtml() {
+    var s = websiteState().data.settings || {};
+    var editable = has("website.settings.manage");
+    var dis = editable ? "" : " disabled";
+    return (
+      '<div class="web-form">' +
+      field("اسم الموقع (عربي)", "Site name (AR)", textInput("wsNameAr", s.site_name_ar || "") ) +
+      field("اسم الموقع (إنجليزي)", "Site name (EN)", textInput("wsNameEn", s.site_name_en || "") ) +
+      field("البريد للتواصل", "Contact email", textInput("wsEmail", s.contact_email || "") ) +
+      field("الهاتف", "Phone", textInput("wsPhone", s.contact_phone || "") ) +
+      field("واتساب", "WhatsApp", textInput("wsWhatsapp", s.whatsapp_number || "") ) +
+      field(
+        "وضع الصيانة",
+        "Maintenance mode",
+        '<label class="perm-card" style="cursor:pointer"><input type="checkbox" id="wsMaintenance"' +
+          (s.maintenance_mode ? " checked" : "") + dis +
+          "><span class=\"perm-body\"><span class=\"perm-name\">" +
+          dual("تعطيل الموقع العام مؤقتًا", "Temporarily take the public site offline") +
+          "</span></span></label>",
+      ) +
+      (editable
+        ? '<div class="perm-actions-bar"><div class="pmeta"></div><div class="pbtns">' +
+          '<button type="button" class="btn-solid" data-admin-action="web-save-settings">' +
+          dual("حفظ الإعدادات", "Save settings") + "</button></div></div>"
+        : '<p class="av-hint">' +
+          dual("لا تملك صلاحية تعديل الإعدادات.", "You cannot edit settings.") + "</p>") +
+      "</div>"
+    );
+  }
+
+  function webPagesHtml() {
+    var pages = websiteState().data.pages || [];
+    var editable = has("website.content.write");
+    var publish = has("website.content.publish");
+    if (!pages.length) {
+      return (
+        '<p class="av-empty">' +
+        dual("لا توجد صفحات CMS بعد.", "No CMS pages yet.") +
+        "</p>"
+      );
+    }
+    var rows = pages
+      .map(function (p) {
+        var published = p.status === "published";
+        return (
+          '<div class="web-row"><div class="web-row-main">' +
+          '<div class="web-row-title">' +
+          dual(escapeHtml(p.title_ar || p.route_key), escapeHtml(p.title_en || p.route_key)) +
+          "</div>" +
+          '<div class="perm-code">' + escapeHtml(p.route_key) + "</div></div>" +
+          '<span class="perm-badge' + (published ? "" : " danger") + '">' +
+          dual(published ? "منشورة" : "مسودة", published ? "Published" : "Draft") +
+          "</span>" +
+          (publish
+            ? '<button type="button" class="btn-outline" data-admin-action="web-toggle-page" data-id="' +
+              p.id + '" data-status="' + (published ? "unpublished" : "published") + '">' +
+              dual(published ? "إلغاء النشر" : "نشر", published ? "Unpublish" : "Publish") +
+              "</button>"
+            : "") +
+          (editable
+            ? '<button type="button" class="btn-outline danger" data-admin-action="web-delete-page" data-id="' +
+              p.id + '">' + dual("حذف", "Delete") + "</button>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    return '<div class="web-list">' + rows + "</div>";
+  }
+
+  function webSlidesHtml() {
+    var slides = websiteState().data.slides || [];
+    if (!slides.length) {
+      return '<p class="av-empty">' + dual("لا توجد شرائح.", "No slides.") + "</p>";
+    }
+    var rows = slides
+      .map(function (s) {
+        return (
+          '<div class="web-row"><div class="web-row-main">' +
+          '<div class="web-row-title">' +
+          dual(escapeHtml(s.title_ar || "—"), escapeHtml(s.title_en || "—")) +
+          "</div></div>" +
+          '<span class="perm-badge' + (s.is_active ? "" : " danger") + '">' +
+          dual(s.is_active ? "نشطة" : "موقوفة", s.is_active ? "Active" : "Inactive") +
+          "</span></div>"
+        );
+      })
+      .join("");
+    return '<div class="web-list">' + rows + "</div>";
+  }
+
+  function webCompaniesHtml() {
+    var companies = websiteState().data.companies || [];
+    var editable = has("website.content.write");
+    var seedBtn = editable
+      ? '<button type="button" class="btn-outline" data-admin-action="web-seed-companies">' +
+        dual("استيراد شركات المجموعة", "Import group companies") + "</button>"
+      : "";
+    if (!companies.length) {
+      return (
+        '<p class="av-empty">' +
+        dual("لا توجد شركات. استخدم الاستيراد لإضافة القائمة المعتمدة.", "No companies. Use import to add the approved list.") +
+        "</p>" + seedBtn
+      );
+    }
+    var rows = companies
+      .map(function (c) {
+        return (
+          '<div class="web-row"><div class="web-row-main">' +
+          '<div class="web-row-title">' +
+          dual(escapeHtml(c.name_ar), escapeHtml(c.name_en || c.name_ar)) +
+          "</div>" +
+          '<div class="perm-code">' + escapeHtml(c.slug) + "</div></div>" +
+          '<span class="perm-badge' + (c.is_visible ? "" : " danger") + '">' +
+          dual(c.is_visible ? "ظاهرة" : "مخفية", c.is_visible ? "Visible" : "Hidden") +
+          "</span></div>"
+        );
+      })
+      .join("");
+    return '<div class="web-list">' + rows + "</div>" + seedBtn;
+  }
+
+  function webMediaHtml() {
+    var media = websiteState().data.media || [];
+    var editable = has("website.media.manage");
+    var upload = editable
+      ? '<div class="web-upload">' +
+        '<input type="file" id="webMediaFile" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,application/pdf">' +
+        '<select class="av-select av-input" id="webMediaVisibility">' +
+        '<option value="public">' + escapeHtml(STATE.lang === "ar" ? "عام" : "Public") + "</option>" +
+        '<option value="private">' + escapeHtml(STATE.lang === "ar" ? "خاص" : "Private") + "</option>" +
+        "</select>" +
+        '<button type="button" class="btn-solid" data-admin-action="web-upload-media">' +
+        dual("رفع", "Upload") + "</button></div>"
+      : "";
+    if (!media.length) {
+      return '<p class="av-empty">' + dual("لا توجد وسائط.", "No media.") + "</p>" + upload;
+    }
+    var rows = media
+      .map(function (m) {
+        return (
+          '<div class="web-row"><div class="web-row-main">' +
+          '<div class="web-row-title">' + escapeHtml(m.original_name || m.storage_key) + "</div>" +
+          '<div class="perm-code">' + plainNum(m.byte_size) + " bytes</div></div>" +
+          '<span class="perm-badge' + (m.visibility === "public" ? "" : " danger") + '">' +
+          dual(m.visibility === "public" ? "عام" : "خاص", m.visibility === "public" ? "Public" : "Private") +
+          "</span>" +
+          (editable
+            ? '<button type="button" class="btn-outline danger" data-admin-action="web-delete-media" data-id="' +
+              m.id + '">' + dual("حذف", "Delete") + "</button>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    return upload + '<div class="web-list">' + rows + "</div>";
+  }
+
   // ---- tab: audit ----
   function renderAdminAudit() {
     var host = byId("adminContent");
@@ -5132,6 +5424,102 @@
         toast(STATE.lang === "ar" ? "تم تعطيل نقطة النهاية." : "Endpoint disabled.", "ok");
         return renderAdminIntegrations();
       }).catch(adminError);
+    }
+
+    // ---- website management (Phase 11 CMS) ----
+    if (action === "web-save-settings") {
+      busy(el, true);
+      return patch("/api/v1/website/settings", {
+        site_name_ar: webVal("wsNameAr"),
+        site_name_en: webVal("wsNameEn"),
+        contact_email: webVal("wsEmail"),
+        contact_phone: webVal("wsPhone"),
+        whatsapp_number: webVal("wsWhatsapp"),
+        maintenance_mode: !!(byId("wsMaintenance") && byId("wsMaintenance").checked),
+      })
+        .then(function () {
+          toast(dual("تم حفظ الإعدادات.", "Settings saved."), "ok");
+          return renderAdminWebsite();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
+    if (action === "web-toggle-page") {
+      var target = el.getAttribute("data-status");
+      busy(el, true);
+      return post("/api/v1/website/pages/" + id + "/" + (target === "published" ? "publish" : "unpublish"), {})
+        .then(function () {
+          toast(dual("تم تحديث حالة النشر.", "Publish state updated."), "ok");
+          return renderAdminWebsite();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
+    if (action === "web-delete-page") {
+      return confirmDialog({
+        title: dual("حذف الصفحة", "Delete page"),
+        message: STATE.lang === "ar" ? "سيتم حذف هذه الصفحة نهائيًا." : "This page will be permanently deleted.",
+        danger: true,
+      }).then(function (ok) {
+        if (!ok) return;
+        return del("/api/v1/website/pages/" + id).then(function () {
+          toast(dual("تم حذف الصفحة.", "Page deleted."), "ok");
+          return renderAdminWebsite();
+        }).catch(adminError);
+      });
+    }
+    if (action === "web-seed-companies") {
+      busy(el, true);
+      return post("/api/v1/website/companies/seed", {})
+        .then(function (res) {
+          toast(
+            dual("تم استيراد " + plainNum(res.created) + " شركة.", "Imported " + plainNum(res.created) + " companies."),
+            "ok",
+          );
+          return renderAdminWebsite();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
+    if (action === "web-upload-media") {
+      var mediaEl = byId("webMediaFile");
+      var mediaFile = mediaEl && mediaEl.files ? mediaEl.files[0] : null;
+      if (!mediaFile) {
+        toast(STATE.lang === "ar" ? "اختر ملفًا أولًا." : "Choose a file first.", "warn");
+        return;
+      }
+      var visEl = byId("webMediaVisibility");
+      busy(el, true);
+      return api.upload("/api/v1/website/media", mediaFile, {
+        visibility: visEl ? visEl.value : "public",
+      })
+        .then(function () {
+          toast(dual("تم رفع الملف.", "File uploaded."), "ok");
+          return renderAdminWebsite();
+        })
+        .catch(function (err) {
+          toast(errText(err), "err");
+          busy(el, false);
+        });
+    }
+    if (action === "web-delete-media") {
+      return confirmDialog({
+        title: dual("حذف الوسيط", "Delete media"),
+        message: STATE.lang === "ar" ? "سيتم حذف الملف نهائيًا." : "The file will be permanently deleted.",
+        danger: true,
+      }).then(function (ok) {
+        if (!ok) return;
+        return del("/api/v1/website/media/" + id).then(function () {
+          toast(dual("تم حذف الوسيط.", "Media deleted."), "ok");
+          return renderAdminWebsite();
+        }).catch(adminError);
+      });
     }
 
     if (action === "end-stake") {

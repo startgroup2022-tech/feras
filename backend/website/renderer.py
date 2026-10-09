@@ -68,14 +68,14 @@ def _brand_mark() -> str:
     )
 
 
-def _brand_visual(lang: str, branding: dict | None) -> str:
+def _brand_visual(lang: str, branding: dict | None, logo_url: str | None = None) -> str:
     """The header logo slot: the uploaded logo, or the built-in fallback mark.
 
     The container has a fixed height and the image is constrained by
     ``object-fit: contain`` with a max width, so a logo of any aspect ratio or
     dimension can never distort or break the header layout.
     """
-    logo_url = (branding or {}).get("logo_url")
+    logo_url = logo_url or (branding or {}).get("logo_url")
     if logo_url:
         return (
             '<span class="brand-logo">'
@@ -85,17 +85,34 @@ def _brand_visual(lang: str, branding: dict | None) -> str:
     return f'<span class="brand-mark" data-brand-fallback>{_brand_mark()}</span>'
 
 
-def _nav_html(meta: PageMeta, branding: dict | None = None) -> str:
+def _nav_html(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
     lang = meta.lang
+    logo_url = None
+    brand_name = _brand(lang)
+    if cms is not None and cms.settings:
+        logo_url = cms.settings.get("logo_url")
+        brand_name = (cms.settings.get("site_name") or {}).get(lang) or brand_name
     links = []
-    for item in C.NAV:
-        path = item["path"] if lang == "en" else item["path_ar"]
-        active = ""
-        if item["key"] == meta.route or (
-            meta.route.startswith("market-service") and item["key"] == "services"
-        ):
-            active = ' class="is-active" aria-current="page"'
-        links.append(f'<a href="{e(path)}"{active}>{e(item["label"][lang])}</a>')
+    # A CMS header menu, when configured, replaces the built-in links but points
+    # only at validated destinations. An empty menu falls back to the V2 nav.
+    source = cms.header_menu if (cms is not None and cms.header_menu) else None
+    if source:
+        for item in source:
+            href = item["url"]
+            label = item["label"].get(lang) or item["label"].get("ar") or href
+            active = ""
+            if href == meta.canonical_path:
+                active = ' class="is-active" aria-current="page"'
+            links.append(f'<a href="{e(href)}"{active}>{e(label)}</a>')
+    else:
+        for item in C.NAV:
+            path = item["path"] if lang == "en" else item["path_ar"]
+            active = ""
+            if item["key"] == meta.route or (
+                meta.route.startswith("market-service") and item["key"] == "services"
+            ):
+                active = ' class="is-active" aria-current="page"'
+            links.append(f'<a href="{e(path)}"{active}>{e(item["label"][lang])}</a>')
 
     # Two explicit options so the active language reads as *selected* rather
     # than as a lone label that happens to link elsewhere.
@@ -113,10 +130,10 @@ def _nav_html(meta: PageMeta, branding: dict | None = None) -> str:
     return f"""
 <header class="site-header" data-header>
   <div class="container header-inner">
-    <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(_brand(lang))}">
-      {_brand_visual(lang, branding)}
+    <a class="brand" href="{e(C.PAGE_PATHS['home'][lang])}" aria-label="{e(brand_name)}">
+      {_brand_visual(lang, branding, logo_url)}
       <span class="brand-text">
-        <span class="brand-name">{e(_brand(lang))}</span>
+        <span class="brand-name">{e(brand_name)}</span>
         <span class="brand-sub">{e(_t("بوابة البحرين والسعودية", "Bahrain & Saudi Gateway", lang))}</span>
       </span>
     </a>
@@ -142,13 +159,39 @@ def _nav_html(meta: PageMeta, branding: dict | None = None) -> str:
 </header>"""
 
 
-def _footer_html(meta: PageMeta) -> str:
+def _footer_html(meta: PageMeta, cms=None) -> str:
     lang = meta.lang
-    nav_links = "".join(
-        f'<li><a href="{e(item["path"] if lang == "en" else item["path_ar"])}">'
-        f'{e(item["label"][lang])}</a></li>'
-        for item in C.NAV
-    )
+    brand_name = _brand(lang)
+    contact_lines = ""
+    if cms is not None and cms.settings:
+        brand_name = (cms.settings.get("site_name") or {}).get(lang) or brand_name
+        bits = []
+        if cms.settings.get("contact_email"):
+            bits.append(
+                f'<li>✉ <a href="mailto:{e(cms.settings["contact_email"])}">'
+                f'{e(cms.settings["contact_email"])}</a></li>'
+            )
+        if cms.settings.get("contact_phone"):
+            bits.append(f'<li>☎ {e(cms.settings["contact_phone"])}</li>')
+        if cms.settings.get("whatsapp_number"):
+            bits.append(f'<li>WhatsApp: {e(cms.settings["whatsapp_number"])}</li>')
+        if bits:
+            contact_lines = (
+                f'<div class="footer-col"><h2 class="footer-heading">'
+                f'{e(_t("تواصل", "Contact", lang))}</h2><ul>{"".join(bits)}</ul></div>'
+            )
+    if cms is not None and cms.footer_menu:
+        nav_links = "".join(
+            f'<li><a href="{e(item["url"])}">'
+            f'{e(item["label"].get(lang) or item["label"].get("ar") or item["url"])}</a></li>'
+            for item in cms.footer_menu
+        )
+    else:
+        nav_links = "".join(
+            f'<li><a href="{e(item["path"] if lang == "en" else item["path_ar"])}">'
+            f'{e(item["label"][lang])}</a></li>'
+            for item in C.NAV
+        )
     services_links = "".join(
         f'<li><a href="{e(C.market_service_path("bahrain", slug, lang))}">'
         f'{e(service["title"][lang])} — {e(C.market_label("bahrain", lang))}</a></li>'
@@ -161,7 +204,7 @@ def _footer_html(meta: PageMeta) -> str:
   <div class="container footer-inner">
     <div class="footer-brand">
       <span class="brand-mark brand-mark-lg">{_brand_mark()}</span>
-      <div class="brand-name">{e(_brand(lang))}</div>
+      <div class="brand-name">{e(brand_name)}</div>
       <p class="footer-tag">{e(_t("بوابتك للأعمال والاستثمار في البحرين والسعودية",
                                    "Your business and investment gateway in Bahrain and Saudi Arabia", lang))}</p>
     </div>
@@ -174,16 +217,17 @@ def _footer_html(meta: PageMeta) -> str:
         <h2 class="footer-heading">{e(_t('الخدمات حسب السوق', 'Services by market', lang))}</h2>
         <ul>{services_links}</ul>
       </div>
+      {contact_lines}
     </nav>
   </div>
   <div class="container footer-legal">
-    <p>&copy; {e(_t('سفير القابضة', 'Safir Holding', lang))} — {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
+    <p>&copy; {e(brand_name)} — {e(_t('جميع الحقوق محفوظة', 'All rights reserved', lang))}</p>
     <a href="{e('/' if lang == 'en' else '/ar')}">{e(_t('الرئيسية', 'Home', lang))}</a>
   </div>
 </footer>"""
 
 
-def render_page(meta: PageMeta, body: str, branding: dict | None = None) -> str:
+def render_page(meta: PageMeta, body: str, branding: dict | None = None, cms=None) -> str:
     """Compose a full HTML document for a resolved route."""
     lang = meta.lang
     direction = "rtl" if lang == "ar" else "ltr"
@@ -211,11 +255,11 @@ def render_page(meta: PageMeta, body: str, branding: dict | None = None) -> str:
 </head>
 <body class="site lang-{e(lang)}">
 <a class="skip-link" href="#main">{e(_t('تخطَّ إلى المحتوى', 'Skip to content', lang))}</a>
-{_nav_html(meta, branding)}
+{_nav_html(meta, branding, cms)}
 <main id="main" tabindex="-1">
 {body}
 </main>
-{_footer_html(meta)}
+{_footer_html(meta, cms)}
 <noscript>
   <div class="container"><p class="noscript-note">{e(_t(
     'يتطلب إرسال النماذج تفعيل JavaScript. يمكنك التواصل معنا عبر بيانات التواصل في صفحة «تواصل».',
@@ -367,7 +411,7 @@ def _faq_block(lang: str, pairs: list[tuple[str, str]]) -> str:
 # --------------------------------------------------------------------------
 # home
 # --------------------------------------------------------------------------
-def _home_body(lang: str) -> str:
+def _home_body(lang: str, cms_companies=None) -> str:
     journeys = [
         ("opportunities", C.SERVICES["opportunities"], "opportunities"),
         ("company-formation", C.SERVICES["company-formation"], "formation"),
@@ -474,7 +518,8 @@ def _home_body(lang: str) -> str:
 {_group_companies_section(lang,
     heading=_t('شركات المجموعة', 'Group Companies', lang),
     intro=_t('تضم محفظتنا شركات في قطاعات متنوعة، تقدم منتجات وخدمات متخصصة للأفراد والأعمال.',
-             'Our portfolio spans companies in diverse sectors, offering specialised products and services to individuals and businesses.', lang))}
+             'Our portfolio spans companies in diverse sectors, offering specialised products and services to individuals and businesses.', lang),
+    cms_companies=cms_companies)}
 
 <section class="section section-alt">
   <div class="container">
@@ -1028,16 +1073,56 @@ def _list_body(lang: str) -> str:
 # group / about / contact
 # --------------------------------------------------------------------------
 def _company_logo(company: dict, lang: str, *, large: bool = False) -> str:
-    """A neutral logo slot.
+    """The company logo, or a neutral placeholder when none is set.
 
-    Company logos were not supplied in the handoff, so this is deliberately a
-    neutral placeholder. It never invents a mark and never carries the word
-    "logo" as if it were the real one: it is a labelled empty slot that the
-    admin can later replace with an uploaded logo.
+    Company logos were not supplied in the handoff, so an unset logo is a
+    labelled empty slot -- never an invented mark. The admin can upload a real
+    logo from Website Management, which then renders here.
     """
     cls = "company-logo company-logo-lg" if large else "company-logo"
+    logo_url = company.get("logo")
+    if logo_url:
+        return (
+            f'<span class="{cls}"><img src="{e(logo_url)}" '
+            f'alt="{e(_localized_name(company, lang))}" loading="lazy"></span>'
+        )
     label = _t("الشعار", "Logo", lang)
     return f'<span class="{cls}" aria-hidden="true">{e(label)}</span>'
+
+
+def _cms_company_record(company: dict) -> dict:
+    """Shape a CMS company context into the flat record the renderer expects.
+
+    Missing English copy falls back to Arabic (never a fabricated translation),
+    matching the handoff rule that already governs the ``name_en: null`` case.
+    """
+    name_ar = company["name"]["ar"]
+    name_en = company["name"].get("en") or name_ar
+    about_ar = company["description"].get("ar") or ""
+    about_en = company["description"].get("en") or about_ar
+    card_ar = (company.get("activity") or {}).get("ar")
+    card_en = (company.get("activity") or {}).get("en") or card_ar
+    country = company.get("country") or ""
+    return {
+        "id": company["slug"],
+        "name_ar": name_ar,
+        "name_en": name_en,
+        "country_ar": country,
+        "country_en": country,
+        "area_ar": (company.get("location") or {}).get("ar"),
+        "area_en": (company.get("location") or {}).get("en"),
+        "phone": company.get("phone"),
+        "email": company.get("email"),
+        "whatsapp": company.get("whatsapp"),
+        "website": company.get("website"),
+        "logo": company.get("logo_url"),
+        "about_ar": about_ar,
+        "about_en": about_en,
+        "services_ar": [],
+        "services_en": [],
+        "card_ar": card_ar,
+        "card_en": card_en,
+    }
 
 
 def _localized_name(company: dict, lang: str) -> str:
@@ -1127,7 +1212,7 @@ def _company_detail_inner(company: dict, lang: str) -> str:
     )
 
 
-def _group_companies_section(lang: str, *, heading: str, intro: str) -> str:
+def _group_companies_section(lang: str, *, heading: str, intro: str, cms_companies=None) -> str:
     """The interactive group-companies component.
 
     Desktop: a selectable list (names) beside the selected company's detail.
@@ -1136,7 +1221,10 @@ def _group_companies_section(lang: str, *, heading: str, intro: str) -> str:
     names are always visible, with no horizontal scrolling and no filters, as
     the approved handoff requires. The first company is selected by default.
     """
-    companies = group_companies.ordered()
+    if cms_companies:
+        companies = [_cms_company_record(c) for c in cms_companies]
+    else:
+        companies = group_companies.ordered()
     choices = []
     panels = []
     for index, company in enumerate(companies):
@@ -1179,7 +1267,7 @@ def _group_companies_section(lang: str, *, heading: str, intro: str) -> str:
 </section>"""
 
 
-def _group_body(lang: str) -> str:
+def _group_body(lang: str, cms_companies=None) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
@@ -1191,7 +1279,8 @@ def _group_body(lang: str) -> str:
 {_group_companies_section(lang,
     heading=_t('شركات المجموعة', 'Group Companies', lang),
     intro=_t('اختر شركة لعرض نبذتها وقطاعها وبيانات التواصل المتاحة.',
-             'Select a company to view its overview, sector and available contact details.', lang))}
+             'Select a company to view its overview, sector and available contact details.', lang),
+    cms_companies=cms_companies)}
 <section class="section section-alt">
   <div class="container center">
     <h2 class="section-title">{e(_t('تبحث عن خدمة؟', 'Looking for a service?', lang))}</h2>
@@ -1255,6 +1344,42 @@ def _contact_body(lang: str) -> str:
 {_form_section(lang, "contact", "bahrain", None)}"""
 
 
+def maintenance_page(lang: str, message: str | None = None) -> str:
+    """A standalone maintenance notice (HTTP 503) for the public site.
+
+    Minimal on purpose: no nav, no CMS context, so it renders even when the
+    database is the very thing being maintained. Only the message is dynamic
+    and it is escaped.
+    """
+    direction = "rtl" if lang == "ar" else "ltr"
+    title = _t("الموقع تحت الصيانة", "Site under maintenance", lang)
+    body = message or _t(
+        "نعمل حاليًا على تحديث الموقع. يرجى المحاولة مرة أخرى بعد قليل.",
+        "We are currently updating the site. Please try again shortly.",
+        lang,
+    )
+    return f"""<!doctype html>
+<html lang="{e(lang)}" dir="{e(direction)}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{e(title)} — {e(_brand(lang))}</title>
+<link rel="stylesheet" href="/website/assets/styles.css">
+</head>
+<body class="site lang-{e(lang)}">
+<main id="main" tabindex="-1">
+<section class="page-hero">
+  <div class="container center">
+    <h1>{e(title)}</h1>
+    <p>{e(body)}</p>
+  </div>
+</section>
+</main>
+</body>
+</html>"""
+
+
 def not_found_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
@@ -1273,32 +1398,112 @@ def not_found_body(lang: str) -> str:
 # --------------------------------------------------------------------------
 # dispatch
 # --------------------------------------------------------------------------
-def _body_for(meta: PageMeta) -> str:
+def _cms_page_block(lang: str, page_ctx: dict | None) -> str:
+    """Extra published content for a route, rendered *after* the V2 body.
+
+    Additive by construction: with no published CMS page for the route this
+    returns an empty string and the built-in V2 content is the whole page.
+    Structured sections are escaped, never emitted as raw HTML.
+    """
+    if not page_ctx:
+        return ""
+    heading = (page_ctx.get("title") or {}).get(lang)
+    body = (page_ctx.get("content") or {}).get(lang)
+    parts = []
+    if heading:
+        parts.append(f'<h2 class="section-title">{e(heading)}</h2>')
+    if body:
+        parts.append(f'<div class="prose"><p>{e(body)}</p></div>')
+    for section in page_ctx.get("sections", []):
+        sec_heading = (section.get("heading") or {}).get(lang)
+        sec_body = (section.get("body") or {}).get(lang)
+        if sec_heading:
+            parts.append(f'<h3 class="section-title">{e(sec_heading)}</h3>')
+        if sec_body:
+            parts.append(f'<div class="prose"><p>{e(sec_body)}</p></div>')
+    if not parts:
+        return ""
+    return (
+        '<section class="section cms-section"><div class="container">'
+        + "".join(parts)
+        + "</div></section>"
+    )
+
+
+def _cms_slides_section(lang: str, slides: list) -> str:
+    """A CMS-managed hero carousel, rendered only when slides are published.
+
+    Additive: with no active slides this returns "" and the built-in hero is
+    unchanged. Slide copy and URLs are escaped; the image is constrained by CSS
+    so any uploaded aspect ratio is safe.
+    """
+    if not slides:
+        return ""
+    items = []
+    for slide in slides:
+        title = (slide.get("title") or {}).get(lang)
+        desc = (slide.get("description") or {}).get(lang)
+        image = slide.get("image_url")
+        cta_label = (slide.get("cta_label") or {}).get(lang)
+        cta_url = slide.get("cta_url")
+        media = (
+            f'<img src="{e(image)}" alt="{e(title or "")}" loading="lazy">'
+            if image
+            else ""
+        )
+        actions = ""
+        if cta_label and cta_url:
+            actions = f'<a class="btn btn-primary" href="{e(cta_url)}">{e(cta_label)}</a>'
+        items.append(
+            f'<article class="cms-slide">{media}'
+            f'<div class="cms-slide-body">'
+            + (f'<h3>{e(title)}</h3>' if title else "")
+            + (f'<p>{e(desc)}</p>' if desc else "")
+            + actions
+            + "</div></article>"
+        )
+    return (
+        '<section class="section cms-slides"><div class="container">'
+        f'<div class="cms-slide-track">{"".join(items)}</div>'
+        "</div></section>"
+    )
+
+
+def _body_for(meta: PageMeta, cms=None) -> str:
     route = meta.route
     lang = meta.lang
+    cms_companies = None
+    if cms is not None and cms.companies:
+        cms_companies = cms.companies
     if route == "home":
-        return _home_body(lang)
-    if route.startswith("market-service:"):
+        body = _home_body(lang, cms_companies)
+        if cms is not None and cms.slides:
+            body = _cms_slides_section(lang, cms.slides) + body
+    elif route.startswith("market-service:"):
         _, market, slug = route.split(":", 2)
-        return _market_service_body(lang, market, slug)
-    if route == "services":
-        return _services_body(lang)
-    if route == "opportunities":
-        return _opportunities_body(lang)
-    if route == "list-your-business":
-        return _list_body(lang)
-    if route == "group":
-        return _group_body(lang)
-    if route == "about":
-        return _about_body(lang)
-    if route == "contact":
-        return _contact_body(lang)
-    return not_found_body(lang)
+        body = _market_service_body(lang, market, slug)
+    elif route == "services":
+        body = _services_body(lang)
+    elif route == "opportunities":
+        body = _opportunities_body(lang)
+    elif route == "list-your-business":
+        body = _list_body(lang)
+    elif route == "group":
+        body = _group_body(lang, cms_companies)
+    elif route == "about":
+        body = _about_body(lang)
+    elif route == "contact":
+        body = _contact_body(lang)
+    else:
+        body = not_found_body(lang)
+    if cms is not None and cms.pages:
+        body += _cms_page_block(lang, cms.pages.get(route))
+    return body
 
 
-def render(meta: PageMeta, branding: dict | None = None) -> str:
+def render(meta: PageMeta, branding: dict | None = None, cms=None) -> str:
     """Render a full page for a resolved route."""
-    return render_page(meta, _body_for(meta), branding)
+    return render_page(meta, _body_for(meta, cms), branding, cms)
 
 
-__all__ = ["render", "render_page", "not_found_body", "e"]
+__all__ = ["render", "render_page", "maintenance_page", "not_found_body", "e"]

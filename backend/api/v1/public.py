@@ -49,6 +49,7 @@ from backend.schemas import (
 )
 from backend.db.models.enums import WebsiteServiceType
 from backend.services import audit_service, branding_service, website_lead_service
+from backend.services import website_cms_service
 
 logger = logging.getLogger("safir.website")
 
@@ -311,6 +312,25 @@ def public_branding_logo(db: DbSession) -> Response:
     path, content_type = branding_service.resolve_logo(db)
     if path is None:
         raise NotFoundError("No logo is configured.")
+    return FileResponse(
+        str(path),
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+# --------------------------------------------------------------------------
+# website CMS media (public read)
+# --------------------------------------------------------------------------
+@router.get("/website/media/{media_id}", include_in_schema=False)
+def public_website_media(media_id: int, db: DbSession) -> Response:
+    """Stream a *public* CMS media asset, or 404 otherwise.
+
+    Unauthenticated by design, so the boundary matters: the service only
+    resolves assets whose ``visibility`` is ``public``. A private asset (or an
+    id that does not exist) is indistinguishable from a missing file.
+    """
+    path, content_type = website_cms_service.resolve_media_for_public(db, media_id)
     return FileResponse(
         str(path),
         media_type=content_type or "application/octet-stream",

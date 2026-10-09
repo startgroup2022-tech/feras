@@ -35,6 +35,7 @@ from backend.services import branding_service
 from backend.website import pages as website_pages
 from backend.website import renderer as website_renderer
 from backend.website import seo as website_seo
+from backend.website import cms_context as website_cms_context
 
 logger = logging.getLogger("safir.readiness")
 
@@ -200,17 +201,44 @@ def _public_branding() -> dict | None:
         db.close()
 
 
+def _public_cms():
+    """Published CMS context for the public shell, or ``None`` on any failure.
+
+    Best-effort by design: an empty or unreachable CMS degrades to the built-in
+    V2 content instead of breaking a marketing page.
+    """
+    db = SessionLocal()
+    try:
+        return website_cms_context.load(db)
+    except Exception:  # noqa: BLE001 - never break a public page over the CMS
+        logger.warning("Website CMS lookup failed; using built-in content.", exc_info=True)
+        return None
+    finally:
+        db.close()
+
+
+def _maintenance_state() -> tuple[bool, str | None, str | None]:
+    """Read the CMS maintenance flag, degrading to "off" on any failure."""
+    db = SessionLocal()
+    try:
+        return website_cms_context.maintenance(db)
+    except Exception:  # noqa: BLE001
+        logger.warning("Maintenance lookup failed; serving the site.", exc_info=True)
+        return False, None, None
+
+
 def _render_or_404(path: str) -> Response:
     meta = website_pages.resolve_route(path)
     if meta is None:
         meta = website_pages.not_found_meta("ar")
         return Response(
-            website_renderer.render(meta, _public_branding()),
+            website_renderer.render(meta, _public_branding(), _public_cms()),
             status_code=404,
             media_type="text/html",
         )
     return Response(
-        website_renderer.render(meta, _public_branding()), media_type="text/html"
+        website_renderer.render(meta, _public_branding(), _public_cms()),
+        media_type="text/html",
     )
 
 
@@ -246,6 +274,16 @@ def _mount_website(app: FastAPI) -> None:
             # Development: the platform still owns the root and its assets.
             if path == "/" or path in _PLATFORM_ASSETS or path.startswith("/assets/"):
                 return _serve_platform_asset(path)
+        maintenance_on, message_ar, message_en = _maintenance_state()
+        if maintenance_on:
+            lang = "en" if (path == "/en" or path.startswith("/en/")) else "ar"
+            message = message_en if lang == "en" else message_ar
+            return Response(
+                website_renderer.maintenance_page(lang, message),
+                status_code=503,
+                media_type="text/html",
+                headers={"Retry-After": "3600"},
+            )
         return _render_or_404(path)
 
 

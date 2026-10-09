@@ -50,6 +50,18 @@ from backend.db.models.website import (
     WebsiteLeadAttachment,
     WebsiteOpportunity,
 )
+from backend.db.models.website_cms import (
+    WebsiteCompany,
+    WebsiteContentRevision,
+    WebsiteContentSection,
+    WebsiteMedia,
+    WebsiteMenu,
+    WebsitePage,
+    WebsiteSeoMeta,
+    WebsiteService,
+    WebsiteSettings,
+    WebsiteSlide,
+)
 
 __all__ = [
     "Base",
@@ -96,4 +108,15 @@ __all__ = [
     "WebsiteLead",
     "WebsiteLeadAttachment",
     "WebsiteOpportunity",
+    # Phase 11: website CMS
+    "WebsiteSettings",
+    "WebsiteSlide",
+    "WebsiteMedia",
+    "WebsitePage",
+    "WebsiteContentSection",
+    "WebsiteMenu",
+    "WebsiteCompany",
+    "WebsiteService",
+    "WebsiteSeoMeta",
+    "WebsiteContentRevision",
 ]

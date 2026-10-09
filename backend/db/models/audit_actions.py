@@ -138,3 +138,14 @@ class AuditAction:
     # public website branding (logo)
     BRANDING_LOGO_UPDATED = "branding.logo_updated"
     BRANDING_LOGO_REMOVED = "branding.logo_removed"
+
+    # Phase 11: website CMS
+    WEBSITE_SETTINGS_UPDATED = "website.settings_updated"
+    WEBSITE_CONTENT_CREATED = "website.content_created"
+    WEBSITE_CONTENT_UPDATED = "website.content_updated"
+    WEBSITE_CONTENT_PUBLISHED = "website.content_published"
+    WEBSITE_CONTENT_UNPUBLISHED = "website.content_unpublished"
+    WEBSITE_CONTENT_DELETED = "website.content_deleted"
+    WEBSITE_MEDIA_UPLOADED = "website.media_uploaded"
+    WEBSITE_MEDIA_DELETED = "website.media_deleted"
+    WEBSITE_MEDIA_VISIBILITY_CHANGED = "website.media_visibility_changed"

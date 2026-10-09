@@ -18,6 +18,7 @@ from backend.api.v1 import (
     submissions,
     support,
     users,
+    website_cms,
     workflows,
 )
 
@@ -44,5 +45,7 @@ api_router.include_router(integrations.router)
 # Phase 10: public website (unauthenticated) and internal lead handling
 api_router.include_router(public.router)
 api_router.include_router(leads.router)
+# Phase 11: Website Management (CMS)
+api_router.include_router(website_cms.router)
 
 __all__ = ["api_router"]

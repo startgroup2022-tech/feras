@@ -128,6 +128,17 @@ class Perm:
     OPPORTUNITY_REVIEW = "website_opportunity.review"  # review submitted listings
     OPPORTUNITY_PUBLISH = "website_opportunity.publish"  # publish a listing publicly
 
+    # ---- Phase 11: public website CMS (Website Management) ----
+    # Deliberately granular: editing content, uploading media, publishing and
+    # changing settings are separate powers, so a marketing editor can draft
+    # without being able to publish or alter site-wide configuration.
+    WEBSITE_MANAGE = "website.manage"  # master switch for the CMS module
+    WEBSITE_CONTENT_READ = "website.content.read"  # view pages/sections/slides
+    WEBSITE_CONTENT_WRITE = "website.content.write"  # create/edit content
+    WEBSITE_CONTENT_PUBLISH = "website.content.publish"  # publish/unpublish content
+    WEBSITE_MEDIA_MANAGE = "website.media.manage"  # upload/replace/delete media
+    WEBSITE_SETTINGS_MANAGE = "website.settings.manage"  # site-wide settings
+
 
 ALL_PERMISSIONS: dict[str, str] = {
     Perm.USER_READ: "View users",
@@ -210,6 +221,12 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.LEAD_STATUS_CHANGE: "Move a website lead through its pipeline",
     Perm.OPPORTUNITY_REVIEW: "Review submitted business listings",
     Perm.OPPORTUNITY_PUBLISH: "Publish a business listing on the public website",
+    Perm.WEBSITE_MANAGE: "Access the Website Management module",
+    Perm.WEBSITE_CONTENT_READ: "View website pages, sections and slides",
+    Perm.WEBSITE_CONTENT_WRITE: "Create and edit website content",
+    Perm.WEBSITE_CONTENT_PUBLISH: "Publish or unpublish website content",
+    Perm.WEBSITE_MEDIA_MANAGE: "Upload, replace and delete website media",
+    Perm.WEBSITE_SETTINGS_MANAGE: "Change site-wide website settings and SEO defaults",
 }
 
 
@@ -457,6 +474,12 @@ MARKETING = _OPERATOR_READ | {
     Perm.LEAD_READ,
     Perm.LEAD_STATUS_CHANGE,
     Perm.OPPORTUNITY_REVIEW,
+    # Website Management: marketing drafts and uploads, but publishing and
+    # site-wide settings stay with Holding administration.
+    Perm.WEBSITE_MANAGE,
+    Perm.WEBSITE_CONTENT_READ,
+    Perm.WEBSITE_CONTENT_WRITE,
+    Perm.WEBSITE_MEDIA_MANAGE,
 }
 
 DESIGNER = _OPERATOR_READ | {
