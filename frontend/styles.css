@@ -828,6 +828,23 @@ body:not(.authed) .stage-wrap{display:none;}
   .av-toolbar{width:100%;}
   .table th:nth-child(3),.table td:nth-child(3){display:none;}
   .login-card{padding:26px 20px 24px;}
+  /* The header collapses to stacked rows; the action cluster keeps all of its
+     controls on one line and is allowed to take the full row rather than
+     overflowing (which previously pushed Sign out off-screen). */
+  .header-inner{padding:8px 12px;gap:8px;}
+  .h-actions{flex:0 0 auto;flex-wrap:nowrap;gap:6px;}
+}
+@media (max-width:480px){
+  /* On phones the action cluster is wider than the viewport unless the
+     profile text and the Sign out label collapse. Nothing is removed: the
+     profile stays reachable (avatar + title) and Sign out keeps its icon and
+     accessible title, so every control remains usable. */
+  .brand{padding-inline-end:14px;}
+  .p-meta{display:none;}
+  .profile{padding:4px;}
+  html.lang-en .profile{padding:4px;}
+  .logout-btn{padding:8px;}
+  .logout-btn span{display:none;}
 }
 
 

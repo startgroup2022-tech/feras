@@ -396,6 +396,14 @@ The public website is a second, distinct experience in the same repo and origin,
   Roles & Permissions UI renders them with `dual()` so a language switch
   updates the role card without a reload. `tests/test_rbac.py` asserts every
   definition is bilingual and the endpoint returns both descriptions.
+- **Platform header on phones** — the internal platform `.h-actions` cluster
+  (language · search · notifications · messages · profile · sign-out) is wider
+  than a phone viewport. A `@media (max-width:560px)` rule lets the cluster take
+  the full row, and `@media (max-width:480px)` collapses the profile text
+  (`.p-meta`) and the Sign out label (`.logout-btn span`) so nothing is pushed
+  off-screen. Controls are never removed: Sign out keeps its icon and
+  `data-title-*`/`title`, so it stays reachable in RTL and LTR. Regression:
+  `tests/test_website_pages.py::test_platform_header_keeps_every_control_reachable_on_phones`.
 - **Avatar initials** — department chips use `deptInitialHtml()` (Latin
   initials under `lang-en`, Arabic under `lang-ar`); company/user avatars keep
   the first letter of the Arabic name as a stable identity mark.

@@ -315,6 +315,30 @@ def test_platform_no_longer_scales_the_board_to_fit(client):
     assert "body.export .stage" in css
 
 
+def test_platform_header_keeps_every_control_reachable_on_phones(client):
+    """The platform header must not overflow or clip a control on small screens.
+
+    Regression: the action cluster (language, search, notifications, messages,
+    profile, sign-out) was wider than a phone viewport, so at <=480px
+    ``#logoutBtn`` was pushed past the right edge and became unreachable. The
+    header must collapse the profile text and the sign-out label so every
+    control stays on screen without horizontal overflow, in both directions.
+    """
+    css = client.get("/platform/styles.css").text
+    # A <=480px reflow exists and collapses the wide header pieces.
+    assert "@media (max-width:480px)" in css
+    block = css.split("@media (max-width:480px)", 1)[1]
+    assert ".p-meta{display:none;}" in block
+    assert ".logout-btn{padding:8px;}" in block
+    assert ".logout-btn span{display:none;}" in block
+    # The controls themselves are still present in the markup (only the
+    # decorative label is hidden, so Sign out stays operable via its icon/title).
+    html = client.get("/platform/").text
+    for control in ("id=\"logoutBtn\"", "id=\"searchBtn\"", "id=\"notifBtn\"",
+                    "id=\"msgBtn\"", "class=\"profile\"", "class=\"lang-switch\""):
+        assert control in html
+
+
 # --------------------------------------------------------------------------
 # content integrity
 # --------------------------------------------------------------------------
