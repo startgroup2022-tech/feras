@@ -1,0 +1,23 @@
+# Safir Holding 2027 — backend runtime dependencies.
+# Phase 1: FastAPI + SQLAlchemy + Alembic, JWT auth, SQLite for local dev.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0
+
+# Database drivers
+# SQLite (development) uses the standard library; no extra package is needed.
+# PostgreSQL (staging/production) uses the psycopg 3 driver via
+# ``DATABASE_URL=postgresql+psycopg://...``. The ``[binary]`` extra ships a
+# prebuilt wheel so no system libpq build step is required.
+psycopg[binary]==3.3.6
+
+# Auth
+PyJWT==2.10.1
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+python-multipart==0.0.20
