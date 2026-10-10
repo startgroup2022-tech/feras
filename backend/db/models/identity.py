@@ -27,6 +27,7 @@ from backend.db.models.enums import (
 
 if TYPE_CHECKING:
     from backend.db.models.ai import AIConversation
+    from backend.db.models.financial import FinancialPeriod
     from backend.db.models.report import MonthlyReport
     from backend.db.models.support import SupportRequest
 
@@ -113,6 +114,9 @@ class Company(Base, TimestampMixin):
         back_populates="company", cascade="all, delete-orphan"
     )
     monthly_reports: Mapped[list["MonthlyReport"]] = relationship(
+        back_populates="company", cascade="all, delete-orphan"
+    )
+    financial_periods: Mapped[list["FinancialPeriod"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"
     )
     support_requests: Mapped[list["SupportRequest"]] = relationship(

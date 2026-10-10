@@ -51,6 +51,71 @@ class FinancialReviewStatus(str, enum.Enum):
     FLAGGED = "flagged"
 
 
+# --------------------------------------------------------------------------
+# Execution 02: subsidiary financial summary workflow (spec section 14.1)
+# --------------------------------------------------------------------------
+class FinancialSummaryStatus(str, enum.Enum):
+    """Lifecycle of one financial summary *version* (spec Table 68).
+
+    ``DRAFT``            -- the manager is still assembling it (no notice).
+    ``SUBMITTED``        -- sent to the accountant for review (للمراجعة).
+    ``CORRECTION_REQUIRED`` -- returned by the accountant with a mandatory note
+                              (مطلوب تصحيح); the manager corrects and resubmits.
+    ``APPROVED``         -- approved and closed; becomes effective for reporting.
+
+    A *corrective* version is a fresh row that starts at ``DRAFT`` again and
+    links back to the approved version it corrects; until it is approved the
+    previous approved version stays the single effective one.
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    CORRECTION_REQUIRED = "correction_required"
+    APPROVED = "approved"
+
+
+class FinancialItemCategory(str, enum.Enum):
+    """Approved special-item categories (spec S06 / F-04)."""
+
+    WITHDRAWAL = "withdrawal"  # مسحوبات
+    TRANSFER = "transfer"  # تحويلات
+    LOAN = "loan"  # قروض
+    SETTLEMENT = "settlement"  # تسويات
+    SERVICE = "service"  # بنود خدمية معتمدة بقرار مالك
+    OTHER = "other"
+
+
+class FinancialItemKind(str, enum.Enum):
+    """How an item affects the period result (spec section 15.1).
+
+    ``REVENUE`` / ``EXPENSE`` feed the effective totals when their inclusion
+    rule is ``ADDED``. ``OTHER`` (e.g. a transfer, a withdrawal, a loan) never
+    changes the result automatically -- a transfer to the Holding is *not*
+    revenue.
+    """
+
+    REVENUE = "revenue"
+    EXPENSE = "expense"
+    OTHER = "other"
+
+
+class FinancialInclusionRule(str, enum.Enum):
+    """Whether an item is already inside the entered totals or added to them."""
+
+    INCLUDED = "included"  # مشمول: already counted, must not be added twice
+    ADDED = "added"  # مضاف: added on top of the entered totals
+
+
+class FinancialReviewAction(str, enum.Enum):
+    """The accountant's (or manager's) recorded decisions on a version."""
+
+    SUBMITTED = "submitted"
+    RETURNED = "returned"
+    RESUBMITTED = "resubmitted"
+    APPROVED = "approved"
+    CORRECTION_CREATED = "correction_created"
+
+
 class SupportCategory(str, enum.Enum):
     ACCOUNTING = "accounting"
     BUSINESS_DEVELOPMENT = "business_development"
@@ -272,6 +337,11 @@ class NotificationType(str, enum.Enum):
     DOCUMENT_EXPIRING = "document.expiring"
     DOCUMENT_EXPIRED = "document.expired"
     REPORT_SUBMITTED = "report.submitted"
+    # Execution 02: subsidiary financial summary workflow
+    FINANCIAL_SUMMARY_SUBMITTED = "financial_summary.submitted"
+    FINANCIAL_SUMMARY_RETURNED = "financial_summary.returned"
+    FINANCIAL_SUMMARY_RESUBMITTED = "financial_summary.resubmitted"
+    FINANCIAL_SUMMARY_APPROVED = "financial_summary.approved"
     SUPPORT_ASSIGNED = "support.assigned"
     SUPPORT_STATUS_CHANGED = "support.status_changed"
     SYSTEM = "system"

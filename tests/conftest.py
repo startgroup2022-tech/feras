@@ -34,6 +34,12 @@ from backend.db.models import (  # noqa: E402
     Document,
     DocumentCategory,
     DynamicForm,
+    FinancialBankAttachment,
+    FinancialItemDefinition,
+    FinancialPeriod,
+    FinancialReviewAction,
+    FinancialSummaryItem,
+    FinancialSummaryVersion,
     FormCompany,
     FormField,
     FormRequirement,
@@ -135,6 +141,13 @@ def _clean_data(_database):
             AIMessage,
             AIConversation,
             AuditLog,
+            # Execution 02: financial summary workflow (children before parents)
+            FinancialSummaryItem,
+            FinancialBankAttachment,
+            FinancialReviewAction,
+            FinancialSummaryVersion,
+            FinancialPeriod,
+            FinancialItemDefinition,
             SupportRequest,
             MonthlyReport,
             UserCompanyAccess,
@@ -306,6 +319,32 @@ def world(db, make_company, make_user, make_report, make_request):
         alpha_req=alpha_req,
         beta_req=beta_req,
     )
+
+
+# --------------------------------------------------------------------------
+# Execution 02: financial summary world
+# --------------------------------------------------------------------------
+@pytest.fixture
+def financial_world(db, make_company, make_user):
+    """Two companies with a manager, an accountant, an owner and a BD reader."""
+    alpha = make_company("ALPHA", "شركة ألفا")
+    beta = make_company("BETA", "شركة بيتا")
+
+    alpha_mgr = make_user("alpha.fin@corp.sa", "company_manager", [alpha])
+    beta_mgr = make_user("beta.fin@corp.sa", "company_manager", [beta])
+    accountant = make_user("acc.fin@corp.sa", "accountant")
+    owner = make_user("owner.fin@corp.sa", "holding_owner")
+    bd = make_user("bd.fin@corp.sa", "business_development")
+
+    return {
+        "alpha": alpha,
+        "beta": beta,
+        "alpha_mgr": alpha_mgr,
+        "beta_mgr": beta_mgr,
+        "accountant": accountant,
+        "owner": owner,
+        "bd": bd,
+    }
 
 
 # --------------------------------------------------------------------------

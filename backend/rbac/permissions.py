@@ -52,6 +52,17 @@ class Perm:
     FINANCIAL_REVIEW_READ = "financial_review.read"
     FINANCIAL_REVIEW_WRITE = "financial_review.write"
 
+    # ---- Execution 02: subsidiary financial summary workflow (F-03/F-04) ----
+    FINANCIAL_SUMMARY_READ_OWN = "financial_summary.read_own"  # read your companies' summaries
+    FINANCIAL_SUMMARY_READ_ALL = "financial_summary.read_all"  # read every company's summaries
+    FINANCIAL_SUMMARY_CREATE = "financial_summary.create"  # create a summary draft
+    FINANCIAL_SUMMARY_UPDATE = "financial_summary.update"  # edit a summary draft / return
+    FINANCIAL_SUMMARY_SUBMIT = "financial_summary.submit"  # submit / resubmit for review
+    FINANCIAL_SUMMARY_CORRECT = "financial_summary.correct"  # create a corrective version
+    FINANCIAL_ITEM_MANAGE = "financial_item.manage"  # manage special-item definitions
+    FINANCIAL_REVIEW_ACT = "financial_review.act"  # approve / return a submitted summary
+    FINANCIAL_BANK_READ = "financial_summary.bank_read"  # view a private bank statement
+
     # ---- support requests ----
     SUPPORT_READ_OWN = "support_request.read_own"
     SUPPORT_READ_ALL = "support_request.read_all"
@@ -171,6 +182,15 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.REPORT_DELETE: "Delete a monthly report draft",
     Perm.FINANCIAL_REVIEW_READ: "Read financial reviews",
     Perm.FINANCIAL_REVIEW_WRITE: "Verify and flag financial data",
+    Perm.FINANCIAL_SUMMARY_READ_OWN: "Read financial summaries for accessible companies",
+    Perm.FINANCIAL_SUMMARY_READ_ALL: "Read financial summaries across all companies",
+    Perm.FINANCIAL_SUMMARY_CREATE: "Create a monthly financial summary draft",
+    Perm.FINANCIAL_SUMMARY_UPDATE: "Update a financial summary draft",
+    Perm.FINANCIAL_SUMMARY_SUBMIT: "Submit a financial summary for accountant review",
+    Perm.FINANCIAL_SUMMARY_CORRECT: "Create a corrective version of an approved summary",
+    Perm.FINANCIAL_ITEM_MANAGE: "Manage special financial item definitions",
+    Perm.FINANCIAL_REVIEW_ACT: "Approve or return a submitted financial summary",
+    Perm.FINANCIAL_BANK_READ: "View the private bank statement of a summary",
     Perm.SUPPORT_READ_OWN: "Read support requests for accessible companies",
     Perm.SUPPORT_READ_ALL: "Read support requests across all companies",
     Perm.SUPPORT_CREATE: "Raise a support request",
@@ -275,6 +295,14 @@ _OPERATOR_READ = {
 HOLDING_FINANCE = _HOLDING_READ | _OPERATOR_READ | {
     Perm.FINANCIAL_REVIEW_READ,
     Perm.FINANCIAL_REVIEW_WRITE,
+    Perm.FINANCIAL_SUMMARY_READ_ALL,
+    Perm.FINANCIAL_SUMMARY_CREATE,
+    Perm.FINANCIAL_SUMMARY_UPDATE,
+    Perm.FINANCIAL_SUMMARY_SUBMIT,
+    Perm.FINANCIAL_SUMMARY_CORRECT,
+    Perm.FINANCIAL_ITEM_MANAGE,
+    Perm.FINANCIAL_REVIEW_ACT,
+    Perm.FINANCIAL_BANK_READ,
     Perm.SUPPORT_READ_ALL,
     Perm.SUPPORT_COMMENT,
     Perm.USER_READ_ALL,
@@ -324,6 +352,13 @@ COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.REPORT_SUBMIT,
     Perm.REPORT_DELETE,
     Perm.FINANCIAL_REVIEW_READ,
+    Perm.FINANCIAL_SUMMARY_READ_OWN,
+    Perm.FINANCIAL_SUMMARY_CREATE,
+    Perm.FINANCIAL_SUMMARY_UPDATE,
+    Perm.FINANCIAL_SUMMARY_SUBMIT,
+    Perm.FINANCIAL_SUMMARY_CORRECT,
+    Perm.FINANCIAL_ITEM_MANAGE,
+    Perm.FINANCIAL_BANK_READ,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
@@ -413,6 +448,13 @@ COMPANY_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.REPORT_UPDATE,
     Perm.REPORT_SUBMIT,
     Perm.REPORT_DELETE,
+    Perm.FINANCIAL_SUMMARY_READ_OWN,
+    Perm.FINANCIAL_SUMMARY_CREATE,
+    Perm.FINANCIAL_SUMMARY_UPDATE,
+    Perm.FINANCIAL_SUMMARY_SUBMIT,
+    Perm.FINANCIAL_SUMMARY_CORRECT,
+    Perm.FINANCIAL_ITEM_MANAGE,
+    Perm.FINANCIAL_BANK_READ,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
@@ -428,6 +470,11 @@ ACCOUNTANT = _OPERATOR_READ | {
     Perm.REPORT_READ_ALL,
     Perm.FINANCIAL_REVIEW_READ,
     Perm.FINANCIAL_REVIEW_WRITE,
+    # Execution 02: the accountant reviews and decides, but never edits the
+    # manager's entered financial figures (no create/update/submit/correct).
+    Perm.FINANCIAL_SUMMARY_READ_ALL,
+    Perm.FINANCIAL_REVIEW_ACT,
+    Perm.FINANCIAL_BANK_READ,
     Perm.SUPPORT_READ_ALL,
     Perm.SUPPORT_COMMENT,
     Perm.SUPPORT_STATUS_CHANGE,
@@ -446,6 +493,9 @@ ACCOUNTANT = _OPERATOR_READ | {
 BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
+    # Read-only financial view (spec: BD may read, never approve or edit, and
+    # the private bank statement is not part of their view).
+    Perm.FINANCIAL_SUMMARY_READ_ALL,
     Perm.SUPPORT_READ_ALL,
     Perm.SUPPORT_COMMENT,
     Perm.SUPPORT_STATUS_CHANGE,

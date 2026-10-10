@@ -32,7 +32,10 @@ def upgrade() -> None:
                 "is_public",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                # ``sa.false()`` compiles to ``DEFAULT false`` on PostgreSQL.
+                # ``sa.text("0")`` produced ``DEFAULT 0``, which is not the
+                # canonical boolean literal and is fragile across PG versions.
+                server_default=sa.false(),
             )
         )
 

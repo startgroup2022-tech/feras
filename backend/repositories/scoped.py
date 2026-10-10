@@ -14,8 +14,12 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.db.models.enums import ReportStatus, SupportStatus
+from backend.db.models.enums import FinancialSummaryStatus, ReportStatus, SupportStatus
 from backend.db.models.identity import Company, User
+from backend.db.models.financial import (
+    FinancialPeriod,
+    FinancialSummaryVersion,
+)
 from backend.db.models.report import MonthlyReport, MonthlyReportFinancialReview
 from backend.db.models.support import SupportRequest
 from backend.rbac.authorization import accessible_company_ids
@@ -192,3 +196,102 @@ class SupportRequestRepository:
         )
         stmt = _apply_company_scope(stmt, SupportRequest.company_id, user)
         return int(self.db.execute(stmt).scalar_one())
+
+
+class FinancialPeriodRepository:
+    """Company-scoped access to financial periods and their versions."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def list_for_user(
+        self,
+        user: User,
+        *,
+        company_id: int | None = None,
+        year: int | None = None,
+        status: str | None = None,
+    ) -> list[FinancialPeriod]:
+        stmt = select(FinancialPeriod).order_by(
+            FinancialPeriod.period_year.desc(),
+            FinancialPeriod.period_month.desc(),
+            FinancialPeriod.company_id,
+        )
+        stmt = _apply_company_scope(stmt, FinancialPeriod.company_id, user)
+        if company_id is not None:
+            stmt = stmt.where(FinancialPeriod.company_id == company_id)
+        if year is not None:
+            stmt = stmt.where(FinancialPeriod.period_year == year)
+        if status is not None:
+            # Filter to periods that have at least one version in this status.
+            stmt = stmt.where(
+                FinancialPeriod.id.in_(
+                    select(FinancialSummaryVersion.period_id).where(
+                        FinancialSummaryVersion.status == status
+                    )
+                )
+            )
+        return list(self.db.execute(stmt).scalars())
+
+    def get_for_user(self, user: User, period_id: int) -> FinancialPeriod | None:
+        stmt = select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+        stmt = _apply_company_scope(stmt, FinancialPeriod.company_id, user)
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_by_company_period(
+        self, company_id: int, year: int, month: int
+    ) -> FinancialPeriod | None:
+        return self.db.execute(
+            select(FinancialPeriod).where(
+                FinancialPeriod.company_id == company_id,
+                FinancialPeriod.period_year == year,
+                FinancialPeriod.period_month == month,
+            )
+        ).scalar_one_or_none()
+
+
+class FinancialVersionRepository:
+    """Company-scoped access to individual summary versions."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def get_for_user(self, user: User, version_id: int) -> FinancialSummaryVersion | None:
+        stmt = select(FinancialSummaryVersion).where(
+            FinancialSummaryVersion.id == version_id
+        )
+        stmt = _apply_company_scope(stmt, FinancialSummaryVersion.company_id, user)
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def list_for_period(self, period_id: int) -> list[FinancialSummaryVersion]:
+        stmt = (
+            select(FinancialSummaryVersion)
+            .where(FinancialSummaryVersion.period_id == period_id)
+            .order_by(FinancialSummaryVersion.version_number.desc())
+        )
+        return list(self.db.execute(stmt).scalars())
+
+    def latest_number(self, period_id: int) -> int:
+        value = self.db.execute(
+            select(func.max(FinancialSummaryVersion.version_number)).where(
+                FinancialSummaryVersion.period_id == period_id
+            )
+        ).scalar_one()
+        return int(value or 0)
+
+    def pending_for_user(self, user: User) -> list[FinancialSummaryVersion]:
+        """Versions awaiting an accountant decision, within the caller's scope."""
+        stmt = (
+            select(FinancialSummaryVersion)
+            .where(
+                FinancialSummaryVersion.status.in_(
+                    [
+                        FinancialSummaryStatus.SUBMITTED.value,
+                        FinancialSummaryStatus.CORRECTION_REQUIRED.value,
+                    ]
+                )
+            )
+            .order_by(FinancialSummaryVersion.submitted_at.asc())
+        )
+        stmt = _apply_company_scope(stmt, FinancialSummaryVersion.company_id, user)
+        return list(self.db.execute(stmt).scalars())

@@ -134,12 +134,13 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the listing-photo visibility builds on the website
-    # CMS, which builds on the bilingual role description, which builds on
-    # branding, which builds on phase 10, which builds on phase 6-9, which
-    # builds on phase 3, which builds on phase 2, which builds on the initial
-    # schema -- no branches.
-    assert head == "d1e2f3a4b5c6"
+    # A single linear chain: the Execution 02 financial workflow builds on the
+    # listing-photo visibility, which builds on the website CMS, which builds on
+    # the bilingual role description, which builds on branding, which builds on
+    # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
+    # on phase 2, which builds on the initial schema -- no branches.
+    assert head == "58ef167fa236"
+    assert revisions["58ef167fa236"] == "d1e2f3a4b5c6"
     assert revisions["d1e2f3a4b5c6"] == "a1b2c3d4e5f6"
     assert revisions["a1b2c3d4e5f6"] == "c4a9e1f2b3d7"
     assert revisions["c4a9e1f2b3d7"] == "b7f1a7747880"

@@ -8,6 +8,14 @@ whenever a new model module is added.
 from backend.db.base import Base
 from backend.db.models.ai import AIMessage, AIConversation, AuditLog
 from backend.db.models.documents import Document, DocumentCategory
+from backend.db.models.financial import (
+    FinancialBankAttachment,
+    FinancialItemDefinition,
+    FinancialPeriod,
+    FinancialReviewAction,
+    FinancialSummaryItem,
+    FinancialSummaryVersion,
+)
 from backend.db.models.forms import (
     DynamicForm,
     FormCompany,
@@ -77,6 +85,13 @@ __all__ = [
     "MonthlyReport",
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",
+    # Execution 02: subsidiary financial summary workflow
+    "FinancialPeriod",
+    "FinancialSummaryVersion",
+    "FinancialItemDefinition",
+    "FinancialSummaryItem",
+    "FinancialBankAttachment",
+    "FinancialReviewAction",
     "SupportRequest",
     "SupportRequestComment",
     "SupportRequestAttachment",

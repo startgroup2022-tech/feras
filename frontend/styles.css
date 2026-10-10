@@ -344,6 +344,7 @@ html.lang-en .ask-box{padding:4px 13px 4px 4px;}
 .status.late{background:var(--amber-soft);color:var(--amber);} .status.late i{background:var(--amber);}
 .status.miss{background:var(--red-soft);color:var(--red);} .status.miss i{background:var(--red);}
 .status.rev{background:var(--blue-soft);color:var(--navy-500);} .status.rev i{background:var(--navy-400);}
+.status.danger{background:var(--red-soft);color:var(--red);} .status.danger i{background:var(--red);}
 .rep-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:auto;}
 .stat{background:#fff;border:1px solid var(--line-2);border-radius:8px;padding:6px 7px;}
 .stat .l{font-size:8.5px;color:var(--ink-400);margin-bottom:1px;line-height:1.2;}

@@ -84,6 +84,7 @@
       <div class="nav-item active" data-view="dashboard" data-perm="dashboard.holding dashboard.company" role="button" tabindex="0"><span class="ar">لوحة القيادة</span><span class="en">Dashboard</span></div>
       <div class="nav-item" data-view="subsidiaries" data-perm="company.read" role="button" tabindex="0"><span class="ar">الشركات التابعة</span><span class="en">Subsidiaries</span></div>
       <div class="nav-item" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></div>
+      <div class="nav-item" data-view="financial" data-perm="financial_summary.read_own financial_summary.read_all" role="button" tabindex="0"><span class="ar">الملخص المالي</span><span class="en">Financial Summary</span></div>
       <div class="nav-item" data-view="investments" data-perm="dashboard.holding" role="button" tabindex="0"><span class="ar">الاستثمارات</span><span class="en">Investments</span></div>
       <div class="nav-item" data-view="support" data-perm="support_request.read_own support_request.read_all" role="button" tabindex="0"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></div>
       <div class="nav-item" data-view="requests" data-perm="form.read" role="button" tabindex="0"><span class="ar">الطلبات</span><span class="en">Requests</span></div>
@@ -391,6 +392,21 @@
     </div>
   </div>
   <div id="reportsList" class="av-list"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-financial" data-view="financial" data-perm="financial_summary.read_own financial_summary.read_all">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الملخص المالي الشهري</span><span class="en">Monthly Financial Summary</span></h1>
+      <p><span class="ar">ملخص الشركات التابعة، مراجعة المحاسب والاعتماد، والتصحيح التاريخي.</span><span class="en">Subsidiary summaries, accountant review and approval, and historical correction.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <select class="av-select" id="finCompany"></select>
+      <button class="btn-solid" id="finNew"><span class="ar">ملخص جديد</span><span class="en">New summary</span></button>
+      <button class="btn-outline" id="finRefresh"><span class="ar">تحديث</span><span class="en">Refresh</span></button>
+    </div>
+  </div>
+  <div id="financialList" class="av-list"></div>
 </section>
 
 <section class="app-view view-hidden" id="view-support" data-view="support" data-perm="support_request.read_own support_request.read_all">

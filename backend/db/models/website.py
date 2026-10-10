@@ -33,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -160,7 +161,7 @@ class WebsiteLeadAttachment(Base, TimestampMixin):
     # shown after the listing is published, whereas proof documents and CVs
     # stay internal for review. Internal uploads never set this.
     is_public: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="0"
+        Boolean, nullable=False, default=False, server_default=false()
     )
 
     lead: Mapped[WebsiteLead] = relationship(back_populates="attachments")

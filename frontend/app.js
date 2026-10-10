@@ -1302,6 +1302,7 @@
     "dashboard",
     "subsidiaries",
     "reports",
+    "financial",
     "investments",
     "support",
     "requests",
@@ -1317,6 +1318,7 @@
     dashboard: ["dashboard.holding", "dashboard.company"],
     subsidiaries: ["company.read"],
     reports: ["monthly_report.read_own", "monthly_report.read_all"],
+    financial: ["financial_summary.read_own", "financial_summary.read_all"],
     investments: ["dashboard.holding"],
     support: ["support_request.read_own", "support_request.read_all"],
     requests: ["form.read"],
@@ -1405,6 +1407,7 @@
   function loadView(view) {
     if (view === "subsidiaries") return renderSubsidiaries();
     if (view === "reports") return renderReports();
+    if (view === "financial") return renderFinancial();
     if (view === "support") return renderSupportView();
     if (view === "requests") return renderRequestsView();
     if (view === "approvals") return renderApprovalsView();
@@ -1844,6 +1847,471 @@
     var n = Number(v);
     return isNaN(n) ? null : n;
   }
+  // ---- financial summary view (Execution 02) ---------------------------
+  // Bilingual (AR/EN) financial summary, accountant approval and historical
+  // correction, laid out with the shared dual-language + RTL/LTR pattern.
+
+  var FIN_STATUS = {
+    draft: { ar: "مسودة", en: "Draft", cls: "miss" },
+    submitted: { ar: "للمراجعة", en: "For review", cls: "late" },
+    correction_required: { ar: "مطلوب تصحيح", en: "Correction required", cls: "danger" },
+    approved: { ar: "معتمد", en: "Approved", cls: "ok" },
+    missing: { ar: "لا يوجد ملخص", en: "No summary", cls: "miss" },
+  };
+
+  function finStatusBadge(status) {
+    var s = FIN_STATUS[status] || { ar: status, en: status, cls: "miss" };
+    return '<span class="status ' + s.cls + '"><i></i>' + dual(s.ar, s.en) + "</span>";
+  }
+
+  function finMoneyAr(value) {
+    return money(value).ar;
+  }
+
+  function finMoneyEn(value) {
+    return money(value).en;
+  }
+
+  function finPeriodQuery() {
+    var y = STATE.year || new Date().getFullYear();
+    var m = STATE.month || new Date().getMonth() + 1;
+    return "year=" + y + "&month=" + m;
+  }
+
+  function renderFinancial() {
+    var host = byId("financialList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    bindFinancialToolbar();
+    return ensureCompanies().then(function () {
+      populateFinCompanySelect();
+      return get("/api/v1/financial/report?" + finPeriodQuery());
+    }).then(function (report) {
+      var rows = (report && report.companies) || [];
+      if (!rows.length) {
+        host.innerHTML = emptyHtml("لا توجد شركات متاحة لك.", "No companies available to you.");
+        return;
+      }
+      var totals = report.totals || {};
+      host.innerHTML =
+        finTotalsStrip(totals, report.counts || {}) +
+        rows.map(finRow).join("");
+      host.querySelectorAll("[data-fin-period]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          finOpenPeriod(parseInt(el.getAttribute("data-fin-period"), 10));
+        });
+      });
+    }).catch(function (err) {
+      handleLoadError(err);
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
+  function finTotalsStrip(totals, counts) {
+    return (
+      '<div class="perm-summary" style="margin-bottom:14px">' +
+      '<div><div class="pnum">' + plainNum(counts.approved || 0) + '</div><div class="plabel">' +
+      dual("ملخصات معتمدة", "approved summaries") + "</div></div>" +
+      '<div class="psep"></div>' +
+      '<div><div class="pnum">' + finMoneyAr(totals.effective_revenue) + '</div><div class="plabel">' +
+      dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
+      '<div class="psep"></div>' +
+      '<div><div class="pnum">' + finMoneyAr(totals.effective_expenses) + '</div><div class="plabel">' +
+      dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
+      '<div class="psep"></div>' +
+      '<div><div class="pnum">' + finMoneyAr(totals.calculated_result) + '</div><div class="plabel">' +
+      dual("النتيجة", "result") + "</div></div>" +
+      "</div>"
+    );
+  }
+
+  function finRow(r) {
+    var eff = r.is_effective
+      ? dual(finMoneyAr(r.calculated_result), finMoneyEn(r.calculated_result))
+      : dual("—", "—");
+    var versionTag = r.version_number
+      ? '<span class="perm-badge">' + dual("نسخة", "v") + " " + plainNum(r.version_number) + "</span>"
+      : "";
+    var clickable = r.period_id
+      ? ' data-fin-period="' + r.period_id + '" style="cursor:pointer"'
+      : "";
+    var cta = r.period_id
+      ? dual("عرض", "Open")
+      : dual("إنشاء", "Create");
+    return (
+      '<div class="av-row"' + clickable + ">" +
+      '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] +
+      ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
+      '<div class="grow"><div class="t">' + escapeHtml(finCompanyName(r)) + " " + versionTag + "</div>" +
+      '<div class="s">' + dual("الإيرادات ", "Revenue ") + "<b>" + finMoneyAr(r.effective_revenue) + "</b>" +
+      " · " + dual("المصروفات ", "Expenses ") + "<b>" + finMoneyAr(r.effective_expenses) + "</b>" +
+      " · " + dual("النتيجة ", "Result ") + "<b>" + eff + "</b></div></div>" +
+      finStatusBadge(r.status) +
+      '<span class="perm-badge" style="margin-inline-start:8px">' + cta + "</span>" +
+      "</div>"
+    );
+  }
+
+  function finCompanyName(r) {
+    return STATE.lang === "ar"
+      ? r.company_name_ar || r.company_name_en || ""
+      : r.company_name_en || r.company_name_ar || "";
+  }
+
+  function bindFinancialToolbar() {
+    if (STATE.finBound) return;
+    STATE.finBound = true;
+    var refresh = byId("finRefresh");
+    if (refresh) refresh.addEventListener("click", function () { renderFinancial(); });
+    var create = byId("finNew");
+    if (create) {
+      create.classList.toggle("perm-hidden", !has("financial_summary.create"));
+      create.addEventListener("click", finNewModal);
+    }
+  }
+
+  function populateFinCompanySelect() {
+    var sel = byId("finCompany");
+    if (!sel) return;
+    var current = sel.value;
+    sel.innerHTML =
+      '<option value="">' + dual("كل الشركات", "All companies") + "</option>" +
+      (STATE.companies || []).map(function (c) {
+        return '<option value="' + c.id + '">' + escapeHtml(companyName(c)) + "</option>";
+      }).join("");
+    if (current) sel.value = current;
+  }
+
+  // -- create -------------------------------------------------------------
+  function finNewModal() {
+    var companies = STATE.companies || [];
+    if (!companies.length) {
+      toast(STATE.lang === "ar" ? "لا توجد شركات متاحة." : "No companies available.", "warn");
+      return;
+    }
+    var y = STATE.year || new Date().getFullYear();
+    var m = STATE.month || new Date().getMonth() + 1;
+    var opts = companies.map(function (c) {
+      return '<option value="' + c.id + '">' + escapeHtml(companyName(c)) + "</option>";
+    }).join("");
+    openModal({
+      title: dual("ملخص مالي جديد", "New financial summary"),
+      body:
+        '<div class="av-field"><label>' + dual("الشركة", "Company") + '</label><select class="av-select" id="finC" style="width:100%">' + opts + "</select></div>" +
+        '<div class="av-field"><label>' + dual("السنة", "Year") + '</label><input class="av-input" id="finY" type="number" value="' + y + '" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("الشهر", "Month") + '</label><input class="av-input" id="finM" type="number" min="1" max="12" value="' + m + '" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("الإيرادات المدخلة", "Entered revenue") + '</label><input class="av-input" id="finRev" type="number" step="0.01" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("المصروفات المدخلة", "Entered expenses") + '</label><input class="av-input" id="finExp" type="number" step="0.01" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("رصيد البنك الختامي", "Closing bank balance") + '</label><input class="av-input" id="finBank" type="number" step="0.01" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("رصيد النقد الختامي", "Closing cash balance") + '</label><input class="av-input" id="finCash" type="number" step="0.01" style="width:100%"></div>',
+      footer:
+        '<button class="btn-outline" id="finCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="finCreate">' + dual("إنشاء", "Create") + "</button>",
+      onMount: function () {
+        byId("finCancel").addEventListener("click", closeModal);
+        byId("finCreate").addEventListener("click", function () { finCreate(this); });
+      },
+    });
+  }
+
+  function finCreate(btn) {
+    var body = {
+      company_id: parseInt(byId("finC").value, 10),
+      period_year: parseInt(byId("finY").value, 10),
+      period_month: parseInt(byId("finM").value, 10),
+      submitted_revenue: numOrNull(byId("finRev").value),
+      submitted_expenses: numOrNull(byId("finExp").value),
+      closing_bank_balance: numOrNull(byId("finBank").value),
+      closing_cash_balance: numOrNull(byId("finCash").value),
+    };
+    busy(btn, true);
+    post("/api/v1/financial/summaries", body)
+      .then(function (v) {
+        toast(STATE.lang === "ar" ? "أُنشئ الملخص." : "Summary created.", "ok");
+        closeModal();
+        renderFinancial().then(function () { finOpenPeriod(v.period_id); });
+      })
+      .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+  }
+
+  // -- detail -------------------------------------------------------------
+  function finOpenPeriod(periodId) {
+    openModal({
+      title: dual("تفاصيل الملخص المالي", "Financial summary"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () { finLoadPeriod(periodId); },
+    });
+  }
+
+  function finLoadPeriod(periodId) {
+    var body = byId("modalBody");
+    get("/api/v1/financial/periods/" + periodId)
+      .then(function (p) {
+        if (!body) return;
+        var versions = (p.versions || []).slice().sort(function (a, b) {
+          return b.version_number - a.version_number;
+        });
+        if (!versions.length) {
+          body.innerHTML = emptyHtml("لا توجد نسخ.", "No versions.");
+          return;
+        }
+        var v = versions[0];
+        body.innerHTML = finPeriodHtml(p, versions, v);
+        finBindPeriodActions(p, v);
+      })
+      .catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function finPeriodHtml(p, versions, v) {
+    var versionChips = versions.map(function (x) {
+      return '<button type="button" class="perm-cat-chip' + (x.id === v.id ? " on" : "") +
+        '" data-fin-version="' + x.id + '">' +
+        dual("نسخة " + toArabicDigits(String(x.version_number)), "v" + x.version_number) + "</button>";
+    }).join("");
+    var items = (v.items || []).map(function (it) {
+      var rule = it.inclusion_rule === "added"
+        ? dual("مضاف", "Added") : dual("مشمول", "Included");
+      var kind = { revenue: dual("إيراد", "Revenue"), expense: dual("مصروف", "Expense"), other: dual("أخرى", "Other") }[it.kind] || dual(it.kind, it.kind);
+      return (
+        '<div class="av-row"><div class="grow"><div class="t">' +
+        dual(escapeHtml(it.name_ar), escapeHtml(it.name_en)) + "</div>" +
+        '<div class="s">' + kind + " · " + rule +
+        (it.decision_reference ? " · " + escapeHtml(it.decision_reference) : "") + "</div></div>" +
+        "<b>" + finMoneyAr(it.amount) + "</b>" +
+        (finCanEdit(v)
+          ? '<button class="btn-outline" data-fin-delitem="' + it.id + '" style="margin-inline-start:8px">×</button>'
+          : "") +
+        "</div>"
+      );
+    }).join("") || emptyHtml("لا توجد بنود خاصة.", "No special items.");
+
+    var bank = (v.bank_attachments || []).map(function (a) {
+      return (
+        '<div class="av-row"><div class="grow"><div class="t">' + escapeHtml(a.original_filename) + "</div>" +
+        '<div class="s">' + dual(plainNum(a.size_bytes) + " بايت", plainNum(a.size_bytes) + " bytes") + "</div></div>" +
+        '<button class="btn-outline" data-fin-bank="' + a.id + '">' + dual("تنزيل", "Download") + "</button></div>"
+      );
+    }).join("") || emptyHtml("لا يوجد كشف بنك بعد.", "No bank statement yet.");
+
+    return (
+      '<div class="kv">' +
+      kv(dual("الشركة", "Company"), escapeHtml(STATE.lang === "ar" ? p.company_name_ar : p.company_name_en)) +
+      kv(dual("الفترة", "Period"), dual(AR_MONTHS[p.period_month - 1] + " " + p.period_year, EN_MONTHS[p.period_month - 1] + " " + p.period_year)) +
+      kv(dual("الحالة", "Status"), finStatusBadge(v.status)) +
+      kv(dual("العملة", "Currency"), escapeHtml(v.currency)) +
+      "</div>" +
+      '<div class="perm-toolbar"><div class="perm-cats">' + versionChips + "</div></div>" +
+      (v.corrects_version_id
+        ? '<p class="perm-code">' + dual("نسخة تصحيح مرتبطة بنسخة سابقة.", "Corrective version linked to a prior version.") + "</p>"
+        : "") +
+      (v.return_note
+        ? '<div class="note-block"><span class="lbl">' + dual("ملاحظة التصحيح", "Correction note") + "</span>" + escapeHtml(v.return_note) + "</div>"
+        : "") +
+      '<div class="sec-title">' + dual("المؤشرات المالية", "Financials") + "</div>" +
+      '<div class="kv">' +
+      kv(dual("الإيرادات المدخلة", "Entered revenue"), dual(finMoneyAr(v.submitted_revenue), finMoneyEn(v.submitted_revenue))) +
+      kv(dual("الإيرادات الفعلية", "Effective revenue"), dual(finMoneyAr(v.effective_revenue), finMoneyEn(v.effective_revenue))) +
+      kv(dual("المصروفات المدخلة", "Entered expenses"), dual(finMoneyAr(v.submitted_expenses), finMoneyEn(v.submitted_expenses))) +
+      kv(dual("المصروفات الفعلية", "Effective expenses"), dual(finMoneyAr(v.effective_expenses), finMoneyEn(v.effective_expenses))) +
+      kv(dual("النتيجة", "Result"), dual(finMoneyAr(v.calculated_result), finMoneyEn(v.calculated_result))) +
+      kv(dual("إجمالي النقد", "Total cash"), dual(finMoneyAr(v.calculated_total_cash), finMoneyEn(v.calculated_total_cash))) +
+      kv(dual("الذمم المدينة", "Receivables"), dual(finMoneyAr(v.customer_receivables), finMoneyEn(v.customer_receivables))) +
+      "</div>" +
+      '<div class="sec-title">' + dual("البنود الخاصة", "Special items") + "</div>" +
+      '<div id="finItems">' + items + "</div>" +
+      (finCanEdit(v)
+        ? '<div class="av-toolbar" style="margin-top:8px;flex-wrap:wrap;gap:6px">' +
+          '<input class="av-input" id="finItemName" placeholder="' + escAttr(STATE.lang === "ar" ? "اسم البند" : "Item name") + '">' +
+          '<select class="av-select" id="finItemKind">' +
+          '<option value="expense">' + dual("مصروف", "Expense") + "</option>" +
+          '<option value="revenue">' + dual("إيراد", "Revenue") + "</option>" +
+          '<option value="other">' + dual("أخرى", "Other") + "</option></select>" +
+          '<select class="av-select" id="finItemRule">' +
+          '<option value="added">' + dual("مضاف", "Added") + "</option>" +
+          '<option value="included">' + dual("مشمول", "Included") + "</option></select>" +
+          '<input class="av-input" id="finItemAmount" type="number" step="0.01" style="max-width:130px" placeholder="' + escAttr(STATE.lang === "ar" ? "المبلغ" : "Amount") + '">' +
+          '<button class="btn-outline" id="finAddItem">' + dual("إضافة", "Add") + "</button></div>"
+        : "") +
+      '<div class="sec-title">' + dual("كشف البنك", "Bank statement") + "</div>" +
+      '<div id="finBank">' + bank + "</div>" +
+      (finCanEdit(v)
+        ? '<div class="av-toolbar" style="margin-top:8px"><input type="file" id="finBankFile"><button class="btn-outline" id="finUploadBank">' +
+          dual("رفع كشف البنك", "Upload statement") + "</button></div>"
+        : "") +
+      '<div id="finActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>'
+    );
+  }
+
+  function finCanEdit(v) {
+    return (v.status === "draft" || v.status === "correction_required") &&
+      has("financial_summary.update");
+  }
+
+  function finBindPeriodActions(p, v) {
+    var body = byId("modalBody");
+    var actions = byId("finActions");
+    if (!actions) return;
+    var btns = [];
+    if (finCanEdit(v) && has("financial_summary.submit")) {
+      btns.push('<button class="btn-solid" id="finSubmit">' + dual("إرسال للمراجعة", "Submit for review") + "</button>");
+    }
+    if (v.status === "submitted" && has("financial_review.act")) {
+      btns.push('<button class="btn-solid gold" id="finApprove">' + dual("اعتماد", "Approve") + "</button>");
+      btns.push('<button class="btn-solid danger" id="finReturn">' + dual("إرجاع للتصحيح", "Return for correction") + "</button>");
+    }
+    if (v.status === "approved" && has("financial_summary.correct")) {
+      btns.push('<button class="btn-solid" id="finCorrect">' + dual("إنشاء نسخة تصحيحية", "Create corrective version") + "</button>");
+    }
+    btns.push('<button class="btn-outline" id="finClose">' + dual("إغلاق", "Close") + "</button>");
+    actions.innerHTML = btns.join("");
+
+    if (byId("finClose")) byId("finClose").addEventListener("click", closeModal);
+    if (byId("finSubmit")) byId("finSubmit").addEventListener("click", function () { finSubmit(p, v, this); });
+    if (byId("finApprove")) byId("finApprove").addEventListener("click", function () { finApprove(p, v, this); });
+    if (byId("finReturn")) byId("finReturn").addEventListener("click", function () { finReturn(p, v, this); });
+    if (byId("finCorrect")) byId("finCorrect").addEventListener("click", function () { finCorrect(p, v, this); });
+    if (byId("finAddItem")) byId("finAddItem").addEventListener("click", function () { finAddItem(v, this); });
+    if (byId("finUploadBank")) byId("finUploadBank").addEventListener("click", function () { finUploadBank(v, this); });
+
+    if (body) {
+      body.querySelectorAll("[data-fin-version]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          var vid = parseInt(el.getAttribute("data-fin-version"), 10);
+          var chosen = (p.versions || []).filter(function (x) { return x.id === vid; })[0];
+          if (!chosen) return;
+          body.innerHTML = finPeriodHtml(p, p.versions.slice().sort(function (a, b) { return b.version_number - a.version_number; }), chosen);
+          finBindPeriodActions(p, chosen);
+        });
+      });
+      body.querySelectorAll("[data-fin-delitem]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          finRemoveItem(p, v, parseInt(el.getAttribute("data-fin-delitem"), 10));
+        });
+      });
+      body.querySelectorAll("[data-fin-bank]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          finDownloadBank(v, parseInt(el.getAttribute("data-fin-bank"), 10));
+        });
+      });
+    }
+  }
+
+  function finReload(p) {
+    closeModal();
+    renderFinancial().then(function () { finOpenPeriod(p.id); });
+  }
+
+  function finSubmit(p, v, btn) {
+    confirmDialog({
+      title: dual("إرسال الملخص", "Submit summary"),
+      message: STATE.lang === "ar"
+        ? "سيُرسل الملخص إلى المحاسب، ويلزم وجود كشف بنك."
+        : "The summary will be sent to the accountant; a bank statement is required.",
+      confirmLabel: dual("إرسال", "Submit"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/financial/summaries/" + v.id + "/submit")
+        .then(function () { toast(STATE.lang === "ar" ? "أُرسل الملخص." : "Submitted.", "ok"); finReload(p); })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function finApprove(p, v, btn) {
+    confirmDialog({
+      title: dual("اعتماد الملخص", "Approve summary"),
+      message: STATE.lang === "ar" ? "سيصبح هذا الملخص النسخة الفعّالة للفترة." : "This summary becomes the effective version for the period.",
+      confirmLabel: dual("اعتماد", "Approve"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/financial/summaries/" + v.id + "/approve")
+        .then(function () { toast(STATE.lang === "ar" ? "اعتُمد الملخص." : "Approved.", "ok"); finReload(p); })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function finReturn(p, v, btn) {
+    openModal({
+      title: dual("إرجاع للتصحيح", "Return for correction"),
+      body:
+        '<div class="av-field"><label>' + dual("ملاحظة إلزامية", "Mandatory note") + '</label>' +
+        '<textarea class="av-textarea" id="finRetNote" style="width:100%"></textarea></div>',
+      footer:
+        '<button class="btn-outline" id="finRetCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid danger" id="finRetGo">' + dual("إرجاع", "Return") + "</button>",
+      onMount: function () {
+        byId("finRetCancel").addEventListener("click", closeModal);
+        byId("finRetGo").addEventListener("click", function () {
+          var note = (byId("finRetNote").value || "").trim();
+          if (!note) { toast(STATE.lang === "ar" ? "الملاحظة مطلوبة." : "A note is required.", "warn"); return; }
+          busy(this, true);
+          post("/api/v1/financial/summaries/" + v.id + "/return", { note: note })
+            .then(function () { toast(STATE.lang === "ar" ? "أُعيد للتصحيح." : "Returned.", "ok"); finReload(p); })
+            .catch(function (err) { toast(errText(err), "err"); busy(this, false); }.bind(this));
+        });
+      },
+    });
+    void btn;
+  }
+
+  function finCorrect(p, v, btn) {
+    busy(btn, true);
+    post("/api/v1/financial/periods/" + p.id + "/corrections")
+      .then(function () { toast(STATE.lang === "ar" ? "أُنشئت نسخة تصحيحية." : "Corrective version created.", "ok"); finReload(p); })
+      .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+  }
+
+  function finAddItem(v, btn) {
+    var name = (byId("finItemName").value || "").trim();
+    var amount = numOrNull(byId("finItemAmount").value);
+    if (!name) { toast(STATE.lang === "ar" ? "اسم البند مطلوب." : "An item name is required.", "warn"); return; }
+    if (amount === null) { toast(STATE.lang === "ar" ? "المبلغ مطلوب." : "An amount is required.", "warn"); return; }
+    busy(btn, true);
+    post("/api/v1/financial/summaries/" + v.id + "/items", {
+      name_ar: name, name_en: name, amount: amount,
+      kind: (byId("finItemKind") && byId("finItemKind").value) || "expense",
+      inclusion_rule: (byId("finItemRule") && byId("finItemRule").value) || "added",
+    })
+      .then(function () { finReload({ id: v.period_id }); })
+      .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+  }
+
+  function finRemoveItem(p, v, itemId) {
+    api.del("/api/v1/financial/summaries/" + v.id + "/items/" + itemId)
+      .then(function () { finReload(p); })
+      .catch(function (err) { toast(errText(err), "err"); });
+  }
+
+  function finUploadBank(v, btn) {
+    var input = byId("finBankFile");
+    var file = input && input.files && input.files[0];
+    if (!file) { toast(STATE.lang === "ar" ? "اختر ملفًا." : "Choose a file.", "warn"); return; }
+    busy(btn, true);
+    api.upload("/api/v1/financial/summaries/" + v.id + "/bank-statement", file)
+      .then(function () { toast(STATE.lang === "ar" ? "رُفع كشف البنك." : "Bank statement uploaded.", "ok"); finReload({ id: v.period_id }); })
+      .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+  }
+
+  function finDownloadBank(v, attachmentId) {
+    api.download("/api/v1/financial/summaries/" + v.id + "/bank-statement/" + attachmentId)
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = "bank-statement";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(function (err) { toast(errText(err), "err"); });
+  }
+
+
 
   // ---- support view ----------------------------------------------------
   function renderSupportView() {

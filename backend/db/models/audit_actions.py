@@ -43,6 +43,20 @@ class AuditAction:
     REPORT_ATTACHMENT_ADDED = "monthly_report.attachment_added"
     REPORT_ATTACHMENT_REMOVED = "monthly_report.attachment_removed"
 
+    # Execution 02: subsidiary financial summary workflow
+    FINANCIAL_PERIOD_CREATED = "financial_period.created"
+    FINANCIAL_SUMMARY_CREATED = "financial_summary.created"
+    FINANCIAL_SUMMARY_UPDATED = "financial_summary.updated"
+    FINANCIAL_SUMMARY_SUBMITTED = "financial_summary.submitted"
+    FINANCIAL_SUMMARY_RESUBMITTED = "financial_summary.resubmitted"
+    FINANCIAL_SUMMARY_RETURNED = "financial_summary.returned"
+    FINANCIAL_SUMMARY_APPROVED = "financial_summary.approved"
+    FINANCIAL_SUMMARY_CORRECTION_CREATED = "financial_summary.correction_created"
+    FINANCIAL_ITEM_ADDED = "financial_summary.item_added"
+    FINANCIAL_ITEM_REMOVED = "financial_summary.item_removed"
+    FINANCIAL_BANK_ATTACHMENT_ADDED = "financial_summary.bank_attachment_added"
+    FINANCIAL_BANK_ATTACHMENT_VIEWED = "financial_summary.bank_attachment_viewed"
+
     # support
     SUPPORT_REQUEST_CREATED = "support_request.created"
     SUPPORT_REQUEST_STATUS_CHANGED = "support_request.status_changed"
