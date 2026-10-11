@@ -3,17 +3,21 @@
 from fastapi import APIRouter
 
 from backend.api.v1 import (
+    accounting,
     admin,
     ai,
     analytics,
     auth,
+    confidential,
     dashboard,
     documents,
     financial,
     forms,
+    hr,
     integrations,
     leads,
     notifications,
+    operations,
     public,
     reports,
     submissions,
@@ -49,5 +53,10 @@ api_router.include_router(public.router)
 api_router.include_router(leads.router)
 # Phase 11: Website Management (CMS)
 api_router.include_router(website_cms.router)
+# Executions 04-14: holding-business domain
+api_router.include_router(hr.router)
+api_router.include_router(operations.router)
+api_router.include_router(accounting.router)
+api_router.include_router(confidential.router)
 
 __all__ = ["api_router"]

@@ -35,6 +35,10 @@ class RoleCode(str, enum.Enum):
     DEPARTMENT_MANAGER = "department_manager"
     EMPLOYEE = "employee"
 
+    # Executions 04-14: external advisor (S19 / D04). Deliberately *not*
+    # holding-wide: an advisor sees only explicitly granted data.
+    EXTERNAL_CONSULTANT = "external_consultant"
+
 
 class ReportStatus(str, enum.Enum):
     """Monthly report lifecycle. Deliberately short -- no complex workflow."""
@@ -542,4 +546,160 @@ class SectionKind(str, enum.Enum):
     STEPS = "steps"
     CTA = "cta"
     TEXT = "text"
+
+
+# --------------------------------------------------------------------------
+# Executions 04-14: holding-business domain (owner decisions D01-D11)
+# --------------------------------------------------------------------------
+class OpeningBalanceKind(str, enum.Enum):
+    """Whether an opening balance row is a period opening or a year-end
+    carry-forward (D08). Both are *balances*, never revenue."""
+
+    OPENING = "opening"  # رصيد افتتاحي
+    CARRY_FORWARD = "carry_forward"  # رصيد مرحّل
+
+
+class OpeningBalanceStatus(str, enum.Enum):
+    """Approval lifecycle of an opening balance (D08: not auto-carried before
+    the new balance is reviewed and approved)."""
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
+
+
+class EmployeeStatus(str, enum.Enum):
+    ACTIVE = "active"
+    ON_LEAVE = "on_leave"
+    TERMINATED = "terminated"
+
+
+class EmployeeMovementType(str, enum.Enum):
+    """Manual leave/advance movements (D06 v1: entered by authorised users,
+    with a movement log and approvals; no automatic payroll link)."""
+
+    LEAVE = "leave"
+    ADVANCE = "advance"
+    ADJUSTMENT = "adjustment"
+
+
+class MovementStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class AssessmentType(str, enum.Enum):
+    """Employee assessment (S12) vs confidential leadership assessment (S23)."""
+
+    EMPLOYEE = "employee"
+    LEADERSHIP = "leadership"
+
+
+class AssessmentStatus(str, enum.Enum):
+    """D05: a draft may be saved showing evidence gaps; approval is blocked
+    while a mandatory-evidence item is missing."""
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
+
+
+class CampaignStatus(str, enum.Enum):
+    PLANNED = "planned"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class TaskLifecycleStatus(str, enum.Enum):
+    """D03 lifecycle: New -> In-Progress -> Awaiting Review -> Complete, plus
+    Return / Cancel / Reopen."""
+
+    NEW = "new"
+    IN_PROGRESS = "in_progress"
+    AWAITING_REVIEW = "awaiting_review"
+    COMPLETE = "complete"
+    RETURNED = "returned"
+    CANCELLED = "cancelled"
+
+
+class TaskPriority(str, enum.Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class WeeklyReportStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
+class ComplaintStatus(str, enum.Enum):
+    """D04: confidential; owner decides route/handle/postpone."""
+
+    NEW = "new"
+    UNDER_REVIEW = "under_review"
+    ROUTED = "routed"
+    HANDLED = "handled"
+    POSTPONED = "postponed"
+    CLOSED = "closed"
+
+
+class AdvisorSessionStatus(str, enum.Enum):
+    SCHEDULED = "scheduled"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class OwnerDecisionStatus(str, enum.Enum):
+    """D07: numbered decisions with an executor, due date and follow-up."""
+
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class ConfidentialSubjectType(str, enum.Enum):
+    """D04: the entity a delegated confidential-access grant covers."""
+
+    COMPLAINT = "complaint"
+    LEADERSHIP_ASSESSMENT = "leadership_assessment"
+
+
+class AccountType(str, enum.Enum):
+    """D01 chart-of-accounts classification."""
+
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+    REVENUE = "revenue"
+    EXPENSE = "expense"
+
+
+class JournalStatus(str, enum.Enum):
+    """D01: approved entries are never edited in place; correction is by a
+    reversal or a documented adjustment."""
+
+    DRAFT = "draft"
+    POSTED = "posted"
+    REVERSED = "reversed"
+
+
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ISSUED = "issued"
+    PARTIALLY_SETTLED = "partially_settled"
+    SETTLED = "settled"
+    CANCELLED = "cancelled"
+
+
+class BudgetStatus(str, enum.Enum):
+    """D07: approved by the owner or delegate; source and version preserved."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    SUPERSEDED = "superseded"
+
 

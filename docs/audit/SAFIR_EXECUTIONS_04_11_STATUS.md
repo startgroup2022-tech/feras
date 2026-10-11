@@ -158,3 +158,50 @@ EXEC 04 (D08/D01) starts immediately.
 3. Then each screen (S04, S11–S23, S26–S28) can be implemented per its AC, with new
    permission codes, company-scoped repositories, additive migrations, bilingual UI and
    tests — following the plan in `SAFIR_SCREEN_IMPLEMENTATION_PLAN.md`.
+
+---
+
+## 8. Update — EXEC 04–14 safe implementation delivered (2026-10-11)
+
+Acting on the owner's explicit instruction to *implement the safe, independent parts plus
+configuration interfaces, leaving only the policy-dependent actions disabled*, the
+holding-business modules were built to the D01–D11 draft. Every policy-dependent behaviour
+is a **disabled stub or a configuration field**, never an invented rule:
+
+- **D01 accounting** — double-entry journals with a balance check; a posted journal is
+  immutable and corrected by a **reversal** entry (no in-place edit). Tax rate, depreciation
+  method/rate, invoice policy and fiscal periods are **configuration columns**, defaulting to
+  neutral values. There is **no** bank-transfer endpoint and **no** automatic posting from
+  other modules.
+- **D08 opening balances** — entered and approved explicitly; **never auto-carried** from
+  December. Balances are balances, not revenue.
+- **D05 assessments** — approval is **blocked** while a mandatory-evidence item is
+  incomplete, and the block is audited.
+- **D06 employee movements** — logged and approvable only; approval does **not** touch payroll
+  or post a journal (no linking policy approved yet).
+- **D07 budgets** — source and version are preserved; an approved budget is **superseded**, not
+  overwritten. Owner decisions carry a full status history.
+- **D04 confidentiality** — complaints and leadership assessments are owner-only by default.
+  The owner may delegate access to **one record** and **one permission**, with a mandatory
+  expiry and an audit trail; expired grants are ignored. A non-owner never sees another
+  person's confidential record, by list or by id.
+- **D02 KPIs / weekly reports / campaigns** — KPIs carry source + method + period; the weekly
+  report accepts at most the configured number of core questions.
+
+New RBAC surface: 12 new roles' grants extended, permission catalogue now **147 permissions /
+15 roles / 147 metadata entries** (all permissions documented, unknown = `[]`).
+
+New API surface (registered in `backend/api/v1/__init__.py`): `/employees`,
+`/operations` (tasks, weekly reports, campaigns, complaints, advisors, owner decisions),
+`/accounting` (opening balances, accounts, journals, invoices, assets, budgets, KPIs),
+`/confidential-access`.
+
+Migration `808896a24a5f` is **additive only** (27 new tables, no ALTER/DROP of existing
+tables) and is the new single Alembic head.
+
+Verification: **full suite green — 620 passed** (603 baseline + 17 new domain tests).
+**No deployment was performed.**
+
+Still open (unchanged): the original `Platform_Executive_Specifications_v1.docx` has not
+arrived, and D01–D11 remain self-declared drafts. The policy-dependent actions above stay
+disabled until the owner approves the decisions against that spec.

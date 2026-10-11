@@ -524,4 +524,17 @@ slice has been implemented; the full matrix and the conflict analysis live in
   from it. To start EXEC 04+, the owner must send one approval line (approve
   D01-D11 as binding + matching the original spec). The register holds the
   ready-to-execute blueprint (permission codes, models, migrations, views, tests).
+- **EXEC 04–14 safe implementation delivered (2026-10-11, `feature/safir-executions-04-11`):**
+  on the owner's explicit instruction, the safe/independent parts + configuration
+  interfaces were built, with only policy-dependent actions disabled/stubbed.
+  New models: `hr.py`, `operations.py`, `accounting.py`. New services:
+  `hr_service`, `operations_service`, `accounting_service`,
+  `confidential_access_service`. New routers: `/employees`, `/operations`,
+  `/accounting`, `/confidential-access`. Migration `808896a24a5f` (additive, 27
+  tables, new single head). RBAC: 147 permissions / 15 roles / 147 metadata.
+  D01 double-entry immutable-on-post; D08 no auto carry-forward; D05 evidence
+  gate; D06 logged-only movements; D07 budget supersession; D04 record+permission
+  delegated access with mandatory expiry. **Full suite green: 620 passed.**
+  Still gated: the original spec has not arrived; D01-D11 stay drafts.
+  No deployment was performed.
 

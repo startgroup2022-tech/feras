@@ -7,7 +7,35 @@ whenever a new model module is added.
 
 from backend.db.base import Base
 from backend.db.models.ai import AIMessage, AIConversation, AuditLog
+from backend.db.models.accounting import (
+    Account,
+    Asset,
+    Budget,
+    FiscalPeriod,
+    Invoice,
+    InvoiceLine,
+    Journal,
+    JournalLine,
+    KpiDefinition,
+    OpeningBalance,
+    Settlement,
+)
 from backend.db.models.documents import Document, DocumentCategory
+from backend.db.models.hr import Assessment, AssessmentItem, Employee, EmployeeMovement
+from backend.db.models.operations import (
+    AdvisorAssignment,
+    AdvisorySession,
+    Campaign,
+    Complaint,
+    ConfidentialAccessGrant,
+    OwnerDecision,
+    OwnerDecisionEvent,
+    Task,
+    TaskEvent,
+    WeeklyReport,
+    WeeklyReportAnswer,
+    WeeklyReportQuestion,
+)
 from backend.db.models.financial import (
     FinancialBankAttachment,
     FinancialItemDefinition,
@@ -134,4 +162,32 @@ __all__ = [
     "WebsiteService",
     "WebsiteSeoMeta",
     "WebsiteContentRevision",
+    # Executions 04-14: holding-business domain
+    "Employee",
+    "EmployeeMovement",
+    "Assessment",
+    "AssessmentItem",
+    "Task",
+    "TaskEvent",
+    "WeeklyReportQuestion",
+    "WeeklyReport",
+    "WeeklyReportAnswer",
+    "Campaign",
+    "Complaint",
+    "AdvisorAssignment",
+    "AdvisorySession",
+    "OwnerDecision",
+    "OwnerDecisionEvent",
+    "ConfidentialAccessGrant",
+    "OpeningBalance",
+    "Account",
+    "Journal",
+    "JournalLine",
+    "FiscalPeriod",
+    "Invoice",
+    "InvoiceLine",
+    "Settlement",
+    "Asset",
+    "Budget",
+    "KpiDefinition",
 ]

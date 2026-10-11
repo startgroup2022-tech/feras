@@ -150,6 +150,74 @@ class Perm:
     WEBSITE_MEDIA_MANAGE = "website.media.manage"  # upload/replace/delete media
     WEBSITE_SETTINGS_MANAGE = "website.settings.manage"  # site-wide settings
 
+    # ---- Executions 04-14: holding-business domain (D01-D11) ----
+    # Opening balances (S04 / D08)
+    OPENING_BALANCE_READ = "opening_balance.read"
+    OPENING_BALANCE_MANAGE = "opening_balance.manage"
+    OPENING_BALANCE_APPROVE = "opening_balance.approve"
+    # Employees & assessments (S11 / S12 / D04 / D05 / D06)
+    EMPLOYEE_READ = "employee.read"
+    EMPLOYEE_MANAGE = "employee.manage"
+    EMPLOYEE_SALARY_READ = "employee.salary.read"  # sensitive
+    EMPLOYEE_MOVEMENT_READ = "employee.movement.read"
+    EMPLOYEE_MOVEMENT_MANAGE = "employee.movement.manage"
+    EMPLOYEE_MOVEMENT_APPROVE = "employee.movement.approve"
+    ASSESSMENT_READ = "assessment.read"
+    ASSESSMENT_MANAGE = "assessment.manage"
+    ASSESSMENT_APPROVE = "assessment.approve"
+    # Tasks (S17 / D03)
+    TASK_READ_OWN = "task.read_own"
+    TASK_READ_ALL = "task.read_all"
+    TASK_CREATE = "task.create"
+    TASK_UPDATE = "task.update"
+    TASK_STATUS_CHANGE = "task.status_change"
+    # Weekly reports (S18 / D02)
+    WEEKLY_REPORT_READ_OWN = "weekly_report.read_own"
+    WEEKLY_REPORT_READ_ALL = "weekly_report.read_all"
+    WEEKLY_REPORT_SUBMIT = "weekly_report.submit"
+    WEEKLY_REPORT_TEMPLATE_MANAGE = "weekly_report.template.manage"
+    # Campaigns (S14 / D02)
+    CAMPAIGN_READ = "campaign.read"
+    CAMPAIGN_MANAGE = "campaign.manage"
+    # Complaints (S15 / D04) -- confidential, owner-only by default
+    COMPLAINT_CREATE = "complaint.create"
+    COMPLAINT_READ_OWN = "complaint.read_own"
+    COMPLAINT_DECIDE = "complaint.decide"
+    # Design requests (S16 / D03)
+    DESIGN_REQUEST_MANAGE = "design_request.manage"
+    DESIGN_REQUEST_DELIVER = "design_request.deliver"
+    # Advisors & sessions (S19 / D04)
+    ADVISOR_READ = "advisor.read"
+    ADVISOR_MANAGE = "advisor.manage"
+    ADVISOR_SESSION_READ_OWN = "advisor.session.read_own"
+    ADVISOR_SESSION_RECORD = "advisor.session.record"
+    # Owner decisions (S22 / D07)
+    OWNER_DECISION_READ = "owner_decision.read"
+    OWNER_DECISION_MANAGE = "owner_decision.manage"
+    # Holding accounting (S26-S28 / D01 / D07)
+    ACCOUNT_READ = "account.read"
+    ACCOUNT_MANAGE = "account.manage"
+    JOURNAL_READ = "journal.read"
+    JOURNAL_CREATE = "journal.create"
+    JOURNAL_POST = "journal.post"
+    JOURNAL_REVERSE = "journal.reverse"
+    INVOICE_READ = "invoice.read"
+    INVOICE_MANAGE = "invoice.manage"
+    SETTLEMENT_MANAGE = "settlement.manage"
+    ASSET_READ = "asset.read"
+    ASSET_MANAGE = "asset.manage"
+    BUDGET_READ = "budget.read"
+    BUDGET_MANAGE = "budget.manage"
+    BUDGET_APPROVE = "budget.approve"
+    # KPIs / management reports (S21 / D02)
+    KPI_READ = "kpi.read"
+    KPI_MANAGE = "kpi.manage"
+    # Notification preferences (S25 / D11)
+    NOTIFICATION_PREFERENCE_MANAGE = "notification.preference.manage"
+    # Confidential delegated access (D04)
+    CONFIDENTIAL_ACCESS_MANAGE = "confidential_access.manage"
+
+
 
 ALL_PERMISSIONS: dict[str, str] = {
     Perm.USER_READ: "View users",
@@ -247,6 +315,59 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.WEBSITE_CONTENT_PUBLISH: "Publish or unpublish website content",
     Perm.WEBSITE_MEDIA_MANAGE: "Upload, replace and delete website media",
     Perm.WEBSITE_SETTINGS_MANAGE: "Change site-wide website settings and SEO defaults",
+    # Executions 04-14
+    Perm.OPENING_BALANCE_READ: "View opening and carry-forward balances",
+    Perm.OPENING_BALANCE_MANAGE: "Create and edit opening/carry-forward balances",
+    Perm.OPENING_BALANCE_APPROVE: "Approve an opening balance so it becomes effective",
+    Perm.EMPLOYEE_READ: "View employees in your companies",
+    Perm.EMPLOYEE_MANAGE: "Create and edit employee records",
+    Perm.EMPLOYEE_SALARY_READ: "View employee salary and allowances (sensitive)",
+    Perm.EMPLOYEE_MOVEMENT_READ: "View employee leave and advance movements",
+    Perm.EMPLOYEE_MOVEMENT_MANAGE: "Record employee leave and advance movements",
+    Perm.EMPLOYEE_MOVEMENT_APPROVE: "Approve or reject employee movements",
+    Perm.ASSESSMENT_READ: "View employee assessments",
+    Perm.ASSESSMENT_MANAGE: "Create and edit employee assessments",
+    Perm.ASSESSMENT_APPROVE: "Approve an employee assessment",
+    Perm.TASK_READ_OWN: "View tasks assigned to you",
+    Perm.TASK_READ_ALL: "View tasks across your company scope",
+    Perm.TASK_CREATE: "Create and assign tasks",
+    Perm.TASK_UPDATE: "Edit task details",
+    Perm.TASK_STATUS_CHANGE: "Move a task through its lifecycle",
+    Perm.WEEKLY_REPORT_READ_OWN: "View your own weekly reports",
+    Perm.WEEKLY_REPORT_READ_ALL: "View weekly reports across your scope",
+    Perm.WEEKLY_REPORT_SUBMIT: "Submit a weekly report",
+    Perm.WEEKLY_REPORT_TEMPLATE_MANAGE: "Configure the weekly report questions",
+    Perm.CAMPAIGN_READ: "View marketing campaigns",
+    Perm.CAMPAIGN_MANAGE: "Create and edit marketing campaigns and results",
+    Perm.COMPLAINT_CREATE: "Submit a confidential complaint",
+    Perm.COMPLAINT_READ_OWN: "View complaints you submitted",
+    Perm.COMPLAINT_DECIDE: "Decide on a confidential complaint (owner)",
+    Perm.DESIGN_REQUEST_MANAGE: "Manage design request fields and lifecycle",
+    Perm.DESIGN_REQUEST_DELIVER: "Attach a delivery link and complete a design request",
+    Perm.ADVISOR_READ: "View advisor assignments and sessions",
+    Perm.ADVISOR_MANAGE: "Assign advisors and manage sessions",
+    Perm.ADVISOR_SESSION_READ_OWN: "View your own advisor sessions",
+    Perm.ADVISOR_SESSION_RECORD: "Record an advisor session and recommendations",
+    Perm.OWNER_DECISION_READ: "View owner decisions and directives",
+    Perm.OWNER_DECISION_MANAGE: "Create and update owner decisions and directives",
+    Perm.ACCOUNT_READ: "View the chart of accounts",
+    Perm.ACCOUNT_MANAGE: "Manage the chart of accounts",
+    Perm.JOURNAL_READ: "View journal entries",
+    Perm.JOURNAL_CREATE: "Create a journal entry draft",
+    Perm.JOURNAL_POST: "Post a journal entry",
+    Perm.JOURNAL_REVERSE: "Reverse a posted journal entry",
+    Perm.INVOICE_READ: "View invoices and receivables",
+    Perm.INVOICE_MANAGE: "Create and edit invoices",
+    Perm.SETTLEMENT_MANAGE: "Record invoice settlements",
+    Perm.ASSET_READ: "View assets",
+    Perm.ASSET_MANAGE: "Manage assets",
+    Perm.BUDGET_READ: "View budgets",
+    Perm.BUDGET_MANAGE: "Create and edit budgets",
+    Perm.BUDGET_APPROVE: "Approve a budget",
+    Perm.KPI_READ: "View KPI definitions and results",
+    Perm.KPI_MANAGE: "Manage KPI definitions",
+    Perm.NOTIFICATION_PREFERENCE_MANAGE: "Change your notification preferences",
+    Perm.CONFIDENTIAL_ACCESS_MANAGE: "Delegate access to confidential records",
 }
 
 
@@ -542,24 +663,180 @@ DESIGNER = _OPERATOR_READ | {
     Perm.AI_HOLDING,
     Perm.APPROVAL_READ_ALL,
     Perm.ANALYTICS_OPERATIONS,
+    # Executions 04-14: designer work queue (S16/S17)
+    Perm.TASK_READ_OWN,
+    Perm.TASK_STATUS_CHANGE,
+    Perm.DESIGN_REQUEST_MANAGE,
+    Perm.DESIGN_REQUEST_DELIVER,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.WEEKLY_REPORT_SUBMIT,
 }
+
+
+# --------------------------------------------------------------------------
+# Executions 04-14: holding-business domain grants (D01-D11)
+# --------------------------------------------------------------------------
+
+# Every role that operates day-to-day gets read access to tasks in its scope.
+_BUSINESS_READ = {
+    Perm.TASK_READ_OWN,
+    Perm.TASK_READ_ALL,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.KPI_READ,
+}
+
+# Business Development: assigns tasks, reviews employees, reads projects,
+# owner decisions and (read-only) holding finance. Never edits salaries.
+BUSINESS_DEVELOPMENT_EXT = {
+    Perm.EMPLOYEE_READ,
+    Perm.EMPLOYEE_MOVEMENT_READ,
+    Perm.ASSESSMENT_READ,
+    Perm.ASSESSMENT_MANAGE,
+    Perm.TASK_CREATE,
+    Perm.TASK_UPDATE,
+    Perm.TASK_STATUS_CHANGE,
+    Perm.WEEKLY_REPORT_READ_ALL,
+    Perm.WEEKLY_REPORT_TEMPLATE_MANAGE,
+    Perm.CAMPAIGN_READ,
+    Perm.CAMPAIGN_MANAGE,
+    Perm.ADVISOR_READ,
+    Perm.ADVISOR_MANAGE,
+    Perm.OWNER_DECISION_READ,
+    Perm.OPENING_BALANCE_READ,
+    Perm.ACCOUNT_READ,
+    Perm.JOURNAL_READ,
+    Perm.INVOICE_READ,
+    Perm.ASSET_READ,
+    Perm.BUDGET_READ,
+    Perm.KPI_MANAGE,
+}
+
+# Accountant: the holding accounts surface (D01) plus budget approval input.
+ACCOUNTANT_EXT = {
+    Perm.OPENING_BALANCE_READ,
+    Perm.OPENING_BALANCE_MANAGE,
+    Perm.OPENING_BALANCE_APPROVE,
+    Perm.ACCOUNT_READ,
+    Perm.ACCOUNT_MANAGE,
+    Perm.JOURNAL_READ,
+    Perm.JOURNAL_CREATE,
+    Perm.JOURNAL_POST,
+    Perm.JOURNAL_REVERSE,
+    Perm.INVOICE_READ,
+    Perm.INVOICE_MANAGE,
+    Perm.SETTLEMENT_MANAGE,
+    Perm.ASSET_READ,
+    Perm.ASSET_MANAGE,
+    Perm.BUDGET_READ,
+    Perm.BUDGET_MANAGE,
+    Perm.TASK_READ_OWN,
+    Perm.TASK_STATUS_CHANGE,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.WEEKLY_REPORT_SUBMIT,
+    Perm.KPI_READ,
+}
+
+# Marketing: campaigns and confidential complaint submission (D02/D04).
+MARKETING_EXT = {
+    Perm.CAMPAIGN_READ,
+    Perm.CAMPAIGN_MANAGE,
+    Perm.COMPLAINT_CREATE,
+    Perm.COMPLAINT_READ_OWN,
+    Perm.TASK_READ_OWN,
+    Perm.TASK_STATUS_CHANGE,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.WEEKLY_REPORT_SUBMIT,
+    Perm.KPI_READ,
+}
+
+# Company Manager: employees, tasks, weekly reports, opening balances for its
+# companies, and the received owner directives.
+COMPANY_MANAGER_EXT = {
+    Perm.EMPLOYEE_READ,
+    Perm.EMPLOYEE_MANAGE,
+    Perm.EMPLOYEE_MOVEMENT_READ,
+    Perm.EMPLOYEE_MOVEMENT_MANAGE,
+    Perm.EMPLOYEE_MOVEMENT_APPROVE,
+    Perm.ASSESSMENT_READ,
+    Perm.ASSESSMENT_MANAGE,
+    Perm.TASK_READ_OWN,
+    Perm.TASK_READ_ALL,
+    Perm.TASK_CREATE,
+    Perm.TASK_UPDATE,
+    Perm.TASK_STATUS_CHANGE,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.WEEKLY_REPORT_SUBMIT,
+    Perm.WEEKLY_REPORT_READ_ALL,
+    Perm.OPENING_BALANCE_READ,
+    Perm.OPENING_BALANCE_MANAGE,
+    Perm.OWNER_DECISION_READ,
+    Perm.KPI_READ,
+}
+
+# External Consultant (S19 / D04): only explicitly granted data; no ledger, no
+# approvals, no other employees, no leadership assessment.
+EXTERNAL_CONSULTANT = {
+    Perm.COMPANY_READ,
+    Perm.DASHBOARD_COMPANY,
+    Perm.ADVISOR_SESSION_READ_OWN,
+    Perm.ADVISOR_SESSION_RECORD,
+    Perm.WEEKLY_REPORT_READ_OWN,
+    Perm.WEEKLY_REPORT_SUBMIT,
+    Perm.NOTIFICATION_READ_OWN,
+}
+
 
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     RoleCode.HOLDING_OWNER.value: HOLDING_OWNER,
     RoleCode.SUPER_ADMIN.value: SUPER_ADMIN,
-    RoleCode.HOLDING_FINANCE.value: HOLDING_FINANCE,
-    RoleCode.COMPANY_OWNER.value: COMPANY_OWNER,
-    RoleCode.CEO.value: CEO,
-    RoleCode.COMPANY_MANAGER.value: COMPANY_MANAGER,
-    RoleCode.FINANCE_MANAGER.value: FINANCE_MANAGER,
-    RoleCode.HR_MANAGER.value: HR_MANAGER,
-    RoleCode.DEPARTMENT_MANAGER.value: DEPARTMENT_MANAGER,
-    RoleCode.ACCOUNTANT.value: ACCOUNTANT,
-    RoleCode.BUSINESS_DEVELOPMENT.value: BUSINESS_DEVELOPMENT,
-    RoleCode.MARKETING.value: MARKETING,
+    RoleCode.HOLDING_FINANCE.value: HOLDING_FINANCE | ACCOUNTANT_EXT,
+    RoleCode.COMPANY_OWNER.value: COMPANY_OWNER | COMPANY_MANAGER_EXT,
+    RoleCode.CEO.value: CEO | COMPANY_MANAGER_EXT,
+    RoleCode.COMPANY_MANAGER.value: COMPANY_MANAGER | COMPANY_MANAGER_EXT,
+    RoleCode.FINANCE_MANAGER.value: FINANCE_MANAGER | {
+        Perm.OPENING_BALANCE_READ,
+        Perm.ACCOUNT_READ,
+        Perm.JOURNAL_READ,
+        Perm.INVOICE_READ,
+        Perm.ASSET_READ,
+        Perm.BUDGET_READ,
+        Perm.KPI_READ,
+        Perm.TASK_READ_OWN,
+    },
+    RoleCode.HR_MANAGER.value: HR_MANAGER | {
+        Perm.EMPLOYEE_READ,
+        Perm.EMPLOYEE_MANAGE,
+        Perm.EMPLOYEE_MOVEMENT_READ,
+        Perm.EMPLOYEE_MOVEMENT_MANAGE,
+        Perm.EMPLOYEE_MOVEMENT_APPROVE,
+        Perm.ASSESSMENT_READ,
+        Perm.ASSESSMENT_MANAGE,
+        Perm.TASK_READ_OWN,
+        Perm.WEEKLY_REPORT_READ_OWN,
+        Perm.WEEKLY_REPORT_SUBMIT,
+        Perm.WEEKLY_REPORT_READ_ALL,
+    },
+    RoleCode.DEPARTMENT_MANAGER.value: DEPARTMENT_MANAGER | {
+        Perm.TASK_READ_OWN,
+        Perm.TASK_CREATE,
+        Perm.TASK_UPDATE,
+        Perm.TASK_STATUS_CHANGE,
+        Perm.WEEKLY_REPORT_READ_OWN,
+        Perm.WEEKLY_REPORT_SUBMIT,
+    },
+    RoleCode.ACCOUNTANT.value: ACCOUNTANT | ACCOUNTANT_EXT,
+    RoleCode.BUSINESS_DEVELOPMENT.value: BUSINESS_DEVELOPMENT | BUSINESS_DEVELOPMENT_EXT,
+    RoleCode.MARKETING.value: MARKETING | MARKETING_EXT,
     RoleCode.DESIGNER.value: DESIGNER,
-    RoleCode.EMPLOYEE.value: EMPLOYEE,
+    RoleCode.EMPLOYEE.value: EMPLOYEE | {
+        Perm.TASK_READ_OWN,
+        Perm.TASK_STATUS_CHANGE,
+        Perm.WEEKLY_REPORT_READ_OWN,
+        Perm.WEEKLY_REPORT_SUBMIT,
+        Perm.KPI_READ,
+    },
+    RoleCode.EXTERNAL_CONSULTANT.value: EXTERNAL_CONSULTANT,
 }
 
 
@@ -661,6 +938,13 @@ ROLE_DEFINITIONS: list[dict[str, str]] = [
         "name_en": "Designer",
         "description": "Handles design support requests.",
         "description_ar": "يتعامل مع طلبات الدعم التصميمي.",
+    },
+    {
+        "code": RoleCode.EXTERNAL_CONSULTANT.value,
+        "name_ar": "مستشار خارجي",
+        "name_en": "External Consultant",
+        "description": "Advisor with access only to explicitly granted employees and sessions.",
+        "description_ar": "مستشار يصل فقط إلى الموظفين والجلسات المصرّح بها صراحةً.",
     },
 ]
 

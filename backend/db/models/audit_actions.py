@@ -163,3 +163,59 @@ class AuditAction:
     WEBSITE_MEDIA_UPLOADED = "website.media_uploaded"
     WEBSITE_MEDIA_DELETED = "website.media_deleted"
     WEBSITE_MEDIA_VISIBILITY_CHANGED = "website.media_visibility_changed"
+
+    # Executions 04-14: holding-business domain
+    OPENING_BALANCE_CREATED = "opening_balance.created"
+    OPENING_BALANCE_UPDATED = "opening_balance.updated"
+    OPENING_BALANCE_SUBMITTED = "opening_balance.submitted"
+    OPENING_BALANCE_APPROVED = "opening_balance.approved"
+
+    EMPLOYEE_CREATED = "employee.created"
+    EMPLOYEE_UPDATED = "employee.updated"
+    EMPLOYEE_STATUS_CHANGED = "employee.status_changed"
+    EMPLOYEE_MOVEMENT_CREATED = "employee.movement_created"
+    EMPLOYEE_MOVEMENT_DECIDED = "employee.movement_decided"
+    ASSESSMENT_CREATED = "assessment.created"
+    ASSESSMENT_UPDATED = "assessment.updated"
+    ASSESSMENT_APPROVED = "assessment.approved"
+    ASSESSMENT_APPROVAL_BLOCKED = "assessment.approval_blocked"
+
+    TASK_CREATED = "task.created"
+    TASK_UPDATED = "task.updated"
+    TASK_STATUS_CHANGED = "task.status_changed"
+
+    WEEKLY_REPORT_CREATED = "weekly_report.created"
+    WEEKLY_REPORT_SUBMITTED = "weekly_report.submitted"
+    WEEKLY_REPORT_QUESTION_CREATED = "weekly_report.question_created"
+
+    CAMPAIGN_CREATED = "campaign.created"
+    CAMPAIGN_UPDATED = "campaign.updated"
+
+    COMPLAINT_SUBMITTED = "complaint.submitted"
+    COMPLAINT_DECIDED = "complaint.decided"
+
+    ADVISOR_ASSIGNED = "advisor.assigned"
+    ADVISORY_SESSION_RECORDED = "advisory_session.recorded"
+
+    OWNER_DECISION_CREATED = "owner_decision.created"
+    OWNER_DECISION_UPDATED = "owner_decision.updated"
+
+    CONFIDENTIAL_ACCESS_GRANTED = "confidential_access.granted"
+    CONFIDENTIAL_ACCESS_REVOKED = "confidential_access.revoked"
+    CONFIDENTIAL_ACCESS_USED = "confidential_access.used"
+
+    ACCOUNT_CREATED = "account.created"
+    ACCOUNT_UPDATED = "account.updated"
+    JOURNAL_CREATED = "journal.created"
+    JOURNAL_POSTED = "journal.posted"
+    JOURNAL_REVERSED = "journal.reversed"
+    INVOICE_CREATED = "invoice.created"
+    INVOICE_UPDATED = "invoice.updated"
+    SETTLEMENT_RECORDED = "settlement.recorded"
+    ASSET_CREATED = "asset.created"
+    ASSET_UPDATED = "asset.updated"
+    BUDGET_CREATED = "budget.created"
+    BUDGET_UPDATED = "budget.updated"
+    BUDGET_APPROVED = "budget.approved"
+    KPI_CREATED = "kpi.created"
+    KPI_UPDATED = "kpi.updated"
