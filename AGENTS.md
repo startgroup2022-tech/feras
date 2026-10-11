@@ -461,3 +461,39 @@ slice has been implemented; the full matrix and the conflict analysis live in
   size limits sit next to each file control in the visitor's language.
 - When adding a migration, update the single-head assertion in
   `tests/test_postgres.py`.
+
+## Executions 01-03 — audit, financial workflow, header repair
+
+- **Header nav is the flexible, scrollable row** — `.header-inner` is a
+  `display:flex` row holding the brand, the 14 permission-gated `.nav-item`s and
+  `.h-actions`. `.nav` must be `flex:1 1 auto; min-width:0; overflow-x:auto`
+  (with `.h-actions` `flex:0 0 auto`); otherwise the items overflow and paint on
+  top of the language switch / profile / Sign out at widths >1180px (the
+  `overflow-x:auto` that previously existed only inside the `max-width:1180px`
+  media query). Regression harness: a Playwright overflow/overlap sweep at
+  1440/1024/768/390/360 in AR and EN. Fix: `frontend/styles.css` `.nav`,
+  `.nav-item`, `.h-actions`.
+- **Money is locale-aware, not always Arabic** — the Execution 02 financial view
+  originally rendered the totals strip and row amounts with `finMoneyAr(...)`
+  regardless of language, so English showed Arabic-Indic digits and `ر.س`. Use
+  `finMoney(value)` (routes through `STATE.lang`); keep `finMoneyAr`/`finMoneyEn`
+  only where both forms are needed side by side. Fix: `frontend/app.js`.
+- **Roles & Permissions admin UX is catalogue-driven** — the admin "roles" tab
+  (`renderAdminRoles`/`permEditor`/`renderPermGroups` in `frontend/app.js`) pulls
+  `/api/v1/admin/permissions/catalogue` (bilingual name/description/category/
+  action/danger) and renders grouped permissions, search, category chips,
+  per-category select-all, enabled/total/visible counters, sensitive badges and
+  unsaved-change tracking. The dynamic language switch (`setLang` →
+  `refreshActiveView` → `renderAdminTab`) rebuilds it, so AR=RTL / EN=LTR. Do
+  not hard-code permission names here; the backend catalogue is the source.
+- **Financial summary workflow** — `backend/services/financial_service.py`
+  (state machine DRAFT→SUBMITTED→APPROVED/CORRECTION_REQUIRED, corrections as
+  new versions), `financial_calc.py` (Decimal-only; INCLUDED items are never
+  double-counted; non-base currency rejected), `financial_reporting.py` (reads
+  only `period.effective_version_id`, so two versions of a month are never
+  summed). Migration `58ef167fa236` is additive (single head). Tests:
+  `tests/test_financial.py`.
+- **Spec source** — `Platform_Executive_Specifications_v1.docx` is not in the
+  repo (only 14-byte placeholder stubs under `uploads/`); audit docs under
+  `docs/audit/` cite the section/screen numbers they can verify from source.
+

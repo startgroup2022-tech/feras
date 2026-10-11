@@ -139,17 +139,28 @@ body.export .stage{width:var(--stage-w);max-width:none;height:var(--stage-h);min
 .brand-sub{font-size:9.5px;font-weight:600;color:var(--gold-600);letter-spacing:.14em;text-transform:uppercase;}
 html.lang-ar .brand-sub{letter-spacing:.02em;}
 
-.nav{display:flex;align-items:center;gap:2px;flex:1;min-width:0;}
+/* The navigation carries every permission-gated section in a single row, so it
+   can be wider than the space left by the brand and the action cluster. It must
+   be the flexible element that yields (min-width:0) and it scrolls inside its
+   own box; otherwise the row overflows and the items paint on top of the
+   language switch / profile / Sign out controls at desktop widths. */
+.nav{display:flex;align-items:center;gap:2px;flex:1 1 auto;min-width:0;
+  overflow-x:auto;overflow-y:hidden;padding-bottom:3px;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
+.nav::-webkit-scrollbar{height:5px;}
+.nav::-webkit-scrollbar-track{background:transparent;}
+.nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
 .nav-item{
   position:relative;padding:8px 13px;border-radius:9px;
-  font-size:12.5px;font-weight:500;color:var(--ink-500);
+  font-size:12.5px;font-weight:500;color:var(--ink-500);flex:0 0 auto;
   cursor:pointer;white-space:nowrap;transition:.22s cubic-bezier(.2,.7,.3,1);
 }
 .nav-item:hover{color:var(--navy-700);background:var(--bg-2);}
 .nav-item.active{color:var(--navy-800);font-weight:600;background:linear-gradient(180deg,#F7F9FD,#EEF3FA);box-shadow:inset 0 0 0 1px var(--line);}
-.nav-item.active::after{content:"";position:absolute;bottom:-1px;inset-inline:24%;height:2px;border-radius:2px;background:var(--gold-500);}
+.nav-item.active::after{content:"";position:absolute;bottom:0;inset-inline:24%;height:2px;border-radius:2px;background:var(--gold-500);}
 
-.h-actions{display:flex;align-items:center;gap:8px;margin-inline-start:auto;}
+/* Never shrink or wrap the action cluster: it is the row's right-hand anchor. */
+.h-actions{display:flex;align-items:center;gap:8px;margin-inline-start:auto;flex:0 0 auto;}
 .icon-btn{
   width:36px;height:36px;border-radius:10px;border:1px solid var(--line);
   background:#fff;display:grid;place-items:center;cursor:pointer;position:relative;
@@ -832,9 +843,10 @@ body:not(.authed) .stage-wrap{display:none;}
   .ai,.aii,.card{min-height:auto;}
   .head-row{flex-direction:column;align-items:flex-start;gap:12px;}
   .head-right{width:100%;justify-content:space-between;}
-  /* Header nav wraps instead of clipping. */
+  /* Header nav wraps to its own row and scrolls in place (the base .nav rule
+     already scrolls, so this only changes the ordering/basis). */
   .header-inner{flex-wrap:wrap;gap:8px;}
-  .nav{order:3;flex-basis:100%;overflow-x:auto;padding-bottom:2px;}
+  .nav{order:3;flex-basis:100%;padding-bottom:2px;}
   /* Routed views flow in-document on mobile rather than overlaying a
      zero-height board. */
   .app-view{position:static;inset:auto;min-height:calc(100vh - 120px);padding:14px 14px 22px;}

@@ -1872,6 +1872,13 @@
     return money(value).en;
   }
 
+  // Locale-aware money for the active language. The previous code always used
+  // the Arabic form (Arabic-Indic digits + ر.س), so the English view rendered
+  // Arabic numerals; this routes through the active language instead.
+  function finMoney(value) {
+    return STATE.lang === "ar" ? finMoneyAr(value) : finMoneyEn(value);
+  }
+
   function finPeriodQuery() {
     var y = STATE.year || new Date().getFullYear();
     var m = STATE.month || new Date().getMonth() + 1;
@@ -1913,13 +1920,13 @@
       '<div><div class="pnum">' + plainNum(counts.approved || 0) + '</div><div class="plabel">' +
       dual("ملخصات معتمدة", "approved summaries") + "</div></div>" +
       '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoneyAr(totals.effective_revenue) + '</div><div class="plabel">' +
+      '<div><div class="pnum">' + finMoney(totals.effective_revenue) + '</div><div class="plabel">' +
       dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
       '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoneyAr(totals.effective_expenses) + '</div><div class="plabel">' +
+      '<div><div class="pnum">' + finMoney(totals.effective_expenses) + '</div><div class="plabel">' +
       dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
       '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoneyAr(totals.calculated_result) + '</div><div class="plabel">' +
+      '<div><div class="pnum">' + finMoney(totals.calculated_result) + '</div><div class="plabel">' +
       dual("النتيجة", "result") + "</div></div>" +
       "</div>"
     );
@@ -1927,7 +1934,7 @@
 
   function finRow(r) {
     var eff = r.is_effective
-      ? dual(finMoneyAr(r.calculated_result), finMoneyEn(r.calculated_result))
+      ? finMoney(r.calculated_result)
       : dual("—", "—");
     var versionTag = r.version_number
       ? '<span class="perm-badge">' + dual("نسخة", "v") + " " + plainNum(r.version_number) + "</span>"
@@ -1943,8 +1950,8 @@
       '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] +
       ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
       '<div class="grow"><div class="t">' + escapeHtml(finCompanyName(r)) + " " + versionTag + "</div>" +
-      '<div class="s">' + dual("الإيرادات ", "Revenue ") + "<b>" + finMoneyAr(r.effective_revenue) + "</b>" +
-      " · " + dual("المصروفات ", "Expenses ") + "<b>" + finMoneyAr(r.effective_expenses) + "</b>" +
+      '<div class="s">' + dual("الإيرادات ", "Revenue ") + "<b>" + finMoney(r.effective_revenue) + "</b>" +
+      " · " + dual("المصروفات ", "Expenses ") + "<b>" + finMoney(r.effective_expenses) + "</b>" +
       " · " + dual("النتيجة ", "Result ") + "<b>" + eff + "</b></div></div>" +
       finStatusBadge(r.status) +
       '<span class="perm-badge" style="margin-inline-start:8px">' + cta + "</span>" +
@@ -2080,7 +2087,7 @@
         dual(escapeHtml(it.name_ar), escapeHtml(it.name_en)) + "</div>" +
         '<div class="s">' + kind + " · " + rule +
         (it.decision_reference ? " · " + escapeHtml(it.decision_reference) : "") + "</div></div>" +
-        "<b>" + finMoneyAr(it.amount) + "</b>" +
+        "<b>" + finMoney(it.amount) + "</b>" +
         (finCanEdit(v)
           ? '<button class="btn-outline" data-fin-delitem="' + it.id + '" style="margin-inline-start:8px">×</button>'
           : "") +
