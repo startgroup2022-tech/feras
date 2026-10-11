@@ -132,6 +132,25 @@ so they were not actioned without a request:
 - **This delivery adds documentation/status only — no application code, no migration, no
   schema change, and no deployment.**
 
+## 7. Update — owner decision draft received (2026-10-11)
+
+A proposal document **"Owner Decisions D01–D11 / مسودة اعتماد القرارات التنفيذية"** has
+been received and recorded verbatim in
+`docs/audit/SAFIR_DECISION_D01_D11_REGISTER.md`.
+
+**It is self-declared a draft and is NOT yet binding**: it states *"بانتظار اعتماد مالك
+المنصة"* and *"هذه الوثيقة مسودة ولا تصبح ملزمة للتطوير إلا بعد موافقة مالك المنصة
+ومطابقتها مع المواصفات الأصلية."* Two preconditions remain: (1) explicit owner approval,
+(2) match against the original specification (still absent).
+
+Per spec §20 and D01's own rule (accounting policy via *approved settings, not programmatic
+assumptions*), **no D-gated module was implemented from the draft.** The register contains a
+per-decision screen map and a complete, ready-to-execute implementation blueprint (permission
+codes, models, migrations, views, tests) that begins the moment the owner confirms approval.
+
+Progress on §6 above: this decision draft is the input that closes the D-gates. On approval,
+EXEC 04 (D08/D01) starts immediately.
+
 ### Remaining work for 100% specification coverage
 1. **Provide `Platform_Executive_Specifications_v1.docx`** (or the approved Arabic text of
    Sections 8–16, 20–22) into the repository.

@@ -517,4 +517,11 @@ slice has been implemented; the full matrix and the conflict analysis live in
   repaired header (EXEC 03).
 - **Status report:** `docs/audit/SAFIR_EXECUTIONS_04_11_STATUS.md` (per-module
   gate + owner ask-list). Full suite green: 603 passed.
+- **Owner decision draft received (2026-10-11):** recorded verbatim in
+  `docs/audit/SAFIR_DECISION_D01_D11_REGISTER.md`. It is **self-declared a draft,
+  not binding** ("بانتظار اعتماد مالك المنصة"; binding only "بعد موافقة مالك
+  المنصة ومطابقتها مع المواصفات الأصلية"). No D-gated module was implemented
+  from it. To start EXEC 04+, the owner must send one approval line (approve
+  D01-D11 as binding + matching the original spec). The register holds the
+  ready-to-execute blueprint (permission codes, models, migrations, views, tests).
 
