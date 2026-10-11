@@ -43,6 +43,10 @@
     notifFilter: "all",
     anTab: "briefing",
     integrationSecret: null,
+    empTab: "employees",
+    opsTab: "tasks",
+    acctTab: "balances",
+    confTab: "complaints",
     loaded: {},
   };
 
@@ -1312,6 +1316,11 @@
     "analytics",
     "inbox",
     "leads",
+    "employees",
+    "operations",
+    "decisions",
+    "accounting",
+    "confidential",
     "admin",
   ];
   var NAV_PERM = {
@@ -1333,6 +1342,30 @@
     ],
     inbox: ["notification.read_own"],
     leads: ["website_lead.read"],
+    employees: [
+      "employee.read",
+      "assessment.read",
+      "advisor.read",
+      "advisor.session.read_own",
+    ],
+    operations: [
+      "task.read_own",
+      "task.read_all",
+      "weekly_report.read_own",
+      "weekly_report.read_all",
+      "campaign.read",
+    ],
+    decisions: ["owner_decision.read"],
+    accounting: [
+      "account.read",
+      "journal.read",
+      "invoice.read",
+      "asset.read",
+      "budget.read",
+      "opening_balance.read",
+      "kpi.read",
+    ],
+    confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
     admin: [
       "company.read",
       "ownership.read",
@@ -1417,6 +1450,11 @@
     if (view === "analytics") return renderAnalytics();
     if (view === "inbox") return renderInbox();
     if (view === "leads") return renderLeads();
+    if (view === "employees") return renderEmployeesView();
+    if (view === "operations") return renderOperationsView();
+    if (view === "decisions") return renderDecisionsView();
+    if (view === "accounting") return renderAccountingView();
+    if (view === "confidential") return renderConfidentialView();
     if (view === "admin") return renderAdmin();
     return Promise.resolve();
   }
@@ -4245,6 +4283,1507 @@
   // One delegated click handler drives every admin action, so cards can be
   // re-rendered freely without rebinding. Each tab is loaded lazily and only
   // if the caller holds the permission that tab needs.
+
+  // ======================================================================
+  // Holding-business domain views (S04, S11-S23, S26-S28)
+  //
+  // Every view is a thin projection of the existing permission-gated API. No
+  // authorization decision is taken here: `has()` only decides what to *offer*
+  // on screen, and the backend re-checks every call server-side. Actions that
+  // are policy-dependent remain disabled with an explicit reason rather than
+  // being silently omitted.
+  // ======================================================================
+
+  function panel(titleAr, titleEn, body) {
+    return '<div class="av-panel"><h3>' + dual(titleAr, titleEn) + "</h3>" + body + "</div>";
+  }
+
+  function noticeHtml(ar, en) {
+    return '<p class="av-empty">' + dual(ar, en) + "</p>";
+  }
+
+  function dec(v) {
+    if (v === null || v === undefined || v === "") return "—";
+    var n = Number(v);
+    return isNaN(n) ? String(v) : NUM.format(n);
+  }
+
+  function dateStr(iso) {
+    if (!iso) return "—";
+    return String(iso).slice(0, 10);
+  }
+
+  function rowClickAttr(name, obj) {
+    return " data-" + name + "='" + escAttr(JSON.stringify(obj)) + "'";
+  }
+
+  function bindRowClicks(host, name, handler) {
+    host.querySelectorAll("[data-" + name + "]").forEach(function (row) {
+      row.addEventListener("click", function (e) {
+        if (e.target.closest && e.target.closest("[data-stop]")) return;
+        handler(JSON.parse(row.getAttribute("data-" + name)));
+      });
+    });
+  }
+
+  function actBtn(perm, action, id, labelAr, labelEn, kind) {
+    if (perm && !has(perm)) return "";
+    return (
+      '<button class="btn-outline ' + (kind || "") + '" data-stop="1" data-act="' + action +
+      '" data-id="' + id + '">' + dual(labelAr, labelEn) + "</button>"
+    );
+  }
+
+  function companyNameById(id) {
+    var c = companyById(id);
+    return c ? companyName(c) : String(id);
+  }
+
+  function companySelectOptions(extraAll) {
+    // Option labels are plain text: selectInput escapes them, and a <select>
+    // cannot hold markup, so the label must already be in the active language.
+    var opts = extraAll
+      ? [{ value: "", label: STATE.lang === "ar" ? "كل الشركات" : "All companies" }]
+      : [];
+    (STATE.companies || []).forEach(function (c) {
+      opts.push({ value: c.id, label: companyName(c) });
+    });
+    return opts;
+  }
+
+  function opt(ar, en) {
+    // Plain-text option label in the active language (a <select> cannot hold
+    // markup, and selectInput escapes it).
+    return STATE.lang === "ar" ? ar : en;
+  }
+
+  function numInput(id, value, placeholder) {
+    return (
+      '<input class="av-input" id="' + id + '" type="number" step="any" value="' +
+      escAttr(value === null || value === undefined ? "" : value) + '" placeholder="' +
+      escAttr(placeholder || "") + '">'
+    );
+  }
+
+  function dateInput(id, value) {
+    return '<input class="av-input" id="' + id + '" type="date" value="' + escAttr(value || "") + '">';
+  }
+
+  function textArea(id, value, placeholder) {
+    return (
+      '<textarea class="av-input" id="' + id + '" rows="2" placeholder="' +
+      escAttr(placeholder || "") + '">' + escapeHtml(value || "") + "</textarea>"
+    );
+  }
+
+  function valOf(id) {
+    var el = byId(id);
+    return el ? String(el.value).trim() : "";
+  }
+
+  function numVal(id) {
+    var v = valOf(id);
+    if (v === "") return null;
+    var n = Number(v);
+    return isNaN(n) ? null : n;
+  }
+
+  function bindHost(host, onAct) {
+    if (!host || host.getAttribute("data-domain-bound")) return;
+    host.setAttribute("data-domain-bound", "1");
+    host.addEventListener("click", function (e) {
+      var el = e.target.closest ? e.target.closest("[data-act]") : null;
+      if (!el) return;
+      onAct(el.getAttribute("data-act"), el.getAttribute("data-id"), el);
+    });
+    host.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (e.target && e.target.getAttribute) onAct("submit", e.target.id, e.target);
+    });
+  }
+
+  function domainError(err) {
+    toast(errText(err), "err");
+  }
+
+  // ======================================================================
+  // S11/S12/S19 -- Employees, assessments, advisory sessions
+  // ======================================================================
+  function renderEmployeesView() {
+    var host = byId("empContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.empBound) {
+      STATE.empBound = true;
+      bindEmployeesTabs();
+      bindHost(host, onEmployeeAct);
+    }
+    if (!STATE.empTab || !canEmpTab(STATE.empTab)) STATE.empTab = firstEmpTab();
+    return renderEmployeesTab(STATE.empTab);
+  }
+
+  var EMP_TABS = ["employees", "assessments", "advisors"];
+  var EMP_TAB_PERM = {
+    employees: ["employee.read"],
+    assessments: ["assessment.read"],
+    advisors: ["advisor.read", "advisor.session.read_own"],
+  };
+  function canEmpTab(t) { return (EMP_TAB_PERM[t] || []).some(has); }
+  function firstEmpTab() {
+    for (var i = 0; i < EMP_TABS.length; i++) if (canEmpTab(EMP_TABS[i])) return EMP_TABS[i];
+    return "employees";
+  }
+  function bindEmployeesTabs() {
+    document.querySelectorAll("[data-emp-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var t = btn.getAttribute("data-emp-tab");
+        if (!canEmpTab(t)) return;
+        STATE.empTab = t;
+        document.querySelectorAll("[data-emp-tab]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        renderEmployeesTab(t);
+      });
+    });
+  }
+  function renderEmployeesTab(tab) {
+    var host = byId("empContent");
+    document.querySelectorAll("[data-emp-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-emp-tab") === tab);
+    });
+    host.innerHTML = loadingHtml();
+    if (tab === "employees") return renderEmployees();
+    if (tab === "assessments") return renderAssessments();
+    if (tab === "advisors") return renderAdvisors();
+    return Promise.resolve();
+  }
+
+  function renderEmployees() {
+    var host = byId("empContent");
+    var q = STATE.empCompany ? "?company_id=" + STATE.empCompany : "";
+    return Promise.all([ensureCompanies(), get("/api/v1/employees" + q)]).then(function (res) {
+      var employees = res[1] || [];
+      var canManage = has("employee.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="empForm">' +
+          field("الشركة", "Company", selectInput("eCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("eNameEn", "")) +
+          field("المسمى الوظيفي", "Job title", textInput("eTitle", "")) +
+          field("تاريخ التعيين", "Hire date", dateInput("eHire", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة موظف", "Add employee") + "</button></div></form>"
+        : "";
+      var filter =
+        '<div class="av-form av-form-inline">' +
+        field("تصفية بالشركة", "Filter by company", selectInput("empFilter", companySelectOptions(true), STATE.empCompany || "")) +
+        "</div>";
+      var list = employees.length
+        ? '<div class="av-list">' + employees.map(employeeRow).join("") + "</div>"
+        : noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope.");
+      host.innerHTML = panel("الموظفون", "Employees", create + filter + list);
+      var f = byId("empFilter");
+      if (f) f.addEventListener("change", function () { STATE.empCompany = this.value ? parseInt(this.value, 10) : null; renderEmployees(); });
+      bindRowClicks(host, "emp", openEmployee);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function employeeRow(e) {
+    var name = STATE.lang === "ar" ? e.full_name_ar : e.full_name_en || e.full_name_ar;
+    var salary = has("employee.salary.read") && e.base_salary != null
+      ? ' · ' + dual("الراتب", "Salary") + " " + dec(e.base_salary)
+      : "";
+    return (
+      '<div class="av-row"' + rowClickAttr("emp", e) + ">" +
+      '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
+      '<div class="s">' + escapeHtml(companyNameById(e.company_id)) + " · " +
+      escapeHtml(e.job_title || "") + salary + "</div></div>" +
+      statusBadgeFromMap(e.status, {
+        active: ["نشط", "Active", "ok"],
+        on_leave: ["في إجازة", "On leave", "warn"],
+        terminated: ["منتهٍ", "Terminated", "miss"],
+      }) + "</div>"
+    );
+  }
+
+  function openEmployee(e) {
+    openModal({
+      title: dual("ملف الموظف", "Employee file"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function (root, body) {
+        get("/api/v1/employees/" + e.id + "/movements").catch(function () { return []; }).then(function (movements) {
+          body.innerHTML = employeeDetail(e, movements || []);
+          bindEmployeeDetail(body, e);
+        });
+      },
+    });
+  }
+
+  function employeeDetail(e, movements) {
+    var name = STATE.lang === "ar" ? e.full_name_ar : e.full_name_en || e.full_name_ar;
+    var info = '<div class="kv">' +
+      kv(dual("الشركة", "Company"), escapeHtml(companyNameById(e.company_id))) +
+      kv(dual("الاسم", "Name"), escapeHtml(name)) +
+      kv(dual("المسمى", "Job title"), escapeHtml(e.job_title || "—")) +
+      kv(dual("البريد", "Email"), escapeHtml(e.email || "—")) +
+      kv(dual("الهاتف", "Phone"), escapeHtml(e.phone || "—")) +
+      kv(dual("تاريخ التعيين", "Hire date"), escapeHtml(dateStr(e.hire_date))) +
+      kv(dual("رصيد الإجازات", "Leave balance"), dec(e.leave_balance_days)) +
+      kv(dual("رصيد السلف", "Advance balance"), dec(e.advance_balance));
+    if (has("employee.salary.read")) {
+      info += kv(dual("الراتب الأساسي", "Base salary"), dec(e.base_salary)) +
+        kv(dual("بدل السكن", "Housing"), dec(e.housing_allowance)) +
+        kv(dual("بدل النقل", "Transport"), dec(e.transport_allowance));
+    } else {
+      info += kv(dual("الراتب", "Salary"), dual("محجوب", "Restricted"));
+    }
+    info += "</div>";
+    var movForm = has("employee.movement.manage")
+      ? '<form class="av-form av-form-inline" id="movForm">' +
+        field("النوع", "Type", selectInput("mvType", [
+          { value: "leave", label: opt("إجازة", "Leave") },
+          { value: "advance", label: opt("سلفة", "Advance") },
+          { value: "adjustment", label: opt("تسوية", "Adjustment") },
+        ], "leave")) +
+        field("التاريخ", "Date", dateInput("mvDate", "")) +
+        field("الأيام", "Days", numInput("mvDays", "")) +
+        field("المبلغ", "Amount", numInput("mvAmount", "")) +
+        field("السبب", "Reason", textInput("mvReason", "")) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
+        dual("تسجيل حركة", "Record movement") + "</button></div></form>"
+      : "";
+    var movList = movements.length
+      ? '<div class="av-list">' + movements.map(function (m) {
+          var decide = m.status === "pending"
+            ? actBtn("employee.movement.approve", "mov-approve", m.id, "اعتماد", "Approve") +
+              actBtn("employee.movement.approve", "mov-reject", m.id, "رفض", "Reject")
+            : "";
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml(m.movement_type) + (m.days ? " · " + dec(m.days) + dual(" يوم", " d") : "") +
+            (m.amount ? " · " + dec(m.amount) : "") + "</div>" +
+            '<div class="s">' + escapeHtml(dateStr(m.effective_date)) + " · " + escapeHtml(m.reason || "") + "</div></div>" +
+            statusBadgeFromMap(m.status, { pending: ["قيد الاعتماد", "Pending", "warn"], approved: ["معتمد", "Approved", "ok"], rejected: ["مرفوض", "Rejected", "miss"] }) +
+            decide + "</div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد حركات مسجّلة.", "No movements recorded.");
+    return panel("بيانات الموظف", "Employee details", info) +
+      panel("الحركات (يدوية — دون ربط آلي بالرواتب)", "Movements (manual — no automatic payroll link)", movForm + movList);
+  }
+
+  function bindEmployeeDetail(body, e) {
+    var form = body.querySelector("#movForm");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        post("/api/v1/employees/" + e.id + "/movements", {
+          movement_type: valOf("mvType"),
+          effective_date: valOf("mvDate") || null,
+          days: numVal("mvDays"),
+          amount: numVal("mvAmount"),
+          reason: valOf("mvReason") || null,
+        }).then(function () {
+          toast(dual("تم تسجيل الحركة.", "Movement recorded."), "ok");
+          openEmployee(e);
+        }).catch(domainError);
+      });
+    }
+    body.querySelectorAll("[data-act]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var approve = btn.getAttribute("data-act") === "mov-approve";
+        post("/api/v1/employees/movements/" + btn.getAttribute("data-id") + "/decision", { approve: approve })
+          .then(function () {
+            toast(dual("تم تحديث الحركة.", "Movement updated."), "ok");
+            openEmployee(e);
+          }).catch(domainError);
+      });
+    });
+  }
+
+  function renderAssessments() {
+    var host = byId("empContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/employees/assessments/list").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("assessment.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="assessForm">' +
+          field("الشركة", "Company", selectInput("asCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الفترة", "Period", textInput("asPeriod", "")) +
+          field("النوع", "Type", selectInput("asType", [
+            { value: "employee", label: opt("موظف", "Employee") },
+            { value: "leadership", label: opt("قيادة (سري)", "Leadership (confidential)") },
+          ], "employee")) +
+          field("الموظف (المعرّف)", "Employee id", numInput("asEmp", "")) +
+          field("الملخص", "Summary", textInput("asSummary", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إنشاء تقييم", "Create assessment") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(assessmentRow).join("") + "</div>"
+        : noticeHtml("لا توجد تقييمات.", "No assessments.");
+      host.innerHTML = panel("التقييمات", "Assessments", create + list);
+      bindRowClicks(host, "assess", openAssessment);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function assessmentRow(a) {
+    var gap = a.has_evidence_gap
+      ? '<span class="status miss"><i></i>' + dual("فجوة أدلة", "Evidence gap") + "</span>"
+      : "";
+    return (
+      '<div class="av-row"' + rowClickAttr("assess", a) + ">" +
+      '<div class="grow"><div class="t">' + escapeHtml(a.period_label) +
+      " · " + escapeHtml(a.assessment_type) + "</div>" +
+      '<div class="s">' + escapeHtml(companyNameById(a.company_id)) +
+      " · " + dual("الدرجة", "Score") + " " + dec(a.overall_score) + "</div></div>" +
+      gap + statusBadgeFromMap(a.status, {
+        draft: ["مسودة", "Draft", "warn"],
+        submitted: ["مُقدَّم", "Submitted", "warn"],
+        approved: ["معتمد", "Approved", "ok"],
+      }) + "</div>"
+    );
+  }
+
+  function openAssessment(a) {
+    openModal({
+      title: dual("التقييم", "Assessment"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function (root, body) {
+        body.innerHTML = assessmentDetail(a);
+        bindAssessmentDetail(body, a);
+      },
+    });
+  }
+
+  function assessmentDetail(a) {
+    var items = a.items || [];
+    var itemForm = has("assessment.manage") && a.status !== "approved"
+      ? '<form class="av-form av-form-inline" id="assessItemForm">' +
+        field("معيار (كود)", "Criterion code", textInput("aiCode", "")) +
+        field("الاسم (عربي)", "Name (AR)", textInput("aiNameAr", "")) +
+        field("الاسم (إنجليزي)", "Name (EN)", textInput("aiNameEn", "")) +
+        field("الوزن", "Weight", numInput("aiWeight", "1")) +
+        field("الدرجة (1-5)", "Score (1-5)", numInput("aiScore", "")) +
+        field("دليل إلزامي؟", "Evidence required?", selectInput("aiEvReq", [{ value: "0", label: opt("لا", "No") }, { value: "1", label: opt("نعم", "Yes") }], "0")) +
+        field("الدليل مكتمل؟", "Evidence complete?", selectInput("aiEvDone", [{ value: "0", label: opt("لا", "No") }, { value: "1", label: opt("نعم", "Yes") }], "0")) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
+        dual("حفظ معيار", "Save criterion") + "</button></div></form>"
+      : "";
+    var list = items.length
+      ? '<div class="av-list">' + items.map(function (it) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml(STATE.lang === "ar" ? it.criterion_name_ar : it.criterion_name_en || it.criterion_name_ar) + "</div>" +
+            '<div class="s">' + dual("الوزن", "Weight") + " " + dec(it.weight) + " · " +
+            dual("الدرجة", "Score") + " " + dec(it.score) +
+            (it.evidence_required ? " · " + dual("دليل إلزامي", "Mandatory evidence") : "") + "</div></div>" +
+            (it.evidence_required && !it.evidence_complete
+              ? '<span class="status miss"><i></i>' + dual("ناقص", "Missing") + "</span>"
+              : "") + "</div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد معايير بعد.", "No criteria yet.");
+    var approve = a.status !== "approved" && has("assessment.approve")
+      ? '<div class="av-form-actions">' + actBtn("assessment.approve", "assess-approve", a.id, "اعتماد التقييم", "Approve assessment") + "</div>"
+      : "";
+    var gapNote = a.has_evidence_gap
+      ? '<p class="note-block">' + dual("الاعتماد محجوب: يوجد معيار إلزامي بدون دليل مكتمل.", "Approval is blocked: a mandatory-evidence item is incomplete.") + "</p>"
+      : "";
+    return panel("ملخص", "Summary", '<div class="kv">' +
+        kv(dual("الفترة", "Period"), escapeHtml(a.period_label)) +
+        kv(dual("الحالة", "Status"), escapeHtml(a.status)) +
+        kv(dual("الدرجة المرجّحة", "Weighted score"), dec(a.overall_score)) +
+        "</div>" + gapNote + approve) +
+      panel("المعايير", "Criteria", itemForm + list);
+  }
+
+  function bindAssessmentDetail(body, a) {
+    var form = body.querySelector("#assessItemForm");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        post("/api/v1/employees/assessments/" + a.id + "/items", {
+          criterion_code: valOf("aiCode"),
+          criterion_name_ar: valOf("aiNameAr"),
+          criterion_name_en: valOf("aiNameEn") || null,
+          weight: numVal("aiWeight") || 1,
+          score: numVal("aiScore"),
+          evidence_required: valOf("aiEvReq") === "1",
+          evidence_complete: valOf("aiEvDone") === "1",
+        }).then(function (updated) {
+          toast(dual("تم حفظ المعيار.", "Criterion saved."), "ok");
+          openAssessment(updated);
+        }).catch(domainError);
+      });
+    }
+    var btn = body.querySelector('[data-act="assess-approve"]');
+    if (btn) {
+      btn.addEventListener("click", function () {
+        post("/api/v1/employees/assessments/" + a.id + "/approve", {})
+          .then(function (updated) {
+            toast(dual("تم اعتماد التقييم.", "Assessment approved."), "ok");
+            openAssessment(updated);
+          }).catch(domainError);
+      });
+    }
+  }
+
+  function renderAdvisors() {
+    var host = byId("empContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/advisory-sessions").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canRecord = has("advisor.session.record");
+      var create = canRecord
+        ? '<form class="av-form av-form-inline" id="advForm">' +
+          field("الشركة", "Company", selectInput("adCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("adUser", "")) +
+          field("الموعد", "Scheduled at", '<input class="av-input" id="adWhen" type="datetime-local">') +
+          field("الموضوع", "Topic", textInput("adTopic", "")) +
+          field("الملاحظات", "Notes", textInput("adNotes", "")) +
+          field("التوصيات", "Recommendations", textInput("adRec", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("تسجيل جلسة", "Record session") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (s) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(s.topic || dual("جلسة استشارية", "Advisory session")) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(s.company_id)) + " · " +
+              escapeHtml(s.scheduled_at ? String(s.scheduled_at).slice(0, 16).replace("T", " ") : "—") + "</div></div>" +
+              statusBadgeFromMap(s.status, { scheduled: ["مجدولة", "Scheduled", "warn"], completed: ["مكتملة", "Completed", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد جلسات استشارية.", "No advisory sessions.");
+      host.innerHTML = panel("الجلسات الاستشارية", "Advisory sessions", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function onEmployeeAct(action, id, el) {
+    if (action !== "submit") return;
+    if (id === "empForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/employees", {
+        company_id: parseInt(valOf("eCompany"), 10),
+        full_name_ar: valOf("eNameAr"),
+        full_name_en: valOf("eNameEn") || null,
+        job_title: valOf("eTitle") || null,
+        hire_date: valOf("eHire") || null,
+      }).then(function () { toast(dual("تمت إضافة الموظف.", "Employee added."), "ok"); return renderEmployees(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "assessForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/employees/assessments", {
+        company_id: parseInt(valOf("asCompany"), 10),
+        period_label: valOf("asPeriod"),
+        assessment_type: valOf("asType"),
+        employee_id: numVal("asEmp"),
+        summary: valOf("asSummary") || null,
+      }).then(function () { toast(dual("تم إنشاء التقييم.", "Assessment created."), "ok"); return renderAssessments(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "advForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/operations/advisory-sessions", {
+        company_id: parseInt(valOf("adCompany"), 10),
+        advisor_user_id: parseInt(valOf("adUser"), 10),
+        scheduled_at: valOf("adWhen") || null,
+        topic: valOf("adTopic") || null,
+        notes: valOf("adNotes") || null,
+        recommendations: valOf("adRec") || null,
+      }).then(function () { toast(dual("تم تسجيل الجلسة.", "Session recorded."), "ok"); return renderAdvisors(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+  }
+
+  // ======================================================================
+  // S13/S17/S18/S14 -- Tasks, weekly reports, campaigns
+  // ======================================================================
+  function renderOperationsView() {
+    var host = byId("opsContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.opsBound) {
+      STATE.opsBound = true;
+      bindOpsTabs();
+      bindHost(host, onOpsAct);
+    }
+    if (!STATE.opsTab || !canOpsTab(STATE.opsTab)) STATE.opsTab = firstOpsTab();
+    return renderOpsTab(STATE.opsTab);
+  }
+
+  var OPS_TABS = ["tasks", "weekly", "campaigns"];
+  var OPS_TAB_PERM = {
+    tasks: ["task.read_own", "task.read_all"],
+    weekly: ["weekly_report.read_own", "weekly_report.read_all"],
+    campaigns: ["campaign.read"],
+  };
+  function canOpsTab(t) { return (OPS_TAB_PERM[t] || []).some(has); }
+  function firstOpsTab() {
+    for (var i = 0; i < OPS_TABS.length; i++) if (canOpsTab(OPS_TABS[i])) return OPS_TABS[i];
+    return "tasks";
+  }
+  function bindOpsTabs() {
+    document.querySelectorAll("[data-ops-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var t = btn.getAttribute("data-ops-tab");
+        if (!canOpsTab(t)) return;
+        STATE.opsTab = t;
+        document.querySelectorAll("[data-ops-tab]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+        renderOpsTab(t);
+      });
+    });
+  }
+  function renderOpsTab(tab) {
+    var host = byId("opsContent");
+    document.querySelectorAll("[data-ops-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-ops-tab") === tab);
+    });
+    host.innerHTML = loadingHtml();
+    if (tab === "tasks") return renderTasks();
+    if (tab === "weekly") return renderWeekly();
+    if (tab === "campaigns") return renderCampaigns();
+    return Promise.resolve();
+  }
+
+  function renderTasks() {
+    var host = byId("opsContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/tasks").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canCreate = has("task.create");
+      var create = canCreate
+        ? '<form class="av-form av-form-inline" id="taskForm">' +
+          field("الشركة", "Company", selectInput("tkCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("العنوان", "Title", textInput("tkTitle", "")) +
+          field("الأولوية", "Priority", selectInput("tkPriority", [
+            { value: "low", label: opt("منخفضة", "Low") },
+            { value: "normal", label: opt("عادية", "Normal") },
+            { value: "high", label: opt("عالية", "High") },
+          ], "normal")) +
+          field("تاريخ الاستحقاق", "Due date", dateInput("tkDue", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إنشاء مهمة", "Create task") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(taskRow).join("") + "</div>"
+        : noticeHtml("لا توجد مهام.", "No tasks.");
+      host.innerHTML = panel("المهام", "Tasks", create + list);
+      bindRowClicks(host, "task", openTask);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function taskRow(t) {
+    var overdue = t.due_date && t.status !== "complete" && new Date(t.due_date) < new Date();
+    return (
+      '<div class="av-row"' + rowClickAttr("task", t) + ">" +
+      '<div class="grow"><div class="t">' + escapeHtml(t.title) + "</div>" +
+      '<div class="s">' + escapeHtml(companyNameById(t.company_id)) +
+      (t.due_date ? " · " + dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(t.due_date)) : "") +
+      (overdue ? " · " + dual("متأخرة", "Overdue") : "") + "</div></div>" +
+      statusBadgeFromMap(t.priority, { low: ["منخفضة", "Low", "rev"], normal: ["عادية", "Normal", "warn"], high: ["عالية", "High", "miss"] }) +
+      statusBadgeFromMap(t.status, {
+        new: ["جديدة", "New", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"],
+        awaiting_review: ["بانتظار المراجعة", "Awaiting review", "warn"],
+        complete: ["مكتملة", "Complete", "ok"], returned: ["مُعادة", "Returned", "miss"],
+        cancelled: ["ملغاة", "Cancelled", "miss"],
+      }) + "</div>"
+    );
+  }
+
+  function openTask(t) {
+    openModal({
+      title: dual("المهمة", "Task"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function (root, body) {
+        body.innerHTML = taskDetail(t);
+        var form = body.querySelector("#taskStatusForm");
+        if (form) {
+          form.addEventListener("submit", function (ev) {
+            ev.preventDefault();
+            post("/api/v1/operations/tasks/" + t.id + "/status", {
+              status: valOf("tsStatus"),
+              note: valOf("tsNote") || null,
+            }).then(function () { toast(dual("تم تحديث المهمة.", "Task updated."), "ok"); closeModal(); renderTasks(); })
+              .catch(domainError);
+          });
+        }
+      },
+    });
+  }
+
+  function taskDetail(t) {
+    var events = t.events || [];
+    var transition = has("task.status_change")
+      ? '<form class="av-form av-form-inline" id="taskStatusForm">' +
+        field("الحالة", "Status", selectInput("tsStatus", [
+          { value: "new", label: opt("جديدة", "New") },
+          { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+          { value: "awaiting_review", label: opt("بانتظار المراجعة", "Awaiting review") },
+          { value: "complete", label: opt("مكتملة", "Complete") },
+          { value: "returned", label: opt("إعادة", "Return") },
+          { value: "cancelled", label: opt("إلغاء", "Cancel") },
+        ], t.status)) +
+        field("ملاحظة", "Note", textInput("tsNote", "")) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
+        dual("تحديث الحالة", "Update status") + "</button></div></form>"
+      : "";
+    var hist = events.length
+      ? '<div class="av-list">' + events.map(function (e) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml((e.from_status || "—") + " → " + e.to_status) + "</div>" +
+            '<div class="s">' + escapeHtml(dateStr(e.created_at)) + " · " + escapeHtml(e.note || "") + "</div></div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد تحولات.", "No transitions.");
+    return panel("التفاصيل", "Details", '<div class="kv">' +
+        kv(dual("العنوان", "Title"), escapeHtml(t.title)) +
+        kv(dual("الشركة", "Company"), escapeHtml(companyNameById(t.company_id))) +
+        kv(dual("التقدم", "Progress"), dec(t.progress_percent) + "%") +
+        "</div>" + transition) +
+      panel("السجل", "History", hist);
+  }
+
+  function renderWeekly() {
+    var host = byId("opsContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/weekly-reports").catch(function () { return []; }),
+      get("/api/v1/operations/weekly-reports/questions").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var questions = res[2] || [];
+      var canSubmit = has("weekly_report.submit");
+      var qFields = questions.map(function (q, i) {
+        return field(
+          STATE.lang === "ar" ? q.text_ar : q.text_en || q.text_ar,
+          q.text_en || q.text_ar,
+          textArea("wrQ" + i, "", ""),
+        );
+      }).join("");
+      var create = canSubmit
+        ? '<form class="av-form" id="weeklyForm">' +
+          '<div class="av-form-inline">' +
+          field("الشركة", "Company", selectInput("wrCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("السنة", "Year", numInput("wrYear", STATE.year || "")) +
+          field("الأسبوع", "Week", numInput("wrWeek", "")) +
+          "</div>" + qFields +
+          field("الملخص", "Summary", textArea("wrSummary", "", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إرسال التقرير الأسبوعي", "Submit weekly report") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (r) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              dual("أسبوع", "Week") + " " + dec(r.period_week) + " · " + dec(r.period_year) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+              (r.answers || []).length + " " + dual("إجابات", "answers") + "</div></div>" +
+              statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "ok"] }) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد تقارير أسبوعية.", "No weekly reports.");
+      host.innerHTML = panel("التقرير الأسبوعي (بحد أقصى الأسئلة المعتمدة)", "Weekly report (at most the approved question set)", create + list);
+      var form = byId("weeklyForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var answers = questions.map(function (q, i) {
+            return { question_id: q.id, question_code: q.code, answer: valOf("wrQ" + i) || null };
+          });
+          busy(form.querySelector("button"), true);
+          post("/api/v1/operations/weekly-reports", {
+            company_id: parseInt(valOf("wrCompany"), 10),
+            period_year: parseInt(valOf("wrYear"), 10),
+            period_week: parseInt(valOf("wrWeek"), 10),
+            answers: answers,
+            summary: valOf("wrSummary") || null,
+          }).then(function () { toast(dual("تم إرسال التقرير.", "Report submitted."), "ok"); return renderWeekly(); })
+            .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
+        });
+      }
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderCampaigns() {
+    var host = byId("opsContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/campaigns").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("campaign.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="campaignForm">' +
+          field("الشركة", "Company", selectInput("cpCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الاسم", "Name", textInput("cpName", "")) +
+          field("المنصة", "Platform", textInput("cpPlatform", "")) +
+          field("الميزانية", "Budget", numInput("cpBudget", "")) +
+          field("من", "From", dateInput("cpFrom", "")) +
+          field("إلى", "To", dateInput("cpTo", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إنشاء حملة", "Create campaign") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (c) {
+            var results = canManage
+              ? '<form class="av-form av-form-inline" data-stop="1" id="campRes' + c.id + '">' +
+                field("الإنفاق", "Spend", numInput("crSpend" + c.id, c.spend)) +
+                field("عدد العملاء المحتملين", "Leads", numInput("crLeads" + c.id, c.lead_count)) +
+                field("التحويلات", "Conversions", numInput("crConv" + c.id, c.conversion_count)) +
+                '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
+                dual("حفظ النتائج", "Save results") + "</button></div></form>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
+              " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
+              statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+              "</div>" + results + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد حملات.", "No campaigns.");
+      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function onOpsAct(action, id, el) {
+    if (action !== "submit") return;
+    if (id === "taskForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/operations/tasks", {
+        company_id: parseInt(valOf("tkCompany"), 10),
+        title: valOf("tkTitle"),
+        priority: valOf("tkPriority"),
+        due_date: valOf("tkDue") || null,
+      }).then(function () { toast(dual("تم إنشاء المهمة.", "Task created."), "ok"); return renderTasks(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "campaignForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/operations/campaigns", {
+        company_id: parseInt(valOf("cpCompany"), 10),
+        name: valOf("cpName"),
+        platform: valOf("cpPlatform") || null,
+        budget: numVal("cpBudget"),
+        start_date: valOf("cpFrom") || null,
+        end_date: valOf("cpTo") || null,
+      }).then(function () { toast(dual("تم إنشاء الحملة.", "Campaign created."), "ok"); return renderCampaigns(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    var m = /^campRes(\d+)$/.exec(id);
+    if (m) {
+      var cid = m[1];
+      busy(el.querySelector("button"), true);
+      return patch("/api/v1/operations/campaigns/" + cid, {
+        spend: numVal("crSpend" + cid),
+        lead_count: valOf("crLeads" + cid) === "" ? null : parseInt(valOf("crLeads" + cid), 10),
+        conversion_count: valOf("crConv" + cid) === "" ? null : parseInt(valOf("crConv" + cid), 10),
+      }).then(function () { toast(dual("تم حفظ النتائج.", "Results saved."), "ok"); return renderCampaigns(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+  }
+
+  // ======================================================================
+  // S22 -- Owner decisions (D07)
+  // ======================================================================
+  function renderDecisionsView() {
+    var host = byId("decContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/owner-decisions").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("owner_decision.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="decForm">' +
+          field("الرقم", "Number", textInput("dcNumber", "")) +
+          field("العنوان", "Title", textInput("dcTitle", "")) +
+          field("الشركة (اختياري)", "Company (optional)", selectInput("dcCompany", companySelectOptions(true), "")) +
+          field("المُنفّذ (معرّف)", "Executor id", numInput("dcExecutor", "")) +
+          field("الاستحقاق", "Due date", dateInput("dcDue", "")) +
+          field("النص", "Body", textInput("dcBody", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إصدار قرار", "Issue decision") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (d) {
+            var controls = canManage
+              ? '<div class="av-user-controls" data-stop="1">' +
+                selectInput("dcStatus" + d.id, [
+                  { value: "open", label: opt("مفتوح", "Open") },
+                  { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+                  { value: "done", label: opt("منجز", "Done") },
+                  { value: "cancelled", label: opt("ملغى", "Cancelled") },
+                ], d.status) +
+                '<button class="btn-outline" data-act="dec-status" data-id="' + d.id + '">' + dual("تحديث", "Update") + "</button></div>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
+              '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
+              dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
+              statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
+              "</div>" + controls + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد قرارات.", "No decisions.");
+      host.innerHTML = panel("قرارات المالك", "Owner decisions", create + list);
+      var form = byId("decForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          busy(form.querySelector("button"), true);
+          post("/api/v1/operations/owner-decisions", {
+            number: valOf("dcNumber"),
+            title: valOf("dcTitle"),
+            company_id: valOf("dcCompany") ? parseInt(valOf("dcCompany"), 10) : null,
+            executor_user_id: numVal("dcExecutor"),
+            due_date: valOf("dcDue") || null,
+            body: valOf("dcBody") || null,
+          }).then(function () { toast(dual("تم إصدار القرار.", "Decision issued."), "ok"); return renderDecisionsView(); })
+            .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
+        });
+      }
+      host.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var did = btn.getAttribute("data-id");
+          patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
+            .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+            .catch(domainError);
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ======================================================================
+  // S04/S26/S27/S28 -- Holding accounting (D01/D07/D08)
+  // ======================================================================
+  function renderAccountingView() {
+    var host = byId("acctContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.acctBound) {
+      STATE.acctBound = true;
+      bindAcctTabs();
+      bindHost(host, onAcctAct);
+    }
+    if (!STATE.acctTab || !canAcctTab(STATE.acctTab)) STATE.acctTab = firstAcctTab();
+    return renderAcctTab(STATE.acctTab);
+  }
+
+  var ACCT_TABS = ["balances", "accounts", "journals", "invoices", "assets", "budgets", "kpis"];
+  var ACCT_TAB_PERM = {
+    balances: ["opening_balance.read"],
+    accounts: ["account.read"],
+    journals: ["journal.read"],
+    invoices: ["invoice.read"],
+    assets: ["asset.read"],
+    budgets: ["budget.read"],
+    kpis: ["kpi.read"],
+  };
+  function canAcctTab(t) { return (ACCT_TAB_PERM[t] || []).some(has); }
+  function firstAcctTab() {
+    for (var i = 0; i < ACCT_TABS.length; i++) if (canAcctTab(ACCT_TABS[i])) return ACCT_TABS[i];
+    return "balances";
+  }
+  function bindAcctTabs() {
+    document.querySelectorAll("[data-acct-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var t = btn.getAttribute("data-acct-tab");
+        if (!canAcctTab(t)) return;
+        STATE.acctTab = t;
+        document.querySelectorAll("[data-acct-tab]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+        renderAcctTab(t);
+      });
+    });
+  }
+  function renderAcctTab(tab) {
+    var host = byId("acctContent");
+    document.querySelectorAll("[data-acct-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-acct-tab") === tab);
+    });
+    host.innerHTML = loadingHtml();
+    if (tab === "balances") return renderOpeningBalances();
+    if (tab === "accounts") return renderAccounts();
+    if (tab === "journals") return renderJournals();
+    if (tab === "invoices") return renderInvoices();
+    if (tab === "assets") return renderAssets();
+    if (tab === "budgets") return renderBudgets();
+    if (tab === "kpis") return renderKpis();
+    return Promise.resolve();
+  }
+
+  function renderOpeningBalances() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/opening-balances").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("opening_balance.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="obForm">' +
+          field("الشركة", "Company", selectInput("obCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("السنة", "Year", numInput("obYear", STATE.year || "")) +
+          field("الشهر", "Month", numInput("obMonth", "")) +
+          field("النوع", "Kind", selectInput("obKind", [
+            { value: "opening", label: opt("افتتاحي", "Opening") },
+            { value: "carry_forward", label: opt("مرحّل", "Carry-forward") },
+          ], "opening")) +
+          field("بنك", "Bank", numInput("obBank", "")) +
+          field("نقد", "Cash", numInput("obCash", "")) +
+          field("ذمم مدينة", "Receivables", numInput("obRecv", "")) +
+          field("ديون", "Debts", numInput("obDebts", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("تسجيل رصيد", "Record balance") + "</button></div></form>"
+        : "";
+      var note = '<p class="note-block">' + dual("الأرصدة قيم لا إيرادات، ولا تُرحّل تلقائيًا من ديسمبر قبل المراجعة والاعتماد.", "Balances are not revenue, and are never auto-carried from December before review and approval.") + "</p>";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (o) {
+            var controls = (o.status === "draft" && has("opening_balance.manage")
+              ? actBtn("opening_balance.manage", "ob-submit", o.id, "إرسال", "Submit")
+              : "") + (o.status === "submitted" && has("opening_balance.approve")
+              ? actBtn("opening_balance.approve", "ob-approve", o.id, "اعتماد", "Approve")
+              : "");
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(o.company_id)) + " · " +
+              escapeHtml(o.kind) + "</div>" +
+              '<div class="s">' + dec(o.period_month) + "/" + dec(o.period_year) +
+              " · " + dual("بنك", "Bank") + " " + dec(o.bank) + " · " + dual("نقد", "Cash") + " " + dec(o.cash) + "</div></div>" +
+              statusBadgeFromMap(o.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "warn"], approved: ["معتمد", "Approved", "ok"] }) +
+              "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أرصدة.", "No balances.");
+      host.innerHTML = panel("الأرصدة الافتتاحية والمرحّلة (D08)", "Opening & carry-forward balances (D08)", note + create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderAccounts() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/accounts").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("account.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="acctForm">' +
+          field("الشركة", "Company", selectInput("acCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الكود", "Code", textInput("acCode", "")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("acNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("acNameEn", "")) +
+          field("النوع", "Type", selectInput("acType", [
+            { value: "asset", label: opt("أصول", "Asset") },
+            { value: "liability", label: opt("التزامات", "Liability") },
+            { value: "equity", label: opt("حقوق ملكية", "Equity") },
+            { value: "revenue", label: opt("إيرادات", "Revenue") },
+            { value: "expense", label: opt("مصروفات", "Expense") },
+          ], "asset")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة حساب", "Add account") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (a) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(a.code + " · " + (STATE.lang === "ar" ? a.name_ar : a.name_en || a.name_ar)) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " + escapeHtml(a.account_type) + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد حسابات.", "No accounts.");
+      host.innerHTML = panel("دليل الحسابات (D01)", "Chart of accounts (D01)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderJournals() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/journals").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canCreate = has("journal.create");
+      var create = canCreate
+        ? '<form class="av-form" id="journalForm">' +
+          '<div class="av-form-inline">' +
+          field("الشركة", "Company", selectInput("jnCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("التاريخ", "Date", dateInput("jnDate", "")) +
+          field("الوصف", "Description", textInput("jnDesc", "")) +
+          "</div>" +
+          '<p class="note-block">' + dual("قيد مزدوج: أضف سطرين على الأقل بمدين ودائن متساويين. القيد المُرحّل غير قابل للتعديل.", "Double-entry: add at least two lines with equal debit and credit. A posted journal is immutable.") + "</p>" +
+          '<div id="jnLines"></div>' +
+          '<div class="av-form-actions"><button class="btn-outline" type="button" data-act="jn-add-line">' +
+          dual("إضافة سطر", "Add line") + '</button><button class="btn-solid" type="submit">' +
+          dual("حفظ القيد", "Save journal") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (j) {
+            var controls = (j.status === "draft" && has("journal.post")
+              ? actBtn("journal.post", "jn-post", j.id, "ترحيل", "Post")
+              : "") + (j.status === "posted" && has("journal.reverse")
+              ? actBtn("journal.reverse", "jn-reverse", j.id, "عكس القيد", "Reverse")
+              : "");
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(j.number || ("#" + j.id)) + " · " + escapeHtml(dateStr(j.entry_date)) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(j.company_id)) +
+              " · " + dual("مدين", "Debit") + " " + dec(j.total_debit) + " · " + dual("دائن", "Credit") + " " + dec(j.total_credit) + "</div></div>" +
+              statusBadgeFromMap(j.status, { draft: ["مسودة", "Draft", "warn"], posted: ["مُرحّل", "Posted", "ok"], reversed: ["معكوس", "Reversed", "miss"] }) +
+              "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد قيود.", "No journals.");
+      host.innerHTML = panel("القيود (D01: غير قابلة للتعديل بعد الترحيل — التصحيح بالعكس)", "Journals (D01: immutable once posted — correction by reversal)", create + list);
+      if (create) {
+        addJournalLine();
+        host.querySelector('[data-act="jn-add-line"]').addEventListener("click", addJournalLine);
+      }
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  var _jnLineSeq = 0;
+  function addJournalLine() {
+    var host = byId("jnLines");
+    if (!host) return;
+    var i = _jnLineSeq++;
+    var div = document.createElement("div");
+    div.className = "av-form av-form-inline";
+    div.innerHTML =
+      field("معرّف الحساب", "Account id", numInput("jnAcct" + i, "")) +
+      field("مدين", "Debit", numInput("jnDebit" + i, "0")) +
+      field("دائن", "Credit", numInput("jnCredit" + i, "0")) +
+      field("الوصف", "Description", textInput("jnLineDesc" + i, ""));
+    host.appendChild(div);
+  }
+
+  function collectJournalLines() {
+    var lines = [];
+    document.querySelectorAll("#jnLines [id^='jnAcct']").forEach(function (el) {
+      var idx = el.id.replace("jnAcct", "");
+      lines.push({
+        account_id: parseInt(valOf("jnAcct" + idx), 10),
+        debit: numVal("jnDebit" + idx) || 0,
+        credit: numVal("jnCredit" + idx) || 0,
+        description: valOf("jnLineDesc" + idx) || null,
+      });
+    });
+    return lines;
+  }
+
+  function renderInvoices() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/invoices").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("invoice.manage");
+      var create = canManage
+        ? '<form class="av-form" id="invoiceForm">' +
+          '<div class="av-form-inline">' +
+          field("الشركة", "Company", selectInput("ivCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الرقم", "Number", textInput("ivNumber", "")) +
+          field("الطرف", "Party", textInput("ivParty", "")) +
+          field("تاريخ الإصدار", "Issue date", dateInput("ivIssue", "")) +
+          field("الاستحقاق", "Due date", dateInput("ivDue", "")) +
+          field("نسبة الضريبة", "Tax rate", numInput("ivTax", "0")) +
+          "</div>" +
+          '<div class="av-form-inline">' +
+          field("وصف البند", "Line description", textInput("ivLineDesc", "")) +
+          field("الكمية", "Quantity", numInput("ivQty", "1")) +
+          field("سعر الوحدة", "Unit price", numInput("ivPrice", "0")) +
+          "</div>" +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إنشاء فاتورة", "Create invoice") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (iv) {
+            var settle = iv.status !== "settled" && has("settlement.manage")
+              ? '<div class="av-user-controls" data-stop="1">' +
+                numInput("stAmt" + iv.id, "") +
+                '<button class="btn-outline" data-act="iv-settle" data-id="' + iv.id + '">' + dual("تسجيل تسوية", "Record settlement") + "</button></div>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
+              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + "</div></div>" +
+              statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+              "</div>" + settle + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد فواتير.", "No invoices.");
+      host.innerHTML = panel("الفواتير والذمم (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderAssets() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/assets").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("asset.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="assetForm">' +
+          field("الشركة", "Company", selectInput("atCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الاسم", "Name", textInput("atName", "")) +
+          field("التكلفة", "Cost", numInput("atCost", "")) +
+          field("الفئة", "Category", textInput("atCategory", "")) +
+          field("تاريخ الاقتناء", "Acquisition date", dateInput("atDate", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة أصل", "Add asset") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (a) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(a.name) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
+              dual("التكلفة", "Cost") + " " + dec(a.cost) + " · " + escapeHtml(a.category || "") + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أصول.", "No assets.");
+      host.innerHTML = panel("الأصول (D01)", "Assets (D01)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderBudgets() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/budgets").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("budget.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="budgetForm">' +
+          field("الشركة", "Company", selectInput("bgCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("السنة المالية", "Fiscal year", numInput("bgYear", STATE.year || "")) +
+          field("الإجمالي", "Total", numInput("bgTotal", "")) +
+          field("المصدر", "Source", textInput("bgSource", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إنشاء موازنة", "Create budget") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (b) {
+            var approve = b.status !== "approved" && has("budget.approve")
+              ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
+              " · v" + dec(b.version) + "</div>" +
+              '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
+              " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
+              statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
+              "</div>" + (approve ? '<div class="av-user-controls" data-stop="1">' + approve + "</div>" : "") + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد موازنات.", "No budgets.");
+      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderKpis() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/kpis").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("kpi.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="kpiForm">' +
+          field("الكود", "Code", textInput("kpCode", "")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("kpNameAr", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("kpNameEn", "")) +
+          field("مصدر البيانات", "Data source", textInput("kpSource", "")) +
+          field("طريقة الحساب", "Calculation method", textInput("kpMethod", "")) +
+          field("الفترة", "Period", textInput("kpPeriod", "")) +
+          field("المستهدف", "Target", numInput("kpTarget", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة مؤشر", "Add KPI") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (k) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(k.code + " · " + (STATE.lang === "ar" ? k.name_ar : k.name_en || k.name_ar)) + "</div>" +
+              '<div class="s">' + dual("المصدر", "Source") + " " + escapeHtml(k.data_source) +
+              " · " + dual("الطريقة", "Method") + " " + escapeHtml(k.calculation_method) +
+              " · " + escapeHtml(k.period_label) + "</div></div>" +
+              (k.target_value != null ? '<span class="status rev"><i></i>' + dual("المستهدف", "Target") + " " + dec(k.target_value) + "</span>" : "") +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد مؤشرات.", "No KPIs.");
+      host.innerHTML = panel("مؤشرات الأداء (D02: مصدر + طريقة + فترة)", "KPIs (D02: source + method + period)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function onAcctAct(action, id, el) {
+    if (action === "jn-add-line") return addJournalLine();
+    if (action === "ob-submit") {
+      busy(el, true);
+      return post("/api/v1/accounting/opening-balances/" + id + "/submit", {})
+        .then(function () { toast(dual("تم إرسال الرصيد.", "Balance submitted."), "ok"); return renderOpeningBalances(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "ob-approve") {
+      busy(el, true);
+      return post("/api/v1/accounting/opening-balances/" + id + "/approve", {})
+        .then(function () { toast(dual("تم اعتماد الرصيد.", "Balance approved."), "ok"); return renderOpeningBalances(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "jn-post") {
+      busy(el, true);
+      return post("/api/v1/accounting/journals/" + id + "/post", {})
+        .then(function () { toast(dual("تم ترحيل القيد.", "Journal posted."), "ok"); return renderJournals(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "jn-reverse") {
+      return confirmDialog({
+        title: dual("عكس القيد", "Reverse journal"),
+        message: dual("لا يمكن تعديل قيد مُرحّل؛ سيُنشأ قيد عكسي. متابعة؟", "A posted journal cannot be edited; a reversal entry will be created. Continue?"),
+      }).then(function (ok) {
+        if (!ok) return;
+        busy(el, true);
+        return post("/api/v1/accounting/journals/" + id + "/reverse", {})
+          .then(function () { toast(dual("تم إنشاء القيد العكسي.", "Reversal created."), "ok"); return renderJournals(); })
+          .catch(function (err) { domainError(err); busy(el, false); });
+      });
+    }
+    if (action === "iv-settle") {
+      busy(el, true);
+      return post("/api/v1/accounting/invoices/" + id + "/settlements", { amount: numVal("stAmt" + id) })
+        .then(function () { toast(dual("تم تسجيل التسوية.", "Settlement recorded."), "ok"); return renderInvoices(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "bg-approve") {
+      busy(el, true);
+      return post("/api/v1/accounting/budgets/" + id + "/approve", {})
+        .then(function () { toast(dual("تم اعتماد الموازنة.", "Budget approved."), "ok"); return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "conf-grant-create") return createConfGrant(el);
+    if (action === "conf-grant-revoke") {
+      return del("/api/v1/confidential-access/grants/" + id)
+        .then(function () { toast(dual("تم إلغاء التفويض.", "Grant revoked."), "ok"); return renderConfidentialGrants(); })
+        .catch(domainError);
+    }
+    if (action === "conf-decide") return decideComplaint(el);
+    if (action !== "submit") return;
+    if (id === "obForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/opening-balances", {
+        company_id: parseInt(valOf("obCompany"), 10),
+        period_year: parseInt(valOf("obYear"), 10),
+        period_month: numVal("obMonth"),
+        kind: valOf("obKind"),
+        bank: numVal("obBank"),
+        cash: numVal("obCash"),
+        receivables: numVal("obRecv"),
+        debts: numVal("obDebts"),
+      }).then(function () { toast(dual("تم تسجيل الرصيد.", "Balance recorded."), "ok"); return renderOpeningBalances(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "acctForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/accounts", {
+        company_id: parseInt(valOf("acCompany"), 10),
+        code: valOf("acCode"),
+        name_ar: valOf("acNameAr"),
+        name_en: valOf("acNameEn") || null,
+        account_type: valOf("acType"),
+      }).then(function () { toast(dual("تمت إضافة الحساب.", "Account added."), "ok"); return renderAccounts(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "journalForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/journals", {
+        company_id: parseInt(valOf("jnCompany"), 10),
+        entry_date: valOf("jnDate"),
+        description: valOf("jnDesc") || null,
+        lines: collectJournalLines(),
+      }).then(function () { toast(dual("تم حفظ القيد.", "Journal saved."), "ok"); return renderJournals(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "invoiceForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/invoices", {
+        company_id: parseInt(valOf("ivCompany"), 10),
+        number: valOf("ivNumber"),
+        party_name: valOf("ivParty"),
+        issue_date: valOf("ivIssue") || null,
+        due_date: valOf("ivDue") || null,
+        tax_rate: numVal("ivTax") || 0,
+        lines: [{
+          description: valOf("ivLineDesc"),
+          quantity: numVal("ivQty") || 1,
+          unit_price: numVal("ivPrice") || 0,
+        }],
+      }).then(function () { toast(dual("تم إنشاء الفاتورة.", "Invoice created."), "ok"); return renderInvoices(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "assetForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/assets", {
+        company_id: parseInt(valOf("atCompany"), 10),
+        name: valOf("atName"),
+        cost: numVal("atCost") || 0,
+        category: valOf("atCategory") || null,
+        acquisition_date: valOf("atDate") || null,
+      }).then(function () { toast(dual("تمت إضافة الأصل.", "Asset added."), "ok"); return renderAssets(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "budgetForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/budgets", {
+        company_id: parseInt(valOf("bgCompany"), 10),
+        fiscal_year: parseInt(valOf("bgYear"), 10),
+        total_amount: numVal("bgTotal") || 0,
+        source: valOf("bgSource") || null,
+      }).then(function () { toast(dual("تم إنشاء الموازنة.", "Budget created."), "ok"); return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "kpiForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/kpis", {
+        code: valOf("kpCode"),
+        name_ar: valOf("kpNameAr"),
+        name_en: valOf("kpNameEn") || null,
+        data_source: valOf("kpSource"),
+        calculation_method: valOf("kpMethod"),
+        period_label: valOf("kpPeriod"),
+        target_value: numVal("kpTarget"),
+      }).then(function () { toast(dual("تمت إضافة المؤشر.", "KPI added."), "ok"); return renderKpis(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "complaintForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/operations/complaints", {
+        subject: valOf("coSubject"),
+        body: valOf("coBody"),
+        company_id: valOf("coCompany") ? parseInt(valOf("coCompany"), 10) : null,
+        is_anonymous: valOf("coAnon") === "1",
+      }).then(function () { toast(dual("تم رفع الشكوى.", "Complaint submitted."), "ok"); return renderComplaints(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+  }
+
+  // ======================================================================
+  // S15 -- Complaints & confidential access (D04)
+  // ======================================================================
+  function renderConfidentialView() {
+    var host = byId("confContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.confBound) {
+      STATE.confBound = true;
+      bindConfTabs();
+      bindHost(host, onAcctAct);
+    }
+    if (!STATE.confTab || !canConfTab(STATE.confTab)) STATE.confTab = firstConfTab();
+    return renderConfTab(STATE.confTab);
+  }
+
+  var CONF_TABS = ["complaints", "grants"];
+  var CONF_TAB_PERM = {
+    complaints: ["complaint.read_own", "complaint.decide", "complaint.create"],
+    grants: ["confidential_access.manage"],
+  };
+  function canConfTab(t) { return (CONF_TAB_PERM[t] || []).some(has); }
+  function firstConfTab() {
+    for (var i = 0; i < CONF_TABS.length; i++) if (canConfTab(CONF_TABS[i])) return CONF_TABS[i];
+    return "complaints";
+  }
+  function bindConfTabs() {
+    document.querySelectorAll("[data-conf-tab]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var t = btn.getAttribute("data-conf-tab");
+        if (!canConfTab(t)) return;
+        STATE.confTab = t;
+        document.querySelectorAll("[data-conf-tab]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+        renderConfTab(t);
+      });
+    });
+  }
+  function renderConfTab(tab) {
+    var host = byId("confContent");
+    document.querySelectorAll("[data-conf-tab]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-conf-tab") === tab);
+    });
+    host.innerHTML = loadingHtml();
+    if (tab === "complaints") return renderComplaints();
+    if (tab === "grants") return renderConfidentialGrants();
+    return Promise.resolve();
+  }
+
+  function renderComplaints() {
+    var host = byId("confContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/operations/complaints").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canCreate = has("complaint.create");
+      var create = canCreate
+        ? '<form class="av-form av-form-inline" id="complaintForm">' +
+          field("الموضوع", "Subject", textInput("coSubject", "")) +
+          field("الشركة (اختياري)", "Company (optional)", selectInput("coCompany", companySelectOptions(true), "")) +
+          field("مجهولة؟", "Anonymous?", selectInput("coAnon", [{ value: "0", label: opt("لا", "No") }, { value: "1", label: opt("نعم", "Yes") }], "0")) +
+          field("النص", "Body", textArea("coBody", "", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("رفع شكوى", "Submit complaint") + "</button></div></form>"
+        : "";
+      var note = '<p class="note-block">' + dual("سرّي: مرئي للمالك فقط افتراضيًا، ولا يظهر في العدّادات أو البحث أو السجل العام.", "Confidential: owner-only by default, and excluded from counters, search and the public log.") + "</p>";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (c) {
+            var decide = has("complaint.decide")
+              ? '<div class="av-user-controls" data-stop="1">' +
+                selectInput("coStatus" + c.id, [
+                  { value: "under_review", label: opt("قيد المراجعة", "Under review") },
+                  { value: "routed", label: opt("محوّلة", "Routed") },
+                  { value: "handled", label: opt("معالجة", "Handled") },
+                  { value: "postponed", label: opt("مؤجلة", "Postponed") },
+                  { value: "closed", label: opt("مغلقة", "Closed") },
+                ], c.status) +
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '">' + dual("قرار", "Decide") + "</button></div>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(c.subject) + "</div>" +
+              '<div class="s">' + (c.company_id ? escapeHtml(companyNameById(c.company_id)) + " · " : "") +
+              (c.is_anonymous ? dual("مجهولة", "Anonymous") : "") + "</div></div>" +
+              statusBadgeFromMap(c.status, { new: ["جديدة", "New", "warn"], under_review: ["قيد المراجعة", "Under review", "warn"], routed: ["محوّلة", "Routed", "warn"], handled: ["معالجة", "Handled", "ok"], postponed: ["مؤجلة", "Postponed", "rev"], closed: ["مغلقة", "Closed", "ok"] }) +
+              "</div>" + decide + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد شكاوى.", "No complaints.");
+      host.innerHTML = panel("الشكاوى (D04: سرّية)", "Complaints (D04: confidential)", note + create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function decideComplaint(el) {
+    var cid = el.getAttribute("data-id");
+    busy(el, true);
+    return post("/api/v1/operations/complaints/" + cid + "/decision", {
+      status: valOf("coStatus" + cid),
+    }).then(function () { toast(dual("تم تسجيل القرار.", "Decision recorded."), "ok"); return renderComplaints(); })
+      .catch(function (err) { domainError(err); busy(el, false); });
+  }
+
+  function renderConfidentialGrants() {
+    var host = byId("confContent");
+    var canManage = has("confidential_access.manage");
+    if (!canManage) {
+      host.innerHTML = panel("التفويضات", "Delegated access", noticeHtml("ليست لديك صلاحية إدارة التفويضات.", "You may not manage delegated access."));
+      return Promise.resolve();
+    }
+    var create = '<form class="av-form av-form-inline" id="confGrantForm">' +
+      field("نوع السجل", "Subject type", selectInput("cgType", [
+        { value: "complaint", label: opt("شكوى", "Complaint") },
+        { value: "leadership_assessment", label: opt("تقييم قيادة", "Leadership assessment") },
+      ], "complaint")) +
+      field("معرّف السجل", "Subject id", numInput("cgSubject", "")) +
+      field("المفوَّض له (معرّف المستخدم)", "Grantee user id", numInput("cgUser", "")) +
+      field("الصلاحية", "Permission", selectInput("cgPerm", [
+        { value: "complaint.read_own", label: "complaint.read_own" },
+        { value: "assessment.read", label: "assessment.read" },
+      ], "complaint.read_own")) +
+      field("ينتهي في", "Expires at", '<input class="av-input" id="cgExpires" type="datetime-local">') +
+      field("السبب", "Reason", textInput("cgReason", "")) +
+      '<div class="av-form-actions"><button class="btn-solid" type="submit" data-act="conf-grant-create">' +
+      dual("تفويض الوصول", "Grant access") + "</button></div></form>";
+    var note = '<p class="note-block">' + dual("التفويض لسجل واحد وصلاحية واحدة فقط، مع انتهاء إلزامي وسجل تدقيق.", "A grant covers one record and one permission, with a mandatory expiry and an audit trail.") + "</p>";
+    host.innerHTML = panel("تفويض الوصول السري (D04)", "Delegated confidential access (D04)", note + create);
+    return Promise.resolve();
+  }
+
+  function createConfGrant(el) {
+    var expires = valOf("cgExpires");
+    if (!expires) {
+      toast(dual("حدّد وقت الانتهاء (إلزامي).", "An expiry time is required."), "warn");
+      return;
+    }
+    busy(el, true);
+    return post("/api/v1/confidential-access/grants", {
+      subject_type: valOf("cgType"),
+      subject_id: parseInt(valOf("cgSubject"), 10),
+      grantee_user_id: parseInt(valOf("cgUser"), 10),
+      permission_code: valOf("cgPerm"),
+      expires_at: expires.length === 16 ? expires + ":00" : expires,
+      reason: valOf("cgReason") || null,
+    }).then(function () { toast(dual("تم التفويض.", "Access granted."), "ok"); return renderConfidentialGrants(); })
+      .catch(function (err) { domainError(err); busy(el, false); });
+  }
+
   var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "website", "builder", "workflows", "integrations", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],

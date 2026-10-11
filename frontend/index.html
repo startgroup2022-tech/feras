@@ -94,6 +94,11 @@
       <div class="nav-item" data-view="analytics" data-perm="analytics.holding analytics.company analytics.operations analytics.compliance" role="button" tabindex="0"><span class="ar">التحليلات</span><span class="en">Analytics</span></div>
       <div class="nav-item" data-view="inbox" data-perm="notification.read_own" role="button" tabindex="0"><span class="ar">الإشعارات</span><span class="en">Notifications</span></div>
       <div class="nav-item" data-view="leads" data-perm="website_lead.read" role="button" tabindex="0"><span class="ar">طلبات الموقع</span><span class="en">Website Leads</span></div>
+      <div class="nav-item" data-view="employees" data-perm="employee.read assessment.read advisor.read advisor.session.read_own" role="button" tabindex="0"><span class="ar">الموظفون والتقييم</span><span class="en">Employees &amp; Assessment</span></div>
+      <div class="nav-item" data-view="operations" data-perm="task.read_own task.read_all weekly_report.read_own weekly_report.read_all campaign.read" role="button" tabindex="0"><span class="ar">العمليات والمهام</span><span class="en">Operations &amp; Tasks</span></div>
+      <div class="nav-item" data-view="decisions" data-perm="owner_decision.read" role="button" tabindex="0"><span class="ar">قرارات المالك</span><span class="en">Owner Decisions</span></div>
+      <div class="nav-item" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read" role="button" tabindex="0"><span class="ar">مالية القابضة</span><span class="en">Holding Finance</span></div>
+      <div class="nav-item" data-view="confidential" data-perm="complaint.read_own complaint.decide complaint.create" role="button" tabindex="0"><span class="ar">الشكاوى والسرية</span><span class="en">Complaints &amp; Confidential</span></div>
       <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
     </nav>
 
@@ -556,6 +561,79 @@
   </div>
   <div id="leadStats" class="av-grid cols-1"></div>
   <div id="leadContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-employees" data-view="employees" data-perm="employee.read assessment.read advisor.read advisor.session.read_own">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الموظفون والتقييم</span><span class="en">Employees &amp; Assessment</span></h1>
+      <p><span class="ar">سجل الموظفين لكل شركة، الحركات والرصيد اليدوي، والتقييمات مع قاعدة الأدلة الإلزامية.</span><span class="en">Per-company employee register, manual movements and balances, and assessments with the mandatory-evidence rule.</span></p>
+    </div>
+    <div class="av-toolbar" id="empTabs">
+      <button class="chip on" data-emp-tab="employees" data-perm="employee.read"><span class="ar">الموظفون</span><span class="en">Employees</span></button>
+      <button class="chip" data-emp-tab="assessments" data-perm="assessment.read"><span class="ar">التقييمات</span><span class="en">Assessments</span></button>
+      <button class="chip" data-emp-tab="advisors" data-perm="advisor.read advisor.session.read_own"><span class="ar">الجلسات الاستشارية</span><span class="en">Advisory sessions</span></button>
+    </div>
+  </div>
+  <div id="empContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-operations" data-view="operations" data-perm="task.read_own task.read_all weekly_report.read_own weekly_report.read_all campaign.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">العمليات والمهام</span><span class="en">Operations &amp; Tasks</span></h1>
+      <p><span class="ar">المهام ودورة حياتها، التقارير الأسبوعية، والحملات التسويقية بنتائجها.</span><span class="en">Tasks and their lifecycle, weekly reports, and marketing campaigns with their results.</span></p>
+    </div>
+    <div class="av-toolbar" id="opsTabs">
+      <button class="chip on" data-ops-tab="tasks" data-perm="task.read_own task.read_all"><span class="ar">المهام</span><span class="en">Tasks</span></button>
+      <button class="chip" data-ops-tab="weekly" data-perm="weekly_report.read_own weekly_report.read_all"><span class="ar">التقارير الأسبوعية</span><span class="en">Weekly reports</span></button>
+      <button class="chip" data-ops-tab="campaigns" data-perm="campaign.read"><span class="ar">الحملات</span><span class="en">Campaigns</span></button>
+    </div>
+  </div>
+  <div id="opsContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-decisions" data-view="decisions" data-perm="owner_decision.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">قرارات المالك</span><span class="en">Owner Decisions</span></h1>
+      <p><span class="ar">قرارات مرقّمة بمُنفّذ وتاريخ استحقاق ومتابعة وسجل كامل للحالة.</span><span class="en">Numbered decisions with an executor, due date, follow-up and a full status history.</span></p>
+    </div>
+  </div>
+  <div id="decContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-accounting" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">مالية القابضة</span><span class="en">Holding Finance</span></h1>
+      <p><span class="ar">الأرصدة الافتتاحية، دليل الحسابات، القيود المزدوجة (غير قابلة للتعديل بعد الترحيل)، الفواتير، الأصول، الموازنات ومؤشرات الأداء.</span><span class="en">Opening balances, chart of accounts, double-entry journals (immutable once posted), invoices, assets, budgets and KPIs.</span></p>
+    </div>
+    <div class="av-toolbar" id="acctTabs">
+      <button class="chip on" data-acct-tab="balances" data-perm="opening_balance.read"><span class="ar">الأرصدة الافتتاحية</span><span class="en">Opening balances</span></button>
+      <button class="chip" data-acct-tab="accounts" data-perm="account.read"><span class="ar">دليل الحسابات</span><span class="en">Chart of accounts</span></button>
+      <button class="chip" data-acct-tab="journals" data-perm="journal.read"><span class="ar">القيود</span><span class="en">Journals</span></button>
+      <button class="chip" data-acct-tab="invoices" data-perm="invoice.read"><span class="ar">الفواتير</span><span class="en">Invoices</span></button>
+      <button class="chip" data-acct-tab="assets" data-perm="asset.read"><span class="ar">الأصول</span><span class="en">Assets</span></button>
+      <button class="chip" data-acct-tab="budgets" data-perm="budget.read"><span class="ar">الموازنات</span><span class="en">Budgets</span></button>
+      <button class="chip" data-acct-tab="kpis" data-perm="kpi.read"><span class="ar">مؤشرات الأداء</span><span class="en">KPIs</span></button>
+    </div>
+  </div>
+  <div id="acctContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-confidential" data-view="confidential" data-perm="complaint.read_own complaint.decide complaint.create">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الشكاوى والوصول السري</span><span class="en">Complaints &amp; Confidential Access</span></h1>
+      <p><span class="ar">الشكاوى مرئية للمالك فقط افتراضيًا، ويمكنه تفويض الوصول لسجل واحد وصلاحية واحدة بانتهاء إلزامي.</span><span class="en">Complaints are owner-only by default; the owner may delegate one record and one permission with a mandatory expiry.</span></p>
+    </div>
+    <div class="av-toolbar" id="confTabs">
+      <button class="chip on" data-conf-tab="complaints" data-perm="complaint.read_own complaint.decide complaint.create"><span class="ar">الشكاوى</span><span class="en">Complaints</span></button>
+      <button class="chip" data-conf-tab="grants" data-perm="confidential_access.manage"><span class="ar">التفويضات</span><span class="en">Delegated access</span></button>
+    </div>
+  </div>
+  <div id="confContent" class="av-grid cols-1"></div>
 </section>
 
 <section class="app-view view-hidden" id="view-admin" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read">
