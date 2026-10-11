@@ -497,3 +497,31 @@ slice has been implemented; the full matrix and the conflict analysis live in
   repo (only 14-byte placeholder stubs under `uploads/`); audit docs under
   `docs/audit/` cite the section/screen numbers they can verify from source.
 
+## EXECUTIONS 04-11 — gate analysis (spec unavailable, decisions open)
+
+- **The source spec is not in the repo.** `Platform_Executive_Specifications_v1.docx`
+  is absent from the working tree, all branches and all history (only 14-byte
+  `uploads/*.docx` stubs). The only `SPECIFICATION.md` is the *public-website*
+  handoff, a different document. Do not invent its requirements; request it.
+- **Every unbuilt holding-domain module is gated by an open owner decision
+  D01-D11** (`docs/audit/SAFIR_OPEN_DECISIONS_AND_ASSUMPTIONS.md`). Do not build
+  an affected module while its decision is open (spec §20). Mapping: opening
+  balances/carry-forward=D08+D01+D09; employees/assessments=D06+D05+D04;
+  tasks+weekly reports=D03+D02; campaigns/leads=D02+D03+D04; complaints=D04
+  (decision options unapproved); designer workflow=D03; advisors/sessions=D04;
+  owner decisions=D07; leadership assessment=D05+D04; holding accounting
+  S26-S28=D01+D07; five-axis brief=D02; notification channels=D11.
+- **Already built and preserved:** auth/RBAC/isolation, financial summary
+  workflow (EXEC 02), notifications/audit/forms/workflows/approvals/documents,
+  Phase 10 website + Phase 11 CMS, AI Q&A/insights, AR/EN + RTL/LTR + responsive,
+  repaired header (EXEC 03).
+- **Status report:** `docs/audit/SAFIR_EXECUTIONS_04_11_STATUS.md` (per-module
+  gate + owner ask-list). Full suite green: 603 passed.
+- **Owner decision draft received (2026-10-11):** recorded verbatim in
+  `docs/audit/SAFIR_DECISION_D01_D11_REGISTER.md`. It is **self-declared a draft,
+  not binding** ("بانتظار اعتماد مالك المنصة"; binding only "بعد موافقة مالك
+  المنصة ومطابقتها مع المواصفات الأصلية"). No D-gated module was implemented
+  from it. To start EXEC 04+, the owner must send one approval line (approve
+  D01-D11 as binding + matching the original spec). The register holds the
+  ready-to-execute blueprint (permission codes, models, migrations, views, tests).
+
