@@ -268,3 +268,44 @@ def test_seed_companies_is_idempotent(client, auth, make_user):
     assert second.json()["created"] == 0
     listed = client.get("/api/v1/website/companies", headers=auth(owner)).json()
     assert len(listed) == 9
+
+
+# --------------------------------------------------------------------------
+# settings singleton (cold-start concurrency)
+# --------------------------------------------------------------------------
+def test_get_settings_tolerates_lost_insert_race(db, monkeypatch):
+    """Both callers get a row when two requests create the singleton at once.
+
+    The loser's insert fails on the ``id == 1`` primary key; ``get_settings``
+    must roll back and return the winner's row instead of raising a 500.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from backend.db.models.website_cms import WebsiteSettings
+    from backend.db.session import SessionLocal
+    from backend.services import website_cms_service as cms
+
+    # The winning request already committed the row.
+    with SessionLocal() as other:
+        other.add(WebsiteSettings(id=1, default_language="ar", maintenance_mode=False))
+        other.commit()
+
+    # The losing session still sees a cold CMS, then hits the PK conflict.
+    real_get = type(db).get
+    state = {"cold": True}
+
+    def fake_get(self, model, pk, *args, **kwargs):
+        if model is WebsiteSettings and state["cold"]:
+            state["cold"] = False
+            return None
+        return real_get(self, model, pk, *args, **kwargs)
+
+    def conflicting_commit():
+        raise IntegrityError("INSERT", {}, Exception("unique constraint"))
+
+    monkeypatch.setattr(type(db), "get", fake_get)
+    monkeypatch.setattr(db, "commit", conflicting_commit)
+
+    row = cms.get_settings(db)
+    assert row.id == 1
+    assert row.default_language == "ar"

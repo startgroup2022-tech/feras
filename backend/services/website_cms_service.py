@@ -16,6 +16,7 @@ Two design rules shape the module:
 from __future__ import annotations
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.core import website_media_storage
@@ -165,14 +166,29 @@ def list_revisions(
 # settings
 # --------------------------------------------------------------------------
 def get_settings(db: Session) -> WebsiteSettings:
-    """Return the singleton settings row, creating a default on first use."""
+    """Return the singleton settings row, creating a default on first use.
+
+    Two requests can hit a cold CMS at once (the public shell reads settings on
+    every page). The ``id == 1`` primary key makes the first-insert an
+    idempotent upsert: whichever request loses the race rolls back and reads
+    the winner's row instead of surfacing an IntegrityError as a 500.
+    """
     row = db.get(WebsiteSettings, 1)
-    if row is None:
+    if row is not None:
+        return row
+
+    try:
         row = WebsiteSettings(id=1, default_language="ar", maintenance_mode=False)
         db.add(row)
         db.commit()
         db.refresh(row)
-    return row
+        return row
+    except IntegrityError:
+        db.rollback()
+        existing = db.get(WebsiteSettings, 1)
+        if existing is None:
+            raise
+        return existing
 
 
 def settings_out(db: Session, row: WebsiteSettings) -> dict:
