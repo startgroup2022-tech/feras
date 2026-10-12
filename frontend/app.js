@@ -5259,10 +5259,15 @@
 
   function renderWeekly() {
     var host = byId("opsContent");
+    var canRead = has("weekly_report.read_own") || has("weekly_report.read_all");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/weekly-reports").catch(function () { return []; }),
-      get("/api/v1/operations/weekly-reports/questions").catch(function () { return []; }),
+      canRead
+        ? get("/api/v1/operations/weekly-reports").catch(function () { return []; })
+        : Promise.resolve([]),
+      canRead
+        ? get("/api/v1/operations/weekly-reports/questions").catch(function () { return []; })
+        : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
       var questions = res[2] || [];

@@ -184,6 +184,38 @@ def test_weekly_question_template_is_wired():
     assert 'has("weekly_report.template.manage")' in APP_JS
 
 
+def test_weekly_questions_readable_by_template_manager(client, db, make_user, auth):
+    """A template manager (e.g. Business Development) holds only
+    ``weekly_report.template.manage``; they must still be able to read the
+    question set they are editing (regression: this used to 403)."""
+    from backend.db.models.operations import WeeklyReportQuestion
+
+    manager = make_user("bd-template@corp.sa", "business_development")
+    db.add(
+        WeeklyReportQuestion(
+            code="q1", text_ar="سؤال", text_en="Question", order_index=1, is_active=True
+        )
+    )
+    db.commit()
+
+    response = client.get(
+        "/api/v1/operations/weekly-reports/questions", headers=auth(manager)
+    )
+    assert response.status_code == 200, response.text
+    assert any(q["code"] == "q1" for q in response.json())
+
+
+def test_weekly_questions_still_denied_without_any_weekly_permission(
+    client, db, make_user, auth
+):
+    """A role with no weekly permission at all is still refused."""
+    nobody = make_user("fin-no-weekly@corp.sa", "finance_manager")
+    response = client.get(
+        "/api/v1/operations/weekly-reports/questions", headers=auth(nobody)
+    )
+    assert response.status_code == 403, response.text
+
+
 def test_audit_view_supports_action_and_entity_filters():
     assert 'id="auditAction"' in APP_JS
     assert 'id="auditEntity"' in APP_JS

@@ -44,6 +44,7 @@ from backend.db.models.operations import (
 from backend.rbac.authorization import (
     accessible_company_ids,
     has_any_permission,
+    require_any_permission,
     require_company_access,
     require_permission,
 )
@@ -240,7 +241,12 @@ def create_weekly_question(db: Session, *, user: User, code: str, text_ar: str,
 
 
 def list_weekly_questions(db: Session, *, user: User) -> list[WeeklyReportQuestion]:
-    require_permission(user, Perm.WEEKLY_REPORT_READ_OWN)
+    # Readable by anyone who may view weekly reports, and by the template
+    # manager (who holds only ``template.manage`` and must see the questions
+    # they are editing). The write path is still ``TEMPLATE_MANAGE``-only.
+    require_any_permission(
+        user, Perm.WEEKLY_REPORT_READ_OWN, Perm.WEEKLY_REPORT_TEMPLATE_MANAGE
+    )
     return list(db.execute(
         select(WeeklyReportQuestion).where(WeeklyReportQuestion.is_active.is_(True))
         .order_by(WeeklyReportQuestion.order_index)
