@@ -588,6 +588,50 @@ def _public_opportunity_shape(row: WebsiteOpportunity) -> dict:
     }
 
 
+def _internal_opportunity_shape(row: WebsiteOpportunity) -> dict:
+    """The reviewer's view of a submitted listing.
+
+    Unlike the public shape this includes the submission's own business
+    profile (the reason, the desired outcome, the value range) so the reviewer
+    can decide, plus the public copy that is currently set. It is only ever
+    served to holders of ``website_opportunity.review``.
+    """
+    return {
+        "id": row.id,
+        "lead_id": row.lead_id,
+        "market": row.market,
+        "opportunity_type": row.opportunity_type,
+        "applicant_capacity": row.applicant_capacity,
+        "sector": row.sector,
+        "business_age_years": row.business_age_years,
+        "description": row.description,
+        "value_min": row.value_min,
+        "value_max": row.value_max,
+        "currency": row.currency,
+        "reason_for_listing": row.reason_for_listing,
+        "desired_outcome": row.desired_outcome,
+        "status": row.status,
+        "is_public": row.is_public,
+        "public_title_ar": row.public_title_ar,
+        "public_title_en": row.public_title_en,
+        "public_summary_ar": row.public_summary_ar,
+        "public_summary_en": row.public_summary_en,
+        "reviewed_at": row.reviewed_at,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def list_internal_opportunities(db: Session, *, user: User) -> list[dict]:
+    """Every submitted listing, newest first, for the review queue."""
+    require_permission(user, Perm.OPPORTUNITY_REVIEW)
+    stmt = (
+        select(WebsiteOpportunity)
+        .order_by(WebsiteOpportunity.created_at.desc(), WebsiteOpportunity.id.desc())
+    )
+    return [_internal_opportunity_shape(row) for row in db.execute(stmt).scalars()]
+
+
 # --------------------------------------------------------------------------
 # internal read / write
 # --------------------------------------------------------------------------

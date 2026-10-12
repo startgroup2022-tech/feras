@@ -216,6 +216,18 @@ def assign_advisor(
             "specialty": a.specialty, "is_active": a.is_active}
 
 
+@router.get("/advisors")
+def list_advisor_assignments(
+    user: CurrentUser, db: DbSession, company_id: int | None = None
+) -> list[dict]:
+    return [
+        operations_service.serialise_assignment(a)
+        for a in operations_service.list_advisor_assignments(
+            db, user=user, company_id=company_id
+        )
+    ]
+
+
 @router.post("/advisory-sessions", status_code=status.HTTP_201_CREATED)
 def record_session(
     payload: AdvisorySessionCreateRequest, request: Request, user: CurrentUser, db: DbSession

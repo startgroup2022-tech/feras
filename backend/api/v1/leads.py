@@ -50,6 +50,20 @@ def list_leads(
     )
 
 
+@router.get("/opportunities")
+def list_opportunities(
+    db: DbSession,
+    user=Depends(require(Perm.OPPORTUNITY_REVIEW)),
+) -> list[dict]:
+    """Submitted listings awaiting review or already reviewed (internal view).
+
+    The public endpoint returns only *published* listings; this one returns the
+    review queue, so a reviewer can act on a submission. It is gated by the
+    review permission, not by lead visibility.
+    """
+    return website_lead_service.list_internal_opportunities(db, user=user)
+
+
 @router.get("/stats", response_model=LeadStatsOut)
 def lead_stats(db: DbSession, user=Depends(require(Perm.LEAD_READ))) -> LeadStatsOut:
     """Aggregate funnel counts -- the business metrics the concept asks for."""

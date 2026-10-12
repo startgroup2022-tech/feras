@@ -1930,8 +1930,15 @@
     bindFinancialToolbar();
     return ensureCompanies().then(function () {
       populateFinCompanySelect();
-      return get("/api/v1/financial/report?" + finPeriodQuery());
-    }).then(function (report) {
+      return Promise.all([
+        get("/api/v1/financial/report?" + finPeriodQuery()),
+        has("financial_item.manage")
+          ? get("/api/v1/financial/item-definitions").catch(function () { return []; })
+          : Promise.resolve([]),
+      ]);
+    }).then(function (res) {
+      var report = res[0];
+      var definitions = res[1] || [];
       var rows = (report && report.companies) || [];
       if (!rows.length) {
         host.innerHTML = emptyHtml("لا توجد شركات متاحة لك.", "No companies available to you.");
@@ -1940,16 +1947,73 @@
       var totals = report.totals || {};
       host.innerHTML =
         finTotalsStrip(totals, report.counts || {}) +
-        rows.map(finRow).join("");
+        rows.map(finRow).join("") +
+        finDefinitionsPanel(definitions);
       host.querySelectorAll("[data-fin-period]").forEach(function (el) {
         el.addEventListener("click", function () {
           finOpenPeriod(parseInt(el.getAttribute("data-fin-period"), 10));
         });
       });
+      var defForm = byId("finDefForm");
+      if (defForm) {
+        defForm.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          finCreateDefinition(defForm);
+        });
+      }
     }).catch(function (err) {
       handleLoadError(err);
       host.innerHTML = errorHtml(errText(err));
     });
+  }
+
+  function finDefinitionsPanel(definitions) {
+    if (!has("financial_item.manage")) return "";
+    var list = definitions.length
+      ? '<div class="av-list">' + definitions.map(function (d) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dual(escapeHtml(d.name_ar), escapeHtml(d.name_en)) + "</div>" +
+            '<div class="s">' + escapeHtml(d.code) + " · " + escapeHtml(d.kind) +
+            (d.is_active ? "" : " · " + dual("غير مفعّل", "inactive")) + "</div></div>" +
+            (d.note_mandatory ? '<span class="status warn"><i></i>' + dual("ملاحظة إلزامية", "Note required") + "</span>" : "") +
+            "</div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد بنود معرّفة بعد.", "No item definitions yet.");
+    var form =
+      '<form class="av-form av-form-inline" id="finDefForm">' +
+      field("الشركة", "Company", selectInput("fdCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+      field("الكود", "Code", textInput("fdCode", "")) +
+      field("الاسم (عربي)", "Name (AR)", textInput("fdNameAr", "")) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("fdNameEn", "")) +
+      field("النوع", "Kind", selectInput("fdKind", [
+        { value: "expense", label: opt("مصروف", "Expense") },
+        { value: "revenue", label: opt("إيراد", "Revenue") },
+        { value: "other", label: opt("أخرى", "Other") },
+      ], "expense")) +
+      field("ملاحظة إلزامية؟", "Note mandatory?", selectInput("fdNote", [
+        { value: "0", label: opt("لا", "No") },
+        { value: "1", label: opt("نعم", "Yes") },
+      ], "0")) +
+      '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+      dual("إضافة بند", "Add item") + "</button></div></form>";
+    return panel("بنود مالية خاصة (F-04)", "Special financial items (F-04)",
+      '<p class="note-block">' + dual("البنود المعرّفة تُستخدم في الملخصات الشهرية؛ البند ذو الملاحظة الإلزامية يفرض إدخال سبب.", "Defined items feed the monthly summaries; a note-mandatory item forces a reason.") + "</p>" +
+      form + list);
+  }
+
+  function finCreateDefinition(form) {
+    var btn = form.querySelector("button");
+    busy(btn, true);
+    post("/api/v1/financial/item-definitions?company_id=" + parseInt(valOf("fdCompany"), 10), {
+      code: valOf("fdCode"),
+      name_ar: valOf("fdNameAr"),
+      name_en: valOf("fdNameEn"),
+      kind: valOf("fdKind"),
+      note_mandatory: valOf("fdNote") === "1",
+    }).then(function () {
+      toast(dual("تمت إضافة البند.", "Item added."), "ok");
+      return renderFinancial();
+    }).catch(function (err) { domainError(err); busy(btn, false); });
   }
 
   function finTotalsStrip(totals, counts) {
@@ -4026,11 +4090,159 @@
     return map[value] || { ar: value || "—", en: value || "—" };
   }
 
+  var OPPORTUNITY_STATUS = {
+    submitted: { ar: "مُقدَّم", en: "Submitted", cls: "warn" },
+    under_review: { ar: "قيد المراجعة", en: "Under review", cls: "warn" },
+    published: { ar: "منشور", en: "Published", cls: "ok" },
+    rejected: { ar: "مرفوض", en: "Rejected", cls: "miss" },
+  };
+  var OPPORTUNITY_TYPE = {
+    for_sale: { ar: "للبيع", en: "For sale" },
+    partnership: { ar: "شراكة", en: "Partnership" },
+    investment: { ar: "استثمار", en: "Investment" },
+  };
+
+  // ---- review queue for submitted listings (S13) ----------------------
+  function renderOpportunities() {
+    var host = byId("oppContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.oppBound) {
+      STATE.oppBound = true;
+      document.querySelectorAll("[data-opp-filter]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          document.querySelectorAll("[data-opp-filter]").forEach(function (b) { b.classList.remove("on"); });
+          btn.classList.add("on");
+          STATE.oppStatus = btn.getAttribute("data-opp-filter") || "";
+          renderOpportunities();
+        });
+      });
+    }
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/leads/opportunities")
+      .then(function (rows) {
+        var list = (rows || []).filter(function (o) { return !STATE.oppStatus || o.status === STATE.oppStatus; });
+        if (!list.length) {
+          host.innerHTML = noticeHtml("لا توجد عروض في هذه الحالة.", "No listings in this state.");
+          return;
+        }
+        host.innerHTML = '<div class="av-panel"><div class="av-list">' + list.map(opportunityRow).join("") + "</div></div>";
+        host.querySelectorAll("[data-opp]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openOpportunity(parseInt(row.getAttribute("data-opp"), 10));
+          });
+        });
+      })
+      .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function opportunityRow(o) {
+    var status = leadLabel(OPPORTUNITY_STATUS, o.status);
+    var type = leadLabel(OPPORTUNITY_TYPE, o.opportunity_type);
+    var market = leadLabel(LEAD_MARKET, o.market);
+    return (
+      '<div class="av-row" data-opp="' + o.id + '" style="cursor:pointer">' +
+      '<div class="grow"><div class="t">' +
+      escapeHtml(STATE.lang === "ar" ? (o.public_title_ar || o.sector || ("عرض #" + o.id)) : (o.public_title_en || o.sector || ("Listing #" + o.id))) +
+      "</div><div class=\"s\">" +
+      dual(escapeHtml(type.ar), escapeHtml(type.en)) + " · " +
+      dual(escapeHtml(market.ar), escapeHtml(market.en)) +
+      (o.is_public ? " · " + dual("منشور علنًا", "public") : "") + "</div></div>" +
+      '<span class="status ' + (status.cls || "") + '"><i></i>' + dual(escapeHtml(status.ar), escapeHtml(status.en)) + "</span>" +
+      "</div>"
+    );
+  }
+
+  function openOpportunity(id) {
+    return get("/api/v1/leads/opportunities").then(function (rows) {
+      var o = (rows || []).filter(function (x) { return x.id === id; })[0];
+      if (!o) return;
+      var canReview = has("website_opportunity.review");
+      var canPublish = has("website_opportunity.publish");
+      var money = function (v) { return v == null ? "—" : dec(v); };
+      var body =
+        '<div class="kv">' +
+        kv(dual("النوع", "Type"), dual(escapeHtml(leadLabel(OPPORTUNITY_TYPE, o.opportunity_type).ar), escapeHtml(leadLabel(OPPORTUNITY_TYPE, o.opportunity_type).en))) +
+        kv(dual("السوق", "Market"), dual(escapeHtml(leadLabel(LEAD_MARKET, o.market).ar), escapeHtml(leadLabel(LEAD_MARKET, o.market).en))) +
+        kv(dual("الصفة", "Capacity"), escapeHtml(o.applicant_capacity || "—")) +
+        kv(dual("القطاع", "Sector"), escapeHtml(o.sector || "—")) +
+        kv(dual("عمر النشاط", "Business age"), o.business_age_years == null ? "—" : plainNum(o.business_age_years) + " " + dual("سنة", "yrs")) +
+        kv(dual("نطاق القيمة", "Value range"), escapeHtml(money(o.value_min)) + " – " + escapeHtml(money(o.value_max)) + " " + escapeHtml(o.currency || "")) +
+        kv(dual("الحالة", "Status"), dual(escapeHtml(leadLabel(OPPORTUNITY_STATUS, o.status).ar), escapeHtml(leadLabel(OPPORTUNITY_STATUS, o.status).en))) +
+        "</div>" +
+        (o.description ? '<div class="sec-title">' + dual("وصف مقدم الطلب (سري)", "Applicant description (confidential)") + '</div><p class="note-block">' + escapeHtml(o.description) + "</p>" : "") +
+        (o.reason_for_listing ? '<div class="sec-title">' + dual("سبب العرض", "Reason for listing") + '</div><p>' + escapeHtml(o.reason_for_listing) + "</p>" : "") +
+        (o.desired_outcome ? '<div class="sec-title">' + dual("النتيجة المرجوة", "Desired outcome") + '</div><p>' + escapeHtml(o.desired_outcome) + "</p>" : "");
+
+      if (canReview) {
+        body +=
+          '<div class="sec-title">' + dual("مراجعة العرض", "Review listing") + "</div>" +
+          '<div class="av-field"><label>' + dual("القرار", "Decision") + '</label><select class="av-select av-input" id="oppStatus" style="width:100%">' +
+          ["submitted", "under_review", "published", "rejected"].map(function (s) {
+            var l = OPPORTUNITY_STATUS[s];
+            return '<option value="' + s + '"' + (s === o.status ? " selected" : "") + ">" + dual(l.ar, l.en) + "</option>";
+          }).join("") + "</select></div>" +
+          '<div class="av-field"><label>' + dual("العنوان العام (عربي)", "Public title (AR)") + '</label><input class="av-input" id="oppTitleAr" style="width:100%" value="' + escAttr(o.public_title_ar || "") + '"></div>' +
+          '<div class="av-field"><label>' + dual("العنوان العام (إنجليزي)", "Public title (EN)") + '</label><input class="av-input" id="oppTitleEn" style="width:100%" value="' + escAttr(o.public_title_en || "") + '"></div>' +
+          '<div class="av-field"><label>' + dual("الملخص العام (عربي)", "Public summary (AR)") + '</label><textarea class="av-textarea" id="oppSumAr">' + escapeHtml(o.public_summary_ar || "") + "</textarea></div>" +
+          '<div class="av-field"><label>' + dual("الملخص العام (إنجليزي)", "Public summary (EN)") + '</label><textarea class="av-textarea" id="oppSumEn">' + escapeHtml(o.public_summary_en || "") + "</textarea></div>" +
+          '<p class="note-block">' + dual("لا يُنشر أي شيء حتى تكتب نسخة عامة صريحة — الوصف السري لا يُنشر تلقائيًا.", "Nothing is published until you write explicit public copy — the confidential description is never auto-published.") + "</p>" +
+          '<label style="display:flex;gap:8px;align-items:center;font-size:11px;margin-top:6px"><input type="checkbox" id="oppPublish"' + (canPublish ? "" : " disabled") + "> " +
+          dual("نشر على الموقع العام", "Publish to the public website") + (canPublish ? "" : " (" + dual("صلاحية غير متوفرة", "permission required") + ")") + "</label>";
+      }
+
+      openModal({
+        title: dual("عرض مقدم للمراجعة", "Submitted listing"),
+        wide: true,
+        body: body,
+        footer: canReview
+          ? '<button class="btn-outline" id="oppCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+            '<button class="btn-solid" id="oppSave">' + dual("حفظ المراجعة", "Save review") + "</button>"
+          : '<button class="btn-outline" id="oppCancel">' + dual("إغلاق", "Close") + "</button>",
+        onMount: function () {
+          byId("oppCancel").addEventListener("click", closeModal);
+          if (!canReview) return;
+          byId("oppSave").addEventListener("click", function () {
+            var btn = this;
+            var payload = {
+              status: byId("oppStatus").value,
+              public_title_ar: valOf("oppTitleAr") || null,
+              public_title_en: valOf("oppTitleEn") || null,
+              public_summary_ar: valOf("oppSumAr") || null,
+              public_summary_en: valOf("oppSumEn") || null,
+              publish: byId("oppPublish").checked,
+            };
+            if (payload.publish && !(payload.public_title_ar || payload.public_title_en)) {
+              toast(dual("العنوان العام مطلوب للنشر.", "A public title is required to publish."), "err");
+              return;
+            }
+            busy(btn, true);
+            post("/api/v1/leads/opportunities/" + o.id + "/review", payload)
+              .then(function () {
+                toast(dual("تم حفظ المراجعة.", "Review saved."), "ok");
+                closeModal();
+                renderOpportunities();
+              })
+              .catch(function (err) { domainError(err); busy(btn, false); });
+          });
+        },
+      });
+    });
+  }
+
   function renderLeads() {
     var host = byId("leadContent");
     if (!host) return Promise.resolve();
     if (!STATE.leadBound) {
       STATE.leadBound = true;
+      document.querySelectorAll("[data-lead-view]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var t = btn.getAttribute("data-lead-view");
+          if (!leadSubTabAllowed(t)) return;
+          STATE.leadView = t;
+          document.querySelectorAll("[data-lead-view]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+          renderLeads();
+        });
+      });
       document.querySelectorAll("[data-lead-status]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           document.querySelectorAll("[data-lead-status]").forEach(function (b) {
@@ -4043,8 +4255,28 @@
       });
     }
     STATE.leadStatus = STATE.leadStatus || "";
+    if (!STATE.leadView || !leadSubTabAllowed(STATE.leadView)) {
+      STATE.leadView = leadSubTabAllowed("leads") ? "leads" : "opportunities";
+    }
+    document.querySelectorAll("[data-lead-view]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-lead-view") === STATE.leadView);
+    });
+    var leadFilters = byId("leadFilters");
+    if (leadFilters) leadFilters.classList.toggle("view-hidden", STATE.leadView !== "leads");
+    var leadStats = byId("leadStats");
+    if (leadStats) leadStats.classList.toggle("view-hidden", STATE.leadView !== "leads");
+    var oppView = byId("oppView");
+    if (oppView) oppView.classList.toggle("view-hidden", STATE.leadView !== "opportunities");
+    host.classList.toggle("view-hidden", STATE.leadView !== "leads");
+    if (STATE.leadView === "opportunities") return renderOpportunities();
     host.innerHTML = loadingHtml();
     return Promise.all([loadLeadStats(), loadLeadList()]);
+  }
+
+  function leadSubTabAllowed(t) {
+    if (t === "leads") return has("website_lead.read");
+    if (t === "opportunities") return has("website_opportunity.review");
+    return false;
   }
 
   function loadLeadStats() {
@@ -4734,8 +4966,12 @@
     return Promise.all([
       ensureCompanies(),
       get("/api/v1/operations/advisory-sessions").catch(function () { return []; }),
+      has("advisor.read")
+        ? get("/api/v1/operations/advisors").catch(function () { return []; })
+        : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
+      var assignments = res[2] || [];
       var canRecord = has("advisor.session.record");
       var create = canRecord
         ? '<form class="av-form av-form-inline" id="advForm">' +
@@ -4758,8 +4994,38 @@
               "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد جلسات استشارية.", "No advisory sessions.");
-      host.innerHTML = panel("الجلسات الاستشارية", "Advisory sessions", create + list);
+      host.innerHTML =
+        panel("الجلسات الاستشارية", "Advisory sessions", create + list) +
+        advisorAssignmentsPanel(assignments);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function advisorAssignmentsPanel(assignments) {
+    if (!has("advisor.read")) return "";
+    var canAssign = has("advisor.manage");
+    var form = canAssign
+      ? '<form class="av-form av-form-inline" id="advAssignForm">' +
+        field("الشركة", "Company", selectInput("aaCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("aaUser", "")) +
+        field("التخصص", "Specialty", textInput("aaSpecialty", "")) +
+        '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+        dual("إسناد مستشار", "Assign advisor") + "</button></div></form>"
+      : "";
+    var list = assignments.length
+      ? '<div class="av-list">' + assignments.map(function (a) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dual("مستشار", "Advisor") + " #" + plainNum(a.advisor_user_id) + "</div>" +
+            '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
+            escapeHtml(a.specialty || dual("بدون تخصص", "No specialty")) + "</div></div>" +
+            (a.is_active
+              ? '<span class="status ok"><i></i>' + dual("نشط", "Active") + "</span>"
+              : '<span class="status miss"><i></i>' + dual("غير نشط", "Inactive") + "</span>") +
+            "</div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا يوجد مستشارون مُسندون.", "No advisors assigned.");
+    return panel("المستشارون المُسندون (S19 / D04)", "Assigned advisors (S19 / D04)",
+      '<p class="note-block">' + dual("المستشار الخارجي يرى جلساته فقط؛ الإسناد متاح لمن يملك صلاحية إدارة المستشارين.", "An external consultant sees only their own sessions; assignment requires the manage permission.") + "</p>" +
+      form + list);
   }
 
   function onEmployeeAct(action, id, el) {
@@ -4796,6 +5062,15 @@
         notes: valOf("adNotes") || null,
         recommendations: valOf("adRec") || null,
       }).then(function () { toast(dual("تم تسجيل الجلسة.", "Session recorded."), "ok"); return renderAdvisors(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "advAssignForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/operations/advisors", {
+        company_id: parseInt(valOf("aaCompany"), 10),
+        advisor_user_id: parseInt(valOf("aaUser"), 10),
+        specialty: valOf("aaSpecialty") || null,
+      }).then(function () { toast(dual("تم إسناد المستشار.", "Advisor assigned."), "ok"); return renderAdvisors(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
   }
@@ -4914,6 +5189,22 @@
               .catch(domainError);
           });
         }
+        var upForm = body.querySelector("#taskUpdateForm");
+        if (upForm) {
+          upForm.addEventListener("submit", function (ev) {
+            ev.preventDefault();
+            var btn = upForm.querySelector("button");
+            busy(btn, true);
+            patch("/api/v1/operations/tasks/" + t.id, {
+              assignee_id: numVal("tuAssignee"),
+              reviewer_id: numVal("tuReviewer"),
+              priority: valOf("tuPriority"),
+              progress_percent: numVal("tuProgress"),
+              due_date: valOf("tuDue") || null,
+            }).then(function () { toast(dual("تم حفظ المهمة.", "Task saved."), "ok"); closeModal(); renderTasks(); })
+              .catch(function (err) { domainError(err); busy(btn, false); });
+          });
+        }
       },
     });
   }
@@ -4934,6 +5225,21 @@
         '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
         dual("تحديث الحالة", "Update status") + "</button></div></form>"
       : "";
+    var update = has("task.update")
+      ? '<div class="sec-title">' + dual("إسناد وتقدّم", "Assignment & progress") + "</div>" +
+        '<form class="av-form av-form-inline" id="taskUpdateForm">' +
+        field("المسؤول (معرّف)", "Assignee id", numInput("tuAssignee", t.assignee_id || "")) +
+        field("المراجع (معرّف)", "Reviewer id", numInput("tuReviewer", t.reviewer_id || "")) +
+        field("الأولوية", "Priority", selectInput("tuPriority", [
+          { value: "low", label: opt("منخفضة", "Low") },
+          { value: "normal", label: opt("عادية", "Normal") },
+          { value: "high", label: opt("عالية", "High") },
+        ], t.priority)) +
+        field("نسبة التقدّم", "Progress %", numInput("tuProgress", t.progress_percent == null ? 0 : t.progress_percent)) +
+        field("تاريخ الاستحقاق", "Due date", dateInput("tuDue", t.due_date || "")) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>"
+      : "";
     var hist = events.length
       ? '<div class="av-list">' + events.map(function (e) {
           return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
@@ -4944,8 +5250,10 @@
     return panel("التفاصيل", "Details", '<div class="kv">' +
         kv(dual("العنوان", "Title"), escapeHtml(t.title)) +
         kv(dual("الشركة", "Company"), escapeHtml(companyNameById(t.company_id))) +
+        kv(dual("المسؤول", "Assignee"), t.assignee_id ? plainNum(t.assignee_id) : "—") +
+        kv(dual("المراجع", "Reviewer"), t.reviewer_id ? plainNum(t.reviewer_id) : "—") +
         kv(dual("التقدم", "Progress"), dec(t.progress_percent) + "%") +
-        "</div>" + transition) +
+        "</div>" + update + transition) +
       panel("السجل", "History", hist);
   }
 
@@ -4987,7 +5295,22 @@
               "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد تقارير أسبوعية.", "No weekly reports.");
-      host.innerHTML = panel("التقرير الأسبوعي (بحد أقصى الأسئلة المعتمدة)", "Weekly report (at most the approved question set)", create + list);
+      host.innerHTML = panel("التقرير الأسبوعي (بحد أقصى الأسئلة المعتمدة)", "Weekly report (at most the approved question set)", create + list) + weeklyTemplatePanel(questions);
+      var tplForm = byId("weeklyQForm");
+      if (tplForm) {
+        tplForm.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var btn = tplForm.querySelector("button");
+          busy(btn, true);
+          post("/api/v1/operations/weekly-reports/questions", {
+            code: valOf("wqCode"),
+            text_ar: valOf("wqAr"),
+            text_en: valOf("wqEn") || null,
+            order_index: numVal("wqOrder") || 0,
+          }).then(function () { toast(dual("تمت إضافة السؤال.", "Question added."), "ok"); return renderWeekly(); })
+            .catch(function (err) { domainError(err); busy(btn, false); });
+        });
+      }
       var form = byId("weeklyForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -5007,6 +5330,28 @@
         });
       }
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function weeklyTemplatePanel(questions) {
+    if (!has("weekly_report.template.manage")) return "";
+    var list = questions.length
+      ? '<div class="av-list">' + questions.map(function (q) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml(STATE.lang === "ar" ? q.text_ar : q.text_en || q.text_ar) + "</div>" +
+            '<div class="s">' + escapeHtml(q.code) + " · " + dual("الترتيب", "Order") + " " + plainNum(q.order_index || 0) + "</div></div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد أسئلة معتمدة بعد.", "No approved questions yet.");
+    var form =
+      '<form class="av-form av-form-inline" id="weeklyQForm">' +
+      field("الكود", "Code", textInput("wqCode", "")) +
+      field("النص (عربي)", "Text (AR)", textInput("wqAr", "")) +
+      field("النص (إنجليزي)", "Text (EN)", textInput("wqEn", "")) +
+      field("الترتيب", "Order", numInput("wqOrder", "0")) +
+      '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+      dual("إضافة سؤال", "Add question") + "</button></div></form>";
+    return panel("قالب الأسئلة (S17)", "Question template (S17)",
+      '<p class="note-block">' + dual("التقرير الأسبوعي لا يقبل أكثر من الأسئلة المعتمدة هنا.", "The weekly report accepts at most the questions approved here.") + "</p>" +
+      form + list);
   }
 
   function renderCampaigns() {
@@ -6066,13 +6411,42 @@
   function renderAdminCompanies() {
     var host = byId("adminContent");
     return ensureCompanies().then(function (rows) {
-      if (!rows.length) {
-        host.innerHTML = adminPanel("الشركات", "Companies", '<p class="av-empty">' + dual("لا توجد شركات.", "No companies.") + "</p>");
-        return;
+      var create = has("company.manage")
+        ? adminPanel("إضافة شركة", "Add company",
+            '<form class="av-form av-form-inline" id="companyCreateForm">' +
+            field("الكود", "Code", textInput("ccCode", "")) +
+            field("الاسم (عربي)", "Name (AR)", textInput("ccNameAr", "")) +
+            field("الاسم (إنجليزي)", "Name (EN)", textInput("ccNameEn", "")) +
+            field("القطاع", "Sector", textInput("ccSector", "")) +
+            field("العملة", "Currency", textInput("ccCurrency", "SAR")) +
+            field("الدولة", "Country", textInput("ccCountry", "")) +
+            '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+            dual("تسجيل شركة", "Register company") + "</button></div></form>")
+        : "";
+      var list = rows.length
+        ? rows.map(function (c) { return adminPanel("شركة", "Company", companyAdminCard(c)); }).join("")
+        : '<p class="av-empty">' + dual("لا توجد شركات.", "No companies.") + "</p>";
+      host.innerHTML = create + list;
+      var form = byId("companyCreateForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var btn = form.querySelector("button");
+          busy(btn, true);
+          post("/api/v1/companies", {
+            code: valOf("ccCode"),
+            name_ar: valOf("ccNameAr"),
+            name_en: valOf("ccNameEn"),
+            sector: valOf("ccSector") || null,
+            currency: valOf("ccCurrency") || "SAR",
+            country: valOf("ccCountry") || null,
+          }).then(function () {
+            STATE.loaded.companies = false;
+            toast(dual("تم تسجيل الشركة.", "Company registered."), "ok");
+            return renderAdminCompanies();
+          }).catch(function (err) { adminError(err); busy(btn, false); });
+        });
       }
-      host.innerHTML = rows.map(function (c) {
-        return adminPanel("شركة", "Company", companyAdminCard(c));
-      }).join("");
     });
   }
 
@@ -6904,8 +7278,11 @@
   // ---- tab: audit ----
   function renderAdminAudit() {
     var host = byId("adminContent");
-    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0 });
-    return get("/api/v1/admin/audit-logs?limit=" + page.limit + "&offset=" + page.offset).then(function (data) {
+    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0, action: "", entity_type: "" });
+    var query = "/api/v1/admin/audit-logs?limit=" + page.limit + "&offset=" + page.offset;
+    if (page.action) query += "&action=" + encodeURIComponent(page.action);
+    if (page.entity_type) query += "&entity_type=" + encodeURIComponent(page.entity_type);
+    return get(query).then(function (data) {
       page.total = data.total;
       var rows = data.items.map(function (e) {
         var actor = STATE.lang === "ar" ? e.actor_name_ar || "—" : e.actor_name_en || e.actor_name_ar || "—";
@@ -6921,7 +7298,31 @@
         '<button class="btn-outline" data-admin-action="audit-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
         '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
         '<button class="btn-outline" data-admin-action="audit-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
-      host.innerHTML = adminPanel("سجل النشاط", "Audit trail", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
+      var filters =
+        '<div class="av-toolbar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
+        '<input class="av-input" id="auditAction" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بالإجراء (مثال: journal.posted)" : "Filter by action (e.g. journal.posted)") + '" value="' + escAttr(page.action) + '">' +
+        '<input class="av-input" id="auditEntity" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بنوع الكيان" : "Filter by entity type") + '" value="' + escAttr(page.entity_type) + '">' +
+        '<button class="btn-outline" id="auditApply">' + dual("تطبيق", "Apply") + "</button>" +
+        '<button class="btn-outline" id="auditClear">' + dual("مسح", "Clear") + "</button></div>";
+      host.innerHTML = adminPanel("سجل النشاط", "Audit trail", filters + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
+      var apply = byId("auditApply");
+      if (apply) {
+        apply.addEventListener("click", function () {
+          page.action = valOf("auditAction");
+          page.entity_type = valOf("auditEntity");
+          page.offset = 0;
+          renderAdminAudit();
+        });
+      }
+      var clear = byId("auditClear");
+      if (clear) {
+        clear.addEventListener("click", function () {
+          page.action = "";
+          page.entity_type = "";
+          page.offset = 0;
+          renderAdminAudit();
+        });
+      }
     });
   }
 

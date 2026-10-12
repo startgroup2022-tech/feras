@@ -523,6 +523,25 @@ def record_session(db: Session, *, user: User, company_id: int, advisor_user_id:
     return session
 
 
+def list_advisor_assignments(db: Session, *, user: User, company_id: int | None = None) -> list[AdvisorAssignment]:
+    require_permission(user, Perm.ADVISOR_READ)
+    stmt = select(AdvisorAssignment).order_by(AdvisorAssignment.created_at.desc())
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(AdvisorAssignment.company_id.in_(allowed)) if allowed else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(AdvisorAssignment.company_id == company_id)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_assignment(a: AdvisorAssignment) -> dict:
+    return {
+        "id": a.id, "company_id": a.company_id, "advisor_user_id": a.advisor_user_id,
+        "specialty": a.specialty, "is_active": a.is_active,
+        "assigned_by_id": a.assigned_by_id, "created_at": a.created_at,
+    }
+
+
 def list_sessions(db: Session, *, user: User, company_id: int | None = None) -> list[AdvisorySession]:
     from backend.db.models.enums import RoleCode
 

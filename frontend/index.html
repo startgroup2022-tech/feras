@@ -559,8 +559,22 @@
       <button class="chip" data-lead-status="closed"><span class="ar">مغلق</span><span class="en">Closed</span></button>
     </div>
   </div>
+  <div class="av-toolbar" id="leadViewTabs">
+    <button class="chip on" data-lead-view="leads" data-perm="website_lead.read"><span class="ar">الطلبات</span><span class="en">Leads</span></button>
+    <button class="chip" data-lead-view="opportunities" data-perm="website_opportunity.review"><span class="ar">العروض المقدَّمة</span><span class="en">Submitted listings</span></button>
+  </div>
   <div id="leadStats" class="av-grid cols-1"></div>
   <div id="leadContent" class="av-grid cols-1"></div>
+  <div id="oppView" class="view-hidden">
+    <div class="av-toolbar" id="oppFilters">
+      <button class="chip on" data-opp-filter=""><span class="ar">الكل</span><span class="en">All</span></button>
+      <button class="chip" data-opp-filter="submitted"><span class="ar">مُقدَّم</span><span class="en">Submitted</span></button>
+      <button class="chip" data-opp-filter="under_review"><span class="ar">قيد المراجعة</span><span class="en">Under review</span></button>
+      <button class="chip" data-opp-filter="published"><span class="ar">منشور</span><span class="en">Published</span></button>
+      <button class="chip" data-opp-filter="rejected"><span class="ar">مرفوض</span><span class="en">Rejected</span></button>
+    </div>
+    <div id="oppContent" class="av-grid cols-1"></div>
+  </div>
 </section>
 
 <section class="app-view view-hidden" id="view-employees" data-view="employees" data-perm="employee.read assessment.read advisor.read advisor.session.read_own">
