@@ -193,3 +193,36 @@ def test_insights_are_company_scoped(client, world, auth, db):
     attention = next(r for r in body if r["key"] == "attention")
 
     assert "ألفا" not in attention["detail_ar"]
+
+
+# --------------------------------------------------------------------------
+# BI frontend/backend permission consistency (regression)
+# --------------------------------------------------------------------------
+def _custom_role(db, owner, code: str, perms: list[str]) -> None:
+    from backend.services import role_service
+
+    role_service.create_role(
+        db,
+        actor=owner,
+        payload={
+            "code": code,
+            "name_ar": "دور مخصص",
+            "name_en": "Custom role",
+            "permissions": perms,
+        },
+    )
+
+
+def test_insights_endpoint_requires_a_dashboard_permission(client, db, world, auth, make_user):
+    """`GET /ai/insights` returns dashboard data, so it is gated by
+    ``dashboard.*``. A role granted only the AI Q&A permission must not reach
+    it -- this is the backend half of the BI permission consistency fix."""
+    _custom_role(db, world["owner"], "ai_only", ["ai.holding"])
+    ai_only = make_user("aionly@corp.sa", "ai_only")
+
+    denied = client.get(INSIGHTS, headers=auth(ai_only))
+    assert denied.status_code == 403, denied.text
+
+    # The dashboard-scoped owner still reaches it unchanged.
+    assert client.get(INSIGHTS, headers=auth(world["owner"])).status_code == 200
+

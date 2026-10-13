@@ -1333,7 +1333,13 @@
     requests: ["form.read"],
     approvals: ["approval.read_own", "approval.read_all"],
     documents: ["document.read"],
-    bi: ["ai.holding", "ai.company"],
+    // The BI view renders the dashboard insights payload (group KPIs, company
+    // performance), so it is gated by the same permission its endpoint
+    // (`GET /ai/insights`) enforces -- not by `ai.*`, which only meters the
+    // Holding/Company AI Q&A. Gating on `ai.*` let a role with AI-only access
+    // open the view and then hit a 403; gating on `dashboard.*` keeps the nav
+    // and the API in agreement without widening data access.
+    bi: ["dashboard.holding", "dashboard.company"],
     analytics: [
       "analytics.holding",
       "analytics.company",
@@ -8786,7 +8792,7 @@
         }
         // Preview the dynamic-ops counters on the dashboard without navigating
         // away: forms (for the request type list) and the approvals inbox.
-        if (has("form.read") || has("form_submit")) {
+        if (has("form.read") || has("form.submit")) {
           jobs.push(ensureForms().catch(function () {}));
         }
         if (has("dashboard.holding") || has("dashboard.company")) {

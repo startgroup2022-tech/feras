@@ -166,3 +166,33 @@ def test_confidential_grant_requires_an_expiry():
     # D04: a delegated grant is only valid with a mandatory expiry.
     assert "cgExpires" in APP_JS
     assert "expires_at" in APP_JS
+
+
+def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
+    # `GET /ai/insights` is gated by `dashboard.*`, so the Business Intelligence
+    # nav/section must use the same gate. Gating on `ai.*` let a custom role
+    # with AI-only access see the view and then receive a 403.
+    bi_nav = re.search(
+        r'class="nav-item[^"]*"[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert bi_nav, "BI nav item not found"
+    assert set(bi_nav.group(1).split()) == {"dashboard.holding", "dashboard.company"}
+
+    bi_section = re.search(
+        r'<section[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert bi_section, "BI section not found"
+    assert set(bi_section.group(1).split()) == {"dashboard.holding", "dashboard.company"}
+
+    nav_perm = re.search(r'bi: \[([^\]]+)\]', APP_JS)
+    assert nav_perm, "NAV_PERM.bi not found"
+    assert set(re.findall(r'"([^"]+)"', nav_perm.group(1))) == {
+        "dashboard.holding",
+        "dashboard.company",
+    }
+
+
+def test_every_has_check_uses_a_real_permission_code():
+    unknown = sorted({p for p in re.findall(r'has\("([^"]+)"\)', APP_JS) if p not in ALL_PERMISSIONS})
+    assert unknown == [], f"app.js checks unknown permissions: {unknown}"
+
