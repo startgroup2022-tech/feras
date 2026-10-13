@@ -66,7 +66,7 @@
 <header class="header">
   <div class="header-inner">
     <div class="brand">
-      <div class="brand-mark">
+      <div class="brand-mark" id="brandMark">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
           <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
           <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
@@ -74,6 +74,9 @@
           <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
         </svg>
       </div>
+      <!-- The admin-uploaded Holding logo, shown instead of the fallback mark
+           when one is configured. -->
+      <img class="brand-logo" id="brandLogo" alt="سفير القابضة" hidden>
       <div class="brand-text">
         <span class="brand-name"><span class="ar">سفير القابضة</span><span class="en">Safir Holding</span></span>
         <span class="brand-sub"><span class="ar">٢٠٢٧ · منصة القيادة</span><span class="en">2027 · Executive Platform</span></span>

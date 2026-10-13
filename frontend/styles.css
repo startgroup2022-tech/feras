@@ -122,7 +122,8 @@ body.export .stage{width:var(--stage-w);max-width:none;height:var(--stage-h);min
   background:linear-gradient(90deg,transparent,var(--gold-500) 18%,var(--gold-300) 50%,var(--gold-500) 82%,transparent);
 }
 .header-inner{
-  padding:0 26px;height:62px;display:flex;align-items:center;gap:22px;
+  padding:6px 26px;min-height:62px;display:flex;align-items:center;
+  gap:8px 22px;flex-wrap:wrap;
 }
 .brand{display:flex;align-items:center;gap:11px;position:relative;padding-inline-end:22px;}
 .brand::after{content:"";position:absolute;inset-inline-end:0;top:50%;transform:translateY(-50%);width:1px;height:30px;background:var(--line);}
@@ -134,22 +135,26 @@ body.export .stage{width:var(--stage-w);max-width:none;height:var(--stage-h);min
 }
 .brand-mark::before{content:"";position:absolute;inset:0;border-radius:11px;background:linear-gradient(160deg,transparent 42%,rgba(201,165,78,.34));}
 .brand-mark svg{position:relative;z-index:1;}
+.brand-logo[hidden]{display:none;}
+.brand-logo{
+  display:block;height:38px;width:auto;max-width:150px;
+  object-fit:contain;flex:0 0 auto;border-radius:9px;
+}
 .brand-text{display:flex;flex-direction:column;line-height:1.15;}
 .brand-name{font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--navy-900);}
 .brand-sub{font-size:9.5px;font-weight:600;color:var(--gold-600);letter-spacing:.14em;text-transform:uppercase;}
 html.lang-ar .brand-sub{letter-spacing:.02em;}
 
-/* The navigation carries every permission-gated section in a single row, so it
-   can be wider than the space left by the brand and the action cluster. It must
-   be the flexible element that yields (min-width:0) and it scrolls inside its
-   own box; otherwise the row overflows and the items paint on top of the
-   language switch / profile / Sign out controls at desktop widths. */
-.nav{display:flex;align-items:center;gap:2px;flex:1 1 auto;min-width:0;
-  overflow-x:auto;overflow-y:hidden;padding-bottom:3px;
-  scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
-.nav::-webkit-scrollbar{height:5px;}
-.nav::-webkit-scrollbar-track{background:transparent;}
-.nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+/* The navigation carries every permission-gated section. Nineteen items cannot
+   fit beside the brand and the action cluster on a desktop width, so the nav
+   always wraps to its own full-width row under them and the items flow across
+   as many rows as they need. It never scrolls horizontally and never clips an
+   item: every section stays visible and clickable at any width. (Previously it
+   was kept on the header's single row and clipped, which hid most items on
+   wide screens and pushed the wrapped row out of the fixed 62px header.) */
+.nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;
+  flex:1 1 100%;order:3;min-width:0;
+  padding-bottom:2px;}
 .nav-item{
   position:relative;padding:8px 13px;border-radius:9px;
   font-size:12.5px;font-weight:500;color:var(--ink-500);flex:0 0 auto;
@@ -843,10 +848,9 @@ body:not(.authed) .stage-wrap{display:none;}
   .ai,.aii,.card{min-height:auto;}
   .head-row{flex-direction:column;align-items:flex-start;gap:12px;}
   .head-right{width:100%;justify-content:space-between;}
-  /* Header nav wraps to its own row and scrolls in place (the base .nav rule
-     already scrolls, so this only changes the ordering/basis). */
-  .header-inner{flex-wrap:wrap;gap:8px;}
-  .nav{order:3;flex-basis:100%;padding-bottom:2px;}
+  /* The header nav already wraps to its own full-width row (base rule); on
+     narrow screens it simply needs a little less gap. */
+  .header-inner{gap:8px;}
   /* Routed views flow in-document on mobile rather than overlaying a
      zero-height board. */
   .app-view{position:static;inset:auto;min-height:calc(100vh - 120px);padding:14px 14px 22px;}
@@ -863,6 +867,13 @@ body:not(.authed) .stage-wrap{display:none;}
      overflowing (which previously pushed Sign out off-screen). */
   .header-inner{padding:8px 12px;gap:8px;}
   .h-actions{flex:0 0 auto;flex-wrap:nowrap;gap:6px;}
+  /* On phones a fully wrapped 19-item nav would eat most of the screen, so the
+     nav becomes a single horizontally scrollable strip: the header stays
+     compact and every section remains reachable by swiping. Nothing is
+     removed or hidden. */
+  .nav{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+  .nav::-webkit-scrollbar{display:none;}
+  .nav-item{white-space:nowrap;}
 }
 @media (max-width:480px){
   /* On phones the action cluster is wider than the viewport unless the

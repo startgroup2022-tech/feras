@@ -7808,6 +7808,7 @@
       return api.upload("/api/v1/admin/branding/logo", file, null)
         .then(function () {
           toast(STATE.lang === "ar" ? "تم رفع الشعار." : "Logo uploaded.", "ok");
+          applyPlatformLogo();
           return renderAdminStructure();
         })
         .catch(function (err) {
@@ -7820,6 +7821,7 @@
       return del("/api/v1/admin/branding/logo")
         .then(function () {
           toast(STATE.lang === "ar" ? "تمت إزالة الشعار." : "Logo removed.", "ok");
+          applyPlatformLogo();
           return renderAdminStructure();
         })
         .catch(function (err) {
@@ -8466,6 +8468,35 @@
     return has("dashboard.holding");
   }
 
+  // The platform header shows the same admin-uploaded Holding logo as the
+  // public site, falling back to the static brand mark when none is set.
+  function applyPlatformLogo() {
+    var img = byId("brandLogo");
+    var mark = byId("brandMark");
+    if (!img) return;
+    get("/api/v1/public/branding")
+      .then(function (branding) {
+        var url = branding && branding.logo_url;
+        if (url) {
+          img.onload = function () {
+            img.hidden = false;
+            if (mark) mark.hidden = true;
+          };
+          img.onerror = function () {
+            img.hidden = true;
+            if (mark) mark.hidden = false;
+          };
+          img.src = url;
+        } else {
+          img.hidden = true;
+          if (mark) mark.hidden = false;
+        }
+      })
+      .catch(function () {
+        /* keep the static brand mark on any failure */
+      });
+  }
+
   function primaryCompanyId() {
     return USER && USER.company_ids && USER.company_ids.length
       ? USER.company_ids[0]
@@ -8722,6 +8753,7 @@
       .then(function (user) {
         USER = user;
         fillProfile();
+        applyPlatformLogo();
         applyPermissions();
         bindAskBox();
         bindLogout();

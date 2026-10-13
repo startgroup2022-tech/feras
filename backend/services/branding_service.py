@@ -49,12 +49,15 @@ def logo_url(holding: Holding | None) -> str | None:
     """The public URL of the uploaded logo, or ``None`` for the fallback mark.
 
     A ``?v=`` cache-buster derived from ``logo_updated_at`` means a re-upload
-    is picked up immediately by browsers and CDNs without a purge.
+    is picked up immediately by browsers and CDNs without a purge. The version
+    is millisecond-precision: a whole-second value would be identical for two
+    uploads within the same second, so a replacement would keep serving the
+    stale cached image.
     """
     if holding is None or not holding.logo_storage_key:
         return None
     stamp = holding.logo_updated_at or holding.updated_at
-    version = int(stamp.timestamp()) if isinstance(stamp, datetime) else 0
+    version = int(stamp.timestamp() * 1000) if isinstance(stamp, datetime) else 0
     return f"{LOGO_PATH}?v={version}"
 
 

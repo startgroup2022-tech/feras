@@ -130,6 +130,15 @@ def test_reupload_replaces_the_previous_file(client, auth, admin, branding_dir):
     assert first != remaining
 
 
+def test_reupload_changes_the_cache_buster(client, auth, admin, branding_dir):
+    # A replacement must yield a new ?v= even when it happens in the same
+    # wall-clock second, otherwise browsers/CDNs keep serving the old image.
+    first = _upload(client, auth, admin).json()["logo_url"]
+    second = _upload(client, auth, admin).json()["logo_url"]
+    assert first != second
+    assert first.split("?v=")[1] != second.split("?v=")[1]
+
+
 # --------------------------------------------------------------------------
 # validation
 # --------------------------------------------------------------------------

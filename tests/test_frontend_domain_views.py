@@ -24,6 +24,7 @@ from backend.rbac.permissions import ALL_PERMISSIONS
 ROOT = Path(__file__).resolve().parent.parent
 APP_JS = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
 INDEX = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+CSS = (ROOT / "frontend" / "styles.css").read_text(encoding="utf-8")
 
 NEW_VIEWS = ["employees", "operations", "decisions", "accounting", "confidential"]
 
@@ -106,6 +107,34 @@ def test_domain_views_are_wired_into_loadview():
     body = load_view.group(1)
     for view in NEW_VIEWS:
         assert f'view === "{view}"' in body, f"loadView does not dispatch {view}"
+
+
+def test_platform_header_renders_the_admin_logo():
+    # The platform header shows the same admin-uploaded Holding logo as the
+    # public site, with the static mark as the documented fallback.
+    assert 'class="brand-logo" id="brandLogo"' in INDEX
+    assert 'id="brandMark"' in INDEX
+    assert 'function applyPlatformLogo(' in APP_JS
+    assert "/api/v1/public/branding" in APP_JS
+    # It must be wired into the post-login boot so it appears on first paint.
+    assert "applyPlatformLogo();" in APP_JS
+
+
+def test_platform_nav_is_responsive_and_never_clipped():
+    # The platform nav carries many permission-gated sections; it must wrap and
+    # remain fully visible rather than scroll horizontally or clip on desktop.
+    nav_rule = re.search(r"\.nav\{[^}]*\}", CSS)
+    assert nav_rule, ".nav rule not found"
+    rule = nav_rule.group(0)
+    assert "flex-wrap:wrap" in rule
+    assert "order:3" in rule
+    # A fixed header height let the wrapped nav overflow into the page.
+    header_rule = re.search(r"\.header-inner\{[^}]*\}", CSS)
+    assert header_rule, ".header-inner rule not found"
+    assert "min-height" in header_rule.group(0)
+    assert "flex-wrap:wrap" in header_rule.group(0)
+    # A fixed height (as opposed to min-height) is what clipped the nav.
+    assert not re.search(r"(?<!min-)height:62px", header_rule.group(0))
 
 
 def test_sensitive_actions_are_permission_gated_in_the_client():
