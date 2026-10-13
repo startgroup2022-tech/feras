@@ -196,3 +196,29 @@ def test_every_has_check_uses_a_real_permission_code():
     unknown = sorted({p for p in re.findall(r'has\("([^"]+)"\)', APP_JS) if p not in ALL_PERMISSIONS})
     assert unknown == [], f"app.js checks unknown permissions: {unknown}"
 
+
+def test_document_title_follows_the_active_language_and_view():
+    # Audit §4: the server-rendered Arabic <title> must be replaced on language
+    # switch and kept in sync with the view, including an English brand.
+    assert "function applyDocTitle" in APP_JS
+    assert "VIEW_TITLES" in APP_JS
+    assert "Safir Holding 2027" in APP_JS  # English brand present
+    assert re.search(r"applyI18n\(\);\s*\n\s*applyDocTitle\(\);", APP_JS)
+    assert re.search(r"applyDocTitle\(\);\s*\n\s*var board", APP_JS)
+
+
+def test_active_nav_item_is_exposed_to_assistive_tech():
+    # Audit §4: aria-current on the active nav item, both in the static boot
+    # markup and when navigation happens at runtime.
+    assert 'aria-current="page"' in INDEX
+    assert 'setAttribute("aria-current", "page")' in APP_JS
+
+
+def test_toast_region_announces_messages():
+    # Audit §4: a persistent aria-live toast region and role=alert for errors.
+    assert "function ensureToastRegion" in APP_JS
+    assert "ensureToastRegion()" in APP_JS  # created at boot
+    assert 'setAttribute("aria-live", "polite")' in APP_JS
+    assert 'setAttribute("role", "status")' in APP_JS
+    assert 'setAttribute("role", "alert")' in APP_JS
+

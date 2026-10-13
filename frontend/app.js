@@ -1048,16 +1048,26 @@
   }
 
   // ---- toasts ----------------------------------------------------------
-  function toast(message, kind) {
+  // The live region exists from app load (not just on first toast) so screen
+  // readers observe the container before a message is inserted (audit §4).
+  function ensureToastRegion() {
     var wrap = byId("toastWrap");
     if (!wrap) {
       wrap = document.createElement("div");
       wrap.className = "toast-wrap";
       wrap.id = "toastWrap";
+      wrap.setAttribute("role", "status");
+      wrap.setAttribute("aria-live", "polite");
       document.body.appendChild(wrap);
     }
+    return wrap;
+  }
+
+  function toast(message, kind) {
+    var wrap = ensureToastRegion();
     var t = document.createElement("div");
     t.className = "toast " + (kind || "");
+    if (kind === "err") t.setAttribute("role", "alert");
     t.innerHTML = '<div class="grow">' + escapeHtml(message) + "</div>";
     wrap.appendChild(t);
     setTimeout(function () {
@@ -1201,7 +1211,42 @@
     }
     if (typeof STATE !== "undefined") STATE.lang = lang;
     if (typeof applyI18n === "function") applyI18n();
+    applyDocTitle();
     if (typeof refreshActiveView === "function") refreshActiveView();
+  }
+
+  // Keep the document title in the active language (and in sync with the
+  // current view) instead of leaving the server-rendered Arabic title forever.
+  var VIEW_TITLES = {
+    dashboard: { ar: "لوحة القيادة التنفيذية", en: "Executive Dashboard" },
+    subsidiaries: { ar: "الشركات التابعة", en: "Subsidiaries" },
+    reports: { ar: "التقارير الشهرية", en: "Monthly Reports" },
+    financial: { ar: "المراجعة المالية", en: "Financial Review" },
+    investments: { ar: "الاستثمارات", en: "Investments" },
+    support: { ar: "الدعم", en: "Support" },
+    requests: { ar: "الطلبات", en: "Requests" },
+    approvals: { ar: "الموافقات", en: "Approvals" },
+    documents: { ar: "المستندات", en: "Documents" },
+    bi: { ar: "ذكاء الأعمال", en: "Business Intelligence" },
+    analytics: { ar: "التحليلات", en: "Analytics" },
+    inbox: { ar: "الإشعارات", en: "Notifications" },
+    leads: { ar: "طلبات الموقع", en: "Website Leads" },
+    employees: { ar: "الموظفون والتقييم", en: "Employees & Assessment" },
+    operations: { ar: "العمليات", en: "Operations" },
+    decisions: { ar: "قرارات المالك", en: "Owner Decisions" },
+    accounting: { ar: "المحاسبة", en: "Accounting" },
+    confidential: { ar: "الوصول السري", en: "Confidential Access" },
+    admin: { ar: "الإدارة", en: "Administration" },
+  };
+
+  function applyDocTitle() {
+    var brand =
+      STATE.lang === "ar"
+        ? "سفير القابضة ٢٠٢٧ — "
+        : "Safir Holding 2027 — ";
+    var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
+    var t = VIEW_TITLES[view];
+    document.title = brand + (t ? (STATE.lang === "ar" ? t.ar : t.en) : "");
   }
 
   // Re-render the current view when the language changes, so any Arabic-only
@@ -1403,8 +1448,12 @@
       if (isSection) el.classList.toggle("view-hidden", el.getAttribute("data-view") !== view);
     });
     document.querySelectorAll(".nav-item").forEach(function (n) {
-      n.classList.toggle("active", n.getAttribute("data-view") === view);
+      var on = n.getAttribute("data-view") === view;
+      n.classList.toggle("active", on);
+      if (on) n.setAttribute("aria-current", "page");
+      else n.removeAttribute("aria-current");
     });
+    applyDocTitle();
     var board = byId("board");
     if (board) board.classList.toggle("view-hidden", view !== "dashboard");
     if (push !== false) {
@@ -8897,6 +8946,7 @@
     bindLang();
     api.load();
     bindLogin();
+    ensureToastRegion();
     if (api.isAuthenticated()) {
       enterApp();
     } else {
