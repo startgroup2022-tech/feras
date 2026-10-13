@@ -31,6 +31,8 @@ class Perm:
     OWNERSHIP_MANAGE = "ownership.manage"
     DEPARTMENT_READ = "department.read"
     DEPARTMENT_MANAGE = "department.manage"
+    SECTOR_READ = "sector.read"
+    SECTOR_MANAGE = "sector.manage"
     USER_READ_ALL = "user.read_all"
     USER_CREATE = "user.create"
     USER_UPDATE = "user.update"
@@ -234,6 +236,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.OWNERSHIP_MANAGE: "Create and change ownership stakes",
     Perm.DEPARTMENT_READ: "View company departments",
     Perm.DEPARTMENT_MANAGE: "Create and edit company departments",
+    Perm.SECTOR_READ: "View the managed sector list",
+    Perm.SECTOR_MANAGE: "Create and edit managed sectors",
     Perm.USER_READ_ALL: "View the full user directory",
     Perm.USER_CREATE: "Create users",
     Perm.USER_UPDATE: "Edit users, their role and their active state",
@@ -390,6 +394,7 @@ _HOLDING_READ = {
     Perm.AI_COMPANY,
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
+    Perm.SECTOR_READ,
     Perm.ANALYTICS_HOLDING,
     Perm.ANALYTICS_COMPANY,
     Perm.ANALYTICS_OPERATIONS,
@@ -464,6 +469,7 @@ _COMPANY_READ = {
     Perm.AI_COMPANY,
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
+    Perm.SECTOR_READ,
     Perm.ANALYTICS_COMPANY,
 }
 
@@ -487,6 +493,7 @@ COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.USER_UPDATE,
     Perm.USER_ASSIGN_COMPANY,
     Perm.DEPARTMENT_MANAGE,
+    Perm.SECTOR_MANAGE,
     Perm.COMPANY_UPDATE,
     Perm.FORM_SUBMIT,
     Perm.SUBMISSION_READ_COMPANY,
@@ -531,6 +538,7 @@ HR_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.USER_ASSIGN_COMPANY,
     Perm.DEPARTMENT_READ,
     Perm.DEPARTMENT_MANAGE,
+    Perm.SECTOR_MANAGE,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,

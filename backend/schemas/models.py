@@ -715,6 +715,46 @@ class DepartmentOut(BaseModel):
     manager_name_en: str | None = None
 
 
+class SectorCreateRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name_ar: str = Field(min_length=1, max_length=180)
+    name_en: str = Field(min_length=1, max_length=180)
+    status: str | None = Field(default=None, max_length=20)
+    sort_order: int | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class SectorUpdateRequest(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=40)
+    name_ar: str | None = Field(default=None, min_length=1, max_length=180)
+    name_en: str | None = Field(default=None, min_length=1, max_length=180)
+    status: str | None = Field(default=None, max_length=20)
+    sort_order: int | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in DepartmentStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class SectorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str
+    status: str
+    sort_order: int
+    notes: str | None = None
+
+
 class RoleOut(BaseModel):
     code: str
     name_ar: str

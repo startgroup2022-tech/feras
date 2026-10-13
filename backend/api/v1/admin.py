@@ -34,6 +34,9 @@ from backend.schemas import (
     RoleOut,
     RolePermissionsRequest,
     RoleUpdateRequest,
+    SectorCreateRequest,
+    SectorOut,
+    SectorUpdateRequest,
 )
 from backend.services import (
     admin_service,
@@ -43,6 +46,7 @@ from backend.services import (
     holding_service,
     ownership_service,
     role_service,
+    sector_service,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -287,6 +291,56 @@ def update_department(
         user_agent=ctx["user_agent"],
     )
     return DepartmentOut(**row)
+
+
+# --------------------------------------------------------------------------
+# sectors
+# --------------------------------------------------------------------------
+@router.get("/sectors", response_model=list[SectorOut])
+def list_sectors(db: DbSession, user: CurrentUser) -> list[SectorOut]:
+    return [SectorOut(**row) for row in sector_service.list_sectors(db, user=user)]
+
+
+@router.post(
+    "/sectors",
+    response_model=SectorOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_sector(
+    payload: SectorCreateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.SECTOR_MANAGE)),
+) -> SectorOut:
+    ctx = audit_service.request_context(request)
+    row = sector_service.create_sector(
+        db,
+        actor=actor,
+        payload=payload.model_dump(),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return SectorOut(**row)
+
+
+@router.patch("/sectors/{sector_id}", response_model=SectorOut)
+def update_sector(
+    sector_id: int,
+    payload: SectorUpdateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.SECTOR_MANAGE)),
+) -> SectorOut:
+    ctx = audit_service.request_context(request)
+    row = sector_service.update_sector(
+        db,
+        actor=actor,
+        sector_id=sector_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return SectorOut(**row)
 
 
 # --------------------------------------------------------------------------

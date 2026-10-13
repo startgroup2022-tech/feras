@@ -28,6 +28,7 @@
     view: "dashboard",
     lang: "ar",
     companies: [],
+    sectors: [],
     reports: [],
     support: [],
     insights: [],
@@ -315,7 +316,33 @@
     };
   }
 
+  // The managed sector catalogue (S03) overrides the built-in map when the
+  // viewer may read it; the static map stays as an offline fallback for
+  // accounts without sector.read (e.g. a company-scoped manager).
+  function ensureSectors() {
+    if (STATE.loaded.sectors) return Promise.resolve(STATE.sectors);
+    if (!has("sector.read")) return Promise.resolve([]);
+    return get("/api/v1/admin/sectors")
+      .then(function (rows) {
+        STATE.sectors = rows || [];
+        STATE.loaded.sectors = true;
+        return STATE.sectors;
+      })
+      .catch(function () {
+        return [];
+      });
+  }
+
   function sectorLabel(sector) {
+    var key = (sector || "").toLowerCase();
+    var managed = (STATE.sectors || []).filter(function (s) {
+      return (
+        (s.code || "").toLowerCase() === key ||
+        (s.name_en || "").toLowerCase() === key ||
+        (s.name_ar || "") === sector
+      );
+    })[0];
+    if (managed) return { ar: managed.name_ar, en: managed.name_en };
     var found = SECTOR[sector];
     if (found) return found;
     return { ar: sector || "", en: sector || "" };
@@ -4888,20 +4915,30 @@
 
   function renderAssessments() {
     var host = byId("empContent");
+    var canManage = has("assessment.manage");
+    var owner = isConfidentialOwner();
+    // The owner reviews both employee and confidential leadership assessments;
+    // everyone else only sees employee ones (S12/S23, D04).
+    if (STATE.assessType !== "leadership") STATE.assessType = "employee";
+    if (STATE.assessType === "leadership" && !owner) STATE.assessType = "employee";
+    var filter = owner
+      ? '<div class="chip-row">' +
+        assessTypeChip("employee", "تقييمات الموظفين", "Employee assessments") +
+        assessTypeChip("leadership", "تقييمات القيادة (سرّية)", "Leadership assessments (confidential)") +
+        "</div>"
+      : "";
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/employees/assessments/list").catch(function () { return []; }),
+      get("/api/v1/employees/assessments/list?assessment_type=" + STATE.assessType).catch(function () { return []; }),
     ]).then(function (res) {
       var rows = res[1] || [];
-      var canManage = has("assessment.manage");
+      var typeOptions = [{ value: "employee", label: opt("موظف", "Employee") }];
+      if (owner) typeOptions.push({ value: "leadership", label: opt("قيادة (سري)", "Leadership (confidential)") });
       var create = canManage
         ? '<form class="av-form av-form-inline" id="assessForm">' +
           field("الشركة", "Company", selectInput("asCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
           field("الفترة", "Period", textInput("asPeriod", "")) +
-          field("النوع", "Type", selectInput("asType", [
-            { value: "employee", label: opt("موظف", "Employee") },
-            { value: "leadership", label: opt("قيادة (سري)", "Leadership (confidential)") },
-          ], "employee")) +
+          field("النوع", "Type", selectInput("asType", typeOptions, "employee")) +
           field("الموظف (المعرّف)", "Employee id", numInput("asEmp", "")) +
           field("الملخص", "Summary", textInput("asSummary", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
@@ -4910,10 +4947,24 @@
       var list = rows.length
         ? '<div class="av-list">' + rows.map(assessmentRow).join("") + "</div>"
         : noticeHtml("لا توجد تقييمات.", "No assessments.");
-      host.innerHTML = panel("التقييمات", "Assessments", create + list);
+      var title = STATE.assessType === "leadership" ? "تقييمات القيادة (D04: سرّية)" : "التقييمات";
+      var titleEn = STATE.assessType === "leadership" ? "Leadership assessments (D04: confidential)" : "Assessments";
+      host.innerHTML = panel(title, titleEn, filter + create + list);
       bindRowClicks(host, "assess", openAssessment);
+      document.querySelectorAll("[data-assess-type]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          STATE.assessType = b.getAttribute("data-assess-type");
+          renderAssessments();
+        });
+      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
+
+  function assessTypeChip(value, ar, en) {
+    return '<button type="button" class="chip' + (STATE.assessType === value ? " on" : "") +
+      '" data-assess-type="' + escAttr(value) + '">' + dual(ar, en) + "</button>";
+  }
+
 
   function assessmentRow(a) {
     var gap = a.has_evidence_gap
@@ -5098,13 +5149,20 @@
     }
     if (id === "assessForm") {
       busy(el.querySelector("button"), true);
-      return post("/api/v1/employees/assessments", {
+      var aType = valOf("asType");
+      var payload = {
         company_id: parseInt(valOf("asCompany"), 10),
         period_label: valOf("asPeriod"),
-        assessment_type: valOf("asType"),
-        employee_id: numVal("asEmp"),
+        assessment_type: aType,
         summary: valOf("asSummary") || null,
-      }).then(function () { toast(dual("تم إنشاء التقييم.", "Assessment created."), "ok"); return renderAssessments(); })
+      };
+      // A leadership assessment is about a *user* (subject_user_id); an
+      // employee assessment is about an employee (employee_id). Sending the
+      // wrong key is a validation error, so map it explicitly.
+      if (aType === "leadership") payload.subject_user_id = numVal("asEmp");
+      else payload.employee_id = numVal("asEmp");
+      return post("/api/v1/employees/assessments", payload)
+        .then(function () { toast(dual("تم إنشاء التقييم.", "Assessment created."), "ok"); return renderAssessments(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "advForm") {
@@ -6189,11 +6247,12 @@
       .catch(function (err) { domainError(err); busy(el, false); });
   }
 
-  var ADMIN_TABS = ["structure", "companies", "departments", "users", "roles", "website", "builder", "workflows", "integrations", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "users", "roles", "website", "builder", "workflows", "integrations", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
     departments: ["department.read"],
+    sectors: ["sector.read"],
     users: ["user.read_all"],
     roles: ["role.read"],
     website: ["website.content.read"],
@@ -6252,6 +6311,7 @@
     if (tab === "structure") return renderAdminStructure();
     if (tab === "companies") return renderAdminCompanies();
     if (tab === "departments") return renderAdminDepartments();
+    if (tab === "sectors") return renderAdminSectors();
     if (tab === "users") return renderAdminUsers();
     if (tab === "roles") return renderAdminRoles();
     if (tab === "website") return renderAdminWebsite();
@@ -6564,6 +6624,66 @@
         adminPanel("ملخص", "Summary", '<div class="kv">' +
           kv(dual("عدد الأقسام", "Departments"), plainNum(departments.length)) +
           kv(dual("الشركات المتاحة", "Companies in scope"), plainNum(companies.length)) +
+          "</div>");
+    });
+  }
+
+  // ---- tab: sectors ----
+  //
+  // The managed sector catalogue (S03) behind ``companies.sector``. Reads are
+  // gated on sector.read; writes on sector.manage. The list is bilingual and
+  // RTL-safe because it uses the same dual()/escapeHtml primitives as the rest
+  // of the admin UI.
+  function renderAdminSectors() {
+    var host = byId("adminContent");
+    return get("/api/v1/admin/sectors").catch(function () { return []; }).then(function (sectors) {
+      var create = has("sector.manage")
+        ? adminPanel("إضافة قطاع", "Add sector",
+            '<form class="av-form av-form-inline" id="sectorForm">' +
+            field("الكود", "Code", textInput("scCode", "", "ph.companyCode")) +
+            field("الاسم (عربي)", "Name (AR)", textInput("scNameAr", "")) +
+            field("الاسم (إنجليزي)", "Name (EN)", textInput("scNameEn", "")) +
+            field("الترتيب", "Order", numInput("scOrder", 0)) +
+            '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+            dual("إضافة قطاع", "Add sector") + "</button></div></form>")
+        : "";
+      var list = sectors.length
+        ? sectors.map(function (s) {
+            var body =
+              '<div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' +
+              escapeHtml(STATE.lang === "ar" ? s.name_ar : s.name_en || s.name_ar) +
+              '</div><div class="s">' + escapeHtml(s.code) + " · " +
+              escapeHtml(STATE.lang === "ar" ? s.name_en || "" : s.name_ar || "") +
+              "</div></div>" +
+              '<span class="status ' + (s.status === "active" ? "ok" : "warn") + '"><i></i>' +
+              escapeHtml(s.status) + "</span></div>";
+            if (!has("sector.manage")) {
+              return '<div class="av-row" style="cursor:default">' + body + "</div>";
+            }
+            return (
+              '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+              body +
+              '<form class="av-form" id="sectorForm' + s.id + '">' +
+              field("الاسم (عربي)", "Name (AR)", textInput("scNameAr" + s.id, s.name_ar)) +
+              field("الاسم (إنجليزي)", "Name (EN)", textInput("scNameEn" + s.id, s.name_en)) +
+              field("الحالة", "Status", selectInput("scStatus" + s.id, [
+                { value: "active", label: opt("نشط", "Active") },
+                { value: "inactive", label: opt("موقوف", "Inactive") },
+              ], s.status)) +
+              field("الترتيب", "Order", numInput("scOrder" + s.id, s.sort_order)) +
+              '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="save-sector" data-id="' + s.id + '">' +
+              dual("حفظ", "Save") + "</button></div></form></div>"
+            );
+          }).join("")
+        : '<p class="av-empty">' + dual("لا توجد قطاعات.", "No sectors.") + "</p>";
+      host.innerHTML =
+        create +
+        adminPanel("القطاعات", "Sectors", list) +
+        adminPanel("ملخص", "Summary", '<div class="kv">' +
+          kv(dual("عدد القطاعات", "Sectors"), plainNum(sectors.length)) +
+          kv(dual("القطاعات النشطة", "Active"),
+            plainNum(sectors.filter(function (s) { return s.status === "active"; }).length)) +
           "</div>");
     });
   }
@@ -8126,6 +8246,19 @@
         });
     }
 
+    if (action === "save-sector") {
+      var scid = parseInt(id, 10);
+      return patch("/api/v1/admin/sectors/" + scid, {
+        name_ar: byId("scNameAr" + scid) ? byId("scNameAr" + scid).value : undefined,
+        name_en: byId("scNameEn" + scid) ? byId("scNameEn" + scid).value : undefined,
+        status: byId("scStatus" + scid) ? byId("scStatus" + scid).value : undefined,
+        sort_order: byId("scOrder" + scid) ? parseInt(byId("scOrder" + scid).value, 10) : undefined,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تم حفظ القطاع." : "Sector saved.", "ok");
+        return renderAdminSectors();
+      }).catch(adminError);
+    }
+
     if (action === "save-company") {
       var cid = parseInt(id, 10);
       return patch("/api/v1/companies/" + cid, {
@@ -8224,6 +8357,18 @@
       return post("/api/v1/admin/ownerships", payload).then(function () {
         toast(STATE.lang === "ar" ? "تمت إضافة الحصة." : "Stake added.", "ok");
         return renderAdminStructure();
+      }).catch(adminError);
+    }
+    if (form.id === "sectorForm") {
+      e.preventDefault();
+      return post("/api/v1/admin/sectors", {
+        code: byId("scCode").value,
+        name_ar: byId("scNameAr").value,
+        name_en: byId("scNameEn").value,
+        sort_order: parseInt(byId("scOrder").value, 10) || 0,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تمت إضافة القطاع." : "Sector added.", "ok");
+        return renderAdminSectors();
       }).catch(adminError);
     }
     if (form.id === "deptForm") {
@@ -8489,6 +8634,18 @@
   var USER = null;
   function has(perm) {
     return !!(USER && USER.permissions && USER.permissions.indexOf(perm) >= 0);
+  }
+
+  // D04: leadership assessments are confidential and owner-only. The frontend
+  // mirrors the server's rule so a non-owner is never offered the control; the
+  // backend still enforces it.
+  function isConfidentialOwner() {
+    return !!(
+      USER &&
+      (USER.is_superuser ||
+        USER.role_code === "holding_owner" ||
+        USER.role_code === "super_admin")
+    );
   }
 
   function applyPermissions() {
@@ -8821,7 +8978,7 @@
         // Reports back the dashboard cards' "View Report" action and the
         // company drill-downs, so load them first even when the period was
         // pinned via the URL (resolvePeriod skips its own fetch in that case).
-        return Promise.all([ensureReports(), ensureCompanies()]);
+        return Promise.all([ensureReports(), ensureCompanies(), ensureSectors()]);
       })
       .then(function () {
         var jobs = [];

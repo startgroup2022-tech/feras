@@ -51,7 +51,7 @@ from backend.db.models.forms import (
     FormRequirement,
     FormVersion,
 )
-from backend.db.models.group import Department, Holding, Ownership
+from backend.db.models.group import Department, Holding, Ownership, Sector
 from backend.db.models.identity import (
     Company,
     Permission,
@@ -110,6 +110,7 @@ __all__ = [
     "Holding",
     "Ownership",
     "Department",
+    "Sector",
     "MonthlyReport",
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",

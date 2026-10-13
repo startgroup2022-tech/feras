@@ -105,7 +105,7 @@ def decide_movement(
 @router.get("/assessments/list")
 def list_assessments(
     user: CurrentUser, db: DbSession, company_id: int | None = None,
-    assessment_type: str = "employee",
+    assessment_type: str | None = None,
 ) -> list[dict]:
     return [
         hr_service.serialise_assessment(a)

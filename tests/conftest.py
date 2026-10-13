@@ -69,6 +69,7 @@ from backend.db.models import (  # noqa: E402
     OwnerDecision,
     OwnerDecisionEvent,
     Ownership,
+    Sector,
     Settlement,
     SubmissionRequirement,
     SupportRequest,
@@ -207,6 +208,7 @@ def _clean_data(_database):
             Ownership,
             User,
             Department,
+            Sector,
             Holding,
             Company,
         ):

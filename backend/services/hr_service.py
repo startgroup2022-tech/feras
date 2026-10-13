@@ -14,10 +14,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from backend.core.errors import ConflictError, NotFoundError, ValidationError
+from backend.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
 from backend.db.models.enums import (
@@ -351,10 +356,18 @@ def create_assessment(
     require_permission(user, Perm.ASSESSMENT_MANAGE)
     require_company_access(user, company_id, write=True)
 
-    if assessment_type == AssessmentType.EMPLOYEE.value and employee_id is None:
+    if assessment_type == AssessmentType.LEADERSHIP.value:
+        # D04: a leadership assessment is confidential and owner-only. Nobody
+        # but the owner (or the delegated super admin) may create one; a
+        # non-owner cannot even learn the record exists.
+        if not confidential_access_service.is_confidential_owner(user):
+            raise PermissionDeniedError(
+                "Only the owner may create a leadership assessment."
+            )
+        if subject_user_id is None:
+            raise ValidationError("A leadership assessment requires a subject user.")
+    elif employee_id is None:
         raise ValidationError("An employee assessment requires an employee.")
-    if assessment_type == AssessmentType.LEADERSHIP.value and subject_user_id is None:
-        raise ValidationError("A leadership assessment requires a subject user.")
 
     assessment = Assessment(
         company_id=company_id,
@@ -525,19 +538,62 @@ def _get_assessment(db: Session, *, user: User, assessment_id: int) -> Assessmen
 
 def list_assessments(
     db: Session, *, user: User, company_id: int | None = None,
-    assessment_type: str = AssessmentType.EMPLOYEE.value,
+    assessment_type: str | None = None,
 ) -> list[Assessment]:
+    """Assessments the caller may read (S11/S12, S23).
+
+    Employee assessments are scoped by company. Leadership assessments are
+    confidential (D04): the owner reads all of them, and anyone else reads only
+    the records explicitly delegated to them. When ``assessment_type`` is
+    omitted the caller gets both, which is what the owner's S23 screen needs;
+    the earlier default of "employee" silently hid the owner's own leadership
+    records.
+    """
     require_permission(user, Perm.ASSESSMENT_READ)
-    stmt = select(Assessment).where(Assessment.assessment_type == assessment_type)
-    if assessment_type == AssessmentType.LEADERSHIP.value:
-        # Only the owner (or grantees) may list leadership assessments; a
-        # non-owner sees nothing here.
-        if not confidential_access_service.is_confidential_owner(user):
-            return []
+    is_owner = confidential_access_service.is_confidential_owner(user)
+    allowed = accessible_company_ids(user)
+
+    stmt = select(Assessment)
+    if assessment_type is not None:
+        stmt = stmt.where(Assessment.assessment_type == assessment_type)
+        types = [assessment_type]
     else:
-        allowed = accessible_company_ids(user)
-        if allowed is not None:
-            stmt = stmt.where(Assessment.company_id.in_(allowed)) if allowed else stmt.where(False)
+        types = [t.value for t in AssessmentType]
+
+    clauses = []
+    if AssessmentType.EMPLOYEE.value in types:
+        if allowed is None:
+            clauses.append(Assessment.assessment_type == AssessmentType.EMPLOYEE.value)
+        else:
+            # An empty allow-list means the caller may read no company, so this
+            # branch contributes nothing (an always-false clause is unnecessary).
+            if allowed:
+                clauses.append(
+                    (Assessment.assessment_type == AssessmentType.EMPLOYEE.value)
+                    & Assessment.company_id.in_(allowed)
+                )
+    if AssessmentType.LEADERSHIP.value in types and not is_owner:
+        granted = confidential_access_service.list_granted_subject_ids(
+            db, user=user, subject_type="leadership_assessment",
+            permission=Perm.ASSESSMENT_READ,
+        )
+        if granted:
+            clauses.append(Assessment.id.in_(granted))
+
+    if is_owner:
+        # Owner sees every type within scope; leadership is never company-bound.
+        if allowed is not None and allowed and assessment_type != AssessmentType.LEADERSHIP.value:
+            stmt = stmt.where(
+                (Assessment.company_id.in_(allowed))
+                | (Assessment.assessment_type == AssessmentType.LEADERSHIP.value)
+            )
+        elif allowed is not None and not allowed and assessment_type != AssessmentType.LEADERSHIP.value:
+            stmt = stmt.where(Assessment.assessment_type == AssessmentType.LEADERSHIP.value)
+    elif clauses:
+        stmt = stmt.where(or_(*clauses))
+    else:
+        stmt = stmt.where(False)
+
     if company_id is not None:
         stmt = stmt.where(Assessment.company_id == company_id)
     stmt = stmt.order_by(Assessment.created_at.desc())

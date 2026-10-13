@@ -30,6 +30,8 @@ class AuditAction:
     DEPARTMENT_CREATED = "department.created"
     DEPARTMENT_UPDATED = "department.updated"
     DEPARTMENT_STATUS_CHANGED = "department.status_changed"
+    SECTOR_CREATED = "sector.created"
+    SECTOR_UPDATED = "sector.updated"
     ROLE_CREATED = "role.created"
     ROLE_UPDATED = "role.updated"
     ROLE_PERMISSIONS_CHANGED = "role.permissions_changed"

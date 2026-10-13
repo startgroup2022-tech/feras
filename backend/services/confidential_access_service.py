@@ -87,6 +87,33 @@ def can_read_confidential(
     return False
 
 
+def list_granted_subject_ids(
+    db: Session, *, user: User, subject_type: str, permission: str
+) -> list[int]:
+    """Ids of confidential records of ``subject_type`` this user may read.
+
+    The owner holds no grants (they see everything), so this is only meaningful
+    for a grantee; it lets a list endpoint show exactly the records delegated
+    to the caller without leaking the rest.
+    """
+    if is_confidential_owner(user):
+        return []
+    now = utcnow()
+    rows = db.execute(
+        select(ConfidentialAccessGrant).where(
+            ConfidentialAccessGrant.subject_type == subject_type,
+            ConfidentialAccessGrant.grantee_user_id == user.id,
+            ConfidentialAccessGrant.is_active.is_(True),
+        )
+    ).scalars()
+    return [
+        g.subject_id
+        for g in rows
+        if _is_live(g, now)
+        and g.permission_code in (permission, Perm.COMPLAINT_DECIDE)
+    ]
+
+
 def require_confidential_read(
     db: Session, *, user: User, subject_type: str, subject_id: int, permission: str
 ) -> None:

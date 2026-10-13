@@ -192,6 +192,68 @@ def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
     }
 
 
+# --------------------------------------------------------------------------
+# Roles & permissions UX + bilingual admin shell
+# --------------------------------------------------------------------------
+
+
+def test_roles_editor_renders_names_descriptions_and_categories():
+    # The catalogue is server-described; the editor must surface the bilingual
+    # name, the description, the category chips and the raw code as help text.
+    for token in (
+        "perm-cats",
+        "perm-cat-chip",
+        'data-admin-action="perm-cat"',
+        "perm-name",
+        "perm-desc",
+        "perm-code",
+        "description_ar",
+        "description_en",
+        "name_ar",
+        "name_en",
+    ):
+        assert token in APP_JS, f"roles editor is missing {token}"
+
+
+def test_roles_editor_has_search_grouping_select_all_and_counters():
+    # Search box, grouped cards, a per-category select-all and the "n / total"
+    # counter are the explicit S-spec requirements for this screen.
+    assert 'id="permSearch"' in APP_JS
+    assert 'class="perm-group"' in APP_JS
+    assert 'data-admin-action="perm-selectall"' in APP_JS
+    assert "updateGroupCounts" in APP_JS
+    assert "updatePermSummary" in APP_JS
+    assert "visiblePermCodes" in APP_JS
+    # Every group shows the enabled/total count for its category.
+    assert "pcount" in APP_JS
+
+
+def test_roles_editor_flags_sensitive_permissions():
+    # `danger` metadata must render a visible sensitive badge, not just colour.
+    assert "perm-badge danger" in APP_JS
+    assert "pdanger" in APP_JS
+    assert 'dual("حساس", "Sensitive")' in APP_JS
+
+
+def test_sector_admin_tab_is_gated_and_wired():
+    tab = re.search(r'data-admin-tab="sectors"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "sector admin tab not found"
+    assert tab.group(1) == "sector.read"
+    assert "sectors: [\"sector.read\"]" in APP_JS
+    assert 'tab === "sectors"' in APP_JS
+    assert "renderAdminSectors" in APP_JS
+    assert "/api/v1/admin/sectors" in APP_JS
+
+
+def test_language_switch_flips_direction_and_rerenders_admin():
+    # The dynamic admin UI must follow the AR/EN switch: `dir` flips between
+    # rtl/ltr and the active view (including the admin tab) is re-rendered.
+    assert 'html.setAttribute("dir", lang === "ar" ? "rtl" : "ltr")' in APP_JS
+    assert "function refreshActiveView" in APP_JS
+    assert "renderAdminTab(STATE.adminTab)" in APP_JS
+    assert "function applyI18n" in APP_JS
+
+
 def test_every_has_check_uses_a_real_permission_code():
     unknown = sorted({p for p in re.findall(r'has\("([^"]+)"\)', APP_JS) if p not in ALL_PERMISSIONS})
     assert unknown == [], f"app.js checks unknown permissions: {unknown}"

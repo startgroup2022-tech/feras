@@ -157,3 +157,27 @@ class Department(Base, TimestampMixin):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[Company] = relationship(backref="departments")
+
+
+class Sector(Base, TimestampMixin):
+    """A holding-wide business sector used to classify companies.
+
+    ``companies.sector`` has always been free text; this table is the managed
+    catalogue behind it (S03), so the admin UI offers a controlled, bilingual
+    list instead of asking for a raw string. The sector value stored on a
+    company stays a plain string, which keeps the change additive and does not
+    touch the existing company payload.
+    """
+
+    __tablename__ = "sectors"
+    __table_args__ = (Index("ix_sectors_status", "status"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
+    name_ar: Mapped[str] = mapped_column(String(180), nullable=False)
+    name_en: Mapped[str] = mapped_column(String(180), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=DepartmentStatus.ACTIVE.value
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
