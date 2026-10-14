@@ -24,6 +24,7 @@ from backend.db.models.documents import Document, DocumentCategory
 from backend.db.models.hr import Assessment, AssessmentItem, Employee, EmployeeMovement
 from backend.db.models.operations import (
     AdvisorAssignment,
+    AdvisorMonthlyReport,
     AdvisorySession,
     Campaign,
     Complaint,
@@ -181,6 +182,7 @@ __all__ = [
     "Campaign",
     "Complaint",
     "AdvisorAssignment",
+    "AdvisorMonthlyReport",
     "AdvisorySession",
     "OwnerDecision",
     "OwnerDecisionEvent",

@@ -204,6 +204,8 @@ class AuditAction:
 
     ADVISOR_ASSIGNED = "advisor.assigned"
     ADVISORY_SESSION_RECORDED = "advisory_session.recorded"
+    ADVISOR_REPORT_SAVED = "advisor_report.saved"
+    ADVISOR_REPORT_SUBMITTED = "advisor_report.submitted"
 
     OWNER_DECISION_CREATED = "owner_decision.created"
     OWNER_DECISION_UPDATED = "owner_decision.updated"

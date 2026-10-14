@@ -260,6 +260,16 @@ class AdvisorySessionCreateRequest(BaseModel):
     status: str = Field(default="scheduled", max_length=20)
 
 
+class AdvisorReportSaveRequest(BaseModel):
+    company_id: int
+    advisor_user_id: int
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    development: str | None = Field(default=None, max_length=8000)
+    challenges: str | None = Field(default=None, max_length=8000)
+    recommendations: str | None = Field(default=None, max_length=8000)
+
+
 # --------------------------------------------------------------------------
 # owner decisions
 # --------------------------------------------------------------------------

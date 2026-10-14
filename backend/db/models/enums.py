@@ -660,6 +660,13 @@ class AdvisorSessionStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class AdvisorReportStatus(str, enum.Enum):
+    """S19: an advisor's monthly report is a draft until explicitly submitted."""
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
 class OwnerDecisionStatus(str, enum.Enum):
     """D07: numbered decisions with an executor, due date and follow-up."""
 

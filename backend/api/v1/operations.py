@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request, status
 from backend.api.deps import CurrentUser, DbSession
 from backend.schemas.domain import (
     AdvisorAssignRequest,
+    AdvisorReportSaveRequest,
     AdvisorySessionCreateRequest,
     CampaignCreateRequest,
     CampaignUpdateRequest,
@@ -237,6 +238,39 @@ def record_session(
     ctx = audit_service.request_context(request)
     s = operations_service.record_session(db, user=user, **payload.model_dump(), **ctx)
     return operations_service.serialise_session(s)
+
+
+# ---- advisor monthly reports (S19) ----
+@router.get("/advisor-reports")
+def list_advisor_reports(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    period_year: int | None = None, period_month: int | None = None,
+) -> list[dict]:
+    return [
+        operations_service.serialise_advisor_report(r)
+        for r in operations_service.list_advisor_reports(
+            db, user=user, company_id=company_id,
+            period_year=period_year, period_month=period_month,
+        )
+    ]
+
+
+@router.post("/advisor-reports", status_code=status.HTTP_201_CREATED)
+def save_advisor_report(
+    payload: AdvisorReportSaveRequest, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    r = operations_service.save_advisor_report(db, user=user, **payload.model_dump(), **ctx)
+    return operations_service.serialise_advisor_report(r)
+
+
+@router.post("/advisor-reports/{report_id}/submit")
+def submit_advisor_report(
+    report_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    r = operations_service.submit_advisor_report(db, user=user, report_id=report_id, **ctx)
+    return operations_service.serialise_advisor_report(r)
 
 
 # ---- owner decisions (D07) ----

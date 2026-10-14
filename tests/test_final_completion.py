@@ -138,6 +138,163 @@ def test_advisor_assignment_round_trip(client, db, make_company, make_user, auth
 
 
 # --------------------------------------------------------------------------
+# backend: advisor monthly reports (S19)
+# --------------------------------------------------------------------------
+def _report_payload(company_id, advisor_id, **overrides):
+    payload = {
+        "company_id": company_id,
+        "advisor_user_id": advisor_id,
+        "period_year": 2026,
+        "period_month": 9,
+        "development": "تحسين الهيكل التنظيمي",
+        "challenges": "نقص الكوادر",
+        "recommendations": "خطة تدريب ربع سنوية",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_advisor_report_is_permission_gated(client, world, auth):
+    response = client.get("/api/v1/operations/advisor-reports", headers=auth(world["accountant"]))
+    assert response.status_code == 403, response.text
+
+
+def test_advisor_report_save_and_submit(client, db, make_company, make_user, auth):
+    company = make_company("ADVREP", "شركة تقارير")
+    consultant = make_user("adv.rep@ext.sa", "external_consultant", [company])
+    created = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["status"] == "draft"
+    assert body["submitted_at"] is None
+
+    submitted = client.post(
+        f"/api/v1/operations/advisor-reports/{body['id']}/submit", headers=auth(consultant)
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["status"] == "submitted"
+    assert submitted.json()["submitted_at"] is not None
+
+
+def test_advisor_report_resave_updates_the_same_draft(client, make_company, make_user, auth):
+    company = make_company("ADVREP2", "شركة تقارير ٢")
+    consultant = make_user("adv.rep2@ext.sa", "external_consultant", [company])
+    first = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id, development="أول"),
+    )
+    second = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id, development="ثاني"),
+    )
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["development"] == "ثاني"
+
+
+def test_submitted_advisor_report_is_immutable(client, make_company, make_user, auth):
+    company = make_company("ADVREP3", "شركة تقارير ٣")
+    consultant = make_user("adv.rep3@ext.sa", "external_consultant", [company])
+    created = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    ).json()
+    client.post(
+        f"/api/v1/operations/advisor-reports/{created['id']}/submit", headers=auth(consultant)
+    )
+
+    resave = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    )
+    assert resave.status_code == 409, resave.text
+
+
+def test_advisor_report_rejects_an_impossible_month(client, make_company, make_user, auth):
+    company = make_company("ADVREP4", "شركة تقارير ٤")
+    consultant = make_user("adv.rep4@ext.sa", "external_consultant", [company])
+    response = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id, period_month=13),
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_bd_reads_but_does_not_write_reports(client, make_company, make_user, auth):
+    company = make_company("ADVREP5", "شركة تقارير ٥")
+    bd = make_user("bd.rep5@corp.sa", "business_development", [company])
+    consultant = make_user("adv.rep5@ext.sa", "external_consultant", [company])
+    client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    )
+
+    listed = client.get("/api/v1/operations/advisor-reports", headers=auth(bd))
+    assert listed.status_code == 200, listed.text
+    assert {r["advisor_user_id"] for r in listed.json()} == {consultant.id}
+
+    # Development reads the report; it does not author it.
+    write = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(bd),
+        json=_report_payload(company.id, consultant.id),
+    )
+    assert write.status_code == 403, write.text
+
+
+def test_consultant_may_only_write_and_read_own_reports(client, make_company, make_user, auth):
+    company = make_company("ADVREP6", "شركة تقارير ٦")
+    bd = make_user("bd.rep6@corp.sa", "business_development", [company])
+    consultant = make_user("adv.rep6@ext.sa", "external_consultant", [company])
+
+    foreign = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, bd.id),
+    )
+    assert foreign.status_code == 403, foreign.text
+
+    own = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    )
+    assert own.status_code == 201, own.text
+
+    listed = client.get("/api/v1/operations/advisor-reports", headers=auth(consultant))
+    assert listed.status_code == 200, listed.text
+    assert {r["advisor_user_id"] for r in listed.json()} == {consultant.id}
+
+
+def test_advisor_report_round_trip_is_audited(client, db, make_company, make_user, auth):
+    from backend.db.models.ai import AuditLog
+
+    company = make_company("ADVREP7", "شركة تقارير ٧")
+    consultant = make_user("adv.rep7@ext.sa", "external_consultant", [company])
+    created = client.post(
+        "/api/v1/operations/advisor-reports",
+        headers=auth(consultant),
+        json=_report_payload(company.id, consultant.id),
+    ).json()
+    client.post(
+        f"/api/v1/operations/advisor-reports/{created['id']}/submit", headers=auth(consultant)
+    )
+
+    actions = [row.action for row in db.query(AuditLog).all()]
+    assert "advisor_report.saved" in actions
+    assert "advisor_report.submitted" in actions
+
+
+# --------------------------------------------------------------------------
 # frontend contract: the new surface exists and is gated
 # --------------------------------------------------------------------------
 def _data_perms(html: str) -> list[str]:
@@ -170,6 +327,14 @@ def test_advisor_assignments_are_wired():
     assert "function advisorAssignmentsPanel" in APP_JS
     assert '"/api/v1/operations/advisors"' in APP_JS
     assert 'has("advisor.manage")' in APP_JS
+
+
+def test_advisor_monthly_reports_are_wired():
+    assert "function advisorReportsPanel" in APP_JS
+    assert '"/api/v1/operations/advisor-reports"' in APP_JS
+    assert '"/submit"' in APP_JS
+    assert 'has("advisor.session.record")' in APP_JS
+    assert 'has("advisor.session.read_own")' in APP_JS
 
 
 def test_task_assignment_and_progress_are_wired():

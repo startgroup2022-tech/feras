@@ -5184,9 +5184,13 @@
       has("advisor.read")
         ? get("/api/v1/operations/advisors").catch(function () { return []; })
         : Promise.resolve([]),
+      (has("advisor.read") || has("advisor.session.read_own"))
+        ? get("/api/v1/operations/advisor-reports").catch(function () { return []; })
+        : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
       var assignments = res[2] || [];
+      var reports = res[3] || [];
       var canRecord = has("advisor.session.record");
       var create = canRecord
         ? '<form class="av-form av-form-inline" id="advForm">' +
@@ -5211,7 +5215,8 @@
         : noticeHtml("لا توجد جلسات استشارية.", "No advisory sessions.");
       host.innerHTML =
         panel("الجلسات الاستشارية", "Advisory sessions", create + list) +
-        advisorAssignmentsPanel(assignments);
+        advisorAssignmentsPanel(assignments) +
+        advisorReportsPanel(reports);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -5243,7 +5248,73 @@
       form + list);
   }
 
+  function advisorReportsPanel(reports) {
+    var canWrite = has("advisor.session.record") || has("advisor.session.read_own");
+    if (!has("advisor.read") && !has("advisor.session.read_own")) return "";
+    var now = new Date();
+    var form = canWrite
+      ? '<form class="av-form av-form-inline" id="advReportForm">' +
+        field("الشركة", "Company", selectInput("arCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("arUser", "")) +
+        field("السنة", "Year", numInput("arYear", now.getFullYear())) +
+        field("الشهر", "Month", numInput("arMonth", now.getMonth() + 1)) +
+        field("التطويرات", "Development", textInput("arDev", "")) +
+        field("التحديات", "Challenges", textInput("arChal", "")) +
+        field("التوصيات", "Recommendations", textInput("arRec", "")) +
+        '<div class="av-form-actions">' +
+        '<button class="btn-outline" type="button" data-act="adv-report-save" data-id="advReportForm">' + dual("حفظ كمسودة", "Save draft") + "</button>" +
+        '<button class="btn-solid" type="button" data-act="adv-report-submit" data-id="advReportForm">' + dual("إرسال التقرير", "Submit report") + "</button>" +
+        "</div></form>"
+      : "";
+    var list = reports.length
+      ? '<div class="av-list">' + reports.map(function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dual("تقرير", "Report") + " " + r.period_month + "/" + r.period_year + "</div>" +
+            '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+            escapeHtml(r.recommendations || r.development || "—") + "</div></div>" +
+            (r.status === "draft" && canWrite
+              ? '<button class="btn-outline" type="button" data-act="adv-report-submit-one" data-id="' + plainNum(r.id) + '">' + dual("إرسال", "Submit") + "</button>"
+              : "") +
+            statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
+            "</div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد تقارير شهرية.", "No monthly reports.");
+    return panel("التقارير الشهرية للمستشار (S19)", "Advisor monthly reports (S19)",
+      '<p class="note-block">' + dual("يحفظ المستشار تقريره الشهري (التطويرات والتحديات والتوصيات) ويرسله لمدير تطوير الأعمال؛ بعد الإرسال يصبح أصلاً غير قابل للتعديل.", "An advisor saves a monthly report (development, challenges, recommendations) and submits it to Business Development; once submitted it is an immutable original.") + "</p>" +
+      form + list);
+  }
+
   function onEmployeeAct(action, id, el) {
+    if (action === "adv-report-submit-one") {
+      busy(el, true);
+      post("/api/v1/operations/advisor-reports/" + id + "/submit", {})
+        .then(function () { toast(dual("تم إرسال التقرير.", "Report submitted."), "ok"); return renderAdvisors(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+      return;
+    }
+    if (action === "adv-report-save" || action === "adv-report-submit") {
+      var payload = {
+        company_id: parseInt(valOf("arCompany"), 10),
+        advisor_user_id: parseInt(valOf("arUser"), 10),
+        period_year: parseInt(valOf("arYear"), 10),
+        period_month: parseInt(valOf("arMonth"), 10),
+        development: valOf("arDev") || null,
+        challenges: valOf("arChal") || null,
+        recommendations: valOf("arRec") || null,
+      };
+      busy(el, true);
+      post("/api/v1/operations/advisor-reports", payload)
+        .then(function (report) {
+          if (action === "adv-report-submit") {
+            return post("/api/v1/operations/advisor-reports/" + report.id + "/submit", {})
+              .then(function () { toast(dual("تم إرسال التقرير.", "Report submitted."), "ok"); });
+          }
+          toast(dual("تم حفظ المسودة.", "Draft saved."), "ok");
+        })
+        .then(function () { return renderAdvisors(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+      return;
+    }
     if (action !== "submit") return;
     if (id === "empForm") {
       busy(el.querySelector("button"), true);

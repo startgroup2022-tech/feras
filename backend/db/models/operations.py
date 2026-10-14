@@ -34,6 +34,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
 from backend.db.models.enums import (
+    AdvisorReportStatus,
     AdvisorSessionStatus,
     CampaignStatus,
     ComplaintStatus,
@@ -299,6 +300,42 @@ class AdvisorySession(Base, TimestampMixin):
     recorded_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class AdvisorMonthlyReport(Base, TimestampMixin):
+    """An advisor's monthly report for a company (S19).
+
+    Table 67: "إرسال التقرير الشهري — يحفظ الأصل لمدير تطوير الأعمال". A report
+    is a draft the advisor owns; submitting it is explicit and does not create a
+    decision. Development is the reader (there is no approval step).
+    """
+
+    __tablename__ = "advisor_monthly_reports"
+    __table_args__ = (
+        Index("ix_advisor_reports_company_period", "company_id", "period_year", "period_month"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    advisor_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    development: Mapped[str | None] = mapped_column(Text, nullable=True)
+    challenges: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendations: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=AdvisorReportStatus.DRAFT.value, index=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()
 
 
 class OwnerDecision(Base, TimestampMixin):

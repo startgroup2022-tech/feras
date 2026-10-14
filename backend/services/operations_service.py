@@ -19,6 +19,7 @@ from backend.core.errors import ConflictError, NotFoundError, ValidationError
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
 from backend.db.models.enums import (
+    AdvisorReportStatus,
     AdvisorSessionStatus,
     CampaignStatus,
     ComplaintStatus,
@@ -31,6 +32,7 @@ from backend.db.models.identity import User
 from backend.db.models.operations import (
     WEEKLY_REPORT_MAX_QUESTIONS,
     AdvisorAssignment,
+    AdvisorMonthlyReport,
     AdvisorySession,
     Campaign,
     Complaint,
@@ -573,6 +575,138 @@ def serialise_session(s: AdvisorySession) -> dict:
         "scheduled_at": s.scheduled_at, "status": s.status, "topic": s.topic,
         "notes": s.notes, "recommendations": s.recommendations,
         "recorded_by_id": s.recorded_by_id, "created_at": s.created_at,
+    }
+
+
+# --------------------------------------------------------------------------
+# advisor monthly reports (S19)
+# --------------------------------------------------------------------------
+def _advisor_report_period(period_year: int, period_month: int) -> None:
+    if not (1 <= period_month <= 12):
+        raise ValidationError("Period month must be between 1 and 12.")
+
+
+def save_advisor_report(
+    db: Session, *, user: User, company_id: int, advisor_user_id: int,
+    period_year: int, period_month: int, development: str | None = None,
+    challenges: str | None = None, recommendations: str | None = None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> AdvisorMonthlyReport:
+    """Create or update the draft monthly report for one advisor/company/period.
+
+    The report is keyed by (company, advisor, year, month) so re-saving updates
+    the same draft rather than duplicating it. An external consultant may only
+    write their own report.
+    """
+    from backend.db.models.enums import RoleCode
+
+    require_permission(user, Perm.ADVISOR_SESSION_RECORD)
+    require_company_access(user, company_id, write=True)
+    _advisor_report_period(period_year, period_month)
+    if user.role_code == RoleCode.EXTERNAL_CONSULTANT.value and user.id != advisor_user_id:
+        from backend.core.errors import PermissionDeniedError
+
+        raise PermissionDeniedError("You may only write your own report.")
+
+    report = db.execute(
+        select(AdvisorMonthlyReport).where(
+            AdvisorMonthlyReport.company_id == company_id,
+            AdvisorMonthlyReport.advisor_user_id == advisor_user_id,
+            AdvisorMonthlyReport.period_year == period_year,
+            AdvisorMonthlyReport.period_month == period_month,
+        )
+    ).scalar_one_or_none()
+    if report is None:
+        report = AdvisorMonthlyReport(
+            company_id=company_id, advisor_user_id=advisor_user_id,
+            period_year=period_year, period_month=period_month,
+            status=AdvisorReportStatus.DRAFT.value, created_by_id=user.id,
+        )
+        db.add(report)
+    elif report.status == AdvisorReportStatus.SUBMITTED.value:
+        raise ConflictError("A submitted report is immutable; create the next period instead.")
+
+    report.development = development
+    report.challenges = challenges
+    report.recommendations = recommendations
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db, action=AuditAction.ADVISOR_REPORT_SAVED, actor_user_id=user.id,
+        entity_type="advisor_monthly_report", entity_id=report.id, company_id=company_id,
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    return report
+
+
+def submit_advisor_report(
+    db: Session, *, user: User, report_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> AdvisorMonthlyReport:
+    """Submit a draft report, freezing it as the original for development."""
+    from backend.db.models.enums import RoleCode
+
+    require_permission(user, Perm.ADVISOR_SESSION_RECORD)
+    report = db.get(AdvisorMonthlyReport, report_id)
+    if report is None:
+        raise NotFoundError("Advisor report not found.")
+    require_company_access(user, report.company_id, write=True)
+    if user.role_code == RoleCode.EXTERNAL_CONSULTANT.value and user.id != report.advisor_user_id:
+        from backend.core.errors import PermissionDeniedError
+
+        raise PermissionDeniedError("You may only submit your own report.")
+    if report.status == AdvisorReportStatus.SUBMITTED.value:
+        raise ConflictError("This report has already been submitted.")
+
+    report.status = AdvisorReportStatus.SUBMITTED.value
+    report.submitted_at = utcnow()
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db, action=AuditAction.ADVISOR_REPORT_SUBMITTED, actor_user_id=user.id,
+        entity_type="advisor_monthly_report", entity_id=report.id, company_id=report.company_id,
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    return report
+
+
+def list_advisor_reports(
+    db: Session, *, user: User, company_id: int | None = None,
+    period_year: int | None = None, period_month: int | None = None,
+) -> list[AdvisorMonthlyReport]:
+    from backend.db.models.enums import RoleCode
+
+    stmt = select(AdvisorMonthlyReport).order_by(
+        AdvisorMonthlyReport.period_year.desc(),
+        AdvisorMonthlyReport.period_month.desc(),
+        AdvisorMonthlyReport.id.desc(),
+    )
+    if user.role_code == RoleCode.EXTERNAL_CONSULTANT.value:
+        stmt = stmt.where(AdvisorMonthlyReport.advisor_user_id == user.id)
+    else:
+        require_permission(user, Perm.ADVISOR_READ)
+        allowed = accessible_company_ids(user)
+        if allowed is not None:
+            stmt = stmt.where(AdvisorMonthlyReport.company_id.in_(allowed)) if allowed else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(AdvisorMonthlyReport.company_id == company_id)
+    if period_year is not None:
+        stmt = stmt.where(AdvisorMonthlyReport.period_year == period_year)
+    if period_month is not None:
+        stmt = stmt.where(AdvisorMonthlyReport.period_month == period_month)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_advisor_report(r: AdvisorMonthlyReport) -> dict:
+    return {
+        "id": r.id, "company_id": r.company_id, "advisor_user_id": r.advisor_user_id,
+        "period_year": r.period_year, "period_month": r.period_month,
+        "development": r.development, "challenges": r.challenges,
+        "recommendations": r.recommendations, "status": r.status,
+        "submitted_at": r.submitted_at, "created_by_id": r.created_by_id,
+        "created_at": r.created_at,
     }
 
 

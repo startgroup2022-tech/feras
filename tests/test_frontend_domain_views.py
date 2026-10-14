@@ -44,6 +44,7 @@ NEW_ENDPOINTS = [
     "/api/v1/operations/campaigns",
     "/api/v1/operations/complaints",
     "/api/v1/operations/advisory-sessions",
+    "/api/v1/operations/advisor-reports",
     "/api/v1/operations/owner-decisions",
     "/api/v1/operations/projects",
     "/api/v1/accounting/opening-balances",
