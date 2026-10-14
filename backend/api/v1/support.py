@@ -13,6 +13,7 @@ from backend.schemas import (
     SupportAssignRequest,
     SupportCommentOut,
     SupportCommentRequest,
+    SupportDeliveryRequest,
     SupportRequestCreateRequest,
     SupportRequestOut,
     SupportRequestStatusRequest,
@@ -64,6 +65,9 @@ def create_request(
         title=payload.title,
         description=payload.description,
         category=payload.category.value,
+        platform=payload.platform,
+        dimensions=payload.dimensions,
+        reference_link=payload.reference_link,
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
@@ -84,6 +88,26 @@ def change_status(
         user=user,
         request_id=request_id,
         new_status=payload.status.value,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return SupportRequestOut(**support_service.serialise(updated))
+
+
+@router.patch("/{request_id}/delivery", response_model=SupportRequestOut)
+def record_delivery(
+    request_id: int,
+    payload: SupportDeliveryRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> SupportRequestOut:
+    ctx = audit_service.request_context(request)
+    updated = support_service.record_delivery(
+        db,
+        user=user,
+        request_id=request_id,
+        delivery_link=payload.delivery_link,
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )

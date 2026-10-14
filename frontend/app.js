@@ -2587,6 +2587,16 @@
           kv(dual("الحالة", "Status"), supStatusBadge(r.status)) +
           kv(dual("التاريخ", "Date"), fmtDate(r.created_at)) +
           kv(dual("آخر تحديث", "Updated"), fmtDateTime(r.updated_at)) +
+          (r.dimensions ? kv(dual("المقاسات", "Dimensions"), escapeHtml(r.dimensions)) : "") +
+          (r.platform ? kv(dual("المنصة", "Platform"), escapeHtml(r.platform)) : "") +
+          (r.reference_link
+            ? kv(dual("رابط مرجعي", "Reference link"),
+                '<a href="' + escapeHtml(r.reference_link) + '" target="_blank" rel="noopener">' + escapeHtml(r.reference_link) + "</a>")
+            : "") +
+          (r.delivery_link
+            ? kv(dual("التسليم", "Delivery"),
+                '<a href="' + escapeHtml(r.delivery_link) + '" target="_blank" rel="noopener">' + escapeHtml(r.delivery_link) + "</a>")
+            : "") +
           "</div>" +
           (r.description ? '<div class="sec-title">' + dual("الوصف", "Description") + '</div><p class="note-block">' + escapeHtml(r.description) + "</p>" : "") +
           '<div class="sec-title">' + dual("التعليقات", "Comments") + "</div>" +
@@ -2611,6 +2621,9 @@
               (canAssign
                 ? '<button class="btn-outline" id="supAssignBtn">' + dual("إسناد", "Assign") + "</button>"
                 : "") +
+              (canStatus
+                ? '<button class="btn-outline" id="supDeliverBtn">' + dual("تسليم العمل", "Record delivery") + "</button>"
+                : "") +
               "</div>"
             : "") +
           '<div class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"><button class="btn-outline" id="supClose">' + dual("إغلاق", "Close") + "</button></div>";
@@ -2629,6 +2642,11 @@
         if (byId("supAssignBtn")) {
           byId("supAssignBtn").addEventListener("click", function () {
             assignSupportForm(id, r);
+          });
+        }
+        if (byId("supDeliverBtn")) {
+          byId("supDeliverBtn").addEventListener("click", function () {
+            recordSupportDelivery(id, r);
           });
         }
       })
@@ -2762,6 +2780,40 @@
     });
   }
 
+  function recordSupportDelivery(id, r) {
+    openModal({
+      title: dual("تسليم العمل", "Record delivery"),
+      body:
+        '<div class="av-field"><label>' + dual("رابط أو وسيلة التسليم", "Delivery link or channel") + '</label>' +
+        '<input class="av-input" id="dlLink" style="width:100%" value="' + escAttr(r.delivery_link || "") + '" placeholder="https://"></div>',
+      footer:
+        '<button class="btn-outline" id="dlCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="dlSave">' + dual("حفظ التسليم", "Save delivery") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#dlCancel").addEventListener("click", closeModal);
+        root.querySelector("#dlSave").addEventListener("click", function () {
+          var btn = this;
+          var link = root.querySelector("#dlLink").value.trim();
+          if (!link) {
+            toast(STATE.lang === "ar" ? "أدخل رابط التسليم." : "Enter a delivery link.", "err");
+            return;
+          }
+          busy(btn, true);
+          api.patch("/api/v1/support-requests/" + id + "/delivery", { delivery_link: link })
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم تسجيل التسليم." : "Delivery recorded.", "ok");
+              STATE.loaded.support = false;
+              refreshAll().then(function () { openSupport(id); });
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
+    });
+  }
+
   function supportCreateForm(preselectCompanyId) {
     return ensureCompanies().then(function () {
       var opts = STATE.companies.length ? STATE.companies : [];
@@ -2779,7 +2831,12 @@
           return '<option value="' + c + '">' + dual(cat.ar, cat.en) + "</option>";
         }).join("") + "</select></div>" +
         '<div class="av-field"><label>' + dual("العنوان", "Title") + '</label><input class="av-input" id="ncTitle" style="width:100%"></div>' +
-        '<div class="av-field"><label>' + dual("الوصف", "Description") + '</label><textarea class="av-textarea" id="ncDesc"></textarea></div>',
+        '<div class="av-field"><label>' + dual("الوصف", "Description") + '</label><textarea class="av-textarea" id="ncDesc"></textarea></div>' +
+        '<div class="av-form-inline">' +
+        '<div class="av-field"><label>' + dual("المقاسات", "Dimensions") + '</label><input class="av-input" id="ncDims" style="width:100%"></div>' +
+        '<div class="av-field"><label>' + dual("المنصة", "Platform") + '</label><input class="av-input" id="ncPlatform" style="width:100%"></div>' +
+        "</div>" +
+        '<div class="av-field"><label>' + dual("رابط مرجعي", "Reference link") + '</label><input class="av-input" id="ncRef" style="width:100%"></div>',
       footer:
         '<button class="btn-outline" id="ncCancel">' + dual("إلغاء", "Cancel") + "</button>" +
         '<button class="btn-solid" id="ncSave">' + dual("إنشاء", "Create") + "</button>",
@@ -2798,6 +2855,9 @@
             category: root.querySelector("#ncCat").value,
             title: title,
             description: root.querySelector("#ncDesc").value || null,
+            dimensions: root.querySelector("#ncDims").value || null,
+            platform: root.querySelector("#ncPlatform").value || null,
+            reference_link: root.querySelector("#ncRef").value || null,
           })
             .then(function (created) {
               toast(STATE.lang === "ar" ? "تم إنشاء الطلب." : "Request created.", "ok");

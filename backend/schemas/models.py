@@ -359,10 +359,17 @@ class SupportRequestCreateRequest(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     category: SupportCategory = SupportCategory.GENERAL
+    platform: str | None = Field(default=None, max_length=80)
+    dimensions: str | None = Field(default=None, max_length=120)
+    reference_link: str | None = Field(default=None, max_length=500)
 
 
 class SupportRequestStatusRequest(BaseModel):
     status: SupportStatus
+
+
+class SupportDeliveryRequest(BaseModel):
+    delivery_link: str = Field(min_length=1, max_length=500)
 
 
 class SupportAssignRequest(BaseModel):
@@ -401,6 +408,11 @@ class SupportRequestOut(BaseModel):
     responsible_department: str
     requested_by_id: int | None
     assigned_to_id: int | None
+    platform: str | None = None
+    dimensions: str | None = None
+    reference_link: str | None = None
+    delivery_link: str | None = None
+    delivered_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None

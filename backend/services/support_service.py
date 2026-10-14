@@ -41,6 +41,9 @@ def create_request(
     title: str,
     description: str | None,
     category: str,
+    platform: str | None = None,
+    dimensions: str | None = None,
+    reference_link: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> SupportRequest:
@@ -54,6 +57,9 @@ def create_request(
         category=category,
         status=SupportStatus.NEW.value,
         requested_by_id=user.id,
+        platform=platform,
+        dimensions=dimensions,
+        reference_link=reference_link,
     )
     db.add(request)
     db.commit()
@@ -131,6 +137,47 @@ def change_status(
         ip_address=ip_address,
         user_agent=user_agent,
         metadata={"from": previous, "to": new_status},
+    )
+    return request
+
+
+def record_delivery(
+    db: Session,
+    *,
+    user: User,
+    request_id: int,
+    delivery_link: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> SupportRequest:
+    """Record the external hand-off of a request (S16 Table 49, "تسليم العمل").
+
+    Delivery is descriptive metadata (a link or channel), not a workflow
+    decision, so it is not gated by D03. It is available to whoever may change
+    the request's status (the executor/manager). The request must be in
+    progress or completed -- delivery is not recorded on a brand-new request.
+    """
+    require_permission(user, Perm.SUPPORT_STATUS_CHANGE)
+    request = _get_scoped_or_404(db, user, request_id)
+
+    if request.status not in {SupportStatus.IN_PROGRESS.value, SupportStatus.COMPLETED.value}:
+        raise ValidationError("A delivery can only be recorded while in progress or completed.")
+
+    request.delivery_link = delivery_link.strip()
+    request.delivered_at = utcnow()
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    audit_service.record(
+        db,
+        action=AuditAction.SUPPORT_REQUEST_DELIVERED,
+        actor_user_id=user.id,
+        entity_type="support_request",
+        entity_id=request.id,
+        company_id=request.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
     return request
 
@@ -325,6 +372,11 @@ def serialise(request: SupportRequest) -> dict:
         "responsible_department": request.responsible_department,
         "requested_by_id": request.requested_by_id,
         "assigned_to_id": request.assigned_to_id,
+        "platform": request.platform,
+        "dimensions": request.dimensions,
+        "reference_link": request.reference_link,
+        "delivery_link": request.delivery_link,
+        "delivered_at": request.delivered_at,
         "created_at": request.created_at,
         "updated_at": request.updated_at,
         "closed_at": request.closed_at,

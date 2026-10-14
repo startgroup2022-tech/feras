@@ -68,6 +68,7 @@ class AuditAction:
     SUPPORT_REQUEST_STATUS_CHANGED = "support_request.status_changed"
     SUPPORT_REQUEST_ASSIGNED = "support_request.assigned"
     SUPPORT_REQUEST_COMMENTED = "support_request.commented"
+    SUPPORT_REQUEST_DELIVERED = "support_request.delivered"
 
     # ai
     AI_CONVERSATION_STARTED = "ai.conversation_started"

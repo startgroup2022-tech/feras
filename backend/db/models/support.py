@@ -61,6 +61,15 @@ class SupportRequest(Base, TimestampMixin):
     assigned_to_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # S16 design fields (spec Table 48): sizes/platform and a reference link are
+    # descriptive metadata supplied by the requester; delivery records the
+    # external hand-off (Table 49 "تسليم العمل" -> "رابط أو وسيلة التسليم
+    # الخارجية"). No design file upload is required.
+    platform: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    dimensions: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reference_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    delivery_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company"] = relationship(back_populates="support_requests")

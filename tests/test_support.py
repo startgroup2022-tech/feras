@@ -281,3 +281,93 @@ def test_assignment_is_audited(client, world, auth, db):
     )
     assert "support_request.assigned" in [row.action for row in db.query(AuditLog).all()]
 
+
+# --------------------------------------------------------------------------
+# design metadata and external delivery (S16 Tables 48-49)
+# --------------------------------------------------------------------------
+def test_design_request_keeps_sizes_platform_and_reference(client, world, auth):
+    response = client.post(
+        BASE,
+        headers=auth(world["alpha_mgr"]),
+        json={
+            "company_id": world["alpha"].id,
+            "title": "تصميم هوية",
+            "category": SupportCategory.DESIGN.value,
+            "platform": "Instagram",
+            "dimensions": "1080x1080",
+            "reference_link": "https://example.com/ref",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["platform"] == "Instagram"
+    assert body["dimensions"] == "1080x1080"
+    assert body["reference_link"] == "https://example.com/ref"
+    # No design file is required to raise the request.
+    assert body["delivery_link"] is None
+
+
+def test_delivery_records_an_external_link(client, world, auth, bd_user):
+    headers = auth(bd_user)
+    client.patch(
+        f"{BASE}/{world['alpha_req'].id}/status",
+        headers=headers,
+        json={"status": SupportStatus.IN_PROGRESS.value},
+    )
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/delivery",
+        headers=headers,
+        json={"delivery_link": "https://drive.example.com/handoff"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["delivery_link"] == "https://drive.example.com/handoff"
+    assert response.json()["delivered_at"] is not None
+
+
+def test_delivery_refused_before_work_starts(client, world, auth, bd_user):
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/delivery",
+        headers=auth(bd_user),
+        json={"delivery_link": "https://drive.example.com/handoff"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_delivery_requires_the_status_permission(client, world, auth):
+    response = client.patch(
+        f"{BASE}/{world['alpha_req'].id}/delivery",
+        headers=auth(world["alpha_mgr"]),
+        json={"delivery_link": "https://drive.example.com/handoff"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_delivery_cannot_cross_company_scope(client, world, auth, bd_user):
+    """A department actor cannot record delivery on a request it cannot see."""
+    response = client.patch(
+        f"{BASE}/999999/delivery",
+        headers=auth(bd_user),
+        json={"delivery_link": "https://drive.example.com/x"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_delivery_is_audited(client, world, auth, db, bd_user):
+    from backend.db.models.ai import AuditLog
+
+    headers = auth(bd_user)
+    client.patch(
+        f"{BASE}/{world['alpha_req'].id}/status", headers=headers, json={"status": "in_progress"}
+    )
+    client.patch(
+        f"{BASE}/{world['alpha_req'].id}/delivery",
+        headers=headers,
+        json={"delivery_link": "https://drive.example.com/handoff"},
+    )
+    assert "support_request.delivered" in [row.action for row in db.query(AuditLog).all()]
+
