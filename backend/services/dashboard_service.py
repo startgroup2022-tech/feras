@@ -330,6 +330,81 @@ def attention_payload(db: Session, user: User, year: int, month: int) -> list[di
     return payload
 
 
+def indicator_sources(
+    db: Session, user: User, indicator: str, year: int, month: int
+) -> list[dict] | None:
+    """Source records behind one dashboard indicator (S01 AC-01).
+
+    AC-01: "opening an indicator detail shows its source records". Table 13's
+    ``عرض التفاصيل`` opens the linked source **without creating a copy**, so each
+    entry is a link to the record that produced the number. Every source is read
+    through a scoped repository, so a caller only ever sees records inside its own
+    company scope; an unknown indicator returns ``None`` (the router answers 404).
+    """
+    reports_repo = MonthlyReportRepository(db)
+    support_repo = SupportRequestRepository(db)
+
+    # The label must identify the row on its own, so a report is named by its
+    # company (otherwise every row would read the same period string).
+    company_names = {c.id: c.name_ar for c in CompanyRepository(db).list_for_user(user)}
+
+    def _report(r) -> dict:
+        company = company_names.get(r.company_id, "")
+        label = f"{company} — {r.period_year}-{r.period_month:02d}".strip(" —")
+        return {"kind": "monthly_report", "record_id": r.id, "company_id": r.company_id,
+                "label_ar": label}
+
+    def _company(c) -> dict:
+        return {"kind": "company", "record_id": c.id, "company_id": c.id,
+                "label_ar": c.name_ar}
+
+    reports = reports_repo.list_for_user(user, year=year)
+    period_reports = [r for r in reports if r.period_month == month]
+
+    if indicator in ("total_revenue", "total_expenses", "total_net_result"):
+        # The monthly reports that carry the period's figures; a verified review
+        # supersedes the submitted value but is reached through the same report.
+        return [_report(r) for r in period_reports]
+
+    if indicator == "reports_submitted":
+        return [
+            _report(r) for r in period_reports if r.status != ReportStatus.DRAFT.value
+        ]
+
+    if indicator == "reports_missing":
+        return [
+            _company(c)
+            for c in reports_repo.companies_missing_report(user, year, month)
+        ]
+
+    if indicator in ("companies_count", "sector_count", "structure_count"):
+        return [_company(c) for c in CompanyRepository(db).list_for_user(user)]
+
+    if indicator == "companies_requiring_attention":
+        return [
+            {"kind": "company", "record_id": c["id"], "company_id": c["id"],
+             "label_ar": c["name_ar"]}
+            for c in attention_payload(db, user, year, month)
+        ]
+
+    if indicator == "open_support_requests":
+        return [
+            {"kind": "support_request", "record_id": r.id, "company_id": r.company_id,
+             "label_ar": r.title}
+            for r in support_repo.list_for_user(user)
+            if r.status in (SupportStatus.NEW.value, SupportStatus.IN_PROGRESS.value)
+        ]
+
+    if indicator == "pending_financial_reviews":
+        return [
+            _report(r)
+            for r in reports
+            if r.status == ReportStatus.SUBMITTED.value and r.financial_review is None
+        ]
+
+    return None
+
+
 def build_dashboard(
     db: Session,
     *,

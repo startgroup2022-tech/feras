@@ -559,6 +559,95 @@
     setText('[data-kpi="sector_count_en"]', String(sectorCount));
   }
 
+  // S01 AC-01: opening an indicator shows its source records. Table 13's
+  // "عرض التفاصيل" opens the linked source without creating a copy, so this
+  // only reads the API and lists links; it never writes.
+  var DRILL_LABELS = {
+    companies_count: { ar: "عدد الشركات", en: "Companies" },
+    total_revenue: { ar: "إجمالي الإيرادات", en: "Total Revenue" },
+    total_expenses: { ar: "إجمالي المصروفات", en: "Total Expenses" },
+    total_net_result: { ar: "صافي النتائج", en: "Net Result" },
+    reports_submitted: { ar: "التقارير المستلمة", en: "Reports Submitted" },
+    reports_missing: { ar: "التقارير المفقودة", en: "Reports Missing" },
+    companies_requiring_attention: { ar: "شركات تحتاج متابعة", en: "Need Attention" },
+    open_support_requests: { ar: "الطلبات المفتوحة", en: "Open Requests" },
+    pending_financial_reviews: { ar: "مراجعات مالية معلقة", en: "Pending Reviews" },
+  };
+
+  function openIndicatorSources(indicator) {
+    var label = DRILL_LABELS[indicator] || { ar: indicator, en: indicator };
+    openModal({
+      title: dual(label.ar, label.en),
+      body: loadingHtml(),
+      wide: true,
+      onMount: function () {
+        get(
+          "/api/v1/dashboard/indicator/" + encodeURIComponent(indicator) +
+            "/sources" + period,
+        )
+          .then(function (data) {
+            var host = byId("modalBody");
+            if (!host) return;
+            var rows = data.records || [];
+            if (!rows.length) {
+              host.innerHTML = emptyHtml(
+                "لا توجد سجلات مصدر لهذا المؤشر.",
+                "No source records for this indicator.",
+              );
+              return;
+            }
+            host.innerHTML =
+              '<table class="table"><thead><tr><th>' +
+              dual("النوع", "Type") + "</th><th>" + dual("السجل", "Record") +
+              "</th></tr></thead><tbody>" +
+              rows.map(function (r) {
+                var typeLabel = r.kind === "company"
+                  ? dual("شركة", "Company")
+                  : r.kind === "support_request"
+                    ? dual("طلب", "Request")
+                    : dual("تقرير", "Report");
+                return '<tr data-src-kind="' + escapeHtml(r.kind) +
+                  '" data-src-id="' + r.record_id + '" style="cursor:pointer"><td>' +
+                  typeLabel + "</td><td>" + escapeHtml(r.label_ar) + "</td></tr>";
+              }).join("") +
+              "</tbody></table>";
+            host.querySelectorAll("[data-src-kind]").forEach(function (el) {
+              el.addEventListener("click", function () {
+                var kind = el.getAttribute("data-src-kind");
+                var id = parseInt(el.getAttribute("data-src-id"), 10);
+                closeModal();
+                if (kind === "company") openCompany(id);
+                else if (kind === "support_request") navTo("support");
+                else if (kind === "monthly_report") openReport(id);
+              });
+            });
+          })
+          .catch(function (err) {
+            var host = byId("modalBody");
+            if (host) host.innerHTML = errorHtml(err && err.message);
+          });
+      },
+    });
+  }
+
+  // Wire every KPI tile that has a drill target, once.
+  function bindIndicatorDrills() {
+    document.querySelectorAll("[data-drill]").forEach(function (el) {
+      if (el.getAttribute("data-drill-bound")) return;
+      el.setAttribute("data-drill-bound", "1");
+      var go = function () {
+        openIndicatorSources(el.getAttribute("data-drill"));
+      };
+      el.addEventListener("click", go);
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      });
+    });
+  }
+
   // S01 "الأولويات": record links the caller may act on, restricted per access
   // by the backend, so every entry is openable.
   function hydratePriorities(data) {
@@ -9998,6 +10087,7 @@
         bindLogout();
         bindHeaderActions();
         bindNav();
+        bindIndicatorDrills();
         showLoadingStates();
         return resolvePeriod();
       })

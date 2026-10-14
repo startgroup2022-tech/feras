@@ -471,6 +471,24 @@ class PriorityOut(BaseModel):
     reason: str | None = None
 
 
+class IndicatorSourceOut(BaseModel):
+    """A record that produced an indicator's number (S01 AC-01 drill-down)."""
+
+    kind: str  # "monthly_report" | "company" | "support_request"
+    record_id: int
+    company_id: int | None = None
+    label_ar: str
+
+
+class IndicatorSourcesOut(BaseModel):
+    """The source records behind one dashboard indicator."""
+
+    indicator: str
+    period_year: int
+    period_month: int
+    records: list[IndicatorSourceOut] = []
+
+
 class CompanyPerformanceOut(BaseModel):
     """Per-company figures for the dashboard report/overview cards."""
 

@@ -374,3 +374,22 @@ def test_s01_priorities_panel_is_present_and_hydrated():
     assert "hydratePriorities(data)" in APP_JS
     assert "prioritiesList" in APP_JS
 
+
+def test_s01_indicator_drilldown_is_wired():
+    # S01 AC-01: "فتح تفصيل مؤشر يعرض سجلات مصدره" — opening an indicator shows
+    # its source records, and Table 13's عرض التفاصيل must not create a copy.
+    assert "function openIndicatorSources(" in APP_JS
+    assert "/api/v1/dashboard/indicator/" in APP_JS
+    assert "function bindIndicatorDrills(" in APP_JS
+    assert "bindIndicatorDrills()" in APP_JS  # called at boot
+    # Every KPI tile that has a source indicator carries a drill target.
+    for kpi in (
+        "companies_count",
+        "total_revenue",
+        "total_net_result",
+        "reports_submitted",
+        "companies_requiring_attention",
+        "open_support_requests",
+    ):
+        assert 'data-drill="' + kpi + '"' in INDEX, kpi
+

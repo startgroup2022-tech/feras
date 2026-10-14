@@ -20,6 +20,8 @@ from backend.schemas import (
     CompanyPerformanceOut,
     DashboardKpis,
     DashboardResponse,
+    IndicatorSourceOut,
+    IndicatorSourcesOut,
     MotivationTextOut,
     PeriodChangeOut,
     PriorityOut,
@@ -77,6 +79,42 @@ def holding_dashboard(
 
     data = dashboard_service.build_dashboard(db, user=user, year=year, month=month)
     return _response(data, scope="holding", company_id=None, year=year, month=month)
+
+
+@router.get("/indicator/{indicator}/sources", response_model=IndicatorSourcesOut)
+def indicator_sources(
+    indicator: str,
+    user: CurrentUser,
+    db: DbSession,
+    year: int | None = None,
+    month: int | None = None,
+) -> IndicatorSourcesOut:
+    """Open one dashboard indicator and return the records behind it (AC-01).
+
+    Table 13's ``عرض التفاصيل`` opens the linked source without creating a copy,
+    so this returns links, never a snapshot. An unknown indicator is 404 and a
+    record the caller cannot read is simply absent.
+    """
+    if not (
+        has_permission(user, Perm.DASHBOARD_HOLDING)
+        or has_permission(user, Perm.DASHBOARD_COMPANY)
+    ):
+        raise PermissionDeniedError("You do not have access to this dashboard.")
+
+    default_year, default_month = _default_period()
+    year = year or default_year
+    month = month or default_month
+
+    records = dashboard_service.indicator_sources(db, user, indicator, year, month)
+    if records is None:
+        raise NotFoundError("Unknown indicator.")
+
+    return IndicatorSourcesOut(
+        indicator=indicator,
+        period_year=year,
+        period_month=month,
+        records=[IndicatorSourceOut(**r) for r in records],
+    )
 
 
 @router.get("/company/{company_id}", response_model=DashboardResponse)

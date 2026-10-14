@@ -192,3 +192,76 @@ def test_priorities_omit_sources_the_caller_cannot_read(client, world, auth, mak
     priorities = client.get(HOLDING, headers=auth(designer)).json()["priorities"]
 
     assert not any(p["kind"] == "owner_decision" for p in priorities)
+
+
+# --------------------------------------------------------------------------
+# S01 AC-01 indicator drill-down (source records, no copy)
+# --------------------------------------------------------------------------
+def test_indicator_detail_returns_the_source_records(client, world, auth):
+    # AC-01: opening an indicator shows the records behind it.
+    body = client.get(
+        "/api/v1/dashboard/indicator/total_revenue/sources?year=2027&month=10",
+        headers=auth(world["owner"]),
+    ).json()
+
+    assert body["indicator"] == "total_revenue"
+    assert body["period_year"] == 2027
+    assert body["period_month"] == 10
+    # The two October reports that produce the group total.
+    assert len(body["records"]) == 2
+    assert {r["kind"] for r in body["records"]} == {"monthly_report"}
+    assert {r["company_id"] for r in body["records"]} == {
+        world["alpha"].id,
+        world["beta"].id,
+    }
+
+
+def test_indicator_detail_does_not_create_a_copy(client, world, auth):
+    # Table 13: "عرض التفاصيل" opens the linked source without creating a copy.
+    before = client.get(
+        "/api/v1/monthly-reports?year=2027&month=10", headers=auth(world["owner"])
+    ).json()
+    client.get(
+        "/api/v1/dashboard/indicator/reports_submitted/sources?year=2027&month=10",
+        headers=auth(world["owner"]),
+    )
+    after = client.get(
+        "/api/v1/monthly-reports?year=2027&month=10", headers=auth(world["owner"])
+    ).json()
+
+    assert len(before) == len(after)
+
+
+def test_indicator_detail_is_company_scoped(client, world, auth, make_user):
+    # A user granted only one company sees only that company's source report.
+    scoped = make_user("scoped@corp.sa", "company_manager", [world["alpha"]])
+    body = client.get(
+        "/api/v1/dashboard/indicator/total_revenue/sources?year=2027&month=10",
+        headers=auth(scoped),
+    ).json()
+
+    assert {r["company_id"] for r in body["records"]} <= {world["alpha"].id}
+
+
+def test_unknown_indicator_is_404(client, world, auth):
+    resp = client.get(
+        "/api/v1/dashboard/indicator/does_not_exist/sources?year=2027&month=10",
+        headers=auth(world["owner"]),
+    )
+    assert resp.status_code == 404
+
+
+def test_attention_indicator_returns_the_flagged_companies(
+    client, world, auth, make_company
+):
+    flagged = make_company("SICKCO", "شركة متعثرة", health="attention")
+    body = client.get(
+        "/api/v1/dashboard/indicator/companies_requiring_attention/sources"
+        "?year=2027&month=10",
+        headers=auth(world["owner"]),
+    ).json()
+
+    assert any(
+        r["kind"] == "company" and r["record_id"] == flagged.id
+        for r in body["records"]
+    )

@@ -84,6 +84,27 @@ never receives a link it cannot open. Rendered in `#prioritiesList`
 (`frontend/app.js::hydratePriorities`). Covered by three dashboard tests plus a
 frontend-wiring test.
 
+## S01 AC-01 indicator drill-down
+
+AC-01 requires "فتح تفصيل مؤشر يعرض سجلات مصدره" (opening an indicator shows its
+source records) and Table 13 defines ``عرض التفاصيل`` as opening the linked
+source **without creating a copy**. It is now live:
+
+* `GET /api/v1/dashboard/indicator/{indicator}/sources` →
+  `dashboard_service.indicator_sources`, covering `total_revenue`,
+  `total_expenses`, `total_net_result`, `reports_submitted`, `reports_missing`,
+  `companies_count`/`sector_count`/`structure_count`,
+  `companies_requiring_attention`, `open_support_requests` and
+  `pending_financial_reviews`. An unknown indicator is 404.
+* Every record is read through a scoped repository, so a caller only ever sees
+  records inside its own company scope; a report is labelled by company so rows
+  are distinguishable.
+* Frontend: each KPI tile carries `data-drill` and opens a read-only modal
+  (`app.js::openIndicatorSources`, bound at boot by `bindIndicatorDrills`);
+  clicking a row navigates to the company, the request or the report.
+* Tests: `test_dashboard.py` (source records, no-copy, company scoping, 404,
+  attention links) and `test_frontend_domain_views.py::test_s01_indicator_drilldown_is_wired`.
+
 ## Continuation
 
 If work resumes: check out `feature/safir-s26-s28-accounting-completion`, run
