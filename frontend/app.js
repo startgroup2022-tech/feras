@@ -559,6 +559,46 @@
     setText('[data-kpi="sector_count_en"]', String(sectorCount));
   }
 
+  // S01 "الأولويات": record links the caller may act on, restricted per access
+  // by the backend, so every entry is openable.
+  function hydratePriorities(data) {
+    var host = byId("prioritiesList");
+    if (!host) return;
+    var rows = data.priorities || [];
+    if (!rows.length) {
+      host.innerHTML = emptyHtml("لا توجد أولويات حالية.", "No current priorities.");
+      return;
+    }
+    host.innerHTML = rows.map(function (p) {
+      var label = STATE.lang === "ar"
+        ? (p.label_ar || p.label_en || "")
+        : (p.label_en || p.label_ar || "");
+      var sub = p.overdue
+        ? dual("متأخر", "Overdue")
+        : (p.reason ? escapeHtml(p.reason) : "");
+      var icon = p.kind === "company" ? "🏢"
+        : p.kind === "support_request" ? "💬" : "📌";
+      return '<div class="av-row" data-priority-kind="' + escapeHtml(p.kind) +
+        '" data-priority-id="' + p.record_id + '">' +
+        '<div class="grow"><div class="t">' + icon + " " + escapeHtml(label) +
+        '</div>' + (sub ? '<div class="s">' + sub + "</div>" : "") +
+        "</div></div>";
+    }).join("");
+    host.querySelectorAll("[data-priority-kind]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var kind = el.getAttribute("data-priority-kind");
+        var id = parseInt(el.getAttribute("data-priority-id"), 10);
+        if (kind === "company") {
+          openCompany(id);
+        } else if (kind === "owner_decision") {
+          navTo("decisions");
+        } else if (kind === "support_request") {
+          navTo("support");
+        }
+      });
+    });
+  }
+
   // The dashboard report cards offer "View Report" (a real report exists) or
   // "Follow up" (the subsidiary has not sent its report yet).
   function bindReportCardActions(repGrid) {
@@ -9778,6 +9818,8 @@
     if (overview) overview.innerHTML = loadingHtml();
     var list = document.getElementById("insightsList");
     if (list) list.innerHTML = loadingHtml();
+    var prio = document.getElementById("prioritiesList");
+    if (prio) prio.innerHTML = loadingHtml();
     var aiBody = document.getElementById("aiAnswerBody");
     if (aiBody) aiBody.innerHTML = loadingHtml();
     var sbody = document.getElementById("supportBody");
@@ -9795,6 +9837,7 @@
       STATE.dashboard = data;
       hydrateKpis(data);
       hydrateCompanies(data);
+      hydratePriorities(data);
       setPeriodLabels();
       return data;
     });

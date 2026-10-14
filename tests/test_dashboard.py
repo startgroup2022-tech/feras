@@ -141,3 +141,54 @@ def test_marketing_can_open_the_holding_dashboard(client, auth, make_user):
     marketer = make_user("mkt@corp.sa", "marketing")
 
     assert client.get(HOLDING, headers=auth(marketer)).status_code == 200
+
+
+# --------------------------------------------------------------------------
+# S01 priorities (record links, per access)
+# --------------------------------------------------------------------------
+def test_priorities_include_open_support_requests(client, world, auth):
+    # ``world`` seeds open support requests; they must surface as record links.
+    priorities = client.get(HOLDING, headers=auth(world["owner"])).json()["priorities"]
+
+    assert priorities, "open support requests must appear as priorities"
+    assert all(
+        p["kind"] in {"owner_decision", "support_request", "company"}
+        for p in priorities
+    )
+    assert any(p["kind"] == "support_request" for p in priorities)
+
+
+def test_priorities_link_to_open_decisions_and_attention_companies(
+    client, world, auth, make_company
+):
+    make_company("SICKCO", "شركة متعثرة", health="attention")
+    client.post(
+        "/api/v1/operations/owner-decisions",
+        headers=auth(world["owner"]),
+        json={"number": "D-100", "title": "اعتماد خطة التوسع"},
+    )
+
+    priorities = client.get(HOLDING, headers=auth(world["owner"])).json()["priorities"]
+
+    kinds = {(p["kind"], p["record_id"]) for p in priorities}
+    assert ("owner_decision", 1) in kinds or any(
+        p["kind"] == "owner_decision" and p["label_ar"] == "اعتماد خطة التوسع"
+        for p in priorities
+    )
+    assert any(p["kind"] == "company" and p["label_ar"] == "شركة متعثرة"
+               for p in priorities)
+
+
+def test_priorities_omit_sources_the_caller_cannot_read(client, world, auth, make_user):
+    # A designer holds neither owner-decision nor company-attention read paths
+    # beyond its own scope; the decision source must not appear.
+    designer = make_user("designer@corp.sa", "designer")
+    client.post(
+        "/api/v1/operations/owner-decisions",
+        headers=auth(world["owner"]),
+        json={"number": "D-200", "title": "قرار سري"},
+    )
+
+    priorities = client.get(HOLDING, headers=auth(designer)).json()["priorities"]
+
+    assert not any(p["kind"] == "owner_decision" for p in priorities)

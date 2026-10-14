@@ -11,15 +11,25 @@ exists, and fall back to the submitted figures otherwise. This is what makes
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.db.models.enums import CompanyHealth, FinancialReviewStatus, ReportStatus
+from backend.db.models.enums import (
+    CompanyHealth,
+    FinancialReviewStatus,
+    OwnerDecisionStatus,
+    ReportStatus,
+    SupportStatus,
+)
 from backend.db.models.identity import Company, User
+from backend.db.models.operations import OwnerDecision
 from backend.db.models.report import MonthlyReport, MonthlyReportFinancialReview
-from backend.rbac.authorization import accessible_company_ids
+from backend.db.models.support import SupportRequest
+from backend.rbac.authorization import accessible_company_ids, has_permission
+from backend.rbac.permissions import Perm
 from backend.repositories.scoped import (
     CompanyRepository,
     FinancialReviewRepository,
@@ -116,6 +126,74 @@ def _change_vs_previous(db: Session, user: User, year: int, month: int) -> dict:
         "expenses_pct": _pct_change(current[1], previous[1]),
         "net_pct": _pct_change(current[2], previous[2]),
     }
+
+
+def _priorities(db: Session, user: User, year: int, month: int) -> list[dict]:
+    """Owner priorities as links to the records that need action (S01, Table 12).
+
+    The specification defines ``الأولويات`` as "record links, per access" rather
+    than a stored list: the dashboard surfaces the open work the caller may act
+    on, each entry pointing at the record that owns it. A source is only
+    included when the caller holds its read permission, so a role never receives
+    a link it cannot open.
+    """
+    priorities: list[dict] = []
+
+    if has_permission(user, Perm.OWNER_DECISION_READ):
+        stmt = select(OwnerDecision).where(
+            OwnerDecision.status != OwnerDecisionStatus.DONE.value
+        )
+        allowed = accessible_company_ids(user)
+        if allowed is not None:
+            stmt = stmt.where(
+                OwnerDecision.company_id.is_(None) | OwnerDecision.company_id.in_(allowed)
+            )
+        stmt = stmt.order_by(OwnerDecision.due_date.is_(None), OwnerDecision.due_date)
+        for decision in db.execute(stmt).scalars():
+            overdue = decision.due_date is not None and decision.due_date < date.today()
+            priorities.append({
+                "kind": "owner_decision",
+                "record_id": decision.id,
+                "label_ar": decision.title,
+                "label_en": decision.title,
+                "status": decision.status,
+                "due_date": decision.due_date,
+                "overdue": overdue,
+            })
+
+    if has_permission(user, Perm.SUPPORT_READ_ALL) or has_permission(
+        user, Perm.SUPPORT_READ_OWN
+    ):
+        stmt = select(SupportRequest).where(
+            SupportRequest.status.in_(
+                [SupportStatus.NEW.value, SupportStatus.IN_PROGRESS.value]
+            )
+        )
+        stmt = _scoped(stmt, SupportRequest.company_id, user)
+        for request in db.execute(stmt).scalars():
+            priorities.append({
+                "kind": "support_request",
+                "record_id": request.id,
+                "label_ar": request.title,
+                "label_en": request.title,
+                "status": request.status,
+                "due_date": None,
+                "overdue": False,
+            })
+
+    for company in attention_payload(db, user, year, month):
+        priorities.append({
+            "kind": "company",
+            "record_id": company["id"],
+            "label_ar": company["name_ar"],
+            "label_en": company["name_en"],
+            "status": company["health"],
+            "due_date": None,
+            "overdue": False,
+            "reason": company["reason"],
+        })
+
+    return priorities
 
 
 def _company_performance(db: Session, user: User, year: int, month: int) -> list[dict]:
@@ -316,5 +394,6 @@ def build_dashboard(
         "change_vs_previous": change,
         "companies_missing_report": missing,
         "companies_requiring_attention": attention,
+        "priorities": _priorities(db, user, year, month),
         "motivation": motivation_service.pick_for_role(db, role_code=user.role_code),
     }

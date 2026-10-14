@@ -364,3 +364,13 @@ def test_toast_region_announces_messages():
     assert 'setAttribute("role", "status")' in APP_JS
     assert 'setAttribute("role", "alert")' in APP_JS
 
+
+def test_s01_priorities_panel_is_present_and_hydrated():
+    # S01 Table 12 lists "الأولويات | روابط سجلات | حسب الوصول" as a dashboard
+    # field. The panel must exist in the markup and be filled from the live
+    # dashboard payload, not from demo content.
+    assert 'id="prioritiesList"' in INDEX
+    assert "function hydratePriorities(" in APP_JS
+    assert "hydratePriorities(data)" in APP_JS
+    assert "prioritiesList" in APP_JS
+

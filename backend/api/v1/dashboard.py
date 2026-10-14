@@ -22,6 +22,7 @@ from backend.schemas import (
     DashboardResponse,
     MotivationTextOut,
     PeriodChangeOut,
+    PriorityOut,
 )
 from backend.services import dashboard_service
 
@@ -52,6 +53,7 @@ def _response(data: dict, *, scope: str, company_id: int | None, year: int, mont
             AttentionCompanyOut.model_validate(c)
             for c in data["companies_requiring_attention"]
         ],
+        priorities=[PriorityOut(**row) for row in data["priorities"]],
         motivation=(
             MotivationTextOut(**data["motivation"]) if data.get("motivation") else None
         ),

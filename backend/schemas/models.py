@@ -454,6 +454,23 @@ class AttentionCompanyOut(BaseModel):
     support_required: str | None = None
 
 
+class PriorityOut(BaseModel):
+    """S01 ``الأولويات``: a link to a record that needs the caller's action.
+
+    ``kind`` names the record type so the UI can route to the right view; only
+    sources the caller may read are emitted.
+    """
+
+    kind: str  # "owner_decision" | "support_request" | "company"
+    record_id: int
+    label_ar: str
+    label_en: str | None = None
+    status: str | None = None
+    due_date: date | None = None
+    overdue: bool = False
+    reason: str | None = None
+
+
 class CompanyPerformanceOut(BaseModel):
     """Per-company figures for the dashboard report/overview cards."""
 
@@ -497,6 +514,7 @@ class DashboardResponse(BaseModel):
     change_vs_previous: PeriodChangeOut | None = None
     companies_missing_report: list[CompanyOut] = []
     companies_requiring_attention: list[AttentionCompanyOut] = []
+    priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
 
 

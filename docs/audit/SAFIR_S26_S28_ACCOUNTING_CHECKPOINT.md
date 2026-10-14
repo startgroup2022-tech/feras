@@ -73,6 +73,17 @@ had since been built). Outcome:
   real tests were added (`test_campaign_round_trip_records_results_and_is_audited`,
   `test_campaign_write_requires_company_access`).
 
+## S01 priorities field
+
+Table 12 lists ``الأولويات`` as "record links, per access" — it was the one
+dashboard field still missing. It is now a real, permission-filtered list
+(`dashboard_service._priorities`): open owner decisions (overdue flagged), open
+support requests, and companies needing attention, each as a link to its record.
+A source is only included when the caller holds its read permission, so a role
+never receives a link it cannot open. Rendered in `#prioritiesList`
+(`frontend/app.js::hydratePriorities`). Covered by three dashboard tests plus a
+frontend-wiring test.
+
 ## Continuation
 
 If work resumes: check out `feature/safir-s26-s28-accounting-completion`, run
