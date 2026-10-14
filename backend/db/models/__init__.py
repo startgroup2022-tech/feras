@@ -29,6 +29,7 @@ from backend.db.models.operations import (
     Campaign,
     Complaint,
     ConfidentialAccessGrant,
+    ManagementBrief,
     MotivationText,
     OwnerDecision,
     OwnerDecisionEvent,
@@ -69,6 +70,7 @@ from backend.db.models.report import (
     MonthlyReport,
     MonthlyReportAttachment,
     MonthlyReportFinancialReview,
+    ReportClarification,
 )
 from backend.db.models.submissions import FormSubmission, SubmissionRequirement
 from backend.db.models.support import (
@@ -119,6 +121,7 @@ __all__ = [
     "MonthlyReport",
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",
+    "ReportClarification",
     # Execution 02: subsidiary financial summary workflow
     "FinancialPeriod",
     "FinancialSummaryVersion",
@@ -187,6 +190,7 @@ __all__ = [
     "OwnerDecision",
     "OwnerDecisionEvent",
     "ConfidentialAccessGrant",
+    "ManagementBrief",
     "MotivationText",
     "ProjectRecord",
     "OpeningBalance",

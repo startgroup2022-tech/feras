@@ -28,6 +28,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +39,8 @@ from backend.db.models.enums import (
     AdvisorSessionStatus,
     CampaignStatus,
     ComplaintStatus,
+    ManagementBriefStatus,
+    ManagementBriefUrgency,
     OwnerDecisionStatus,
     ProjectRecordType,
     TaskLifecycleStatus,
@@ -497,6 +500,60 @@ class MotivationText(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"
     )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class ManagementBrief(Base, TimestampMixin):
+    """The BD manager's monthly management brief (S21).
+
+    Spec §9 S21, Tables 34-35: a brief is identified by period, references the
+    *original* reports it analyses, and carries five fixed axes -- companies,
+    projects, employees, risks and decisions. The executive summary must fit
+    within half a page (a fixed output test), so the field is capped in length.
+
+    The axis *content* is free text authored by BD. The spec fixes the axes but
+    leaves the precise indicator definitions to D02; nothing here computes a
+    metric, so no unapproved rule is encoded.
+
+    ``urgency`` lets an urgent escalation reach the owner before month-end
+    without waiting for the routine monthly submission. The brief is never a
+    substitute for the company's original report: ``analysis`` is a separate
+    record and the originals are only referenced, never modified.
+    """
+
+    __tablename__ = "management_briefs"
+    __table_args__ = (
+        # One brief per period per author (a resubmission updates the same row).
+        UniqueConstraint(
+            "period_year", "period_month", "created_by_id",
+            name="uq_management_brief_period_author",
+        ),
+        Index("ix_management_briefs_period", "period_year", "period_month"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..12
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ManagementBriefStatus.DRAFT.value, index=True
+    )
+    urgency: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ManagementBriefUrgency.MONTHLY.value
+    )
+    # The executive summary is capped so the "half page" acceptance test holds.
+    executive_summary: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    axis_companies: Mapped[str | None] = mapped_column(Text, nullable=True)
+    axis_projects: Mapped[str | None] = mapped_column(Text, nullable=True)
+    axis_employees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    axis_risks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    axis_decisions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A comma-separated list of source report ids the analysis references. The
+    # originals are never copied or changed -- only linked (spec Table 35:
+    # "فتح أصل ... يعرض التقرير كما أرسله منشئه").
+    source_report_ids: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

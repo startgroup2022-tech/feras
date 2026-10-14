@@ -17,6 +17,7 @@ from backend.schemas import (
     MonthlyReportCreateRequest,
     MonthlyReportOut,
     MonthlyReportUpdateRequest,
+    ReportClarificationRequest,
 )
 from backend.services import audit_service, report_service
 
@@ -164,6 +165,41 @@ def delete_attachment(
         user_agent=ctx["user_agent"],
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------
+# clarification thread (S02/S09) -- linked to the original, never edits it
+# --------------------------------------------------------------------------
+@router.get("/{report_id}/clarifications")
+def list_clarifications(report_id: int, user: CurrentUser, db: DbSession) -> list[dict]:
+    require_any_permission(user, Perm.REPORT_READ_OWN, Perm.REPORT_READ_ALL)
+    rows = report_service.list_clarifications(db, user=user, report_id=report_id)
+    return [report_service.serialise_clarification(c) for c in rows]
+
+
+@router.post(
+    "/{report_id}/clarifications",
+    status_code=status.HTTP_201_CREATED,
+)
+def add_clarification(
+    report_id: int,
+    payload: ReportClarificationRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    clarification = report_service.add_clarification(
+        db,
+        user=user,
+        report_id=report_id,
+        body=payload.body,
+        kind=payload.kind.value,
+        parent_id=payload.parent_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return report_service.serialise_clarification(clarification)
 
 
 # --------------------------------------------------------------------------

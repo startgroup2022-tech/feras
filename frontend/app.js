@@ -1785,6 +1785,81 @@
     );
   }
 
+  // ---- clarification thread (S02/S09) ----------------------------------
+  // A clarification is linked to the report's *original*; it never edits the
+  // figures or narrative. A holder of monthly_report.clarify may raise a
+  // request or reply to one. The thread is shown inside the report modal.
+  function clarificationBlock(c) {
+    var isReply = c.kind === "reply";
+    var who = escapeHtml(
+      STATE.lang === "ar" ? c.author_name_ar || "—" : c.author_name_en || c.author_name_ar || "—",
+    );
+    return (
+      '<div class="note-block" style="' +
+      (isReply ? "margin-inline-start:22px;border-inline-start:3px solid var(--gold)" : "") +
+      '"><span class="lbl">' +
+      dual(isReply ? "رد" : "طلب إيضاح", isReply ? "Reply" : "Clarification") +
+      " · " + who + " · " + fmtDateTime(c.created_at) + "</span>" +
+      escapeHtml(c.body) +
+      "</div>"
+    );
+  }
+
+  function loadClarifications(reportId) {
+    var host = byId("repClarify");
+    if (!host) return;
+    var canClarify = has("monthly_report.clarify");
+    get("/api/v1/monthly-reports/" + reportId + "/clarifications")
+      .then(function (rows) {
+        rows = rows || [];
+        var head =
+          '<div class="sec-title">' +
+          dual("الإيضاحات المرتبطة بالأصل", "Clarifications linked to the original") +
+          "</div>";
+        var body = rows.length
+          ? rows.map(clarificationBlock).join("")
+          : '<p class="av-empty">' +
+            dual("لا توجد إيضاحات بعد.", "No clarifications yet.") +
+            "</p>";
+        var composer = canClarify
+          ? '<div class="av-field"><textarea class="av-input" id="repClarifyBody" rows="2" placeholder="' +
+            escAttr(STATE.lang === "ar" ? "اكتب إيضاحًا..." : "Write a clarification...") +
+            '"></textarea><div class="pbtns" style="margin-top:8px">' +
+            '<button type="button" class="btn-outline" id="repClarifySend">' +
+            dual("طلب إيضاح", "Request clarification") +
+            "</button></div></div>"
+          : "";
+        host.innerHTML = head + body + composer;
+        var send = byId("repClarifySend");
+        if (send) {
+          send.addEventListener("click", function () {
+            var field = byId("repClarifyBody");
+            var text = field ? field.value.trim() : "";
+            if (!text) {
+              toast(STATE.lang === "ar" ? "الإيضاح مطلوب." : "A message is required.", "warn");
+              return;
+            }
+            busy(send, true);
+            post("/api/v1/monthly-reports/" + reportId + "/clarifications", {
+              body: text,
+              kind: "request",
+            })
+              .then(function () {
+                toast(dual("أُرسل طلب الإيضاح.", "Clarification sent."), "ok");
+                loadClarifications(reportId);
+              })
+              .catch(function (err) {
+                toast(errText(err), "err");
+                busy(send, false);
+              });
+          });
+        }
+      })
+      .catch(function () {
+        host.innerHTML = "";
+      });
+  }
+
   function loadReportDetail(id) {
     var body = byId("modalBody");
     get("/api/v1/monthly-reports/" + id)
@@ -1840,7 +1915,10 @@
               (fr.financial_notes ? reportField("ملاحظات", "Notes", fr.financial_notes) : "") +
               (fr.flagged_reason ? reportField("سبب التحفظ", "Flag reason", fr.flagged_reason) : "")
             : "") +
+          '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
+
+        loadClarifications(id);
 
         var actions = byId("repActions");
         var btns = [];
@@ -5383,11 +5461,12 @@
     return renderOpsTab(STATE.opsTab);
   }
 
-  var OPS_TABS = ["tasks", "weekly", "campaigns"];
+  var OPS_TABS = ["tasks", "weekly", "campaigns", "briefs"];
   var OPS_TAB_PERM = {
     tasks: ["task.read_own", "task.read_all"],
     weekly: ["weekly_report.read_own", "weekly_report.read_all"],
     campaigns: ["campaign.read"],
+    briefs: ["management_brief.read"],
   };
   function canOpsTab(t) { return (OPS_TAB_PERM[t] || []).some(has); }
   function firstOpsTab() {
@@ -5414,6 +5493,7 @@
     if (tab === "tasks") return renderTasks();
     if (tab === "weekly") return renderWeekly();
     if (tab === "campaigns") return renderCampaigns();
+    if (tab === "briefs") return renderManagementBriefs();
     return Promise.resolve();
   }
 
@@ -5694,7 +5774,16 @@
   }
 
   function onOpsAct(action, id, el) {
+    if (action === "brief-submit") {
+      return submitManagementBrief(id, el);
+    }
+    if (action === "brief-load") {
+      return loadBriefDraft(parseInt(valOf("mbYear"), 10), parseInt(valOf("mbMonth"), 10));
+    }
     if (action !== "submit") return;
+    if (id === "briefForm") {
+      return saveManagementBrief(el);
+    }
     if (id === "taskForm") {
       busy(el.querySelector("button"), true);
       return post("/api/v1/operations/tasks", {
@@ -5728,6 +5817,137 @@
       }).then(function () { toast(dual("تم حفظ النتائج.", "Results saved."), "ok"); return renderCampaigns(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
+  }
+
+  // ======================================================================
+  // S21 -- BD five-axis management brief
+  // ======================================================================
+  var BRIEF_AXES = [
+    { key: "axis_companies", ar: "الشركات التابعة", en: "Subsidiaries" },
+    { key: "axis_projects", ar: "المشاريع والفرص", en: "Projects & opportunities" },
+    { key: "axis_employees", ar: "الموظفون", en: "Employees" },
+    { key: "axis_risks", ar: "المخاطر", en: "Risks" },
+    { key: "axis_decisions", ar: "القرارات المطلوبة", en: "Decisions required" },
+  ];
+
+  function renderManagementBriefs() {
+    var host = byId("opsContent");
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/operations/management-briefs").catch(function () { return []; })
+      .then(function (rows) {
+        rows = rows || [];
+        var canAuthor = has("management_brief.submit");
+        var now = new Date();
+        var form = canAuthor
+          ? '<form class="av-form" id="briefForm">' +
+            '<div class="av-form-inline">' +
+            field("السنة", "Year", numInput("mbYear", now.getFullYear(), "")) +
+            field("الشهر", "Month", selectInput("mbMonth", monthOptions(), now.getMonth() + 1)) +
+            field("الأولوية", "Urgency", selectInput("mbUrgency", [
+              { value: "monthly", label: opt("شهري", "Monthly") },
+              { value: "urgent", label: opt("عاجل", "Urgent") },
+            ], "monthly")) +
+            "</div>" +
+            field("الملخص التنفيذي", "Executive summary", textArea("mbSummary", "", "")) +
+            BRIEF_AXES.map(function (a) {
+              return field(a.ar, a.en, textArea("mb_" + a.key, "", ""));
+            }).join("") +
+            '<div class="av-form-actions">' +
+            '<button class="btn-outline" type="button" data-act="brief-load" data-id="1">' +
+            dual("تحميل مسودة الفترة", "Load period draft") + "</button>" +
+            '<button class="btn-solid" type="submit">' +
+            dual("حفظ المسودة", "Save draft") + "</button></div></form>"
+          : "";
+        var list = rows.length
+          ? '<div class="av-list">' + rows.map(briefRow).join("") + "</div>"
+          : noticeHtml("لا توجد تقارير بعد.", "No briefs yet.");
+        host.innerHTML = panel(
+          "تقرير تطوير الأعمال (خمسة محاور)",
+          "Business development brief (five axes)",
+          form + list,
+        );
+      })
+      .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function monthOptions() {
+    var out = [];
+    for (var m = 1; m <= 12; m++) {
+      out.push({
+        value: m,
+        label: STATE.lang === "ar"
+          ? AR_MONTHS[m - 1] + " (" + toArabicDigits(String(m)) + ")"
+          : EN_MONTHS[m - 1],
+      });
+    }
+    return out;
+  }
+
+  function briefRow(b) {
+    var period = STATE.lang === "ar"
+      ? AR_MONTHS[b.period_month - 1] + " " + toArabicDigits(String(b.period_year))
+      : EN_MONTHS[b.period_month - 1] + " " + b.period_year;
+    var canSubmit = has("management_brief.submit") && b.status === "draft";
+    return (
+      '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="grow"><div class="t">' + dual("تقرير", "Brief") + " · " + escapeHtml(period) + "</div>" +
+      '<div class="s">' + escapeHtml(b.executive_summary || "") + "</div></div>" +
+      statusBadgeFromMap(b.urgency, { monthly: ["شهري", "Monthly", "rev"], urgent: ["عاجل", "Urgent", "miss"] }) +
+      statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
+      "</div>" +
+      (canSubmit
+        ? '<div class="pbtns" style="margin-top:8px"><button class="btn-solid" data-stop="1" data-act="brief-submit" data-id="' + b.id + '">' +
+          dual("إرسال للمالك", "Submit to owner") + "</button></div>"
+        : "") +
+      "</div>"
+    );
+  }
+
+  function loadBriefDraft(periodYear, periodMonth) {
+    return get(
+      "/api/v1/operations/management-briefs?period_year=" + periodYear +
+        "&period_month=" + periodMonth,
+    ).then(function (rows) {
+      var b = (rows || [])[0];
+      var set = function (id, v) {
+        var el = byId(id);
+        if (el) el.value = v === null || v === undefined ? "" : v;
+      };
+      if (b) {
+        set("mbSummary", b.executive_summary);
+        BRIEF_AXES.forEach(function (a) { set("mb_" + a.key, b[a.key]); });
+        var u = byId("mbUrgency");
+        if (u) u.value = b.urgency;
+        return b;
+      }
+      set("mbSummary", "");
+      BRIEF_AXES.forEach(function (a) { set("mb_" + a.key, ""); });
+      return null;
+    });
+  }
+
+  function saveManagementBrief(el) {
+    var payload = {
+      period_year: parseInt(valOf("mbYear"), 10),
+      period_month: parseInt(valOf("mbMonth"), 10),
+      urgency: valOf("mbUrgency") || "monthly",
+      executive_summary: valOf("mbSummary") || null,
+    };
+    BRIEF_AXES.forEach(function (a) {
+      payload[a.key] = valOf("mb_" + a.key) || null;
+    });
+    busy(el.querySelector("button[type=submit]"), true);
+    return post("/api/v1/operations/management-briefs", payload)
+      .then(function () { toast(dual("تم حفظ المسودة.", "Draft saved."), "ok"); return renderManagementBriefs(); })
+      .catch(function (err) { domainError(err); busy(el.querySelector("button[type=submit]"), false); });
+  }
+
+  function submitManagementBrief(id, el) {
+    busy(el, true);
+    return post("/api/v1/operations/management-briefs/" + id + "/submit", {})
+      .then(function () { toast(dual("أُرسل التقرير للمالك.", "Brief submitted to the owner."), "ok"); return renderManagementBriefs(); })
+      .catch(function (err) { domainError(err); busy(el, false); });
   }
 
   // ======================================================================

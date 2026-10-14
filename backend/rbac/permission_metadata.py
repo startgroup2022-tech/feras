@@ -654,6 +654,20 @@ PERMISSION_METADATA: list[dict] = [
        "إدارة المشاريع والفرص", "Manage projects and opportunities",
        "إنشاء وتحديث الفرص والمشاريع.", "Create and update opportunities and projects."),
 
+    # ---- S21: management reports & clarifications ----
+    _p(Perm.MANAGEMENT_BRIEF_READ, "decisions", "view",
+       "عرض تقرير تطوير الأعمال", "View the BD management brief",
+       "عرض موجز تطوير الأعمال الشهري بمحاوره الخمسة.",
+       "View the monthly BD brief with its five axes."),
+    _p(Perm.MANAGEMENT_BRIEF_SUBMIT, "decisions", "create",
+       "إعداد تقرير تطوير الأعمال", "Author the BD management brief",
+       "إعداد وإرسال موجز تطوير الأعمال والتصعيد العاجل للمالك.",
+       "Author and submit the BD brief and raise an urgent escalation to the owner."),
+    _p(Perm.REPORT_CLARIFY, "reports", "create",
+       "طلب إيضاح على تقرير", "Request/reply to a report clarification",
+       "طلب إيضاح مرتبط بأصل التقرير دون تعديله، والرد عليه.",
+       "Raise or answer a clarification linked to a report's original without editing it."),
+
     # ---- Executions 04-14: holding accounting ----
     _p(Perm.ACCOUNT_READ, "accounting", "view",
        "عرض دليل الحسابات", "View chart of accounts",

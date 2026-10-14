@@ -14,18 +14,28 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.core.errors import ConflictError, NotFoundError, ValidationError
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
-from backend.db.models.enums import FinancialReviewStatus, ReportStatus
+from backend.db.models.enums import (
+    FinancialReviewStatus,
+    NotificationType,
+    ReportClarificationKind,
+    ReportStatus,
+)
 from backend.db.models.identity import User
-from backend.db.models.report import MonthlyReport, MonthlyReportFinancialReview
+from backend.db.models.report import (
+    MonthlyReport,
+    MonthlyReportFinancialReview,
+    ReportClarification,
+)
 from backend.rbac.authorization import require_company_access, require_permission
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import MonthlyReportRepository
-from backend.services import audit_service
+from backend.services import audit_service, notification_service
 
 
 def create_report(
@@ -355,6 +365,117 @@ def remove_attachment(
         ip_address=ip_address,
         user_agent=user_agent,
         metadata={"attachment_id": attachment_id},
+    )
+
+
+def serialise_clarification(c: "ReportClarification") -> dict:
+    return {
+        "id": c.id,
+        "report_id": c.report_id,
+        "kind": c.kind,
+        "body": c.body,
+        "author_id": c.author_id,
+        "author_name_ar": c.author.full_name_ar if c.author else None,
+        "author_name_en": (c.author.full_name_en if c.author else None),
+        "parent_id": c.parent_id,
+        "created_at": c.created_at,
+    }
+
+
+def add_clarification(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    body: str,
+    kind: str = ReportClarificationKind.REQUEST.value,
+    parent_id: int | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> "ReportClarification":
+    """Attach a clarification request/reply to a report's original (S02/S09).
+
+    The report itself is never modified. A ``request`` may be raised by a
+    holding-level reader (owner/BD) or by the company's own manager; a ``reply``
+    answers an existing request in the same report. The clarification is scoped
+    through ``_get_scoped_or_404`` so an out-of-scope report id is a 404.
+    """
+    require_permission(user, Perm.REPORT_CLARIFY)
+    report = _get_scoped_or_404(db, user, report_id)
+
+    if kind not in {k.value for k in ReportClarificationKind}:
+        raise ValidationError("Unknown clarification kind.")
+    text = (body or "").strip()
+    if not text:
+        raise ValidationError("A clarification must carry a message.")
+
+    if parent_id is not None:
+        parent = db.get(ReportClarification, parent_id)
+        if parent is None or parent.report_id != report.id:
+            raise ValidationError("The clarification being answered is not on this report.")
+    else:
+        parent = None
+
+    clarification = ReportClarification(
+        report_id=report.id,
+        kind=kind,
+        body=text,
+        author_id=user.id,
+        parent_id=parent_id,
+    )
+    db.add(clarification)
+    db.commit()
+    db.refresh(clarification)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_CLARIFICATION_ADDED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"clarification_id": clarification.id, "kind": kind},
+    )
+
+    # Notify the counterpart: a request goes to the company's author, a reply
+    # goes back to the request's author. Never expose another company's data.
+    recipients: list[int] = []
+    if kind == ReportClarificationKind.REQUEST.value and report.submitted_by_id:
+        recipients = [report.submitted_by_id]
+    elif parent is not None and parent.author_id:
+        recipients = [parent.author_id]
+    recipients = [uid for uid in recipients if uid != user.id]
+    if recipients:
+        notification_service.notify(
+            db,
+            recipient_ids=recipients,
+            type=NotificationType.SYSTEM.value,
+            title_ar="إيضاح على تقرير شهري",
+            title_en="A clarification on a monthly report",
+            message_ar=f"يوجد إيضاح مرتبط بتقرير {report.period_month}/{report.period_year}.",
+            message_en=(
+                f"There is a clarification linked to the "
+                f"{report.period_month}/{report.period_year} report."
+            ),
+            company_id=report.company_id,
+            entity_type="monthly_report",
+            entity_id=report.id,
+            actor_user_id=user.id,
+        )
+    return clarification
+
+
+def list_clarifications(db: Session, *, user: User, report_id: int) -> list["ReportClarification"]:
+    """The clarification thread for a report the caller may read."""
+    _get_scoped_or_404(db, user, report_id)
+    return list(
+        db.execute(
+            select(ReportClarification)
+            .where(ReportClarification.report_id == report_id)
+            .order_by(ReportClarification.created_at)
+        ).scalars()
     )
 
 

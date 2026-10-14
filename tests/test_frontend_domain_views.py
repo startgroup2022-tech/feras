@@ -47,6 +47,7 @@ NEW_ENDPOINTS = [
     "/api/v1/operations/advisor-reports",
     "/api/v1/operations/owner-decisions",
     "/api/v1/operations/projects",
+    "/api/v1/operations/management-briefs",
     "/api/v1/accounting/opening-balances",
     "/api/v1/accounting/accounts",
     "/api/v1/accounting/journals",
@@ -279,6 +280,34 @@ def test_motivation_admin_tab_is_gated_and_wired():
     assert "/api/v1/admin/motivation-texts" in APP_JS
     assert 'has("motivation.manage")' in APP_JS
     assert 'data-admin-action="save-motivation"' in APP_JS
+
+
+def test_management_brief_tab_is_gated_and_wired():
+    # S21: the five-axis BD brief lives under Operations, gated by its read
+    # permission, with an authoring form and a submit-to-owner action.
+    tab = re.search(r'data-ops-tab="briefs"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "management brief ops tab not found"
+    assert tab.group(1) == "management_brief.read"
+    assert 'briefs: ["management_brief.read"]' in APP_JS
+    assert "renderManagementBriefs" in APP_JS
+    assert 'has("management_brief.submit")' in APP_JS
+    assert 'data-act="brief-submit"' in APP_JS
+    for axis in (
+        "axis_companies", "axis_projects", "axis_employees",
+        "axis_risks", "axis_decisions",
+    ):
+        assert axis in APP_JS, f"brief form missing {axis}"
+
+
+def test_report_detail_wires_the_clarification_thread():
+    # S02/S09: the report modal lists clarifications linked to the original and
+    # offers the composer only to a holder of monthly_report.clarify.
+    assert 'id="repClarify"' in APP_JS
+    assert "loadClarifications" in APP_JS
+    assert "/clarifications" in APP_JS
+    assert 'has("monthly_report.clarify")' in APP_JS
+    assert 'dual("طلب إيضاح", "Request clarification")' in APP_JS
+    assert 'dual("الإيضاحات المرتبطة بالأصل", "Clarifications linked to the original")' in APP_JS
 
 
 def test_lead_detail_wires_the_independent_manager_note():

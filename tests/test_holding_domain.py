@@ -51,7 +51,7 @@ def test_new_permissions_are_catalogued_with_metadata():
     from backend.rbac.permissions import ALL_PERMISSIONS
 
     assert permission_metadata.unknown_codes() == []
-    assert len(ALL_PERMISSIONS) == 156
+    assert len(ALL_PERMISSIONS) == 159
 
 
 def test_external_consultant_role_is_not_holding_wide():

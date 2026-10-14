@@ -48,6 +48,8 @@ class AuditAction:
     REPORT_FINANCIAL_REVIEWED = "monthly_report.financial_reviewed"
     REPORT_ATTACHMENT_ADDED = "monthly_report.attachment_added"
     REPORT_ATTACHMENT_REMOVED = "monthly_report.attachment_removed"
+    # S02/S09: a clarification request/reply linked to a report's original.
+    REPORT_CLARIFICATION_ADDED = "monthly_report.clarification_added"
 
     # Execution 02: subsidiary financial summary workflow
     FINANCIAL_PERIOD_CREATED = "financial_period.created"
@@ -209,6 +211,11 @@ class AuditAction:
 
     OWNER_DECISION_CREATED = "owner_decision.created"
     OWNER_DECISION_UPDATED = "owner_decision.updated"
+
+    # S21: the BD five-axis management brief.
+    MANAGEMENT_BRIEF_CREATED = "management_brief.created"
+    MANAGEMENT_BRIEF_UPDATED = "management_brief.updated"
+    MANAGEMENT_BRIEF_SUBMITTED = "management_brief.submitted"
 
     PROJECT_RECORD_CREATED = "project_record.created"
     PROJECT_RECORD_UPDATED = "project_record.updated"

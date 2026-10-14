@@ -14,6 +14,7 @@ from backend.schemas.domain import (
     CampaignUpdateRequest,
     ComplaintCreateRequest,
     ComplaintDecisionRequest,
+    ManagementBriefSaveRequest,
     OwnerDecisionCreateRequest,
     OwnerDecisionUpdateRequest,
     ProjectRecordCreateRequest,
@@ -356,3 +357,40 @@ def update_project_record(
         db, user=user, record_id=record_id, changes=changes, **ctx,
     )
     return operations_service.serialise_project_record(record)
+
+
+# ---- management reports: the BD five-axis brief (S21) ----
+@router.get("/management-briefs")
+def list_management_briefs(
+    user: CurrentUser, db: DbSession,
+    period_year: int | None = None, period_month: int | None = None,
+) -> list[dict]:
+    return [
+        operations_service.serialise_management_brief(b)
+        for b in operations_service.list_management_briefs(
+            db, user=user, period_year=period_year, period_month=period_month,
+        )
+    ]
+
+
+@router.post("/management-briefs", status_code=status.HTTP_201_CREATED)
+def save_management_brief(
+    payload: ManagementBriefSaveRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    data = payload.model_dump()
+    data["urgency"] = payload.urgency.value
+    brief = operations_service.save_management_brief(db, user=user, **data, **ctx)
+    return operations_service.serialise_management_brief(brief)
+
+
+@router.post("/management-briefs/{brief_id}/submit")
+def submit_management_brief(
+    brief_id: int, request: Request, user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    brief = operations_service.submit_management_brief(
+        db, user=user, brief_id=brief_id, **ctx,
+    )
+    return operations_service.serialise_management_brief(brief)

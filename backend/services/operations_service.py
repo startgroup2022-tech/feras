@@ -23,12 +23,16 @@ from backend.db.models.enums import (
     AdvisorSessionStatus,
     CampaignStatus,
     ComplaintStatus,
+    ManagementBriefStatus,
+    ManagementBriefUrgency,
+    NotificationPriority,
+    NotificationType,
     OwnerDecisionStatus,
     ProjectRecordType,
     TaskLifecycleStatus,
     WeeklyReportStatus,
 )
-from backend.db.models.identity import User
+from backend.db.models.identity import Role, RoleCode, User
 from backend.db.models.operations import (
     WEEKLY_REPORT_MAX_QUESTIONS,
     AdvisorAssignment,
@@ -36,6 +40,7 @@ from backend.db.models.operations import (
     AdvisorySession,
     Campaign,
     Complaint,
+    ManagementBrief,
     OwnerDecision,
     OwnerDecisionEvent,
     ProjectRecord,
@@ -53,7 +58,7 @@ from backend.rbac.authorization import (
     require_permission,
 )
 from backend.rbac.permissions import Perm
-from backend.services import audit_service, confidential_access_service
+from backend.services import audit_service, confidential_access_service, notification_service
 
 # D03 lifecycle transitions. Return / Cancel / Reopen are explicit edges.
 TASK_TRANSITIONS: dict[str, set[str]] = {
@@ -927,4 +932,200 @@ def serialise_project_record(r: ProjectRecord) -> dict:
         "estimated_value": r.estimated_value, "currency": r.currency,
         "status": r.status, "owner_decision_id": r.owner_decision_id,
         "created_by_id": r.created_by_id, "created_at": r.created_at,
+    }
+
+
+# --------------------------------------------------------------------------
+# management reports: the BD five-axis brief (S21)
+# --------------------------------------------------------------------------
+# Spec §16 Table 71 / §9 S21: the brief's five axes are fixed by the
+# specification; only the indicator *definitions* inside them are gated by D02,
+# so the axes are free text and no metric is computed here.
+BRIEF_AXIS_FIELDS = (
+    "axis_companies",
+    "axis_projects",
+    "axis_employees",
+    "axis_risks",
+    "axis_decisions",
+)
+# A fixed output test requires the executive summary to fit within half a page.
+MAX_BRIEF_SUMMARY_CHARS = 2000
+
+
+def _owner_recipient_ids(db: Session) -> list[int]:
+    """Active Holding Owner / superuser ids (the brief's sole reader)."""
+    return list(
+        db.execute(
+            select(User.id)
+            .join(Role, Role.id == User.role_id)
+            .where(
+                User.is_active.is_(True),
+                (User.is_superuser.is_(True)) | (Role.code == RoleCode.HOLDING_OWNER.value),
+            )
+        ).scalars()
+    )
+
+
+def _validate_brief_period(period_year: int, period_month: int) -> None:
+    if not (2000 <= period_year <= 2100):
+        raise ValidationError("The period year must be between 2000 and 2100.")
+    if not (1 <= period_month <= 12):
+        raise ValidationError("The period month must be between 1 and 12.")
+
+
+def save_management_brief(
+    db: Session, *, user: User, period_year: int, period_month: int,
+    executive_summary: str | None = None, axis_companies: str | None = None,
+    axis_projects: str | None = None, axis_employees: str | None = None,
+    axis_risks: str | None = None, axis_decisions: str | None = None,
+    source_report_ids: list[int] | None = None, urgency: str | None = None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> ManagementBrief:
+    """Create or update the caller's draft brief for a period (S21).
+
+    The brief is the author's own; ``created_by_id`` is set from the session and
+    a caller never edits someone else's brief. The source reports are stored as
+    ids only -- the originals are never copied or modified.
+    """
+    require_permission(user, Perm.MANAGEMENT_BRIEF_SUBMIT)
+    _validate_brief_period(period_year, period_month)
+
+    if executive_summary is not None and len(executive_summary) > MAX_BRIEF_SUMMARY_CHARS:
+        raise ValidationError(
+            f"The executive summary must not exceed {MAX_BRIEF_SUMMARY_CHARS} characters."
+        )
+    if urgency is not None and urgency not in {u.value for u in ManagementBriefUrgency}:
+        raise ValidationError("Unknown brief urgency.")
+
+    brief = db.execute(
+        select(ManagementBrief).where(
+            ManagementBrief.period_year == period_year,
+            ManagementBrief.period_month == period_month,
+            ManagementBrief.created_by_id == user.id,
+        )
+    ).scalar_one_or_none()
+    created = brief is None
+    if brief is None:
+        brief = ManagementBrief(
+            period_year=period_year, period_month=period_month, created_by_id=user.id
+        )
+        db.add(brief)
+
+    for field, value in (
+        ("executive_summary", executive_summary),
+        ("axis_companies", axis_companies),
+        ("axis_projects", axis_projects),
+        ("axis_employees", axis_employees),
+        ("axis_risks", axis_risks),
+        ("axis_decisions", axis_decisions),
+        ("urgency", urgency),
+    ):
+        if value is not None:
+            setattr(brief, field, value)
+    if source_report_ids is not None:
+        brief.source_report_ids = ",".join(str(int(i)) for i in source_report_ids)
+
+    db.add(brief)
+    db.commit()
+    db.refresh(brief)
+
+    audit_service.record(
+        db,
+        action=AuditAction.MANAGEMENT_BRIEF_CREATED if created else AuditAction.MANAGEMENT_BRIEF_UPDATED,
+        actor_user_id=user.id, entity_type="management_brief", entity_id=brief.id,
+        ip_address=ip_address, user_agent=user_agent,
+        metadata={"period": f"{period_year}-{period_month:02d}"},
+    )
+    return brief
+
+
+def submit_management_brief(
+    db: Session, *, user: User, brief_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> ManagementBrief:
+    """Submit the caller's own brief to the owner (routine or urgent).
+
+    An urgent escalation notifies the owner immediately; a routine monthly brief
+    also notifies the owner, but the spec's point is that an urgent item never
+    waits for month-end. The brief's author is the only one who may submit it.
+    """
+    require_permission(user, Perm.MANAGEMENT_BRIEF_SUBMIT)
+    brief = db.get(ManagementBrief, brief_id)
+    if brief is None or brief.created_by_id != user.id:
+        raise NotFoundError("Management brief not found.")
+
+    brief.status = ManagementBriefStatus.SUBMITTED.value
+    brief.submitted_at = utcnow()
+    db.add(brief)
+    db.commit()
+    db.refresh(brief)
+
+    audit_service.record(
+        db, action=AuditAction.MANAGEMENT_BRIEF_SUBMITTED, actor_user_id=user.id,
+        entity_type="management_brief", entity_id=brief.id,
+        ip_address=ip_address, user_agent=user_agent,
+        metadata={"urgency": brief.urgency},
+    )
+
+    urgent = brief.urgency == ManagementBriefUrgency.URGENT.value
+    notification_service.notify(
+        db,
+        recipient_ids=_owner_recipient_ids(db),
+        type=NotificationType.SYSTEM.value,
+        title_ar="تصعيد عاجل من تطوير الأعمال" if urgent else "تقرير تطوير الأعمال الشهري",
+        title_en="Urgent escalation from Business Development" if urgent else "Monthly Business Development brief",
+        message_ar=(
+            f"موجز {brief.period_month}/{brief.period_year} "
+            + ("عاجل بانتظار قرارك." if urgent else "أُرسل للاطلاع.")
+        ),
+        message_en=(
+            f"The {brief.period_month}/{brief.period_year} brief "
+            + ("is urgent and awaits your decision." if urgent else "was submitted for review.")
+        ),
+        priority=NotificationPriority.HIGH.value if urgent else NotificationPriority.NORMAL.value,
+        entity_type="management_brief", entity_id=brief.id,
+        actor_user_id=user.id,
+    )
+    return brief
+
+
+def list_management_briefs(
+    db: Session, *, user: User, period_year: int | None = None,
+    period_month: int | None = None,
+) -> list[ManagementBrief]:
+    require_permission(user, Perm.MANAGEMENT_BRIEF_READ)
+    stmt = select(ManagementBrief).order_by(
+        ManagementBrief.period_year.desc(), ManagementBrief.period_month.desc()
+    )
+    # An author (BD) sees only their own briefs; the owner reads every brief and
+    # the accountant reads as a holding-level reviewer. A user who can author but
+    # is not the owner is treated as an author, so one BD never reads another's
+    # draft. A reader without the author permission always sees the full set.
+    owner_codes = {RoleCode.HOLDING_OWNER.value, RoleCode.SUPER_ADMIN.value}
+    author_only = (
+        has_any_permission(user, Perm.MANAGEMENT_BRIEF_SUBMIT)
+        and user.role_code not in owner_codes
+    )
+    if author_only:
+        stmt = stmt.where(ManagementBrief.created_by_id == user.id)
+    if period_year is not None:
+        stmt = stmt.where(ManagementBrief.period_year == period_year)
+    if period_month is not None:
+        stmt = stmt.where(ManagementBrief.period_month == period_month)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_management_brief(b: ManagementBrief) -> dict:
+    return {
+        "id": b.id, "period_year": b.period_year, "period_month": b.period_month,
+        "status": b.status, "urgency": b.urgency,
+        "executive_summary": b.executive_summary,
+        "axis_companies": b.axis_companies, "axis_projects": b.axis_projects,
+        "axis_employees": b.axis_employees, "axis_risks": b.axis_risks,
+        "axis_decisions": b.axis_decisions,
+        "source_report_ids": [
+            int(x) for x in (b.source_report_ids or "").split(",") if x.strip()
+        ],
+        "submitted_at": b.submitted_at, "created_by_id": b.created_by_id,
+        "created_at": b.created_at,
     }

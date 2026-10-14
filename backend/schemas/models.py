@@ -30,6 +30,7 @@ from backend.db.models.enums import (
     HoldingStatus,
     OwnershipStatus,
     PositionStatus,
+    ReportClarificationKind,
     SupportCategory,
     SupportStatus,
 )
@@ -349,6 +350,14 @@ class FinancialReviewRequest(BaseModel):
         ):
             raise ValueError("A reason is required when financial data is not accurate.")
         return self
+
+
+class ReportClarificationRequest(BaseModel):
+    """A clarification request/reply linked to a report's original (S02/S09)."""
+
+    body: str = Field(min_length=1, max_length=4000)
+    kind: ReportClarificationKind = ReportClarificationKind.REQUEST
+    parent_id: int | None = None
 
 
 # --------------------------------------------------------------------------

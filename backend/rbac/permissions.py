@@ -204,6 +204,12 @@ class Perm:
     # Projects & opportunities (S20)
     PROJECT_READ = "project.read"
     PROJECT_MANAGE = "project.manage"
+    # Management reports & clarifications (S21 / S02 / S09). The five-axis brief
+    # is a BD deliverable read by the owner; clarifications are linked to a
+    # report's original without editing it.
+    MANAGEMENT_BRIEF_READ = "management_brief.read"
+    MANAGEMENT_BRIEF_SUBMIT = "management_brief.submit"
+    REPORT_CLARIFY = "monthly_report.clarify"
     # Holding accounting (S26-S28 / D01 / D07)
     ACCOUNT_READ = "account.read"
     ACCOUNT_MANAGE = "account.manage"
@@ -387,6 +393,10 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.KPI_MANAGE: "Manage KPI definitions",
     Perm.NOTIFICATION_PREFERENCE_MANAGE: "Change your notification preferences",
     Perm.CONFIDENTIAL_ACCESS_MANAGE: "Delegate access to confidential records",
+    # Management reports & clarifications (S21 / S02 / S09)
+    Perm.MANAGEMENT_BRIEF_READ: "View the BD management brief",
+    Perm.MANAGEMENT_BRIEF_SUBMIT: "Author and submit the BD management brief",
+    Perm.REPORT_CLARIFY: "Raise or answer a report clarification",
 }
 
 
@@ -417,6 +427,9 @@ _HOLDING_READ = {
     Perm.ANALYTICS_OPERATIONS,
     Perm.ANALYTICS_COMPLIANCE,
     Perm.ANALYTICS_EXPORT,
+    # S02/S09: a holding-level reader (owner/BD) may ask a clarification that is
+    # linked to a report's original without editing it.
+    Perm.REPORT_CLARIFY,
 }
 
 # Every role that can *operate* the dynamic platform (read forms/submissions
@@ -621,6 +634,8 @@ COMPANY_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     # reads it. Leads stay Holding-level (see website.py), so this grants the
     # write only -- visibility is still governed by website_lead.read.
     Perm.LEAD_MANAGER_NOTE,
+    # S02/S09: the company replies to a clarification linked to its report.
+    Perm.REPORT_CLARIFY,
 }
 
 ACCOUNTANT = _OPERATOR_READ | {
@@ -741,6 +756,12 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.OWNER_DECISION_READ,
     Perm.PROJECT_READ,
     Perm.PROJECT_MANAGE,
+    # S21: BD authors the five-axis monthly brief and can raise a clarification
+    # against a company's original report (without editing it).
+    Perm.MANAGEMENT_BRIEF_READ,
+    Perm.MANAGEMENT_BRIEF_SUBMIT,
+    Perm.REPORT_CLARIFY,
+    Perm.REPORT_READ_ALL,
     Perm.OPENING_BALANCE_READ,
     Perm.ACCOUNT_READ,
     Perm.JOURNAL_READ,
@@ -752,6 +773,9 @@ BUSINESS_DEVELOPMENT_EXT = {
 
 # Accountant: the holding accounts surface (D01) plus budget approval input.
 ACCOUNTANT_EXT = {
+    # S21: the accountant reads the management brief (the spec lists the
+    # accountant's financial reports alongside it), but does not author it.
+    Perm.MANAGEMENT_BRIEF_READ,
     Perm.OPENING_BALANCE_READ,
     Perm.OPENING_BALANCE_MANAGE,
     Perm.OPENING_BALANCE_APPROVE,

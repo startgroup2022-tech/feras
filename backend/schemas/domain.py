@@ -23,6 +23,7 @@ from backend.db.models.enums import (
     EmployeeMovementType,
     EmployeeStatus,
     JournalStatus,
+    ManagementBriefUrgency,
     MovementStatus,
     OpeningBalanceKind,
     OwnerDecisionStatus,
@@ -320,6 +321,25 @@ class ProjectRecordUpdateRequest(BaseModel):
     currency: str | None = Field(default=None, max_length=8)
     status: str | None = Field(default=None, max_length=20)
     owner_decision_id: int | None = None
+
+
+# --------------------------------------------------------------------------
+# management reports: the BD five-axis brief (S21)
+# --------------------------------------------------------------------------
+class ManagementBriefSaveRequest(BaseModel):
+    """Draft payload for the BD brief. The five axes are free text (D02 gates
+    only the indicator definitions, so no metric is computed here)."""
+
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    executive_summary: str | None = Field(default=None, max_length=2000)
+    axis_companies: str | None = Field(default=None, max_length=8000)
+    axis_projects: str | None = Field(default=None, max_length=8000)
+    axis_employees: str | None = Field(default=None, max_length=8000)
+    axis_risks: str | None = Field(default=None, max_length=8000)
+    axis_decisions: str | None = Field(default=None, max_length=8000)
+    source_report_ids: list[int] | None = None
+    urgency: ManagementBriefUrgency = ManagementBriefUrgency.MONTHLY
 
 
 # --------------------------------------------------------------------------

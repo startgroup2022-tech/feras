@@ -26,7 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
-from backend.db.models.enums import FinancialReviewStatus, ReportStatus
+from backend.db.models.enums import FinancialReviewStatus, ReportClarificationKind, ReportStatus
 
 if TYPE_CHECKING:
     from backend.db.models.identity import Company, User
@@ -82,6 +82,50 @@ class MonthlyReport(Base, TimestampMixin):
     )
     attachments: Mapped[list["MonthlyReportAttachment"]] = relationship(
         back_populates="report", cascade="all, delete-orphan"
+    )
+    clarifications: Mapped[list["ReportClarification"]] = relationship(
+        back_populates="report", cascade="all, delete-orphan"
+    )
+
+
+class ReportClarification(Base, TimestampMixin):
+    """A clarification thread linked to a report's original (S02/S09).
+
+    Spec §6 S02 Table 15 ("طلب إيضاح: ينشئ ملاحظة مرتبطة بالأصل دون تغييره")
+    and S09 Table 43 ("رد على إيضاح: يحفظ جوابًا مرتبطًا بالأصل"): a reader
+    (the owner or business development) may ask a question about a submitted
+    report and the company's author answers it. The clarification is a *separate
+    record*: the report's figures and narrative are never touched, and the
+    original stays exactly as submitted.
+
+    A ``reply`` may point at the ``request`` it answers via ``parent_id``.
+    """
+
+    __tablename__ = "report_clarifications"
+    __table_args__ = (
+        Index("ix_report_clarifications_report", "report_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("monthly_reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ReportClarificationKind.REQUEST.value
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    author_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # The request a reply answers, when applicable.
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("report_clarifications.id", ondelete="SET NULL"), nullable=True
+    )
+
+    report: Mapped[MonthlyReport] = relationship(back_populates="clarifications")
+    author: Mapped["User | None"] = relationship(foreign_keys=[author_id])
+    parent: Mapped["ReportClarification | None"] = relationship(
+        remote_side=[id], foreign_keys=[parent_id]
     )
 
 

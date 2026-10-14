@@ -688,6 +688,42 @@ class ProjectRecordType(str, enum.Enum):
     PROJECT = "project"
 
 
+class ManagementBriefStatus(str, enum.Enum):
+    """S21: the BD monthly management brief lifecycle.
+
+    A brief is authored as a draft and explicitly submitted to the owner. The
+    five axes themselves are fixed by the specification; only the *indicator
+    definitions* inside them are gated by D02, so the axis text is free text and
+    no invented metric is computed.
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
+class ManagementBriefUrgency(str, enum.Enum):
+    """S21: whether a brief is a routine monthly report or an urgent escalation.
+
+    The spec (§9 S21, Table 35) requires an urgent escalation to reach the owner
+    immediately rather than waiting for the month's end.
+    """
+
+    MONTHLY = "monthly"
+    URGENT = "urgent"
+
+
+class ReportClarificationKind(str, enum.Enum):
+    """S02/S09: a clarification request is linked to the report's original.
+
+    ``request`` is raised by a reader (owner or BD) against the submitted
+    original; ``reply`` is the company's linked answer. Neither ever edits the
+    report's numbers or narrative.
+    """
+
+    REQUEST = "request"
+    REPLY = "reply"
+
+
 class ConfidentialSubjectType(str, enum.Enum):
     """D04: the entity a delegated confidential-access grant covers."""
 

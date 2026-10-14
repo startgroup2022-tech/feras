@@ -134,7 +134,8 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the advisor monthly reports (S19) build on the
+    # A single linear chain: the management reports & clarifications (S21/S02/
+    # S09) build on the advisor monthly reports (S19), which build on the
     # support design metadata and external delivery (S16), which builds on the
     # projects & opportunities register (S20), which builds on the
     # motivational sentence library (S01), which builds on the
@@ -145,7 +146,8 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the bilingual role description, which builds on branding, which builds on
     # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
     # on phase 2, which builds on the initial schema -- no branches.
-    assert head == "e3f4a5b6c7d8"
+    assert head == "f1a2b3c4d5e6"
+    assert revisions["f1a2b3c4d5e6"] == "e3f4a5b6c7d8"
     assert revisions["e3f4a5b6c7d8"] == "d2e3f4a5b6c7"
     assert revisions["d2e3f4a5b6c7"] == "c9d0e1f2a3b4"
     assert revisions["c9d0e1f2a3b4"] == "b8c9d0e1f2a3"
