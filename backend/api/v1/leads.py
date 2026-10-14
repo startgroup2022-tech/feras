@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from backend.api.deps import CurrentUser, DbSession, require
 from backend.rbac.permissions import Perm
 from backend.schemas import (
+    LeadNoteCreateRequest,
+    LeadNoteOut,
     LeadOut,
     LeadStatsOut,
     LeadUpdateRequest,
@@ -96,6 +98,36 @@ def update_lead(
         user_agent=ctx["user_agent"],
     )
     return LeadOut(**website_lead_service.serialise_lead(lead))
+
+
+@router.get("/{lead_id}/notes", response_model=list[LeadNoteOut])
+def list_lead_notes(
+    lead_id: int, db: DbSession, user=Depends(require(Perm.LEAD_READ))
+) -> list[LeadNoteOut]:
+    """Independent manager notes (S13), newest first. Marketing may read them."""
+    rows = website_lead_service.list_lead_notes(db, user=user, lead_id=lead_id)
+    return [LeadNoteOut(**row) for row in rows]
+
+
+@router.post("/{lead_id}/notes", response_model=LeadNoteOut, status_code=201)
+def add_lead_note(
+    lead_id: int,
+    payload: LeadNoteCreateRequest,
+    request: Request,
+    db: DbSession,
+    user=Depends(require(Perm.LEAD_MANAGER_NOTE)),
+) -> LeadNoteOut:
+    """Write the manager note. Gated by ``website_lead.manager_note``."""
+    ctx = audit_service.request_context(request)
+    row = website_lead_service.add_lead_note(
+        db,
+        user=user,
+        lead_id=lead_id,
+        body=payload.body,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return LeadNoteOut(**row)
 
 
 @router.post("/opportunities/{opportunity_id}/review", response_model=dict)

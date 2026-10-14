@@ -179,6 +179,14 @@ class DepartmentStatus(str, enum.Enum):
     INACTIVE = "inactive"
 
 
+class PositionStatus(str, enum.Enum):
+    """Lifecycle of an organisational position (S24)."""
+
+    ACTIVE = "active"
+    VACANT = "vacant"
+    INACTIVE = "inactive"
+
+
 class HoldingStatus(str, enum.Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"

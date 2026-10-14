@@ -136,6 +136,36 @@ class WebsiteLead(Base, TimestampMixin):
     attachments: Mapped[list["WebsiteLeadAttachment"]] = relationship(
         back_populates="lead", cascade="all, delete-orphan"
     )
+    notes: Mapped[list["LeadNote"]] = relationship(
+        back_populates="lead", cascade="all, delete-orphan"
+    )
+
+
+class LeadNote(Base, TimestampMixin):
+    """An independent manager note on a lead (S13).
+
+    The spec is explicit (Table 58 / AC-13): "the manager writes and marketing
+    reads". This is a *separate* record from the marketing-authored
+    ``internal_notes`` on the lead itself, so marketing can never overwrite the
+    manager's note -- the two live in different columns and different tables.
+    Writes require ``website_lead.manager_note`` (company manager and owner);
+    marketing has ``website_lead.read`` and sees the notes read-only.
+    """
+
+    __tablename__ = "lead_notes"
+    __table_args__ = (Index("ix_lead_notes_lead", "lead_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lead_id: Mapped[int] = mapped_column(
+        ForeignKey("website_leads.id", ondelete="CASCADE"), nullable=False
+    )
+    author_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    lead: Mapped[WebsiteLead] = relationship(back_populates="notes")
+    author: Mapped["User | None"] = relationship(foreign_keys=[author_id])
 
 
 class WebsiteLeadAttachment(Base, TimestampMixin):

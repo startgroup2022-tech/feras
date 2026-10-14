@@ -20,6 +20,7 @@ from backend.schemas import (
     CompanyPerformanceOut,
     DashboardKpis,
     DashboardResponse,
+    MotivationTextOut,
     PeriodChangeOut,
 )
 from backend.services import dashboard_service
@@ -51,6 +52,9 @@ def _response(data: dict, *, scope: str, company_id: int | None, year: int, mont
             AttentionCompanyOut.model_validate(c)
             for c in data["companies_requiring_attention"]
         ],
+        motivation=(
+            MotivationTextOut(**data["motivation"]) if data.get("motivation") else None
+        ),
     )
 
 

@@ -124,6 +124,7 @@
     },
     "ph.shortTitle": { ar: "عنوان مختصر", en: "Short title" },
     "ph.companyCode": { ar: "مثال: FIN", en: "e.g. FIN" },
+    "ph.roleCode": { ar: "اتركه فارغًا للجميع", en: "leave empty for all roles" },
     "ph.integrationName": { ar: "مزامنة CRM", en: "CRM sync" },
     "ph.endpointUrl": {
       ar: "https://hooks.example.com/safir",
@@ -4502,6 +4503,27 @@
         kv(dual("التاريخ", "Created"), fmtDateTime(lead.created_at)) +
         "</div>";
 
+      // S13: the independent manager note. Marketing reads it; only a holder of
+      // website_lead.manager_note (company manager / owner) gets the composer.
+      var notes = lead.manager_notes || [];
+      var notesBlock =
+        '<h3 style="margin-top:16px">' + dual("ملاحظات المدير", "Manager notes") + "</h3>" +
+        (notes.length
+          ? '<div class="kv">' + notes.map(function (n) {
+              return '<div style="padding:8px 0;border-bottom:1px solid var(--line-2)">' +
+                '<div>' + escapeHtml(n.body) + "</div>" +
+                '<div style="font-size:11px;color:var(--ink-400);margin-top:3px">' +
+                escapeHtml((STATE.lang === "ar" ? n.author_name_ar : n.author_name_en) || n.author_name_ar || "") +
+                " · " + fmtDateTime(n.created_at) + "</div></div>";
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("لا توجد ملاحظات.", "No notes.") + "</p>") +
+        (has("website_lead.manager_note")
+          ? '<div style="margin-top:10px"><textarea class="av-textarea" id="leadNoteBody" rows="3" placeholder="' +
+            escAttr(STATE.lang === "ar" ? "اكتب ملاحظة المتابعة" : "Write a follow-up note") + '"></textarea>' +
+            '<div class="av-form-actions"><button class="btn-solid" id="leadNoteAdd">' +
+            dual("إضافة ملاحظة", "Add note") + "</button></div></div>"
+          : "");
+
       var body =
         contact +
         (detailRows
@@ -4513,6 +4535,7 @@
         (lead.message
           ? '<h3 style="margin-top:16px">' + dual("رسالة", "Message") + "</h3><p>" + escapeHtml(lead.message) + "</p>"
           : "") +
+        notesBlock +
         (has("website_lead.manage")
           ? '<h3 style="margin-top:16px">' + dual("تحديث الطلب", "Update lead") + "</h3>" +
             '<div class="modal-foot" style="border-radius:12px;border:1px solid var(--line-2)">' +
@@ -4540,6 +4563,28 @@
         title: escapeHtml(lead.full_name) + " · " + escapeHtml(lead.reference),
         body: body,
       });
+
+      var noteBtn = byId("leadNoteAdd");
+      if (noteBtn) {
+        noteBtn.addEventListener("click", function () {
+          var bodyEl = byId("leadNoteBody");
+          var text = bodyEl ? bodyEl.value.trim() : "";
+          if (!text) {
+            toast(STATE.lang === "ar" ? "اكتب الملاحظة أولًا." : "Write the note first.", "err");
+            return;
+          }
+          busy(noteBtn, true);
+          post("/api/v1/leads/" + id + "/notes", { body: text })
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تمت إضافة الملاحظة." : "Note added.", "ok");
+              return openLead(id);
+            })
+            .catch(function (err) {
+              busy(noteBtn, false);
+              toast(err && err.message ? err.message : STATE.lang === "ar" ? "تعذّرت الإضافة." : "Could not add the note.", "err");
+            });
+        });
+      }
 
       var saveBtn = byId("leadSave");
       if (saveBtn) {
@@ -6247,14 +6292,16 @@
       .catch(function (err) { domainError(err); busy(el, false); });
   }
 
-  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "users", "roles", "website", "builder", "workflows", "integrations", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "positions", "users", "roles", "motivation", "website", "builder", "workflows", "integrations", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
     departments: ["department.read"],
     sectors: ["sector.read"],
+    positions: ["position.read"],
     users: ["user.read_all"],
     roles: ["role.read"],
+    motivation: ["motivation.read"],
     website: ["website.content.read"],
     builder: ["form.read", "form.create"],
     workflows: ["workflow.read"],
@@ -6312,8 +6359,10 @@
     if (tab === "companies") return renderAdminCompanies();
     if (tab === "departments") return renderAdminDepartments();
     if (tab === "sectors") return renderAdminSectors();
+    if (tab === "positions") return renderAdminPositions();
     if (tab === "users") return renderAdminUsers();
     if (tab === "roles") return renderAdminRoles();
+    if (tab === "motivation") return renderAdminMotivation();
     if (tab === "website") return renderAdminWebsite();
     if (tab === "builder") return renderAdminBuilder();
     if (tab === "workflows") return renderAdminWorkflows();
@@ -6687,6 +6736,101 @@
           "</div>");
     });
   }
+  // ---- tab: positions (S24) ----
+  //
+  // Company-scoped nodes in the organisation chart. Reads need position.read;
+  // writes need position.manage. The department picker only offers departments
+  // of the selected company, and the reporting-line picker only offers
+  // positions of the same company -- mirroring the server-side invariant that a
+  // position never crosses a company boundary.
+  function renderAdminPositions() {
+    var host = byId("adminContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/admin/positions").catch(function () { return []; }),
+      get("/api/v1/admin/departments").catch(function () { return []; }),
+    ]).then(function (res) {
+      var companies = res[0];
+      var positions = res[1];
+      var departments = res[2];
+      var editable = has("position.manage");
+      var companyOptions = companies.map(function (c) { return { value: c.id, label: companyName(c) }; });
+
+      function deptOptionsFor(companyId) {
+        return [{ value: "", label: "—" }].concat(
+          departments
+            .filter(function (d) { return String(d.company_id) === String(companyId); })
+            .map(function (d) { return { value: d.id, label: d.code + " · " + (STATE.lang === "ar" ? d.name_ar : d.name_en || d.name_ar) }; })
+        );
+      }
+      function parentOptionsFor(companyId) {
+        return [{ value: "", label: "—" }].concat(
+          positions
+            .filter(function (p) { return String(p.company_id) === String(companyId); })
+            .map(function (p) { return { value: p.id, label: p.code + " · " + (STATE.lang === "ar" ? p.title_ar : p.title_en) }; })
+        );
+      }
+
+      var createForm = editable
+        ? '<form class="av-form av-form-inline" id="positionForm">' +
+          field("الشركة", "Company", selectInput("posCompany", companyOptions, companies.length ? companies[0].id : "")) +
+          field("الكود", "Code", textInput("posCode", "", "ph.companyCode")) +
+          field("المسمى (عربي)", "Title (AR)", textInput("posTitleAr", "")) +
+          field("المسمى (إنجليزي)", "Title (EN)", textInput("posTitleEn", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة منصب", "Add position") + "</button></div></form>"
+        : "";
+
+      var list = positions.length
+        ? '<div class="av-list">' + positions.map(function (p) {
+            var body =
+              '<div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' +
+              escapeHtml(STATE.lang === "ar" ? p.title_ar : p.title_en || p.title_ar) + "</div>" +
+              '<div class="s">' + escapeHtml(p.code) + " · " +
+              escapeHtml(STATE.lang === "ar" ? p.company_name_ar || "" : p.company_name_en || p.company_name_ar || "") +
+              (p.department_name_en || p.department_name_ar
+                ? " · " + escapeHtml(STATE.lang === "ar" ? p.department_name_ar || "" : p.department_name_en || p.department_name_ar || "")
+                : "") +
+              (p.reports_to_title_en || p.reports_to_title_ar
+                ? " · " + dual("يتبع", "reports to") + " " + escapeHtml(STATE.lang === "ar" ? p.reports_to_title_ar || "" : p.reports_to_title_en || p.reports_to_title_ar || "")
+                : "") +
+              "</div></div>" +
+              '<span class="status ' + (p.status === "active" ? "ok" : "warn") + '"><i></i>' +
+              (p.status === "active" ? dual("نشط", "Active") : dual("موقوف", "Inactive")) + "</span></div>";
+            if (!editable) {
+              return '<div class="av-row" style="cursor:default">' + body + "</div>";
+            }
+            return (
+              '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+              body +
+              '<form class="av-form" id="positionForm' + p.id + '">' +
+              field("المسمى (عربي)", "Title (AR)", textInput("posTitleAr" + p.id, p.title_ar)) +
+              field("المسمى (إنجليزي)", "Title (EN)", textInput("posTitleEn" + p.id, p.title_en)) +
+              field("القسم", "Department", selectInput("posDept" + p.id, deptOptionsFor(p.company_id), p.department_id || "")) +
+              field("يتبع منصب", "Reports to", selectInput("posParent" + p.id, parentOptionsFor(p.company_id), p.reports_to_position_id || "")) +
+              field("الحالة", "Status", selectInput("posStatus" + p.id, [
+                { value: "active", label: opt("نشط", "Active") },
+                { value: "inactive", label: opt("موقوف", "Inactive") },
+              ], p.status)) +
+              '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="save-position" data-id="' + p.id + '">' +
+              dual("حفظ", "Save") + "</button></div></form></div>"
+            );
+          }).join("") + "</div>"
+        : '<p class="av-empty">' + dual("لا توجد مناصب.", "No positions.") + "</p>";
+
+      host.innerHTML =
+        createForm +
+        adminPanel("الهيكل الوظيفي", "Positions", list) +
+        adminPanel("ملخص", "Summary", '<div class="kv">' +
+          kv(dual("عدد المناصب", "Positions"), plainNum(positions.length)) +
+          kv(dual("المناصب النشطة", "Active"), plainNum(positions.filter(function (p) { return p.status === "active"; }).length)) +
+          kv(dual("الشركات في النطاق", "Companies in scope"), plainNum(companies.length)) +
+          "</div>");
+    });
+  }
+
+
 
   // ---- tab: users ----
   function renderAdminUsers() {
@@ -7164,6 +7308,70 @@
       if (count) count.textContent = on + " / " + boxes.length;
     });
   }
+
+  // ---- tab: motivational sentence library (S01) ----
+  //
+  // A small bilingual library the owner edits; each dashboard shows one active
+  // sentence chosen for the viewer's role (falling back to a role-agnostic
+  // row). Reads need motivation.read, writes need motivation.manage.
+  function renderAdminMotivation() {
+    var host = byId("adminContent");
+    return get("/api/v1/admin/motivation-texts?include_inactive=true")
+      .catch(function () { return []; })
+      .then(function (items) {
+        var editable = has("motivation.manage");
+        var createForm = editable
+          ? '<form class="av-form av-form-inline" id="motivationForm">' +
+            field("النص (عربي)", "Text (AR)", textInput("motTextAr", "")) +
+            field("النص (إنجليزي)", "Text (EN)", textInput("motTextEn", "")) +
+            field("الدور المستهدف", "Target role", textInput("motRole", "", "ph.roleCode")) +
+            field("الترتيب", "Order", numInput("motOrder", 0)) +
+            '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+            dual("إضافة جملة", "Add sentence") + "</button></div></form>"
+          : "";
+        var list = items.length
+          ? '<div class="av-list">' + items.map(function (m) {
+              var body =
+                '<div style="display:flex;align-items:center;gap:11px">' +
+                '<div class="grow"><div class="t">' +
+                escapeHtml(STATE.lang === "ar" ? m.text_ar : m.text_en || m.text_ar) + "</div>" +
+                '<div class="s">' +
+                (m.audience_role ? escapeHtml(m.audience_role) + " · " : "") +
+                escapeHtml(STATE.lang === "ar" ? m.text_en || "" : m.text_ar || "") +
+                "</div></div>" +
+                '<span class="status ' + (m.is_active ? "ok" : "warn") + '"><i></i>' +
+                (m.is_active ? dual("نشط", "Active") : dual("موقوف", "Inactive")) + "</span></div>";
+              if (!editable) {
+                return '<div class="av-row" style="cursor:default">' + body + "</div>";
+              }
+              return (
+                '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+                body +
+                '<form class="av-form" id="motivationForm' + m.id + '">' +
+                field("النص (عربي)", "Text (AR)", textInput("motTextAr" + m.id, m.text_ar)) +
+                field("النص (إنجليزي)", "Text (EN)", textInput("motTextEn" + m.id, m.text_en)) +
+                field("الدور المستهدف", "Target role", textInput("motRole" + m.id, m.audience_role || "", "ph.roleCode")) +
+                field("الترتيب", "Order", numInput("motOrder" + m.id, m.sort_order)) +
+                field("الحالة", "Status", selectInput("motActive" + m.id, [
+                  { value: "1", label: opt("نشط", "Active") },
+                  { value: "0", label: opt("موقوف", "Inactive") },
+                ], m.is_active ? "1" : "0")) +
+                '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="save-motivation" data-id="' + m.id + '">' +
+                dual("حفظ", "Save") + "</button></div></form></div>"
+              );
+            }).join("") + "</div>"
+          : '<p class="av-empty">' + dual("لا توجد جمل.", "No sentences.") + "</p>";
+        host.innerHTML =
+          createForm +
+          adminPanel("الجمل التحفيزية", "Motivational sentences", list) +
+          adminPanel("ملخص", "Summary", '<div class="kv">' +
+            kv(dual("إجمالي الجمل", "Sentences"), plainNum(items.length)) +
+            kv(dual("النشطة", "Active"), plainNum(items.filter(function (m) { return m.is_active; }).length)) +
+            "</div>");
+      });
+  }
+
+
 
   // ---- tab: website management (Phase 11 CMS) --------------------------
   //
@@ -8259,6 +8467,36 @@
       }).catch(adminError);
     }
 
+    if (action === "save-position") {
+      var pid = parseInt(id, 10);
+      var parentVal = byId("posParent" + pid) ? byId("posParent" + pid).value : "";
+      var deptVal = byId("posDept" + pid) ? byId("posDept" + pid).value : "";
+      return patch("/api/v1/admin/positions/" + pid, {
+        title_ar: byId("posTitleAr" + pid) ? byId("posTitleAr" + pid).value : undefined,
+        title_en: byId("posTitleEn" + pid) ? byId("posTitleEn" + pid).value : undefined,
+        department_id: deptVal ? parseInt(deptVal, 10) : undefined,
+        reports_to_position_id: parentVal ? parseInt(parentVal, 10) : undefined,
+        status: byId("posStatus" + pid) ? byId("posStatus" + pid).value : undefined,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تم حفظ المنصب." : "Position saved.", "ok");
+        return renderAdminPositions();
+      }).catch(adminError);
+    }
+
+    if (action === "save-motivation") {
+      var mid = parseInt(id, 10);
+      return patch("/api/v1/admin/motivation-texts/" + mid, {
+        text_ar: byId("motTextAr" + mid) ? byId("motTextAr" + mid).value : undefined,
+        text_en: byId("motTextEn" + mid) ? byId("motTextEn" + mid).value : undefined,
+        audience_role: byId("motRole" + mid) ? (byId("motRole" + mid).value || null) : undefined,
+        sort_order: byId("motOrder" + mid) ? parseInt(byId("motOrder" + mid).value, 10) : undefined,
+        is_active: byId("motActive" + mid) ? byId("motActive" + mid).value === "1" : undefined,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تم حفظ الجملة." : "Sentence saved.", "ok");
+        return renderAdminMotivation();
+      }).catch(adminError);
+    }
+
     if (action === "save-company") {
       var cid = parseInt(id, 10);
       return patch("/api/v1/companies/" + cid, {
@@ -8369,6 +8607,31 @@
       }).then(function () {
         toast(STATE.lang === "ar" ? "تمت إضافة القطاع." : "Sector added.", "ok");
         return renderAdminSectors();
+      }).catch(adminError);
+    }
+    if (form.id === "positionForm") {
+      e.preventDefault();
+      return post("/api/v1/admin/positions", {
+        company_id: parseInt(byId("posCompany").value, 10),
+        code: byId("posCode").value,
+        title_ar: byId("posTitleAr").value,
+        title_en: byId("posTitleEn").value,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تمت إضافة المنصب." : "Position added.", "ok");
+        return renderAdminPositions();
+      }).catch(adminError);
+    }
+    if (form.id === "motivationForm") {
+      e.preventDefault();
+      var roleVal = byId("motRole").value.trim();
+      return post("/api/v1/admin/motivation-texts", {
+        text_ar: byId("motTextAr").value,
+        text_en: byId("motTextEn").value,
+        audience_role: roleVal || null,
+        sort_order: parseInt(byId("motOrder").value, 10) || 0,
+      }).then(function () {
+        toast(STATE.lang === "ar" ? "تمت إضافة الجملة." : "Sentence added.", "ok");
+        return renderAdminMotivation();
       }).catch(adminError);
     }
     if (form.id === "deptForm") {

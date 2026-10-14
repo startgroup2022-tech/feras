@@ -358,6 +358,24 @@ class LeadOut(BaseModel):
     updated_at: datetime
     closed_at: datetime | None = None
     attachments: list[LeadAttachmentOut] = []
+    # S13: the independent manager notes, newest first. Marketing reads them.
+    manager_notes: list["LeadNoteOut"] = []
+
+
+class LeadNoteCreateRequest(BaseModel):
+    """A manager's independent note on a lead (S13)."""
+
+    body: str = Field(min_length=1, max_length=_TEXT_MAX)
+
+
+class LeadNoteOut(BaseModel):
+    id: int
+    lead_id: int
+    body: str
+    author_id: int | None = None
+    author_name_ar: str | None = None
+    author_name_en: str | None = None
+    created_at: datetime
 
 
 class LeadUpdateRequest(BaseModel):

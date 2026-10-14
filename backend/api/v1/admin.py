@@ -21,6 +21,9 @@ from backend.schemas import (
     GroupStructureNode,
     HoldingOut,
     HoldingUpdateRequest,
+    MotivationTextCreateRequest,
+    MotivationTextOut,
+    MotivationTextUpdateRequest,
     OwnershipCreateRequest,
     OwnershipOut,
     OwnershipUpdateRequest,
@@ -30,6 +33,9 @@ from backend.schemas import (
     PermissionCategoryOut,
     PermissionDetailOut,
     PermissionOut,
+    PositionCreateRequest,
+    PositionOut,
+    PositionUpdateRequest,
     RoleCreateRequest,
     RoleOut,
     RolePermissionsRequest,
@@ -44,7 +50,9 @@ from backend.services import (
     branding_service,
     department_service,
     holding_service,
+    motivation_service,
     ownership_service,
+    position_service,
     role_service,
     sector_service,
 )
@@ -341,6 +349,122 @@ def update_sector(
         user_agent=ctx["user_agent"],
     )
     return SectorOut(**row)
+
+
+# --------------------------------------------------------------------------
+# organisational positions (S24)
+# --------------------------------------------------------------------------
+@router.get("/positions", response_model=list[PositionOut])
+def list_positions(
+    db: DbSession,
+    user: CurrentUser,
+    company_id: int | None = Query(default=None),
+) -> list[PositionOut]:
+    return [
+        PositionOut(**row)
+        for row in position_service.list_positions(db, user=user, company_id=company_id)
+    ]
+
+
+@router.post(
+    "/positions",
+    response_model=PositionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_position(
+    payload: PositionCreateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.POSITION_MANAGE)),
+) -> PositionOut:
+    ctx = audit_service.request_context(request)
+    row = position_service.create_position(
+        db,
+        actor=actor,
+        payload=payload.model_dump(),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return PositionOut(**row)
+
+
+@router.patch("/positions/{position_id}", response_model=PositionOut)
+def update_position(
+    position_id: int,
+    payload: PositionUpdateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.POSITION_MANAGE)),
+) -> PositionOut:
+    ctx = audit_service.request_context(request)
+    row = position_service.update_position(
+        db,
+        actor=actor,
+        position_id=position_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return PositionOut(**row)
+
+
+# --------------------------------------------------------------------------
+# motivational sentence library (S01)
+# --------------------------------------------------------------------------
+@router.get("/motivation-texts", response_model=list[MotivationTextOut])
+def list_motivation_texts(
+    db: DbSession,
+    user: CurrentUser,
+    include_inactive: bool = Query(default=False),
+) -> list[MotivationTextOut]:
+    return [
+        MotivationTextOut(**row)
+        for row in motivation_service.list_motivation_texts(
+            db, user=user, include_inactive=include_inactive
+        )
+    ]
+
+
+@router.post(
+    "/motivation-texts",
+    response_model=MotivationTextOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_motivation_text(
+    payload: MotivationTextCreateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.MOTIVATION_MANAGE)),
+) -> MotivationTextOut:
+    ctx = audit_service.request_context(request)
+    row = motivation_service.create_motivation_text(
+        db,
+        actor=actor,
+        payload=payload.model_dump(),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return MotivationTextOut(**row)
+
+
+@router.patch("/motivation-texts/{motivation_id}", response_model=MotivationTextOut)
+def update_motivation_text(
+    motivation_id: int,
+    payload: MotivationTextUpdateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.MOTIVATION_MANAGE)),
+) -> MotivationTextOut:
+    ctx = audit_service.request_context(request)
+    row = motivation_service.update_motivation_text(
+        db,
+        actor=actor,
+        motivation_id=motivation_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return MotivationTextOut(**row)
 
 
 # --------------------------------------------------------------------------

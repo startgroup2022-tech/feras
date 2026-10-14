@@ -29,6 +29,7 @@ from backend.db.models.enums import (
     DepartmentStatus,
     HoldingStatus,
     OwnershipStatus,
+    PositionStatus,
     SupportCategory,
     SupportStatus,
 )
@@ -475,6 +476,7 @@ class DashboardResponse(BaseModel):
     change_vs_previous: PeriodChangeOut | None = None
     companies_missing_report: list[CompanyOut] = []
     companies_requiring_attention: list[AttentionCompanyOut] = []
+    motivation: "MotivationTextOut | None" = None
 
 
 # --------------------------------------------------------------------------
@@ -753,6 +755,102 @@ class SectorOut(BaseModel):
     status: str
     sort_order: int
     notes: str | None = None
+
+
+class PositionCreateRequest(BaseModel):
+    company_id: int
+    department_id: int | None = None
+    code: str = Field(min_length=1, max_length=40)
+    title_ar: str = Field(min_length=1, max_length=180)
+    title_en: str = Field(min_length=1, max_length=180)
+    holder_user_id: int | None = None
+    holder_employee_id: int | None = None
+    reports_to_position_id: int | None = None
+    status: str | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in PositionStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class PositionUpdateRequest(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=40)
+    title_ar: str | None = Field(default=None, min_length=1, max_length=180)
+    title_en: str | None = Field(default=None, min_length=1, max_length=180)
+    department_id: int | None = None
+    holder_user_id: int | None = None
+    holder_employee_id: int | None = None
+    reports_to_position_id: int | None = None
+    status: str | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("status")
+    @classmethod
+    def _valid_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {s.value for s in PositionStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+
+class PositionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    department_id: int | None
+    code: str
+    title_ar: str
+    title_en: str
+    holder_user_id: int | None
+    holder_employee_id: int | None
+    reports_to_position_id: int | None
+    status: str
+    notes: str | None = None
+    company_name_ar: str | None = None
+    company_name_en: str | None = None
+    department_name_ar: str | None = None
+    department_name_en: str | None = None
+    holder_name_ar: str | None = None
+    holder_name_en: str | None = None
+    reports_to_title_ar: str | None = None
+    reports_to_title_en: str | None = None
+
+
+class MotivationTextCreateRequest(BaseModel):
+    text_ar: str = Field(min_length=1, max_length=500)
+    text_en: str = Field(min_length=1, max_length=500)
+    audience_role: str | None = Field(default=None, max_length=60)
+    sort_order: int | None = None
+    is_active: bool = True
+
+
+class MotivationTextUpdateRequest(BaseModel):
+    text_ar: str | None = Field(default=None, min_length=1, max_length=500)
+    text_en: str | None = Field(default=None, min_length=1, max_length=500)
+    audience_role: str | None = Field(default=None, max_length=60)
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+class MotivationTextOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    text_ar: str
+    text_en: str
+    audience_role: str | None = None
+    sort_order: int
+    is_active: bool
 
 
 class RoleOut(BaseModel):

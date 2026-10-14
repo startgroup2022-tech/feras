@@ -134,14 +134,18 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the managed sector catalogue builds on the
-    # Executions 04-14 holding-business domain, which builds on the Execution 02
-    # financial workflow, which builds on the listing-photo visibility, which
-    # builds on the website CMS, which builds on the bilingual role description,
-    # which builds on branding, which builds on phase 10, which builds on
-    # phase 6-9, which builds on phase 3, which builds on phase 2, which builds
-    # on the initial schema -- no branches.
-    assert head == "e5f6a7b8c9d0"
+    # A single linear chain: the motivational sentence library (S01) builds on
+    # the organisational positions (S24), which build on the managed sector
+    # catalogue, which builds on the Executions 04-14 holding-business domain,
+    # which builds on the Execution 02 financial workflow, which builds on the
+    # listing-photo visibility, which builds on the website CMS, which builds on
+    # the bilingual role description, which builds on branding, which builds on
+    # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
+    # on phase 2, which builds on the initial schema -- no branches.
+    assert head == "b8c9d0e1f2a3"
+    assert revisions["b8c9d0e1f2a3"] == "a7b8c9d0e1f2"
+    assert revisions["a7b8c9d0e1f2"] == "f6a7b8c9d0e1"
+    assert revisions["f6a7b8c9d0e1"] == "e5f6a7b8c9d0"
     assert revisions["e5f6a7b8c9d0"] == "808896a24a5f"
     assert revisions["808896a24a5f"] == "58ef167fa236"
     assert revisions["58ef167fa236"] == "d1e2f3a4b5c6"

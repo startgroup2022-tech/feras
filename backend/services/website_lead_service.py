@@ -51,6 +51,7 @@ from backend.db.models.enums import (
 )
 from backend.db.models.identity import User
 from backend.db.models.website import (
+    LeadNote,
     WebsiteLead,
     WebsiteLeadAttachment,
     WebsiteOpportunity,
@@ -695,19 +696,29 @@ def serialise_lead(lead: WebsiteLead) -> dict:
             }
             for a in lead.attachments
         ],
+        "manager_notes": [_serialise_note(n) for n in lead.notes],
     }
 
 
-def get_lead(db: Session, *, user: User, lead_id: int) -> WebsiteLead:
-    require_permission(user, Perm.LEAD_READ)
+def _load_lead(db: Session, lead_id: int) -> WebsiteLead:
+    """Resolve a lead by id without a read gate. Callers enforce their own."""
     lead = db.execute(
         select(WebsiteLead)
-        .options(selectinload(WebsiteLead.attachments), selectinload(WebsiteLead.assigned_to))
+        .options(
+            selectinload(WebsiteLead.attachments),
+            selectinload(WebsiteLead.assigned_to),
+            selectinload(WebsiteLead.notes).selectinload(LeadNote.author),
+        )
         .where(WebsiteLead.id == lead_id)
     ).scalar_one_or_none()
     if lead is None:
         raise NotFoundError("Lead not found.")
     return lead
+
+
+def get_lead(db: Session, *, user: User, lead_id: int) -> WebsiteLead:
+    require_permission(user, Perm.LEAD_READ)
+    return _load_lead(db, lead_id)
 
 
 def list_leads(
@@ -735,7 +746,11 @@ def list_leads(
     count_stmt = select(func.count(WebsiteLead.id))
     stmt = (
         select(WebsiteLead)
-        .options(selectinload(WebsiteLead.attachments), selectinload(WebsiteLead.assigned_to))
+        .options(
+            selectinload(WebsiteLead.attachments),
+            selectinload(WebsiteLead.assigned_to),
+            selectinload(WebsiteLead.notes).selectinload(LeadNote.author),
+        )
         .order_by(WebsiteLead.created_at.desc(), WebsiteLead.id.desc())
     )
     for condition in conditions:
@@ -795,6 +810,68 @@ def update_lead(
     if lead.status != previous_status:
         _emit_lead_status(db, lead=lead, previous=previous_status)
     return lead
+
+
+def _serialise_note(note: LeadNote) -> dict:
+    author = note.author
+    return {
+        "id": note.id,
+        "lead_id": note.lead_id,
+        "body": note.body,
+        "author_id": note.author_id,
+        "author_name_ar": author.full_name_ar if author else None,
+        "author_name_en": (author.full_name_en if author else None),
+        "created_at": note.created_at,
+    }
+
+
+def list_lead_notes(db: Session, *, user: User, lead_id: int) -> list[dict]:
+    """Manager notes on a lead, newest first. Reading needs ``website_lead.read``."""
+    require_permission(user, Perm.LEAD_READ)
+    # ``get_lead`` enforces the same read gate and 404s on a missing lead.
+    lead = get_lead(db, user=user, lead_id=lead_id)
+    rows = db.execute(
+        select(LeadNote)
+        .options(selectinload(LeadNote.author))
+        .where(LeadNote.lead_id == lead.id)
+        .order_by(LeadNote.created_at.desc(), LeadNote.id.desc())
+    ).scalars()
+    return [_serialise_note(row) for row in rows]
+
+
+def add_lead_note(
+    db: Session,
+    *,
+    user: User,
+    lead_id: int,
+    body: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """Write the independent manager note (S13).
+
+    Requires ``website_lead.manager_note`` -- a permission marketing does not
+    hold. The note is a separate record, so marketing can never edit it; the
+    read path (``list_lead_notes``) is all they get.
+    """
+    require_permission(user, Perm.LEAD_MANAGER_NOTE)
+    lead = _load_lead(db, lead_id)
+    note = LeadNote(lead_id=lead.id, author_id=user.id, body=body.strip())
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+
+    audit_service.record(
+        db,
+        action=AuditAction.WEBSITE_LEAD_NOTE_ADDED,
+        actor_user_id=user.id,
+        entity_type="website_lead",
+        entity_id=lead.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"note_id": note.id},
+    )
+    return _serialise_note(note)
 
 
 def _emit_lead_status(db: Session, *, lead: WebsiteLead, previous: str) -> None:
@@ -940,6 +1017,8 @@ __all__ = [
     "list_public_opportunities",
     "public_opportunity_photo",
     "add_attachment",
+    "list_lead_notes",
+    "add_lead_note",
     "routed_team_for",
     "ROUTING_TABLE",
 ]

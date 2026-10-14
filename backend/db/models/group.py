@@ -36,6 +36,7 @@ from backend.db.models.enums import (
     DepartmentStatus,
     HoldingStatus,
     OwnershipStatus,
+    PositionStatus,
 )
 
 if TYPE_CHECKING:
@@ -181,3 +182,52 @@ class Sector(Base, TimestampMixin):
     )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Position(Base, TimestampMixin):
+    """A company-scoped organisational position (S24).
+
+    Positions are the nodes the organisation chart is built from: each has a
+    title, an optional current holder and an optional parent position (the
+    reporting line). A position may be held by a user *or* an employee -- the
+    spec keeps the login account independent from the employee record, so the
+    two links are separate and both optional.
+
+    ``reports_to_position_id`` is the reporting line: the spec fixes only the
+    holding structure (BD and company managers report to the owner), so the
+    service guards against a company-scoped user attaching a position under an
+    unrelated company, but it does not invent extra approval steps.
+    """
+
+    __tablename__ = "positions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "code", name="uq_positions_company_code"),
+        Index("ix_positions_company_status", "company_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    department_id: Mapped[int | None] = mapped_column(
+        ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    title_ar: Mapped[str] = mapped_column(String(180), nullable=False)
+    title_en: Mapped[str] = mapped_column(String(180), nullable=False)
+    holder_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    holder_employee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    reports_to_position_id: Mapped[int | None] = mapped_column(
+        ForeignKey("positions.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=PositionStatus.ACTIVE.value, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    company: Mapped["Company"] = relationship(backref="positions")
+    department: Mapped["Department | None"] = relationship()

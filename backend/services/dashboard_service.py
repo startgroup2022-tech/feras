@@ -26,6 +26,7 @@ from backend.repositories.scoped import (
     MonthlyReportRepository,
     SupportRequestRepository,
 )
+from backend.services import motivation_service
 
 
 def _scoped(stmt, column, user: User):
@@ -315,4 +316,5 @@ def build_dashboard(
         "change_vs_previous": change,
         "companies_missing_report": missing,
         "companies_requiring_attention": attention,
+        "motivation": motivation_service.pick_for_role(db, role_code=user.role_code),
     }

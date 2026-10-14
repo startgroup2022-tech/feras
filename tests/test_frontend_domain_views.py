@@ -245,6 +245,42 @@ def test_sector_admin_tab_is_gated_and_wired():
     assert "/api/v1/admin/sectors" in APP_JS
 
 
+def test_position_admin_tab_is_gated_and_wired():
+    tab = re.search(r'data-admin-tab="positions"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "position admin tab not found"
+    assert tab.group(1) == "position.read"
+    assert 'positions: ["position.read"]' in APP_JS
+    assert 'tab === "positions"' in APP_JS
+    assert "renderAdminPositions" in APP_JS
+    assert "/api/v1/admin/positions" in APP_JS
+    # Writes are gated by position.manage, not by the read permission.
+    assert 'has("position.manage")' in APP_JS
+    assert 'data-admin-action="save-position"' in APP_JS
+
+
+def test_motivation_admin_tab_is_gated_and_wired():
+    tab = re.search(r'data-admin-tab="motivation"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "motivation admin tab not found"
+    assert tab.group(1) == "motivation.read"
+    assert 'motivation: ["motivation.read"]' in APP_JS
+    assert 'tab === "motivation"' in APP_JS
+    assert "renderAdminMotivation" in APP_JS
+    assert "/api/v1/admin/motivation-texts" in APP_JS
+    assert 'has("motivation.manage")' in APP_JS
+    assert 'data-admin-action="save-motivation"' in APP_JS
+
+
+def test_lead_detail_wires_the_independent_manager_note():
+    # S13: the lead modal lists manager notes and only offers the composer to a
+    # holder of website_lead.manager_note; marketing (read-only) sees the list.
+    assert "manager_notes" in APP_JS
+    assert "/notes" in APP_JS
+    assert 'has("website_lead.manager_note")' in APP_JS
+    assert 'dual("ملاحظات المدير", "Manager notes")' in APP_JS
+    assert 'id="leadNoteBody"' in APP_JS
+    assert 'id="leadNoteAdd"' in APP_JS
+
+
 def test_language_switch_flips_direction_and_rerenders_admin():
     # The dynamic admin UI must follow the AR/EN switch: `dir` flips between
     # rtl/ltr and the active view (including the admin tab) is re-rendered.

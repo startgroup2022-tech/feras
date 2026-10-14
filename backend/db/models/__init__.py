@@ -28,6 +28,7 @@ from backend.db.models.operations import (
     Campaign,
     Complaint,
     ConfidentialAccessGrant,
+    MotivationText,
     OwnerDecision,
     OwnerDecisionEvent,
     Task,
@@ -51,7 +52,7 @@ from backend.db.models.forms import (
     FormRequirement,
     FormVersion,
 )
-from backend.db.models.group import Department, Holding, Ownership, Sector
+from backend.db.models.group import Department, Holding, Ownership, Position, Sector
 from backend.db.models.identity import (
     Company,
     Permission,
@@ -82,6 +83,7 @@ from backend.db.models.workflows import (
     WorkflowVersion,
 )
 from backend.db.models.website import (
+    LeadNote,
     WebsiteLead,
     WebsiteLeadAttachment,
     WebsiteOpportunity,
@@ -110,6 +112,7 @@ __all__ = [
     "Holding",
     "Ownership",
     "Department",
+    "Position",
     "Sector",
     "MonthlyReport",
     "MonthlyReportFinancialReview",
@@ -149,6 +152,7 @@ __all__ = [
     "WebhookEndpoint",
     "WebhookDelivery",
     # Phase 10: public website leads and opportunities
+    "LeadNote",
     "WebsiteLead",
     "WebsiteLeadAttachment",
     "WebsiteOpportunity",
@@ -180,6 +184,7 @@ __all__ = [
     "OwnerDecision",
     "OwnerDecisionEvent",
     "ConfidentialAccessGrant",
+    "MotivationText",
     "OpeningBalance",
     "Account",
     "Journal",

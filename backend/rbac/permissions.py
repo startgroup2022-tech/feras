@@ -33,6 +33,10 @@ class Perm:
     DEPARTMENT_MANAGE = "department.manage"
     SECTOR_READ = "sector.read"
     SECTOR_MANAGE = "sector.manage"
+    POSITION_READ = "position.read"
+    POSITION_MANAGE = "position.manage"
+    MOTIVATION_READ = "motivation.read"
+    MOTIVATION_MANAGE = "motivation.manage"
     USER_READ_ALL = "user.read_all"
     USER_CREATE = "user.create"
     USER_UPDATE = "user.update"
@@ -138,6 +142,7 @@ class Perm:
     LEAD_READ = "website_lead.read"  # view website leads
     LEAD_MANAGE = "website_lead.manage"  # assign, re-route and update a lead
     LEAD_STATUS_CHANGE = "website_lead.status_change"  # move a lead through its pipeline
+    LEAD_MANAGER_NOTE = "website_lead.manager_note"  # write the independent manager note (S13)
     OPPORTUNITY_REVIEW = "website_opportunity.review"  # review submitted listings
     OPPORTUNITY_PUBLISH = "website_opportunity.publish"  # publish a listing publicly
 
@@ -238,6 +243,10 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.DEPARTMENT_MANAGE: "Create and edit company departments",
     Perm.SECTOR_READ: "View the managed sector list",
     Perm.SECTOR_MANAGE: "Create and edit managed sectors",
+    Perm.POSITION_READ: "View organisational positions",
+    Perm.POSITION_MANAGE: "Create and edit organisational positions",
+    Perm.MOTIVATION_READ: "View the motivational sentence library",
+    Perm.MOTIVATION_MANAGE: "Create and edit motivational sentences",
     Perm.USER_READ_ALL: "View the full user directory",
     Perm.USER_CREATE: "Create users",
     Perm.USER_UPDATE: "Edit users, their role and their active state",
@@ -311,6 +320,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.LEAD_READ: "View website leads and submitted opportunities",
     Perm.LEAD_MANAGE: "Assign, re-route and edit website leads",
     Perm.LEAD_STATUS_CHANGE: "Move a website lead through its pipeline",
+    Perm.LEAD_MANAGER_NOTE: "Write the independent manager note on a lead",
     Perm.OPPORTUNITY_REVIEW: "Review submitted business listings",
     Perm.OPPORTUNITY_PUBLISH: "Publish a business listing on the public website",
     Perm.WEBSITE_MANAGE: "Access the Website Management module",
@@ -395,6 +405,8 @@ _HOLDING_READ = {
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
     Perm.SECTOR_READ,
+    Perm.POSITION_READ,
+    Perm.MOTIVATION_READ,
     Perm.ANALYTICS_HOLDING,
     Perm.ANALYTICS_COMPANY,
     Perm.ANALYTICS_OPERATIONS,
@@ -470,6 +482,8 @@ _COMPANY_READ = {
     Perm.OWNERSHIP_READ,
     Perm.DEPARTMENT_READ,
     Perm.SECTOR_READ,
+    Perm.POSITION_READ,
+    Perm.MOTIVATION_READ,
     Perm.ANALYTICS_COMPANY,
 }
 
@@ -494,6 +508,8 @@ COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.USER_ASSIGN_COMPANY,
     Perm.DEPARTMENT_MANAGE,
     Perm.SECTOR_MANAGE,
+    Perm.POSITION_MANAGE,
+    Perm.MOTIVATION_MANAGE,
     Perm.COMPANY_UPDATE,
     Perm.FORM_SUBMIT,
     Perm.SUBMISSION_READ_COMPANY,
@@ -501,6 +517,8 @@ COMPANY_OWNER = _COMPANY_READ | _OPERATOR_READ | _COMPANY_BUILDER | {
     Perm.APPROVAL_READ_ALL,
     Perm.DOCUMENT_CATEGORY_MANAGE,
     Perm.NOTIFICATION_MANAGE,
+    # S13: the manager writes the independent lead note; marketing only reads it.
+    Perm.LEAD_MANAGER_NOTE,
 }
 
 CEO = _COMPANY_READ | _OPERATOR_READ | {
@@ -539,6 +557,8 @@ HR_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.DEPARTMENT_READ,
     Perm.DEPARTMENT_MANAGE,
     Perm.SECTOR_MANAGE,
+    Perm.POSITION_MANAGE,
+    Perm.MOTIVATION_MANAGE,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.SUPPORT_COMMENT,
@@ -592,6 +612,10 @@ COMPANY_MANAGER = _COMPANY_READ | _OPERATOR_READ | {
     Perm.FORM_SUBMIT,
     Perm.SUBMISSION_READ_COMPANY,
     Perm.APPROVAL_READ_ALL,
+    # S13: the company manager writes the independent lead note; marketing
+    # reads it. Leads stay Holding-level (see website.py), so this grants the
+    # write only -- visibility is still governed by website_lead.read.
+    Perm.LEAD_MANAGER_NOTE,
 }
 
 ACCOUNTANT = _OPERATOR_READ | {

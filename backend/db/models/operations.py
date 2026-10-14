@@ -384,3 +384,30 @@ class ConfidentialAccessGrant(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MotivationText(Base, TimestampMixin):
+    """A bilingual motivational sentence shown on the role dashboards (S01).
+
+    Spec §7 / Table 74: the dashboard's motivational sentence comes from a
+    *fixed, editable library* -- it is not an administrative instruction and
+    not an approval step. Rows are owner-managed content, so they are never
+    hard-deleted; ``is_active`` retires a sentence while keeping history.
+    """
+
+    __tablename__ = "motivation_texts"
+    __table_args__ = (Index("ix_motivation_texts_active", "is_active", "sort_order"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text_ar: Mapped[str] = mapped_column(Text, nullable=False)
+    text_en: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional audience: ``None`` means the sentence is eligible for every
+    # scoped role; otherwise a role code such as ``business_development``.
+    audience_role: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
