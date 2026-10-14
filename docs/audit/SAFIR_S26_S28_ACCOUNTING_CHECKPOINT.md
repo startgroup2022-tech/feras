@@ -56,11 +56,27 @@ deliberately left alone (do not invent approvals for D01–D11):
 * D07 — budget source is stored, approval supersedes a version (never overwrites).
 
 The S26–S28 accounting surface is now feature-complete against the recovered
-gap matrix. The next incomplete requirement is elsewhere in the S01–S25 set
-(see `SAFIR_SPECIFICATION_GAP_MATRIX.md`).
+gap matrix.
+
+## 2026-10-14 matrix reconciliation
+
+While closing S28 the whole S01–S28 matrix was re-verified against the tree
+because its 2026-10-04 rows below S03 were stale (they described modules that
+had since been built). Outcome:
+
+* S03–S09 and S11–S24 are now ✅ (evidence per row in the matrix).
+* Still 🟡: S01 (owner-priority ordering / drill-down), S02 and S10
+  (goals-vs-results — definition needs **D02**), S25 (notification prefs /
+  login method — **D11**).
+* Still 🔒: T17 (backup/restore — **D10**).
+* S14 campaigns had endpoints and frontend wiring but no behavioural test; two
+  real tests were added (`test_campaign_round_trip_records_results_and_is_audited`,
+  `test_campaign_write_requires_company_access`).
 
 ## Continuation
 
 If work resumes: check out `feature/safir-s26-s28-accounting-completion`, run
 `python -m pytest tests/ -q`, then pick the next ❌/🟡 row in
-`SAFIR_SPECIFICATION_GAP_MATRIX.md`.
+`SAFIR_SPECIFICATION_GAP_MATRIX.md`. The next incomplete requirement is the
+D02-dependent goals-vs-results view (S02/S10); it cannot be finished without the
+owner's D02 decision.

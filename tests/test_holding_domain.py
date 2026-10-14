@@ -466,6 +466,68 @@ def test_journal_cannot_use_another_company_account(client, domain_world, auth, 
 
 
 # --------------------------------------------------------------------------
+# campaigns (S14)
+# --------------------------------------------------------------------------
+def test_campaign_round_trip_records_results_and_is_audited(client, domain_world, auth, db):
+    from backend.db.models import AuditLog
+
+    created = client.post(
+        "/api/v1/operations/campaigns",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "name": "حملة الإطلاق",
+            "platform": "instagram",
+            "goal": "زيادة الوعي",
+            "budget": "5000.00",
+        },
+        headers=auth(domain_world["marketer"]),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["status"] == "planned"
+    assert body["budget"] == "5000.00"
+
+    # Results are recorded manually (execution happens outside the platform).
+    updated = client.patch(
+        f"/api/v1/operations/campaigns/{body['id']}",
+        json={"status": "completed", "spend": "4200.00", "lead_count": 37,
+              "conversion_count": 9, "marketing_note": "نتائج جيدة"},
+        headers=auth(domain_world["marketer"]),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "completed"
+    assert updated.json()["spend"] == "4200.00"
+    assert updated.json()["lead_count"] == 37
+    assert updated.json()["conversion_count"] == 9
+
+    # The write persists: a fresh read returns the same figures.
+    listed = client.get(
+        f"/api/v1/operations/campaigns?company_id={domain_world['alpha'].id}",
+        headers=auth(domain_world["marketer"]),
+    )
+    assert listed.status_code == 200
+    assert [c["id"] for c in listed.json()] == [body["id"]]
+    assert listed.json()[0]["spend"] == "4200.00"
+
+    actions = {
+        row.action for row in db.query(AuditLog)
+        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == body["id"])
+    }
+    assert {"campaign.created", "campaign.updated"} <= actions
+
+
+def test_campaign_write_requires_company_access(client, domain_world, auth):
+    # The marketer is granted only ``alpha``; writing a campaign for ``beta``
+    # must fail even though the role holds ``campaign.manage``.
+    denied = client.post(
+        "/api/v1/operations/campaigns",
+        json={"company_id": domain_world["beta"].id, "name": "حملة"},
+        headers=auth(domain_world["marketer"]),
+    )
+    assert denied.status_code == 403
+
+
+# --------------------------------------------------------------------------
 # isolation across the new surface
 # --------------------------------------------------------------------------
 def test_manager_cannot_list_another_company_employees(client, domain_world, auth):
