@@ -669,6 +669,18 @@ class OwnerDecisionStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class ProjectRecordType(str, enum.Enum):
+    """S20: a tracked business development record is an opportunity or a project.
+
+    The type is chosen when the record is created (spec §7 Table 20: "فرصة أو
+    مشروع"). The *transition* from opportunity to project is governed by D03 and
+    is deliberately not automated here.
+    """
+
+    OPPORTUNITY = "opportunity"
+    PROJECT = "project"
+
+
 class ConfidentialSubjectType(str, enum.Enum):
     """D04: the entity a delegated confidential-access grant covers."""
 

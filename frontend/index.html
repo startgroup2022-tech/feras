@@ -100,6 +100,7 @@
       <div class="nav-item" data-view="employees" data-perm="employee.read assessment.read advisor.read advisor.session.read_own" role="button" tabindex="0"><span class="ar">الموظفون والتقييم</span><span class="en">Employees &amp; Assessment</span></div>
       <div class="nav-item" data-view="operations" data-perm="task.read_own task.read_all weekly_report.read_own weekly_report.read_all campaign.read" role="button" tabindex="0"><span class="ar">العمليات والمهام</span><span class="en">Operations &amp; Tasks</span></div>
       <div class="nav-item" data-view="decisions" data-perm="owner_decision.read" role="button" tabindex="0"><span class="ar">قرارات المالك</span><span class="en">Owner Decisions</span></div>
+      <div class="nav-item" data-view="projects" data-perm="project.read" role="button" tabindex="0"><span class="ar">المشاريع والفرص</span><span class="en">Projects &amp; Opportunities</span></div>
       <div class="nav-item" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read" role="button" tabindex="0"><span class="ar">مالية القابضة</span><span class="en">Holding Finance</span></div>
       <div class="nav-item" data-view="confidential" data-perm="complaint.read_own complaint.decide complaint.create" role="button" tabindex="0"><span class="ar">الشكاوى والسرية</span><span class="en">Complaints &amp; Confidential</span></div>
       <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="ar">الإدارة</span><span class="en">Administration</span></div>
@@ -618,6 +619,16 @@
     </div>
   </div>
   <div id="decContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-projects" data-view="projects" data-perm="project.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">المشاريع والفرص</span><span class="en">Projects &amp; Opportunities</span></h1>
+      <p><span class="ar">سجل متابعة للفرص والمشاريع مع الشركة والوصف والهدف والفترة والنتائج وتقدير الموارد والجدوى بعملته. لا قرار آلي بناءً على الجدوى.</span><span class="en">A follow-up register of opportunities and projects with the company, description and objective, period and results, and a resource/feasibility estimate in its own currency. No automatic decision from feasibility.</span></p>
+    </div>
+  </div>
+  <div id="projContent" class="av-grid cols-1"></div>
 </section>
 
 <section class="app-view view-hidden" id="view-accounting" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read">

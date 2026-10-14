@@ -26,7 +26,14 @@ APP_JS = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
 INDEX = (ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend" / "styles.css").read_text(encoding="utf-8")
 
-NEW_VIEWS = ["employees", "operations", "decisions", "accounting", "confidential"]
+NEW_VIEWS = [
+    "employees",
+    "operations",
+    "decisions",
+    "projects",
+    "accounting",
+    "confidential",
+]
 
 NEW_ENDPOINTS = [
     "/api/v1/employees",
@@ -38,6 +45,7 @@ NEW_ENDPOINTS = [
     "/api/v1/operations/complaints",
     "/api/v1/operations/advisory-sessions",
     "/api/v1/operations/owner-decisions",
+    "/api/v1/operations/projects",
     "/api/v1/accounting/opening-balances",
     "/api/v1/accounting/accounts",
     "/api/v1/accounting/journals",
@@ -90,6 +98,7 @@ def test_every_domain_renderer_is_defined():
         "renderEmployeesView",
         "renderOperationsView",
         "renderDecisionsView",
+        "renderProjectsView",
         "renderAccountingView",
         "renderConfidentialView",
     ):

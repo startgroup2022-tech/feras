@@ -41,6 +41,7 @@ CATEGORIES: list[dict] = [
     {"key": "complaints", "name_ar": "الشكاوى السرية", "name_en": "Complaints", "order": 185},
     {"key": "advisors", "name_ar": "المستشارون والجلسات", "name_en": "Advisors & Sessions", "order": 188},
     {"key": "decisions", "name_ar": "قرارات المالك", "name_en": "Owner Decisions", "order": 190},
+    {"key": "projects", "name_ar": "المشاريع والفرص", "name_en": "Projects & Opportunities", "order": 191},
     {"key": "accounting", "name_ar": "محاسبة القابضة", "name_en": "Holding Accounting", "order": 192},
     {"key": "balances", "name_ar": "الأرصدة الافتتاحية", "name_en": "Opening Balances", "order": 194},
     {"key": "kpi", "name_ar": "مؤشرات الأداء", "name_en": "KPIs", "order": 196},
@@ -644,6 +645,14 @@ PERMISSION_METADATA: list[dict] = [
     _p(Perm.OWNER_DECISION_MANAGE, "decisions", "manage",
        "إدارة قرارات المالك", "Manage owner decisions",
        "إنشاء وتحديث القرارات والتوجيهات.", "Create and update owner decisions and directives."),
+
+    # ---- S20: projects & opportunities ----
+    _p(Perm.PROJECT_READ, "projects", "view",
+       "عرض المشاريع والفرص", "View projects and opportunities",
+       "عرض سجل المشاريع والفرص.", "View the opportunities and projects register."),
+    _p(Perm.PROJECT_MANAGE, "projects", "manage",
+       "إدارة المشاريع والفرص", "Manage projects and opportunities",
+       "إنشاء وتحديث الفرص والمشاريع.", "Create and update opportunities and projects."),
 
     # ---- Executions 04-14: holding accounting ----
     _p(Perm.ACCOUNT_READ, "accounting", "view",

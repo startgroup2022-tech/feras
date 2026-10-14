@@ -198,9 +198,9 @@ def seed(reset: bool) -> None:
         accountant = ensure_user(
             f"accountant@{DEMO_EMAIL_DOMAIN}", "المحاسب", "Group Accountant", "accountant"
         )
-        ensure_user(
+        bd = ensure_user(
             f"bd@{DEMO_EMAIL_DOMAIN}", "تطوير الأعمال", "Business Development",
-            "business_development",
+            "business_development", ("SAF-TECH",),
         )
         ensure_user(f"marketing@{DEMO_EMAIL_DOMAIN}", "التسويق", "Marketing", "marketing")
         ensure_user(f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer")
@@ -333,6 +333,9 @@ def seed(reset: bool) -> None:
             real_manager=manager_real,
             accountant=accountant,
         )
+
+        # ---- S20 projects & opportunities demo ----
+        _seed_projects(db, companies=companies, owner=owner, bd=bd)
 
         print(
             "\nDemo seed complete.\n"
@@ -674,6 +677,57 @@ def _attach_requirement_document(db, *, submission, actor, filename):
         submission_requirement_id=requirement.id,
     )
 
+
+
+def _seed_projects(db, *, companies, owner, bd) -> None:
+    """Seed a small, bilingual opportunities/projects register (S20).
+
+    Idempotent by name so re-running without ``--reset`` does not duplicate it.
+    Uses the real service so the demo matches what the running app can do.
+    """
+    from datetime import date
+
+    from backend.db.models.operations import ProjectRecord
+
+    if db.execute(
+        select(ProjectRecord).where(ProjectRecord.name == "توسّع أسواق التقنية")
+    ).scalar_one_or_none() is not None:
+        print("  projects demo already present (skipped)")
+        return
+
+    records = [
+        dict(
+            record_type="opportunity",
+            name="توسّع أسواق التقنية",
+            company_id=companies["SAF-TECH"].id,
+            description="دراسة فرصة التوسّع في أسواق جديدة.",
+            objective="تحديد سوقين جديدين خلال ٢٠٢٧.",
+            period_start=date(2027, 1, 1),
+            period_end=date(2027, 6, 30),
+            estimated_value=Decimal("1500000.00"),
+            currency="SAR",
+            resource_estimate="فريق تطوير أعمال + ميزانية تسويق.",
+            status="open",
+        ),
+        dict(
+            record_type="project",
+            name="تحديث منصة الرعاية الصحية",
+            company_id=companies["SAF-HLT"].id,
+            description="مشروع قائم لتحديث الأنظمة.",
+            objective="رفع الاعتمادية إلى ٩٩٪.",
+            period_start=date(2027, 2, 1),
+            period_end=date(2027, 12, 31),
+            estimated_value=Decimal("2750000.00"),
+            currency="SAR",
+            resource_estimate="فريق هندسي وشراكة تقنية.",
+            results="اكتمال مرحلة التحليل.",
+            status="in_progress",
+        ),
+    ]
+    for row in records:
+        db.add(ProjectRecord(**row, created_by_id=bd.id))
+    db.commit()
+    print(f"  {len(records)} projects/opportunities")
 
 
 def first_of(items, predicate):

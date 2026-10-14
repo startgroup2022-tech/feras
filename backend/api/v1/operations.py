@@ -15,6 +15,8 @@ from backend.schemas.domain import (
     ComplaintDecisionRequest,
     OwnerDecisionCreateRequest,
     OwnerDecisionUpdateRequest,
+    ProjectRecordCreateRequest,
+    ProjectRecordUpdateRequest,
     TaskCreateRequest,
     TaskStatusRequest,
     TaskUpdateRequest,
@@ -272,3 +274,51 @@ def update_owner_decision(
         follow_up_note=data.get("follow_up_note"), **ctx,
     )
     return operations_service.serialise_owner_decision(d)
+
+
+# ---- projects & opportunities (S20) ----
+@router.get("/projects")
+def list_project_records(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    record_type: str | None = None, status_filter: str | None = None,
+) -> list[dict]:
+    return [
+        operations_service.serialise_project_record(r)
+        for r in operations_service.list_project_records(
+            db, user=user, company_id=company_id, record_type=record_type,
+            status=status_filter,
+        )
+    ]
+
+
+@router.get("/projects/{record_id}")
+def get_project_record(record_id: int, user: CurrentUser, db: DbSession) -> dict:
+    return operations_service.serialise_project_record(
+        operations_service.get_project_record(db, user=user, record_id=record_id)
+    )
+
+
+@router.post("/projects", status_code=status.HTTP_201_CREATED)
+def create_project_record(
+    payload: ProjectRecordCreateRequest, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    data = payload.model_dump()
+    data["record_type"] = payload.record_type.value
+    record = operations_service.create_project_record(db, user=user, **data, **ctx)
+    return operations_service.serialise_project_record(record)
+
+
+@router.patch("/projects/{record_id}")
+def update_project_record(
+    record_id: int, payload: ProjectRecordUpdateRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    changes = payload.model_dump(exclude_unset=True)
+    if changes.get("record_type") is not None:
+        changes["record_type"] = changes["record_type"].value
+    record = operations_service.update_project_record(
+        db, user=user, record_id=record_id, changes=changes, **ctx,
+    )
+    return operations_service.serialise_project_record(record)

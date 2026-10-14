@@ -207,6 +207,9 @@ class AuditAction:
     OWNER_DECISION_CREATED = "owner_decision.created"
     OWNER_DECISION_UPDATED = "owner_decision.updated"
 
+    PROJECT_RECORD_CREATED = "project_record.created"
+    PROJECT_RECORD_UPDATED = "project_record.updated"
+
     CONFIDENTIAL_ACCESS_GRANTED = "confidential_access.granted"
     CONFIDENTIAL_ACCESS_REVOKED = "confidential_access.revoked"
     CONFIDENTIAL_ACCESS_USED = "confidential_access.used"

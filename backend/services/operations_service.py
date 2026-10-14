@@ -23,6 +23,7 @@ from backend.db.models.enums import (
     CampaignStatus,
     ComplaintStatus,
     OwnerDecisionStatus,
+    ProjectRecordType,
     TaskLifecycleStatus,
     WeeklyReportStatus,
 )
@@ -35,6 +36,7 @@ from backend.db.models.operations import (
     Complaint,
     OwnerDecision,
     OwnerDecisionEvent,
+    ProjectRecord,
     Task,
     TaskEvent,
     WeeklyReport,
@@ -648,4 +650,147 @@ def serialise_owner_decision(d: OwnerDecision) -> dict:
              "created_at": e.created_at}
             for e in sorted(d.history, key=lambda x: x.created_at)
         ],
+    }
+
+
+# --------------------------------------------------------------------------
+# projects & opportunities (S20)
+# --------------------------------------------------------------------------
+def _validate_project_period(period_start, period_end) -> None:
+    if period_start is not None and period_end is not None and period_end < period_start:
+        raise ValidationError("The follow-up period end cannot precede its start.")
+
+
+def create_project_record(
+    db: Session, *, user: User, name: str, record_type: str = "opportunity",
+    company_id: int | None = None, description: str | None = None,
+    objective: str | None = None, period_start=None, period_end=None,
+    results: str | None = None, resource_estimate: str | None = None,
+    estimated_value=None, currency: str = "SAR", status: str = "open",
+    owner_decision_id: int | None = None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> ProjectRecord:
+    require_permission(user, Perm.PROJECT_MANAGE)
+    if company_id is not None:
+        require_company_access(user, company_id, write=True)
+    if record_type not in {t.value for t in ProjectRecordType}:
+        raise ValidationError("Unknown record type.")
+    _validate_project_period(period_start, period_end)
+
+    record = ProjectRecord(
+        record_type=record_type,
+        name=name.strip(),
+        company_id=company_id,
+        description=description,
+        objective=objective,
+        period_start=period_start,
+        period_end=period_end,
+        results=results,
+        resource_estimate=resource_estimate,
+        estimated_value=estimated_value,
+        currency=currency or "SAR",
+        status=status,
+        owner_decision_id=owner_decision_id,
+        created_by_id=user.id,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    audit_service.record(
+        db, action=AuditAction.PROJECT_RECORD_CREATED, actor_user_id=user.id,
+        entity_type="project_record", entity_id=record.id, company_id=company_id,
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    return record
+
+
+def update_project_record(
+    db: Session, *, user: User, record_id: int, changes: dict,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> ProjectRecord:
+    require_permission(user, Perm.PROJECT_MANAGE)
+    record = db.get(ProjectRecord, record_id)
+    if record is None:
+        raise NotFoundError("Project or opportunity not found.")
+
+    # The *current* company must be writable, otherwise a user scoped to one
+    # company could edit a record that belongs to another.
+    if record.company_id is not None:
+        require_company_access(user, record.company_id, write=True)
+    # A change of company must be authorized against the *target* company too.
+    if "company_id" in changes and changes["company_id"] is not None:
+        require_company_access(user, changes["company_id"], write=True)
+
+    if "record_type" in changes and changes["record_type"] is not None:
+        if changes["record_type"] not in {t.value for t in ProjectRecordType}:
+            raise ValidationError("Unknown record type.")
+
+    period_start = changes.get("period_start", record.period_start)
+    period_end = changes.get("period_end", record.period_end)
+    _validate_project_period(period_start, period_end)
+
+    for field, value in changes.items():
+        if value is None:
+            continue
+        setattr(record, field, value)
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    audit_service.record(
+        db, action=AuditAction.PROJECT_RECORD_UPDATED, actor_user_id=user.id,
+        entity_type="project_record", entity_id=record.id, company_id=record.company_id,
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    return record
+
+
+def list_project_records(
+    db: Session, *, user: User, company_id: int | None = None,
+    record_type: str | None = None, status: str | None = None,
+) -> list[ProjectRecord]:
+    require_permission(user, Perm.PROJECT_READ)
+    stmt = select(ProjectRecord).order_by(ProjectRecord.created_at.desc())
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        # A scoped reader sees group-wide records (company_id NULL) plus its own
+        # companies' records, mirroring the owner-decision visibility rule.
+        stmt = stmt.where(
+            (ProjectRecord.company_id.is_(None)) | (ProjectRecord.company_id.in_(allowed))
+        )
+    if company_id is not None:
+        stmt = stmt.where(ProjectRecord.company_id == company_id)
+    if record_type is not None:
+        stmt = stmt.where(ProjectRecord.record_type == record_type)
+    if status is not None:
+        stmt = stmt.where(ProjectRecord.status == status)
+    return list(db.execute(stmt).scalars())
+
+
+def get_project_record(db: Session, *, user: User, record_id: int) -> ProjectRecord:
+    require_permission(user, Perm.PROJECT_READ)
+    # Scope the lookup rather than fetching then checking: an out-of-scope record
+    # then returns the same "not found" as a genuinely missing id, so a scoped
+    # user probing ids cannot tell which ones exist.
+    stmt = select(ProjectRecord).where(ProjectRecord.id == record_id)
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(
+            (ProjectRecord.company_id.is_(None)) | (ProjectRecord.company_id.in_(allowed))
+        )
+    record = db.execute(stmt).scalar_one_or_none()
+    if record is None:
+        raise NotFoundError("Project or opportunity not found.")
+    return record
+
+
+def serialise_project_record(r: ProjectRecord) -> dict:
+    return {
+        "id": r.id, "record_type": r.record_type, "name": r.name,
+        "company_id": r.company_id, "description": r.description,
+        "objective": r.objective, "period_start": r.period_start,
+        "period_end": r.period_end, "results": r.results,
+        "resource_estimate": r.resource_estimate,
+        "estimated_value": r.estimated_value, "currency": r.currency,
+        "status": r.status, "owner_decision_id": r.owner_decision_id,
+        "created_by_id": r.created_by_id, "created_at": r.created_at,
     }

@@ -1262,6 +1262,7 @@
     employees: { ar: "الموظفون والتقييم", en: "Employees & Assessment" },
     operations: { ar: "العمليات", en: "Operations" },
     decisions: { ar: "قرارات المالك", en: "Owner Decisions" },
+    projects: { ar: "المشاريع والفرص", en: "Projects & Opportunities" },
     accounting: { ar: "المحاسبة", en: "Accounting" },
     confidential: { ar: "الوصول السري", en: "Confidential Access" },
     admin: { ar: "الإدارة", en: "Administration" },
@@ -1392,6 +1393,7 @@
     "employees",
     "operations",
     "decisions",
+    "projects",
     "accounting",
     "confidential",
     "admin",
@@ -1435,6 +1437,7 @@
       "campaign.read",
     ],
     decisions: ["owner_decision.read"],
+    projects: ["project.read"],
     accounting: [
       "account.read",
       "journal.read",
@@ -1536,6 +1539,7 @@
     if (view === "employees") return renderEmployeesView();
     if (view === "operations") return renderOperationsView();
     if (view === "decisions") return renderDecisionsView();
+    if (view === "projects") return renderProjectsView();
     if (view === "accounting") return renderAccountingView();
     if (view === "confidential") return renderConfidentialView();
     if (view === "admin") return renderAdmin();
@@ -5661,6 +5665,117 @@
           var did = btn.getAttribute("data-id");
           patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
             .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+            .catch(domainError);
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ======================================================================
+  // S20 -- Projects & opportunities
+  // ======================================================================
+  var PROJECT_TYPE_LABEL = { opportunity: ["فرصة", "Opportunity"], project: ["مشروع", "Project"] };
+  var PROJECT_STATUS_LABEL = {
+    open: ["مفتوح", "Open", "warn"],
+    in_progress: ["قيد التنفيذ", "In progress", "warn"],
+    on_hold: ["معلّق", "On hold", "rev"],
+    closed: ["مغلق", "Closed", "ok"],
+    cancelled: ["ملغى", "Cancelled", "miss"],
+  };
+
+  function projectTypeBadge(t) {
+    var m = PROJECT_TYPE_LABEL[t] || [t, t];
+    return '<span class="badge rev">' + escapeHtml(STATE.lang === "ar" ? m[0] : m[1]) + "</span>";
+  }
+
+  function renderProjectsView() {
+    var host = byId("projContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/operations/projects").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("project.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="projectForm">' +
+          field("النوع", "Type", selectInput("prType", [
+            { value: "opportunity", label: opt("فرصة", "Opportunity") },
+            { value: "project", label: opt("مشروع", "Project") },
+          ], "opportunity")) +
+          field("الاسم", "Name", textInput("prName", "")) +
+          field("الشركة (اختياري)", "Company (optional)", selectInput("prCompany", companySelectOptions(true), "")) +
+          field("الفترة من", "Period from", dateInput("prFrom", "")) +
+          field("الفترة إلى", "Period to", dateInput("prTo", "")) +
+          field("تقدير القيمة", "Estimated value", numInput("prValue", "")) +
+          field("العملة", "Currency", textInput("prCurrency", "SAR")) +
+          field("تقدير الموارد والجدوى", "Resource / feasibility estimate", textInput("prResources", "")) +
+          field("الهدف", "Objective", textInput("prObjective", "")) +
+          field("الوصف", "Description", textInput("prDescription", "")) +
+          field("مرتبط بقرار المالك (رقم)", "Linked owner decision (id)", numInput("prDecision", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة سجل", "Add record") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (r) {
+            var est = r.estimated_value !== null && r.estimated_value !== undefined
+              ? escapeHtml(plainNum(r.estimated_value) + " " + (r.currency || ""))
+              : dual("—", "—");
+            var controls = canManage
+              ? '<div class="av-user-controls" data-stop="1">' +
+                selectInput("prStatus" + r.id, [
+                  { value: "open", label: opt("مفتوح", "Open") },
+                  { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+                  { value: "on_hold", label: opt("معلّق", "On hold") },
+                  { value: "closed", label: opt("مغلق", "Closed") },
+                  { value: "cancelled", label: opt("ملغى", "Cancelled") },
+                ], r.status) +
+                '<button class="btn-outline" data-act="proj-status" data-id="' + r.id + '">' + dual("تحديث", "Update") + "</button></div>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(r.name) + "</div>" +
+              '<div class="s">' + projectTypeBadge(r.record_type) + " " +
+              (r.company_id ? escapeHtml(companyNameById(r.company_id)) + " · " : "") +
+              (r.period_start || r.period_end
+                ? dual("الفترة", "Period") + " " + escapeHtml(dateStr(r.period_start)) + " – " + escapeHtml(dateStr(r.period_end)) + " · "
+                : "") +
+              dual("تقدير", "Estimate") + " " + est +
+              (r.resource_estimate ? " · " + escapeHtml(r.resource_estimate) : "") +
+              "</div>" +
+              (r.objective ? '<div class="s">' + escapeHtml(r.objective) + "</div>" : "") +
+              "</div>" +
+              statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
+              "</div>" + controls + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد مشاريع أو فرص.", "No projects or opportunities.");
+      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create + list);
+      var form = byId("projectForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          busy(form.querySelector("button"), true);
+          post("/api/v1/operations/projects", {
+            record_type: valOf("prType"),
+            name: valOf("prName"),
+            company_id: valOf("prCompany") ? parseInt(valOf("prCompany"), 10) : null,
+            period_start: valOf("prFrom") || null,
+            period_end: valOf("prTo") || null,
+            estimated_value: numVal("prValue"),
+            currency: valOf("prCurrency") || "SAR",
+            resource_estimate: valOf("prResources") || null,
+            objective: valOf("prObjective") || null,
+            description: valOf("prDescription") || null,
+            owner_decision_id: numVal("prDecision"),
+          }).then(function () { toast(dual("تمت إضافة السجل.", "Record added."), "ok"); return renderProjectsView(); })
+            .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
+        });
+      }
+      host.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var rid = btn.getAttribute("data-id");
+          patch("/api/v1/operations/projects/" + rid, { status: valOf("prStatus" + rid) })
+            .then(function () { toast(dual("تم تحديث السجل.", "Record updated."), "ok"); return renderProjectsView(); })
             .catch(domainError);
         });
       });

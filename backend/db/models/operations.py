@@ -38,6 +38,7 @@ from backend.db.models.enums import (
     CampaignStatus,
     ComplaintStatus,
     OwnerDecisionStatus,
+    ProjectRecordType,
     TaskLifecycleStatus,
     TaskPriority,
     WeeklyReportStatus,
@@ -384,6 +385,57 @@ class ConfidentialAccessGrant(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProjectRecord(Base, TimestampMixin):
+    """A tracked opportunity or project (S20, owner/BD board).
+
+    Spec §7 Table 20-21: the owner and the business development manager keep a
+    register of opportunities and projects with a related company, a description
+    and objective, a follow-up period and results, and a resource/feasibility
+    estimate that carries its own currency. The owner may raise a decision topic
+    when a record exceeds the BD manager's authority.
+
+    Deliberately *not* automated (spec §7, Table 21): there is no automatic
+    feasibility engine, no acquisition/financing decision and no automatic
+    transition from opportunity to project -- those need D03, so ``record_type``
+    is only ever changed explicitly by a holder of ``project.manage``.
+    """
+
+    __tablename__ = "project_records"
+    __table_args__ = (
+        Index("ix_project_records_company_type", "company_id", "record_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    record_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=ProjectRecordType.OPPORTUNITY.value, index=True
+    )
+    name: Mapped[str] = mapped_column(String(240), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    results: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resource_estimate: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estimated_value: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    # The estimate carries its own currency (spec §7: "العملة ظاهرة في التقديرات").
+    # It is never summed into the ledger; it is a tracking figure only.
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="open", index=True
+    )
+    owner_decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("owner_decisions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company | None"] = relationship()
 
 
 class MotivationText(Base, TimestampMixin):

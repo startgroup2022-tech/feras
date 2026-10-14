@@ -26,6 +26,7 @@ from backend.db.models.enums import (
     MovementStatus,
     OpeningBalanceKind,
     OwnerDecisionStatus,
+    ProjectRecordType,
     TaskLifecycleStatus,
     TaskPriority,
 )
@@ -274,6 +275,41 @@ class OwnerDecisionCreateRequest(BaseModel):
 class OwnerDecisionUpdateRequest(BaseModel):
     status: OwnerDecisionStatus | None = None
     follow_up_note: str | None = Field(default=None, max_length=4000)
+
+
+# --------------------------------------------------------------------------
+# projects & opportunities (S20)
+# --------------------------------------------------------------------------
+class ProjectRecordCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=240)
+    record_type: ProjectRecordType = ProjectRecordType.OPPORTUNITY
+    company_id: int | None = None
+    description: str | None = Field(default=None, max_length=8000)
+    objective: str | None = Field(default=None, max_length=8000)
+    period_start: date | None = None
+    period_end: date | None = None
+    results: str | None = Field(default=None, max_length=8000)
+    resource_estimate: str | None = Field(default=None, max_length=8000)
+    estimated_value: Decimal | None = Field(default=None, ge=0)
+    currency: str = Field(default="SAR", max_length=8)
+    status: str = Field(default="open", max_length=20)
+    owner_decision_id: int | None = None
+
+
+class ProjectRecordUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=240)
+    record_type: ProjectRecordType | None = None
+    company_id: int | None = None
+    description: str | None = Field(default=None, max_length=8000)
+    objective: str | None = Field(default=None, max_length=8000)
+    period_start: date | None = None
+    period_end: date | None = None
+    results: str | None = Field(default=None, max_length=8000)
+    resource_estimate: str | None = Field(default=None, max_length=8000)
+    estimated_value: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=8)
+    status: str | None = Field(default=None, max_length=20)
+    owner_decision_id: int | None = None
 
 
 # --------------------------------------------------------------------------

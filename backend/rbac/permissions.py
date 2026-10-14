@@ -201,6 +201,9 @@ class Perm:
     # Owner decisions (S22 / D07)
     OWNER_DECISION_READ = "owner_decision.read"
     OWNER_DECISION_MANAGE = "owner_decision.manage"
+    # Projects & opportunities (S20)
+    PROJECT_READ = "project.read"
+    PROJECT_MANAGE = "project.manage"
     # Holding accounting (S26-S28 / D01 / D07)
     ACCOUNT_READ = "account.read"
     ACCOUNT_MANAGE = "account.manage"
@@ -364,6 +367,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.ADVISOR_SESSION_RECORD: "Record an advisor session and recommendations",
     Perm.OWNER_DECISION_READ: "View owner decisions and directives",
     Perm.OWNER_DECISION_MANAGE: "Create and update owner decisions and directives",
+    Perm.PROJECT_READ: "View opportunities and projects",
+    Perm.PROJECT_MANAGE: "Create and update opportunities and projects",
     Perm.ACCOUNT_READ: "View the chart of accounts",
     Perm.ACCOUNT_MANAGE: "Manage the chart of accounts",
     Perm.JOURNAL_READ: "View journal entries",
@@ -734,6 +739,8 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.ADVISOR_READ,
     Perm.ADVISOR_MANAGE,
     Perm.OWNER_DECISION_READ,
+    Perm.PROJECT_READ,
+    Perm.PROJECT_MANAGE,
     Perm.OPENING_BALANCE_READ,
     Perm.ACCOUNT_READ,
     Perm.JOURNAL_READ,
