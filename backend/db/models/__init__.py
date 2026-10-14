@@ -11,6 +11,7 @@ from backend.db.models.accounting import (
     Account,
     Asset,
     Budget,
+    CompanyInterbalance,
     FiscalPeriod,
     Invoice,
     InvoiceLine,
@@ -18,6 +19,7 @@ from backend.db.models.accounting import (
     JournalLine,
     KpiDefinition,
     OpeningBalance,
+    Party,
     Settlement,
 )
 from backend.db.models.documents import Document, DocumentCategory
@@ -201,6 +203,8 @@ __all__ = [
     "Invoice",
     "InvoiceLine",
     "Settlement",
+    "Party",
+    "CompanyInterbalance",
     "Asset",
     "Budget",
     "KpiDefinition",

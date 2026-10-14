@@ -6148,13 +6148,15 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "invoices", "assets", "budgets", "kpis"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
     journals: ["journal.read"],
     trial: ["journal.read"],
     invoices: ["invoice.read"],
+    parties: ["party.read"],
+    interbalances: ["interbalance.read"],
     assets: ["asset.read"],
     budgets: ["budget.read"],
     kpis: ["kpi.read"],
@@ -6186,6 +6188,8 @@
     if (tab === "journals") return renderJournals();
     if (tab === "trial") return renderTrialBalance();
     if (tab === "invoices") return renderInvoices();
+    if (tab === "parties") return renderParties();
+    if (tab === "interbalances") return renderInterbalances();
     if (tab === "assets") return renderAssets();
     if (tab === "budgets") return renderBudgets();
     if (tab === "kpis") return renderKpis();
@@ -6374,13 +6378,19 @@
 
   function renderInvoices() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/invoices").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/invoices").catch(function () { return []; }),
+      get("/api/v1/accounting/receivables").catch(function () { return null; }),
+    ]).then(function (res) {
       var rows = res[1] || [];
+      var summary = res[2];
       var canManage = has("invoice.manage");
       var create = canManage
         ? '<form class="av-form" id="invoiceForm">' +
           '<div class="av-form-inline">' +
           field("الشركة", "Company", selectInput("ivCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("النوع", "Direction", selectInput("ivDirection", [{ value: "issued", label: opt("صادرة (مستحق لنا)", "Issued (receivable)") }, { value: "received", label: opt("واردة (مستحق علينا)", "Received (payable)") }], "issued")) +
           field("الرقم", "Number", textInput("ivNumber", "")) +
           field("الطرف", "Party", textInput("ivParty", "")) +
           field("تاريخ الإصدار", "Issue date", dateInput("ivIssue", "")) +
@@ -6395,6 +6405,12 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء فاتورة", "Create invoice") + "</button></div></form>"
         : "";
+      var totals = summary
+        ? '<div class="av-grid cols-2">' +
+          moneyBlock("مستحق لنا (فواتير صادرة)", "Receivable (issued)", summary.receivables) +
+          moneyBlock("مستحق علينا (فواتير واردة)", "Payable (received)", summary.payables) +
+          "</div>"
+        : "";
       var list = rows.length
         ? '<div class="av-list">' + rows.map(function (iv) {
             var settle = iv.status !== "settled" && has("settlement.manage")
@@ -6405,12 +6421,85 @@
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
               '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
-              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + "</div></div>" +
+              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
+              dirBadge(iv.direction) +
               statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
               "</div>" + settle + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد فواتير.", "No invoices.");
-      host.innerHTML = panel("الفواتير والذمم (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", create + list);
+      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function moneyBlock(ar, en, rows) {
+    var body = (rows || []).length
+      ? '<div class="av-list">' + rows.map(function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dec(r.amount) + " " + escapeHtml(r.currency) + "</div></div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا مبالغ مستحقة.", "Nothing outstanding.");
+    return '<div class="av-card">' + panel(ar, en, body) + "</div>";
+  }
+
+  function dirBadge(direction) {
+    var issued = direction !== "received";
+    return '<span class="badge ' + (issued ? "ok" : "warn") + '">' +
+      (issued ? dual("مستحق لنا", "Receivable") : dual("مستحق علينا", "Payable")) + "</span>";
+  }
+
+  function renderParties() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/parties").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("party.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="partyForm">' +
+          field("الشركة", "Company", selectInput("ptCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الاسم", "Name", textInput("ptName", "")) +
+          field("النوع", "Type", selectInput("ptType", [{ value: "customer", label: opt("عميل", "Customer") }, { value: "supplier", label: opt("مورد", "Supplier") }], "customer")) +
+          field("العملة", "Currency", textInput("ptCurrency", "SAR")) +
+          field("التواصل", "Contact", textInput("ptContact", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة طرف", "Add party") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (p) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(p.name) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
+              escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
+              " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا يوجد عملاء أو موردون.", "No customers or suppliers.");
+      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderInterbalances() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/interbalances").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("interbalance.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="interbalanceForm">' +
+          field("الشركة", "Company", selectInput("ibCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الشركة المقابلة", "Counterparty", selectInput("ibCounterparty", [{ value: "", label: opt("بدون", "None") }].concat(companySelectOptions(false)), "")) +
+          field("العملة", "Currency", textInput("ibCurrency", "SAR")) +
+          field("المبلغ", "Amount", numInput("ibAmount", "")) +
+          field("السبب", "Reason", textInput("ibReason", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("تسجيل رصيد", "Record balance") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (b) {
+            var other = b.counterparty_company_id ? companyNameById(b.counterparty_company_id) : (b.counterparty_name || "—");
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(companyNameById(b.company_id) + " ↔ " + other) + "</div>" +
+              '<div class="s">' + dec(b.amount) + " " + escapeHtml(b.currency) +
+              (b.reason ? " · " + escapeHtml(b.reason) : "") + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أرصدة بين الشركات.", "No inter-company balances.");
+      host.innerHTML = panel("أرصدة الشركات (S27: رصيد بعملته وسببه، وليس إيرادًا ولا رسوم خدمة)", "Inter-company balances (S27: a balance with its currency and reason — not revenue, not a service fee)", create + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6598,6 +6687,7 @@
         company_id: parseInt(valOf("ivCompany"), 10),
         number: valOf("ivNumber"),
         party_name: valOf("ivParty"),
+        direction: valOf("ivDirection") || "issued",
         issue_date: valOf("ivIssue") || null,
         due_date: valOf("ivDue") || null,
         tax_rate: numVal("ivTax") || 0,
@@ -6607,6 +6697,28 @@
           unit_price: numVal("ivPrice") || 0,
         }],
       }).then(function () { toast(dual("تم إنشاء الفاتورة.", "Invoice created."), "ok"); return renderInvoices(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "partyForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/parties", {
+        company_id: parseInt(valOf("ptCompany"), 10),
+        name: valOf("ptName"),
+        party_type: valOf("ptType") || "customer",
+        currency: valOf("ptCurrency") || "SAR",
+        contact: valOf("ptContact") || null,
+      }).then(function () { toast(dual("تمت إضافة الطرف.", "Party added."), "ok"); return renderParties(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "interbalanceForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/interbalances", {
+        company_id: parseInt(valOf("ibCompany"), 10),
+        counterparty_company_id: valOf("ibCounterparty") ? parseInt(valOf("ibCounterparty"), 10) : null,
+        currency: valOf("ibCurrency") || "SAR",
+        amount: numVal("ibAmount") || 0,
+        reason: valOf("ibReason") || null,
+      }).then(function () { toast(dual("تم تسجيل الرصيد.", "Balance recorded."), "ok"); return renderInterbalances(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "assetForm") {

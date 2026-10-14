@@ -11,11 +11,13 @@ from backend.schemas.domain import (
     AssetCreateRequest,
     BudgetApproveRequest,
     BudgetCreateRequest,
+    InterbalanceCreateRequest,
     InvoiceCreateRequest,
     JournalCreateRequest,
     JournalReverseRequest,
     KpiCreateRequest,
     OpeningBalanceCreateRequest,
+    PartyCreateRequest,
     SettlementCreateRequest,
 )
 from backend.services import accounting_service, audit_service
@@ -155,6 +157,13 @@ def list_invoices(
     ]
 
 
+@router.get("/receivables")
+def receivables(
+    user: CurrentUser, db: DbSession, company_id: int | None = None
+) -> dict:
+    return accounting_service.receivables_summary(db, user=user, company_id=company_id)
+
+
 @router.post("/invoices", status_code=status.HTTP_201_CREATED)
 def create_invoice(
     payload: InvoiceCreateRequest, request: Request, user: CurrentUser, db: DbSession
@@ -162,8 +171,51 @@ def create_invoice(
     ctx = audit_service.request_context(request)
     data = payload.model_dump()
     lines = data.pop("lines")
+    data["direction"] = payload.direction.value
     invoice = accounting_service.create_invoice(db, user=user, lines=lines, **data, **ctx)
     return accounting_service.serialise_invoice(invoice)
+
+
+# ---- parties (S27) ----
+@router.get("/parties")
+def list_parties(
+    user: CurrentUser, db: DbSession, company_id: int | None = None
+) -> list[dict]:
+    return [
+        accounting_service.serialise_party(p)
+        for p in accounting_service.list_parties(db, user=user, company_id=company_id)
+    ]
+
+
+@router.post("/parties", status_code=status.HTTP_201_CREATED)
+def create_party(
+    payload: PartyCreateRequest, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    party = accounting_service.create_party(db, user=user, **payload.model_dump(), **ctx)
+    return accounting_service.serialise_party(party)
+
+
+# ---- inter-company balances (S27) ----
+@router.get("/interbalances")
+def list_interbalances(
+    user: CurrentUser, db: DbSession, company_id: int | None = None
+) -> list[dict]:
+    return [
+        accounting_service.serialise_interbalance(b)
+        for b in accounting_service.list_interbalances(db, user=user, company_id=company_id)
+    ]
+
+
+@router.post("/interbalances", status_code=status.HTTP_201_CREATED)
+def record_interbalance(
+    payload: InterbalanceCreateRequest, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    balance = accounting_service.record_interbalance(
+        db, user=user, **payload.model_dump(), **ctx
+    )
+    return accounting_service.serialise_interbalance(balance)
 
 
 @router.post("/invoices/{invoice_id}/settlements", status_code=status.HTTP_201_CREATED)

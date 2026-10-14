@@ -43,6 +43,7 @@ from backend.db.base import Base, TimestampMixin
 from backend.db.models.enums import (
     AccountType,
     BudgetStatus,
+    InvoiceDirection,
     InvoiceStatus,
     JournalStatus,
     OpeningBalanceKind,
@@ -223,6 +224,14 @@ class Invoice(Base, TimestampMixin):
     )
     number: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     party_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # S27: issued (receivable "مستحق لنا") or received (payable "مستحق علينا").
+    direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=InvoiceDirection.ISSUED.value,
+        server_default=InvoiceDirection.ISSUED.value, index=True,
+    )
+    party_id: Mapped[int | None] = mapped_column(
+        ForeignKey("parties.id", ondelete="SET NULL"), nullable=True
+    )
     issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
@@ -370,3 +379,72 @@ class KpiDefinition(Base, TimestampMixin):
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class Party(Base, TimestampMixin):
+    """A customer or supplier the holding deals with (S27).
+
+    One party directory backs both issued and received invoices, so a receivable
+    and a payable for the same counterparty stay on one record instead of being
+    duplicated (spec §15, D01).
+    """
+
+    __tablename__ = "parties"
+    __table_args__ = (
+        UniqueConstraint("company_id", "name", name="uq_party_company_name"),
+        Index("ix_parties_company_type", "company_id", "party_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    party_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="customer", server_default="customer"
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()
+
+
+class CompanyInterbalance(Base, TimestampMixin):
+    """A recorded inter-company balance (S27, spec §15, D01).
+
+    Records the *reason* and the *currency* of a balance between the holding and
+    a company. It never imposes a service fee and never treats a transfer as
+    revenue -- the balance is a balance, and the currency is preserved so two
+    currencies are never silently combined.
+    """
+
+    __tablename__ = "company_interbalances"
+    __table_args__ = (
+        Index("ix_interbalances_company", "company_id", "counterparty_company_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    counterparty_company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    counterparty_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    recorded_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship(foreign_keys=[company_id])

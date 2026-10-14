@@ -758,6 +758,18 @@ class InvoiceStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class InvoiceDirection(str, enum.Enum):
+    """S27: whether the holding issued the invoice or received it.
+
+    Kept as data, not a hard-coded rule, so receivables ("مستحق لنا") and
+    payables ("مستحق علينا") are two views of the same source rather than two
+    places that could record the same operation twice (D01).
+    """
+
+    ISSUED = "issued"
+    RECEIVED = "received"
+
+
 class BudgetStatus(str, enum.Enum):
     """D07: approved by the owner or delegate; source and version preserved."""
 

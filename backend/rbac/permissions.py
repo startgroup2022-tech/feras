@@ -220,6 +220,10 @@ class Perm:
     INVOICE_READ = "invoice.read"
     INVOICE_MANAGE = "invoice.manage"
     SETTLEMENT_MANAGE = "settlement.manage"
+    PARTY_READ = "party.read"
+    PARTY_MANAGE = "party.manage"
+    INTERBALANCE_READ = "interbalance.read"
+    INTERBALANCE_MANAGE = "interbalance.manage"
     ASSET_READ = "asset.read"
     ASSET_MANAGE = "asset.manage"
     BUDGET_READ = "budget.read"
@@ -384,6 +388,10 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.INVOICE_READ: "View invoices and receivables",
     Perm.INVOICE_MANAGE: "Create and edit invoices",
     Perm.SETTLEMENT_MANAGE: "Record invoice settlements",
+    Perm.PARTY_READ: "View customers and suppliers",
+    Perm.PARTY_MANAGE: "Manage the customer and supplier directory",
+    Perm.INTERBALANCE_READ: "View inter-company balances",
+    Perm.INTERBALANCE_MANAGE: "Record inter-company balances",
     Perm.ASSET_READ: "View assets",
     Perm.ASSET_MANAGE: "Manage assets",
     Perm.BUDGET_READ: "View budgets",
@@ -768,6 +776,8 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.INVOICE_READ,
     Perm.ASSET_READ,
     Perm.BUDGET_READ,
+    Perm.PARTY_READ,
+    Perm.INTERBALANCE_READ,
     Perm.KPI_MANAGE,
 }
 
@@ -788,6 +798,10 @@ ACCOUNTANT_EXT = {
     Perm.INVOICE_READ,
     Perm.INVOICE_MANAGE,
     Perm.SETTLEMENT_MANAGE,
+    Perm.PARTY_READ,
+    Perm.PARTY_MANAGE,
+    Perm.INTERBALANCE_READ,
+    Perm.INTERBALANCE_MANAGE,
     Perm.ASSET_READ,
     Perm.ASSET_MANAGE,
     Perm.BUDGET_READ,
@@ -865,6 +879,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         Perm.ASSET_READ,
         Perm.BUDGET_READ,
         Perm.KPI_READ,
+        Perm.PARTY_READ,
+        Perm.INTERBALANCE_READ,
         Perm.TASK_READ_OWN,
     },
     RoleCode.HR_MANAGER.value: HR_MANAGER | {

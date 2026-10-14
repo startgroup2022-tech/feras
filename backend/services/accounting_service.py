@@ -26,6 +26,7 @@ from backend.db.models.accounting import (
     Account,
     Asset,
     Budget,
+    CompanyInterbalance,
     FiscalPeriod,
     Invoice,
     InvoiceLine,
@@ -33,10 +34,12 @@ from backend.db.models.accounting import (
     JournalLine,
     KpiDefinition,
     OpeningBalance,
+    Party,
     Settlement,
 )
 from backend.db.models.enums import (
     BudgetStatus,
+    InvoiceDirection,
     InvoiceStatus,
     JournalStatus,
     OpeningBalanceStatus,
@@ -411,16 +414,23 @@ def create_invoice(
     db: Session, *, user: User, company_id: int, number: str, party_name: str,
     lines: list[dict], currency: str = "SAR", issue_date=None, due_date=None,
     tax_rate: Decimal = ZERO, notes: str | None = None,
+    direction: str = InvoiceDirection.ISSUED.value, party_id: int | None = None,
     ip_address: str | None = None, user_agent: str | None = None,
 ) -> Invoice:
     require_permission(user, Perm.INVOICE_MANAGE)
     require_company_access(user, company_id, write=True)
     if not lines:
         raise ValidationError("An invoice requires at least one line.")
+    if direction not in {d.value for d in InvoiceDirection}:
+        raise ValidationError("Unknown invoice direction.")
+    if party_id is not None:
+        party = db.get(Party, party_id)
+        if party is None or party.company_id != company_id:
+            raise ValidationError("The invoice party must belong to the company.")
     invoice = Invoice(company_id=company_id, number=number, party_name=party_name,
                       issue_date=issue_date, due_date=due_date, currency=currency,
                       tax_rate=tax_rate, notes=notes, status=InvoiceStatus.DRAFT.value,
-                      created_by_id=user.id)
+                      direction=direction, party_id=party_id, created_by_id=user.id)
     db.add(invoice)
     db.flush()
     total = ZERO
@@ -487,8 +497,11 @@ def list_invoices(db: Session, *, user: User, company_id: int | None = None) -> 
 def serialise_invoice(inv: Invoice) -> dict:
     return {
         "id": inv.id, "company_id": inv.company_id, "number": inv.number,
-        "party_name": inv.party_name, "issue_date": inv.issue_date, "due_date": inv.due_date,
+        "party_name": inv.party_name, "party_id": inv.party_id,
+        "direction": inv.direction,
+        "issue_date": inv.issue_date, "due_date": inv.due_date,
         "currency": inv.currency, "total": inv.total, "settled_amount": inv.settled_amount,
+        "outstanding": (inv.total or ZERO) - (inv.settled_amount or ZERO),
         "tax_rate": inv.tax_rate, "status": inv.status, "notes": inv.notes,
         "created_at": inv.created_at,
         "lines": [
@@ -496,6 +509,146 @@ def serialise_invoice(inv: Invoice) -> dict:
              "unit_price": l.unit_price, "amount": l.amount}
             for l in inv.lines
         ],
+    }
+
+
+def receivables_summary(db: Session, *, user: User, company_id: int | None = None) -> dict:
+    """Outstanding receivables and payables, kept separate and per currency (S27).
+
+    A partial settlement reduces the outstanding amount exactly once, and the
+    totals are grouped by currency so two currencies are never added together
+    (spec §15, T10).
+    """
+    require_permission(user, Perm.INVOICE_READ)
+    if company_id is not None:
+        require_company_access(user, company_id)
+
+    stmt = select(Invoice)
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(Invoice.company_id.in_(allowed)) if allowed else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(Invoice.company_id == company_id)
+
+    receivables: dict[str, Decimal] = {}
+    payables: dict[str, Decimal] = {}
+    for inv in db.execute(stmt).scalars():
+        outstanding = (inv.total or ZERO) - (inv.settled_amount or ZERO)
+        if outstanding == ZERO:
+            continue
+        bucket = receivables if inv.direction == InvoiceDirection.ISSUED.value else payables
+        bucket[inv.currency] = bucket.get(inv.currency, ZERO) + outstanding
+
+    def _rows(bucket: dict[str, Decimal]) -> list[dict]:
+        return [
+            {"currency": cur, "amount": str(amt)}
+            for cur, amt in sorted(bucket.items())
+        ]
+
+    return {
+        "company_id": company_id,
+        "receivables": _rows(receivables),
+        "payables": _rows(payables),
+    }
+
+
+# --------------------------------------------------------------------------
+# parties (S27)
+# --------------------------------------------------------------------------
+def create_party(db: Session, *, user: User, company_id: int, name: str,
+                 name_en: str | None = None, party_type: str = "customer",
+                 currency: str = "SAR", contact: str | None = None,
+                 notes: str | None = None,
+                 ip_address: str | None = None, user_agent: str | None = None) -> Party:
+    require_permission(user, Perm.PARTY_MANAGE)
+    require_company_access(user, company_id, write=True)
+    existing = db.execute(
+        select(Party).where(Party.company_id == company_id, Party.name == name)
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise ConflictError("A party with this name already exists for the company.")
+    party = Party(company_id=company_id, name=name, name_en=name_en,
+                  party_type=party_type, currency=currency, contact=contact,
+                  notes=notes, created_by_id=user.id)
+    db.add(party)
+    db.commit()
+    db.refresh(party)
+    audit_service.record(db, action=AuditAction.PARTY_CREATED, actor_user_id=user.id,
+                         entity_type="party", entity_id=party.id, company_id=company_id,
+                         ip_address=ip_address, user_agent=user_agent)
+    return party
+
+
+def list_parties(db: Session, *, user: User, company_id: int | None = None) -> list[Party]:
+    require_permission(user, Perm.PARTY_READ)
+    stmt = select(Party).order_by(Party.name)
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(Party.company_id.in_(allowed)) if allowed else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(Party.company_id == company_id)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_party(p: Party) -> dict:
+    return {
+        "id": p.id, "company_id": p.company_id, "name": p.name, "name_en": p.name_en,
+        "party_type": p.party_type, "currency": p.currency, "contact": p.contact,
+        "is_active": p.is_active, "notes": p.notes,
+    }
+
+
+# --------------------------------------------------------------------------
+# inter-company balances (S27, spec §15)
+# --------------------------------------------------------------------------
+def record_interbalance(db: Session, *, user: User, company_id: int,
+                        amount: Decimal, counterparty_company_id: int | None = None,
+                        counterparty_name: str | None = None, currency: str = "SAR",
+                        reason: str | None = None, journal_reference: str | None = None,
+                        ip_address: str | None = None, user_agent: str | None = None) -> CompanyInterbalance:
+    require_permission(user, Perm.INTERBALANCE_MANAGE)
+    require_company_access(user, company_id, write=True)
+    if counterparty_company_id is not None:
+        # The counterparty company must exist (scope is not required: a holding
+        # balance may reference a company the recorder cannot otherwise write).
+        from backend.db.models.identity import Company as _Company
+        if db.get(_Company, counterparty_company_id) is None:
+            raise ValidationError("The counterparty company does not exist.")
+    # A balance is a balance, never revenue: no posting, no service fee.
+    balance = CompanyInterbalance(
+        company_id=company_id, counterparty_company_id=counterparty_company_id,
+        counterparty_name=counterparty_name, currency=currency, amount=amount,
+        reason=reason, journal_reference=journal_reference, recorded_by_id=user.id,
+    )
+    db.add(balance)
+    db.commit()
+    db.refresh(balance)
+    audit_service.record(db, action=AuditAction.INTERBALANCE_RECORDED, actor_user_id=user.id,
+                         entity_type="company_interbalance", entity_id=balance.id,
+                         company_id=company_id, ip_address=ip_address, user_agent=user_agent)
+    return balance
+
+
+def list_interbalances(db: Session, *, user: User, company_id: int | None = None) -> list[CompanyInterbalance]:
+    require_permission(user, Perm.INTERBALANCE_READ)
+    stmt = select(CompanyInterbalance).order_by(CompanyInterbalance.created_at.desc())
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(
+            CompanyInterbalance.company_id.in_(allowed)
+        ) if allowed else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(CompanyInterbalance.company_id == company_id)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_interbalance(b: CompanyInterbalance) -> dict:
+    return {
+        "id": b.id, "company_id": b.company_id,
+        "counterparty_company_id": b.counterparty_company_id,
+        "counterparty_name": b.counterparty_name, "currency": b.currency,
+        "amount": b.amount, "reason": b.reason, "journal_reference": b.journal_reference,
+        "created_at": b.created_at,
     }
 
 

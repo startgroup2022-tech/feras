@@ -90,7 +90,7 @@ contact/lead/opportunity/careers/group-service submissions, `GET /opportunities`
 | S20 Projects/opportunities | project/opportunity CRUD + states | ❌ |
 | S21 Executive brief | five-axis monthly brief | ❌ |
 | S22 Owner decisions | topic/decision/directive CRUD + archive | ❌ |
-| S26/S27/S28 Holding accounting | accounts, journals, invoices, receivables, assets, budgets, trial balance | ❌ 🔒 |
+| S26/S27/S28 Holding accounting | accounts, journals, invoices, receivables, parties, inter-company balances, assets, budgets, trial balance | ✅ |
 
 ---
 

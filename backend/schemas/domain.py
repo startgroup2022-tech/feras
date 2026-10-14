@@ -22,6 +22,7 @@ from backend.db.models.enums import (
     CampaignStatus,
     EmployeeMovementType,
     EmployeeStatus,
+    InvoiceDirection,
     JournalStatus,
     ManagementBriefUrgency,
     MovementStatus,
@@ -399,12 +400,34 @@ class InvoiceCreateRequest(BaseModel):
     company_id: int
     number: str = Field(min_length=1, max_length=60)
     party_name: str = Field(min_length=1, max_length=200)
+    direction: InvoiceDirection = InvoiceDirection.ISSUED
+    party_id: int | None = None
     lines: list[InvoiceLineIn] = Field(default_factory=list)
     currency: str = Field(default="SAR", max_length=8)
     issue_date: date | None = None
     due_date: date | None = None
     tax_rate: Decimal = Decimal("0")
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class PartyCreateRequest(BaseModel):
+    company_id: int
+    name: str = Field(min_length=1, max_length=200)
+    name_en: str | None = Field(default=None, max_length=200)
+    party_type: str = Field(default="customer", max_length=20)
+    currency: str = Field(default="SAR", max_length=8)
+    contact: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class InterbalanceCreateRequest(BaseModel):
+    company_id: int
+    counterparty_company_id: int | None = None
+    counterparty_name: str | None = Field(default=None, max_length=200)
+    currency: str = Field(default="SAR", max_length=8)
+    amount: Decimal
+    reason: str | None = Field(default=None, max_length=2000)
+    journal_reference: str | None = Field(default=None, max_length=120)
 
 
 class SettlementCreateRequest(BaseModel):
