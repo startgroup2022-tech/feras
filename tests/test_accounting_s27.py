@@ -298,8 +298,144 @@ def test_invoice_direction_defaults_to_issued(client, s27_world, auth):
 
 
 # --------------------------------------------------------------------------
-# frontend wiring: the new S27 surface is gated and bilingual
+# S28: financial statements (income statement + balance sheet)
 # --------------------------------------------------------------------------
+def _seed_ledger(db, company_id):
+    """A posted journal: cash 1000 (asset), revenue 1000 (credit)."""
+    from decimal import Decimal
+
+    from backend.db.models.accounting import Account, Journal, JournalLine
+    from datetime import date
+
+    cash = Account(company_id=company_id, code="1000", name_ar="نقد", name_en="Cash",
+                   account_type="asset", currency="SAR")
+    revenue = Account(company_id=company_id, code="4000", name_ar="إيراد",
+                      name_en="Revenue", account_type="revenue", currency="SAR")
+    expense = Account(company_id=company_id, code="5000", name_ar="مصروف",
+                      name_en="Expense", account_type="expense", currency="SAR")
+    db.add_all([cash, revenue, expense])
+    db.commit()
+    db.refresh(cash)
+    db.refresh(revenue)
+    db.refresh(expense)
+
+    journal = Journal(company_id=company_id, number="J-1", entry_date=date(2026, 3, 1),
+                      fiscal_year=2026, fiscal_month=3, status="posted")
+    db.add(journal)
+    db.flush()
+    db.add_all([
+        JournalLine(journal_id=journal.id, account_id=cash.id, debit=Decimal("1000"),
+                    credit=Decimal("0")),
+        JournalLine(journal_id=journal.id, account_id=revenue.id, debit=Decimal("0"),
+                    credit=Decimal("1000")),
+    ])
+    db.commit()
+    return cash, revenue, expense
+
+
+def test_financial_statements_report_income_and_balance(client, s27_world, auth, db):
+    owner = s27_world["owner_all"]
+    alpha = s27_world["alpha"].id
+    _seed_ledger(db, alpha)
+
+    fs = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={alpha}&fiscal_year=2026&fiscal_month=3",
+        headers=auth(owner),
+    )
+    assert fs.status_code == 200, fs.text
+    body = fs.json()
+    is_ = body["income_statement"]
+    bs = body["balance_sheet"]
+    assert is_["total_revenue"] == [{"currency": "SAR", "amount": "1000.00"}]
+    assert is_["total_expenses"] == []
+    assert is_["net"] == [{"currency": "SAR", "amount": "1000.00"}]
+    assert bs["total_assets"] == [{"currency": "SAR", "amount": "1000.00"}]
+    assert bs["balanced"] == [{"currency": "SAR", "balanced": False}]
+
+
+def test_financial_statements_ignore_draft_journals(client, s27_world, auth, db):
+    from decimal import Decimal
+
+    from datetime import date
+
+    from backend.db.models.accounting import Account, Journal, JournalLine
+
+    owner = s27_world["owner_all"]
+    alpha = s27_world["alpha"].id
+    cash = Account(company_id=alpha, code="1000", name_ar="نقد", account_type="asset",
+                   currency="SAR")
+    db.add(cash)
+    db.commit()
+    db.refresh(cash)
+    journal = Journal(company_id=alpha, number="J-DRAFT", entry_date=date(2026, 3, 1),
+                      fiscal_year=2026, fiscal_month=3, status="draft")
+    db.add(journal)
+    db.flush()
+    db.add(JournalLine(journal_id=journal.id, account_id=cash.id,
+                       debit=Decimal("500"), credit=Decimal("0")))
+    db.commit()
+
+    fs = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={alpha}&fiscal_year=2026&fiscal_month=3",
+        headers=auth(owner),
+    ).json()
+    assert fs["balance_sheet"]["assets"] == []
+    assert fs["balance_sheet"]["total_assets"] == []
+
+
+def test_financial_statements_compare_previous_period(client, s27_world, auth, db):
+    owner = s27_world["owner_all"]
+    alpha = s27_world["alpha"].id
+    _seed_ledger(db, alpha)
+    fs = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={alpha}"
+        "&fiscal_year=2026&fiscal_month=3&compare_previous=true",
+        headers=auth(owner),
+    ).json()
+    assert "previous" in fs
+    assert fs["previous"]["fiscal_year"] == 2026
+    assert fs["previous"]["fiscal_month"] == 2
+
+
+def test_financial_statements_are_company_scoped(client, s27_world, auth, db, make_user):
+    """A finance manager scoped to alpha cannot read beta's statements.
+
+    Out-of-scope and non-existent must be indistinguishable (both 403 with the
+    same body), so the caller cannot probe which company ids exist.
+    """
+    alpha = s27_world["alpha"]
+    scoped = make_user("fin_alpha@corp.sa", "finance_manager", [alpha])
+    beta = s27_world["beta"].id
+    out_of_scope = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={beta}",
+        headers=auth(scoped),
+    )
+    missing = client.get(
+        "/api/v1/accounting/financial-statements?company_id=999999",
+        headers=auth(scoped),
+    )
+    assert out_of_scope.status_code == 403, out_of_scope.text
+    assert missing.status_code == 403
+    assert out_of_scope.json() == missing.json()
+    # And the same user can read their own company.
+    allowed = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={alpha.id}",
+        headers=auth(scoped),
+    )
+    assert allowed.status_code == 200, allowed.text
+
+
+def test_frontend_exposes_the_statements_tab():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    app_js = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+    index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert "function renderStatements" in app_js
+    assert "financial-statements" in app_js
+    assert 'data-acct-tab="statements" data-perm="journal.read"' in index
+
+
 def test_frontend_exposes_the_new_s27_tabs_and_renderers():
     from pathlib import Path
 

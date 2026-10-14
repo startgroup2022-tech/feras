@@ -38,6 +38,7 @@ from backend.db.models.accounting import (
     Settlement,
 )
 from backend.db.models.enums import (
+    AccountType,
     BudgetStatus,
     InvoiceDirection,
     InvoiceStatus,
@@ -405,6 +406,173 @@ def trial_balance(
         "total_credit": str(total_credit),
         "balanced": total_debit == total_credit,
     }
+
+
+# --------------------------------------------------------------------------
+# financial statements (S28, spec §15)
+# --------------------------------------------------------------------------
+def _totals_by_currency(rows: list[dict]) -> list[dict]:
+    totals: dict[str, Decimal] = {}
+    for row in rows:
+        cur = row["currency"]
+        totals[cur] = totals.get(cur, ZERO) + row["amount"]
+    return [{"currency": c, "amount": str(a)} for c, a in sorted(totals.items())]
+
+
+def _statement_rows(db: Session, *, company_id: int, account_type: str,
+                    fiscal_year: int | None, fiscal_month: int | None) -> list[dict]:
+    stmt = (
+        select(
+            JournalLine.account_id,
+            func.coalesce(func.sum(JournalLine.debit), 0),
+            func.coalesce(func.sum(JournalLine.credit), 0),
+        )
+        .join(Journal, Journal.id == JournalLine.journal_id)
+        .join(Account, Account.id == JournalLine.account_id)
+        .where(
+            Journal.company_id == company_id,
+            Journal.status == JournalStatus.POSTED.value,
+            Account.account_type == account_type,
+        )
+        .group_by(JournalLine.account_id)
+    )
+    if fiscal_year is not None:
+        stmt = stmt.where(Journal.fiscal_year == fiscal_year)
+    if fiscal_month is not None:
+        stmt = stmt.where(Journal.fiscal_month == fiscal_month)
+
+    accounts = {a.id: a for a in db.execute(
+        select(Account).where(Account.company_id == company_id)
+    ).scalars()}
+
+    rows: list[dict] = []
+    for account_id, debit, credit in db.execute(stmt):
+        account = accounts.get(account_id)
+        if account is None:
+            continue
+        debit = Decimal(debit or 0)
+        credit = Decimal(credit or 0)
+        # Assets/expenses are debit-normal; liabilities/equity/revenue are
+        # credit-normal. The sign is derived, never stored, so a loss is simply
+        # a negative net (spec §15 allows negative figures).
+        if account_type in {AccountType.ASSET.value, AccountType.EXPENSE.value}:
+            amount = debit - credit
+        else:
+            amount = credit - debit
+        rows.append({
+            "account_id": account_id,
+            "code": account.code,
+            "name_ar": account.name_ar,
+            "name_en": account.name_en,
+            "currency": account.currency,
+            "amount": amount,
+        })
+    rows.sort(key=lambda r: r["code"])
+    return rows
+
+
+def _statements_for_period(db: Session, *, company_id: int,
+                           fiscal_year: int | None, fiscal_month: int | None) -> dict:
+    revenue = _statement_rows(db, company_id=company_id,
+                              account_type=AccountType.REVENUE.value,
+                              fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+    expenses = _statement_rows(db, company_id=company_id,
+                               account_type=AccountType.EXPENSE.value,
+                               fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+    assets = _statement_rows(db, company_id=company_id,
+                             account_type=AccountType.ASSET.value,
+                             fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+    liabilities = _statement_rows(db, company_id=company_id,
+                                  account_type=AccountType.LIABILITY.value,
+                                  fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+    equity = _statement_rows(db, company_id=company_id,
+                             account_type=AccountType.EQUITY.value,
+                             fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+
+    total_revenue = _totals_by_currency(revenue)
+    total_expenses = _totals_by_currency(expenses)
+    net: dict[str, Decimal] = {r["currency"]: r["amount"] for r in revenue}
+    for e in expenses:
+        net[e["currency"]] = net.get(e["currency"], ZERO) - e["amount"]
+    net_rows = [{"currency": c, "amount": str(a)} for c, a in sorted(net.items())]
+
+    total_assets = _totals_by_currency(assets)
+    total_liabilities = _totals_by_currency(liabilities)
+    total_equity = _totals_by_currency(equity)
+
+    # Assets must equal liabilities + equity, per currency. A currency that
+    # appears on only one side is a real imbalance and is reported, not hidden.
+    balanced: dict[str, bool] = {}
+    for row in total_assets:
+        balanced[row["currency"]] = (
+            Decimal(row["amount"])
+            == Decimal(next((l["amount"] for l in total_liabilities
+                             if l["currency"] == row["currency"]), "0"))
+            + Decimal(next((e["amount"] for e in total_equity
+                            if e["currency"] == row["currency"]), "0"))
+        )
+
+    def _fmt(rows: list[dict]) -> list[dict]:
+        return [{**r, "amount": str(r["amount"])} for r in rows]
+
+    return {
+        "fiscal_year": fiscal_year,
+        "fiscal_month": fiscal_month,
+        "income_statement": {
+            "revenue": _fmt(revenue),
+            "expenses": _fmt(expenses),
+            "total_revenue": total_revenue,
+            "total_expenses": total_expenses,
+            "net": net_rows,
+        },
+        "balance_sheet": {
+            "assets": _fmt(assets),
+            "liabilities": _fmt(liabilities),
+            "equity": _fmt(equity),
+            "total_assets": total_assets,
+            "total_liabilities": total_liabilities,
+            "total_equity": total_equity,
+            "balanced": [
+                {"currency": c, "balanced": b} for c, b in sorted(balanced.items())
+            ],
+        },
+    }
+
+
+def _previous_period(fiscal_year: int | None, fiscal_month: int | None):
+    if fiscal_year is None:
+        return None, None
+    if fiscal_month is None:
+        return fiscal_year - 1, None
+    if fiscal_month <= 1:
+        return fiscal_year - 1, 12
+    return fiscal_year, fiscal_month - 1
+
+
+def financial_statements(
+    db: Session, *, user: User, company_id: int,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+    compare_previous: bool = False,
+) -> dict:
+    """Income statement and balance sheet from *posted* journals (S28, AC-28).
+
+    Only ``POSTED`` journals count. Figures are grouped per currency so two
+    currencies are never added together (T10). When ``compare_previous`` is set
+    the immediately preceding month (or year, when no month is given) is
+    returned alongside for comparison.
+    """
+    require_permission(user, Perm.JOURNAL_READ)
+    require_company_access(user, company_id)
+
+    current = _statements_for_period(db, company_id=company_id,
+                                     fiscal_year=fiscal_year, fiscal_month=fiscal_month)
+    result = {"company_id": company_id, **current}
+    if compare_previous:
+        py, pm = _previous_period(fiscal_year, fiscal_month)
+        result["previous"] = _statements_for_period(
+            db, company_id=company_id, fiscal_year=py, fiscal_month=pm
+        )
+    return result
 
 
 # --------------------------------------------------------------------------

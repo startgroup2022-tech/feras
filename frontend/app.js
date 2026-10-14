@@ -6148,12 +6148,13 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
     journals: ["journal.read"],
     trial: ["journal.read"],
+    statements: ["journal.read"],
     invoices: ["invoice.read"],
     parties: ["party.read"],
     interbalances: ["interbalance.read"],
@@ -6187,6 +6188,7 @@
     if (tab === "accounts") return renderAccounts();
     if (tab === "journals") return renderJournals();
     if (tab === "trial") return renderTrialBalance();
+    if (tab === "statements") return renderStatements();
     if (tab === "invoices") return renderInvoices();
     if (tab === "parties") return renderParties();
     if (tab === "interbalances") return renderInterbalances();
@@ -6371,6 +6373,109 @@
         if (sel) sel.addEventListener("change", function () {
           STATE.acctTrialCompany = parseInt(valOf("tbCompany"), 10);
           renderTrialBalance();
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function statementSection(titleAr, titleEn, rows, totals) {
+    var body = (rows || []).length
+      ? '<div class="av-list">' + rows.map(function (r) {
+          var name = STATE.lang === "ar" ? r.name_ar : (r.name_en || r.name_ar);
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml(r.code + " · " + name) + "</div></div>" +
+            '<div class="t">' + dec(r.amount) + " " + escapeHtml(r.currency || "") + "</div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد مبالغ.", "No amounts.");
+    var footer = (totals || []).length
+      ? '<p class="note-block">' + totals.map(function (t) {
+          return escapeHtml(t.label) + " " + dec(t.amount) + " " + escapeHtml(t.currency);
+        }).join(" · ") + "</p>"
+      : "";
+    return panel(titleAr, titleEn, body + footer);
+  }
+
+  function statementPeriodLabel(fy, fm) {
+    return (fy || "—") + (fm ? " / " + fm : "");
+  }
+
+  function renderStatements() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
+      if (!STATE.companies.length) { host.innerHTML = noticeHtml("لا توجد شركات.", "No companies."); return; }
+      var cid = STATE.acctStmtCompany || STATE.companies[0].id;
+      STATE.acctStmtCompany = cid;
+      var compare = !!STATE.acctStmtCompare;
+      var q = "?company_id=" + cid +
+        (STATE.acctStmtYear ? "&fiscal_year=" + STATE.acctStmtYear : "") +
+        (STATE.acctStmtMonth ? "&fiscal_month=" + STATE.acctStmtMonth : "") +
+        (compare ? "&compare_previous=true" : "");
+      return get("/api/v1/accounting/financial-statements" + q).then(function (fs) {
+        var picker = '<div class="av-form av-form-inline">' +
+          field("الشركة", "Company", selectInput("fsCompany", companySelectOptions(false), cid)) +
+          field("السنة", "Year", numInput("fsYear", STATE.acctStmtYear || "")) +
+          field("الشهر", "Month", numInput("fsMonth", STATE.acctStmtMonth || "")) +
+          field("المقارنة", "Compare", selectInput("fsCompare",
+            [{ value: "", label: opt("بدون", "None") }, { value: "1", label: opt("الفترة السابقة", "Previous period") }],
+            compare ? "1" : "")) +
+          "</div>";
+        var is = fs.income_statement || {};
+        var bs = fs.balance_sheet || {};
+        var netTotals = (is.net || []).map(function (n) {
+          return { label: dual("صافي", "Net") + " (" + statementPeriodLabel(fs.fiscal_year, fs.fiscal_month) + ")",
+                   amount: n.amount, currency: n.currency };
+        });
+        var revTotals = (is.total_revenue || []).map(function (n) {
+          return { label: dual("إجمالي الإيرادات", "Total revenue"), amount: n.amount, currency: n.currency };
+        }).concat((is.total_expenses || []).map(function (n) {
+          return { label: dual("إجمالي المصروفات", "Total expenses"), amount: n.amount, currency: n.currency };
+        })).concat(netTotals);
+        var bsTotals = (bs.total_assets || []).map(function (n) {
+          return { label: dual("إجمالي الأصول", "Total assets"), amount: n.amount, currency: n.currency };
+        }).concat((bs.total_liabilities || []).map(function (n) {
+          return { label: dual("إجمالي الالتزامات", "Total liabilities"), amount: n.amount, currency: n.currency };
+        })).concat((bs.total_equity || []).map(function (n) {
+          return { label: dual("حقوق الملكية", "Equity"), amount: n.amount, currency: n.currency };
+        })).concat((bs.balanced || []).map(function (b) {
+          return { label: b.currency, amount: b.balanced ? dual("متوازن", "Balanced") : dual("غير متوازن", "Not balanced"), currency: "" };
+        }));
+        var prev = "";
+        if (fs.previous) {
+          var pis = fs.previous.income_statement || {};
+          var prevNet = (pis.net || []).map(function (n) {
+            return { label: dual("صافي", "Net") + " (" + statementPeriodLabel(fs.previous.fiscal_year, fs.previous.fiscal_month) + ")",
+                     amount: n.amount, currency: n.currency };
+          });
+          prev = statementSection("الفترة السابقة — قائمة الدخل", "Previous period — income statement",
+            pis.revenue || [], prevNet);
+        }
+        host.innerHTML = panel(
+          "القوائم المالية (القيود المُرحّلة فقط؛ الأرقام بعملاتها دون جمع)",
+          "Financial statements (posted journals only; amounts kept per currency)",
+          picker +
+          statementSection("قائمة الدخل", "Income statement", (is.revenue || []).concat(is.expenses || []), revTotals) +
+          statementSection("الميزانية العمومية", "Balance sheet", (bs.assets || []).concat(bs.liabilities || []).concat(bs.equity || []), bsTotals) +
+          prev
+        );
+        var sel = byId("fsCompany");
+        if (sel) sel.addEventListener("change", function () {
+          STATE.acctStmtCompany = parseInt(valOf("fsCompany"), 10);
+          renderStatements();
+        });
+        var yEl = byId("fsYear");
+        if (yEl) yEl.addEventListener("change", function () {
+          STATE.acctStmtYear = valOf("fsYear") ? parseInt(valOf("fsYear"), 10) : null;
+          renderStatements();
+        });
+        var mEl = byId("fsMonth");
+        if (mEl) mEl.addEventListener("change", function () {
+          STATE.acctStmtMonth = valOf("fsMonth") ? parseInt(valOf("fsMonth"), 10) : null;
+          renderStatements();
+        });
+        var cEl = byId("fsCompare");
+        if (cEl) cEl.addEventListener("change", function () {
+          STATE.acctStmtCompare = valOf("fsCompare") === "1";
+          renderStatements();
         });
       });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });

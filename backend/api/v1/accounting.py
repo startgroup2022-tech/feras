@@ -164,6 +164,18 @@ def receivables(
     return accounting_service.receivables_summary(db, user=user, company_id=company_id)
 
 
+@router.get("/financial-statements")
+def financial_statements(
+    user: CurrentUser, db: DbSession, company_id: int,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+    compare_previous: bool = False,
+) -> dict:
+    return accounting_service.financial_statements(
+        db, user=user, company_id=company_id, fiscal_year=fiscal_year,
+        fiscal_month=fiscal_month, compare_previous=compare_previous,
+    )
+
+
 @router.post("/invoices", status_code=status.HTTP_201_CREATED)
 def create_invoice(
     payload: InvoiceCreateRequest, request: Request, user: CurrentUser, db: DbSession
