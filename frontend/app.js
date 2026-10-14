@@ -5797,11 +5797,12 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "invoices", "assets", "budgets", "kpis"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "invoices", "assets", "budgets", "kpis"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
     journals: ["journal.read"],
+    trial: ["journal.read"],
     invoices: ["invoice.read"],
     assets: ["asset.read"],
     budgets: ["budget.read"],
@@ -5832,6 +5833,7 @@
     if (tab === "balances") return renderOpeningBalances();
     if (tab === "accounts") return renderAccounts();
     if (tab === "journals") return renderJournals();
+    if (tab === "trial") return renderTrialBalance();
     if (tab === "invoices") return renderInvoices();
     if (tab === "assets") return renderAssets();
     if (tab === "budgets") return renderBudgets();
@@ -5981,6 +5983,42 @@
       });
     });
     return lines;
+  }
+
+  function renderTrialBalance() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
+      if (!STATE.companies.length) { host.innerHTML = noticeHtml("لا توجد شركات.", "No companies."); return; }
+      var cid = STATE.acctTrialCompany || STATE.companies[0].id;
+      STATE.acctTrialCompany = cid;
+      return get("/api/v1/accounting/trial-balance?company_id=" + cid).then(function (tb) {
+        var picker = '<div class="av-form av-form-inline">' +
+          field("الشركة", "Company", selectInput("tbCompany",
+            companySelectOptions(false), cid)) + "</div>";
+        var rows = (tb && tb.rows) || [];
+        var table = rows.length
+          ? '<div class="av-list">' + rows.map(function (r) {
+              var name = STATE.lang === "ar" ? r.name_ar : (r.name_en || r.name_ar);
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+                escapeHtml(r.code + " · " + name) + "</div>" +
+                '<div class="s">' + escapeHtml(r.account_type) + " · " + dual("مدين", "Debit") + " " +
+                dec(r.debit) + " · " + dual("دائن", "Credit") + " " + dec(r.credit) + "</div></div>" +
+                '<div class="t">' + dec(r.balance) + " " + escapeHtml(r.currency || "") + "</div></div>";
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد قيود مُرحّلة.", "No posted entries.");
+        var totals = rows.length
+          ? '<p class="note-block">' + dual("إجمالي مدين", "Total debit") + " " + dec(tb.total_debit) +
+            " · " + dual("إجمالي دائن", "Total credit") + " " + dec(tb.total_credit) +
+            " · " + (tb.balanced ? dual("متوازن", "Balanced") : dual("غير متوازن", "Not balanced")) + "</p>"
+          : "";
+        host.innerHTML = panel("ميزان المراجعة (القيود المُرحّلة فقط)", "Trial balance (posted journals only)", picker + totals + table);
+        var sel = byId("tbCompany");
+        if (sel) sel.addEventListener("change", function () {
+          STATE.acctTrialCompany = parseInt(valOf("tbCompany"), 10);
+          renderTrialBalance();
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderInvoices() {

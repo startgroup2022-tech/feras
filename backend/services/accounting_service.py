@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.core.errors import ConflictError, NotFoundError, ValidationError
@@ -331,6 +331,76 @@ def serialise_journal(j: Journal) -> dict:
              "description": l.description, "cost_centre": l.cost_centre}
             for l in j.lines
         ],
+    }
+
+
+def trial_balance(
+    db: Session, *, user: User, company_id: int,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+) -> dict:
+    """The trial balance for one company's *posted* journals (S26/S28, AC-26/AC-28).
+
+    Only ``POSTED`` journals count -- drafts never affect the ledger. Each line is
+    grouped by account; ``balance`` is debit minus credit. The totals must agree
+    (a posting that did not balance could never have been posted), so any
+    discrepancy is surfaced rather than hidden.
+    """
+    require_permission(user, Perm.JOURNAL_READ)
+    require_company_access(user, company_id)
+
+    stmt = (
+        select(
+            JournalLine.account_id,
+            func.coalesce(func.sum(JournalLine.debit), 0),
+            func.coalesce(func.sum(JournalLine.credit), 0),
+        )
+        .join(Journal, Journal.id == JournalLine.journal_id)
+        .where(
+            Journal.company_id == company_id,
+            Journal.status == JournalStatus.POSTED.value,
+        )
+        .group_by(JournalLine.account_id)
+    )
+    if fiscal_year is not None:
+        stmt = stmt.where(Journal.fiscal_year == fiscal_year)
+    if fiscal_month is not None:
+        stmt = stmt.where(Journal.fiscal_month == fiscal_month)
+
+    accounts = {a.id: a for a in db.execute(
+        select(Account).where(Account.company_id == company_id)
+    ).scalars()}
+
+    rows: list[dict] = []
+    total_debit = ZERO
+    total_credit = ZERO
+    for account_id, debit, credit in db.execute(stmt):
+        account = accounts.get(account_id)
+        if account is None:
+            continue
+        debit = Decimal(debit or 0)
+        credit = Decimal(credit or 0)
+        total_debit += debit
+        total_credit += credit
+        rows.append({
+            "account_id": account_id,
+            "code": account.code,
+            "name_ar": account.name_ar,
+            "name_en": account.name_en,
+            "account_type": account.account_type,
+            "currency": account.currency,
+            "debit": str(debit),
+            "credit": str(credit),
+            "balance": str(debit - credit),
+        })
+    rows.sort(key=lambda r: r["code"])
+    return {
+        "company_id": company_id,
+        "fiscal_year": fiscal_year,
+        "fiscal_month": fiscal_month,
+        "rows": rows,
+        "total_debit": str(total_debit),
+        "total_credit": str(total_credit),
+        "balanced": total_debit == total_credit,
     }
 
 

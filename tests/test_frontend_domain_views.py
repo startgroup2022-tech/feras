@@ -49,6 +49,7 @@ NEW_ENDPOINTS = [
     "/api/v1/accounting/opening-balances",
     "/api/v1/accounting/accounts",
     "/api/v1/accounting/journals",
+    "/api/v1/accounting/trial-balance",
     "/api/v1/accounting/invoices",
     "/api/v1/accounting/assets",
     "/api/v1/accounting/budgets",

@@ -107,6 +107,24 @@ def create_journal(
     return accounting_service.serialise_journal(journal)
 
 
+@router.get("/journals/{journal_id}")
+def get_journal(journal_id: int, user: CurrentUser, db: DbSession) -> dict:
+    return accounting_service.serialise_journal(
+        accounting_service._get_journal(db, user=user, journal_id=journal_id)
+    )
+
+
+@router.get("/trial-balance")
+def trial_balance(
+    user: CurrentUser, db: DbSession, company_id: int,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+) -> dict:
+    return accounting_service.trial_balance(
+        db, user=user, company_id=company_id,
+        fiscal_year=fiscal_year, fiscal_month=fiscal_month,
+    )
+
+
 @router.post("/journals/{journal_id}/post")
 def post_journal(journal_id: int, request: Request, user: CurrentUser, db: DbSession) -> dict:
     ctx = audit_service.request_context(request)

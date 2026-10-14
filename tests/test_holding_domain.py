@@ -322,6 +322,93 @@ def test_posted_journal_is_immutable_and_reversible(client, domain_world, auth, 
     assert original.status == JournalStatus.REVERSED.value
 
 
+def test_trial_balance_aggregates_posted_journals_only(client, domain_world, auth, db):
+    a = _make_account(db, domain_world["alpha"].id, "1000", "asset")
+    b = _make_account(db, domain_world["alpha"].id, "4000", "revenue")
+    owner = domain_world["owner_all"]
+
+    # A draft journal must not appear in the trial balance.
+    draft = client.post(
+        "/api/v1/accounting/journals",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "entry_date": "2027-10-01",
+            "lines": [{"account_id": a.id, "debit": "500.00"},
+                      {"account_id": b.id, "credit": "500.00"}],
+        },
+        headers=auth(owner),
+    ).json()
+
+    tb = client.get(
+        "/api/v1/accounting/trial-balance",
+        params={"company_id": domain_world["alpha"].id},
+        headers=auth(owner),
+    )
+    assert tb.status_code == 200, tb.text
+    assert tb.json()["rows"] == []
+    assert tb.json()["balanced"] is True
+
+    # Post it: now both accounts show, totals agree, balance is debit-credit.
+    client.post(f"/api/v1/accounting/journals/{draft['id']}/post", headers=auth(owner))
+    tb = client.get(
+        "/api/v1/accounting/trial-balance",
+        params={"company_id": domain_world["alpha"].id},
+        headers=auth(owner),
+    ).json()
+    by_code = {r["code"]: r for r in tb["rows"]}
+    assert by_code["1000"]["debit"] == "500.00"
+    assert by_code["1000"]["balance"] == "500.00"
+    assert by_code["4000"]["credit"] == "500.00"
+    assert by_code["4000"]["balance"] == "-500.00"
+    assert tb["total_debit"] == "500.00"
+    assert tb["total_credit"] == "500.00"
+    assert tb["balanced"] is True
+
+
+def test_trial_balance_excludes_another_company(client, domain_world, auth, db, make_user):
+    owner = domain_world["owner_all"]
+    alpha = _make_account(db, domain_world["alpha"].id, "1000", "asset")
+    beta = _make_account(db, domain_world["beta"].id, "1000", "asset")
+    other = _make_account(db, domain_world["beta"].id, "4000", "revenue")
+    client.post(
+        "/api/v1/accounting/journals",
+        json={
+            "company_id": domain_world["beta"].id, "entry_date": "2027-10-01",
+            "lines": [{"account_id": beta.id, "debit": "300.00"},
+                      {"account_id": other.id, "credit": "300.00"}],
+        },
+        headers=auth(owner),
+    )
+    tb = client.get(
+        "/api/v1/accounting/trial-balance",
+        params={"company_id": domain_world["alpha"].id},
+        headers=auth(owner),
+    ).json()
+    # Alpha has no posted entries; beta's posted entry must not leak in.
+    assert tb["rows"] == []
+
+    # A custom role granted only ``journal.read`` and scoped to alpha may read
+    # alpha's ledger but must not reach beta's trial balance.
+    role = client.post(
+        "/api/v1/admin/roles",
+        json={
+            "code": "tb_reader_alpha",
+            "name_ar": "قارئ ميزان",
+            "name_en": "Trial balance reader",
+            "permissions": ["journal.read"],
+        },
+        headers=auth(owner),
+    )
+    assert role.status_code == 201, role.text
+    scoped = make_user("tb.reader@corp.sa", "tb_reader_alpha", [domain_world["alpha"]])
+    denied = client.get(
+        "/api/v1/accounting/trial-balance",
+        params={"company_id": domain_world["beta"].id},
+        headers=auth(scoped),
+    )
+    assert denied.status_code in (403, 404), denied.text
+
+
 def test_opening_balance_not_auto_carried(client, domain_world, auth, db):
     # Creating an opening balance must not create a carry-forward row for the
     # next year (D08).
