@@ -77,6 +77,7 @@ def create_request(
         metadata={"category": category},
     )
     _emit_support_created(db, request=request, actor=user)
+    _notify_specialist_and_bd(db, request=request, actor=user)
     return request
 
 
@@ -99,6 +100,46 @@ def _emit_support_created(db: Session, *, request: SupportRequest, actor: User) 
         import logging
 
         logging.getLogger("safir.support").exception("support created webhook emit failed")
+
+
+def _notify_specialist_and_bd(
+    db: Session, *, request: SupportRequest, actor: User
+) -> None:
+    """S16/AC-16: notify the owning specialist directly and BD for information.
+
+    The request is never gated on BD approval; BD receives an informational
+    notification only. If the acting user *is* the recipient they are skipped
+    (a user is not notified of their own action).
+    """
+    from backend.db.models.support import CATEGORY_OWNER_ROLE
+    from backend.services import notification_service
+
+    department = responsible_department_label(request.category)
+    specialist_role = CATEGORY_OWNER_ROLE.get(request.category, "holding_owner")
+    specialist_ids = notification_service.users_with_role(db, role_code=specialist_role)
+    inform_ids = notification_service.users_with_role(
+        db, role_code="business_development"
+    )
+    skip = {actor.id}
+    company = request.company
+    try:
+        notification_service.notify_support_created(
+            db,
+            specialist_ids=[uid for uid in specialist_ids if uid not in skip],
+            inform_ids=[uid for uid in inform_ids if uid not in skip],
+            request_id=request.id,
+            company_id=request.company_id,
+            request_title=request.title,
+            company_name_ar=company.name_ar if company else "",
+            company_name_en=(company.name_en if company and company.name_en else (company.name_ar if company else "")),
+            department_ar=department[0],
+            department_en=department[1],
+            actor_user_id=actor.id,
+        )
+    except Exception:  # noqa: BLE001 - best-effort
+        import logging
+
+        logging.getLogger("safir.support").exception("support creation notification failed")
 
 
 def change_status(

@@ -148,3 +148,56 @@ Verified end to end against the live API: the accountant now creates a chart of
 accounts entry and an opening balance (201/200), both persist on re-read, and a
 company manager writing another company still receives 403 for accounts, opening
 balances and KPI drill-down.
+
+## Acceptance-criteria completion batch — notifications & overdue (2026-10-15)
+
+Closing the AC rows that had no dedicated coverage, without reopening the
+already-complete modules. Each item below is a real business workflow wired
+through service → API → persistence, with a test that exercises the API path.
+
+### AC-16 — a design/service request reaches the specialist directly
+
+* `notification_service.notify_support_created(...)` notifies the **owning
+  specialist role** (the category's `CATEGORY_OWNER_ROLE`) as `support.assigned`
+  and **informs business development** as `support.created`.
+* BD receives an *informational* notification only: the request stays `new`, so
+  there is no hidden BD approval step (spec AC-16 / T03).
+* `notification_service.users_with_role(db, *, role_code)` resolves the active
+  holders of a role; the acting user is never notified of their own action.
+* Tests: `tests/test_support.py::test_new_request_notifies_the_owning_specialist`,
+  `..._informs_bd_without_gating_it`, `..._requester_is_not_notified_of_its_own_request`.
+
+### AC-17 — task follow-up, overdue list, and no double entry
+
+* `notification_service.notify_task_assigned(...)` tells the assignee a task was
+  put on their desk; `notify_task_status_changed(...)` surfaces an assignee's
+  progress to the creator/reviewer (no penalty, per S17).
+* `list_tasks(..., overdue=True)` and `serialise_task(...)["is_overdue"]` expose a
+  server-side overdue verdict that **excludes completed and cancelled** tasks
+  (AC-17: "المهمة المنجزة لا تظهر في قائمة المتأخر"); the frontend prefers it.
+* A task is a first-class record that references a company/project, so a task
+  raised from a request does not create a second register (the single-entity
+  design already enforces AC-17's "no double entry").
+* Tests: `tests/test_holding_domain.py::test_assigning_a_task_notifies_the_assignee`,
+  `..._task_status_change_notifies_the_creator`, `..._overdue_list_excludes_a_completed_task`.
+
+### AC-15 — a complaint never notifies a manager
+
+* `operations_service._notify_complaint_route(...)` notifies **only** the person
+  the owner explicitly names on `routed_to_id`, and the notification carries no
+  subject or body (the complaint stays confidential). Logging a complaint
+  notifies nobody.
+* Test: `tests/test_holding_domain.py::test_complaint_decision_notifies_only_the_named_person`.
+
+### Verification
+
+* `python -m pytest tests/ -q` — full suite green (exit 0) on this branch.
+* No schema change was required for this batch (notifications are data rows), so
+  the alembic head is unchanged and `alembic check` stays clean.
+
+### Still owner-dependent (do not invent)
+
+* D01–D11 remain open where they need an explicit written owner decision (see
+  `SAFIR_OPEN_DECISIONS_AND_ASSUMPTIONS.md`); nothing here presumes an approval.
+* The original Word specification must still be supplied to certify a verbatim
+  reading; the matrix continues to cite the recovered text.

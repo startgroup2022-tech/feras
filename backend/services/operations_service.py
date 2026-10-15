@@ -12,6 +12,8 @@ Owner decisions D02/D03/D04/D07. Policy-dependent behaviour is left disabled:
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -82,6 +84,19 @@ TASK_TRANSITIONS: dict[str, set[str]] = {
     TaskLifecycleStatus.CANCELLED.value: {TaskLifecycleStatus.NEW.value},  # reopen
 }
 
+TASK_STATUS_LABELS: dict[str, tuple[str, str]] = {
+    TaskLifecycleStatus.NEW.value: ("جديد", "New"),
+    TaskLifecycleStatus.IN_PROGRESS.value: ("قيد التنفيذ", "In progress"),
+    TaskLifecycleStatus.AWAITING_REVIEW.value: ("بانتظار المراجعة", "Awaiting review"),
+    TaskLifecycleStatus.COMPLETE.value: ("منجز", "Complete"),
+    TaskLifecycleStatus.RETURNED.value: ("مُعاد", "Returned"),
+    TaskLifecycleStatus.CANCELLED.value: ("ملغى", "Cancelled"),
+}
+
+
+def _task_status_labels(status: str) -> tuple[str, str]:
+    return TASK_STATUS_LABELS.get(status, (status, status))
+
 
 # --------------------------------------------------------------------------
 # tasks (D03)
@@ -116,6 +131,10 @@ def create_task(
         db, action=AuditAction.TASK_CREATED, actor_user_id=user.id,
         entity_type="task", entity_id=task.id, company_id=company_id,
         ip_address=ip_address, user_agent=user_agent,
+    )
+    notification_service.notify_task_assigned(
+        db, assignee_id=task.assignee_id, task_id=task.id, company_id=company_id,
+        task_title=task.title, actor_user_id=user.id,
     )
     return task
 
@@ -159,6 +178,13 @@ def change_task_status(
         ip_address=ip_address, user_agent=user_agent,
         metadata={"from": previous, "to": new_status},
     )
+    status_ar, status_en = _task_status_labels(new_status)
+    notification_service.notify_task_status_changed(
+        db,
+        recipient_ids=[uid for uid in (task.created_by_id, task.reviewer_id) if uid],
+        task_id=task.id, company_id=task.company_id, task_title=task.title,
+        status_ar=status_ar, status_en=status_en, actor_user_id=user.id,
+    )
     return task
 
 
@@ -186,7 +212,7 @@ def update_task(
 
 def list_tasks(
     db: Session, *, user: User, company_id: int | None = None,
-    status: str | None = None, mine: bool = False,
+    status: str | None = None, mine: bool = False, overdue: bool = False,
 ) -> list[Task]:
     read_all = has_any_permission(user, Perm.TASK_READ_ALL)
     read_own = has_any_permission(user, Perm.TASK_READ_OWN)
@@ -205,7 +231,25 @@ def list_tasks(
         stmt = stmt.where(Task.company_id == company_id)
     if status is not None:
         stmt = stmt.where(Task.status == status)
+    if overdue:
+        # AC-17: a completed (or cancelled) task is never in the overdue list.
+        stmt = stmt.where(
+            Task.due_date.is_not(None),
+            Task.due_date < date.today(),
+            Task.status.not_in(
+                [TaskLifecycleStatus.COMPLETE.value, TaskLifecycleStatus.CANCELLED.value]
+            ),
+        )
     return list(db.execute(stmt).scalars())
+
+
+def _is_task_overdue(task: Task) -> bool:
+    return bool(
+        task.due_date
+        and task.due_date < date.today()
+        and task.status
+        not in (TaskLifecycleStatus.COMPLETE.value, TaskLifecycleStatus.CANCELLED.value)
+    )
 
 
 def _get_task(db: Session, *, user: User, task_id: int) -> Task:
@@ -223,6 +267,7 @@ def serialise_task(task: Task) -> dict:
         "progress_percent": task.progress_percent, "due_date": task.due_date,
         "created_by_id": task.created_by_id, "assignee_id": task.assignee_id,
         "reviewer_id": task.reviewer_id, "completed_at": task.completed_at,
+        "is_overdue": _is_task_overdue(task),
         "created_at": task.created_at, "updated_at": task.updated_at,
         "events": [
             {"from_status": e.from_status, "to_status": e.to_status, "actor_id": e.actor_id,
@@ -447,7 +492,38 @@ def decide_complaint(
                          entity_type="complaint", entity_id=complaint.id,
                          ip_address=ip_address, user_agent=user_agent,
                          metadata={"status": new_status})
+    _notify_complaint_route(db, complaint=complaint, actor=user)
     return complaint
+
+
+def _notify_complaint_route(db: Session, *, complaint: Complaint, actor: User) -> None:
+    """S15: notify only the person the owner explicitly names (never a manager).
+
+    The complaint stays confidential: the notification carries no subject or
+    body, only a pointer to the decision the owner made. A non-routed decision
+    notifies nobody (AC-15: logging a complaint never notifies a manager).
+    """
+    if not complaint.routed_to_id or complaint.routed_to_id == actor.id:
+        return
+    try:
+        notification_service.notify(
+            db,
+            recipient_ids=[complaint.routed_to_id],
+            type=NotificationType.SYSTEM.value,
+            priority=NotificationPriority.HIGH.value,
+            title_ar="إحالة من المالك",
+            title_en="Referred by the owner",
+            message_ar="أحال إليك المالك شكوى للمعالجة.",
+            message_en="The owner referred a complaint to you for handling.",
+            entity_type="complaint",
+            entity_id=complaint.id,
+            actor_user_id=actor.id,
+            dedupe_key=f"complaint_routed:{complaint.id}:{complaint.routed_to_id}",
+        )
+    except Exception:  # noqa: BLE001 - a notification must never break the decision
+        import logging
+
+        logging.getLogger("safir.operations").exception("complaint route notification failed")
 
 
 def list_complaints(db: Session, *, user: User) -> list[Complaint]:

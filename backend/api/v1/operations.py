@@ -34,12 +34,13 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 @router.get("/tasks")
 def list_tasks(
     user: CurrentUser, db: DbSession, company_id: int | None = None,
-    status_filter: str | None = None, mine: bool = False,
+    status_filter: str | None = None, mine: bool = False, overdue: bool = False,
 ) -> list[dict]:
     return [
         operations_service.serialise_task(t)
         for t in operations_service.list_tasks(
-            db, user=user, company_id=company_id, status=status_filter, mine=mine
+            db, user=user, company_id=company_id, status=status_filter, mine=mine,
+            overdue=overdue,
         )
     ]
 

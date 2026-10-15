@@ -369,7 +369,10 @@ class NotificationType(str, enum.Enum):
     FINANCIAL_SUMMARY_RESUBMITTED = "financial_summary.resubmitted"
     FINANCIAL_SUMMARY_APPROVED = "financial_summary.approved"
     SUPPORT_ASSIGNED = "support.assigned"
+    SUPPORT_CREATED = "support.created"
     SUPPORT_STATUS_CHANGED = "support.status_changed"
+    TASK_ASSIGNED = "task.assigned"
+    TASK_STATUS_CHANGED = "task.status_changed"
     SYSTEM = "system"
 
 

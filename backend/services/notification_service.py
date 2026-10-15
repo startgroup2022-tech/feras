@@ -444,6 +444,64 @@ def notify_support_assigned(
     )
 
 
+def notify_support_created(
+    db: Session,
+    *,
+    specialist_ids: list[int],
+    inform_ids: list[int],
+    request_id: int,
+    company_id: int,
+    request_title: str,
+    company_name_ar: str,
+    company_name_en: str,
+    department_ar: str,
+    department_en: str,
+    actor_user_id: int | None = None,
+) -> list[Notification]:
+    """S16: a subsidiary request reaches its specialist directly and informs BD.
+
+    Two audiences, two meanings (spec Table 49, "طلب جديد وإرسال"):
+    ``specialist_ids`` are the category's owning department and must act;
+    ``inform_ids`` are the BD manager, who is notified *for information* only
+    and never gates the request. A specialist who is also BD is notified once
+    with the higher-priority specialist message.
+    """
+    created: list[Notification] = []
+    specialist_set = {uid for uid in specialist_ids if uid}
+    created += notify(
+        db,
+        recipient_ids=list(specialist_set),
+        type=NotificationType.SUPPORT_ASSIGNED.value,
+        priority=NotificationPriority.HIGH.value,
+        title_ar="طلب خدمة جديد بانتظارك",
+        title_en="A new service request awaits you",
+        message_ar=f"{company_name_ar}: «{request_title}» ({department_ar}).",
+        message_en=f"{company_name_en}: “{request_title}” ({department_en}).",
+        company_id=company_id,
+        entity_type="support_request",
+        entity_id=request_id,
+        actor_user_id=actor_user_id,
+        dedupe_key=f"support_created:{request_id}",
+    )
+    inform_set = {uid for uid in inform_ids if uid} - specialist_set
+    created += notify(
+        db,
+        recipient_ids=list(inform_set),
+        type=NotificationType.SUPPORT_CREATED.value,
+        priority=NotificationPriority.NORMAL.value,
+        title_ar="طلب خدمة جديد للاطلاع",
+        title_en="A new service request (for information)",
+        message_ar=f"{company_name_ar} أرسلت «{request_title}» ({department_ar}).",
+        message_en=f"{company_name_en} sent “{request_title}” ({department_en}).",
+        company_id=company_id,
+        entity_type="support_request",
+        entity_id=request_id,
+        actor_user_id=actor_user_id,
+        dedupe_key=f"support_created_info:{request_id}",
+    )
+    return created
+
+
 def notify_support_status(
     db: Session,
     *,
@@ -466,6 +524,67 @@ def notify_support_status(
         company_id=company_id,
         entity_type="support_request",
         entity_id=request_id,
+        actor_user_id=actor_user_id,
+        dedupe_key=None,
+    )
+
+
+def notify_task_assigned(
+    db: Session,
+    *,
+    assignee_id: int | None,
+    task_id: int,
+    company_id: int,
+    task_title: str,
+    actor_user_id: int | None = None,
+) -> list[Notification]:
+    """S17: tell the assignee a task was put on their desk."""
+    if not assignee_id or assignee_id == actor_user_id:
+        return []
+    return notify(
+        db,
+        recipient_ids=[assignee_id],
+        type=NotificationType.TASK_ASSIGNED.value,
+        priority=NotificationPriority.NORMAL.value,
+        title_ar="مهمة جديدة",
+        title_en="A new task",
+        message_ar=f"أُسندت إليك مهمة: «{task_title}».",
+        message_en=f"A task was assigned to you: “{task_title}”.",
+        company_id=company_id,
+        entity_type="task",
+        entity_id=task_id,
+        actor_user_id=actor_user_id,
+        dedupe_key=f"task_assigned:{task_id}:{assignee_id}",
+    )
+
+
+def notify_task_status_changed(
+    db: Session,
+    *,
+    recipient_ids: list[int],
+    task_id: int,
+    company_id: int,
+    task_title: str,
+    status_ar: str,
+    status_en: str,
+    actor_user_id: int | None = None,
+) -> list[Notification]:
+    """S17: the creator/reviewer follows the assignee's progress (no penalty)."""
+    recipients = [uid for uid in set(recipient_ids or []) if uid and uid != actor_user_id]
+    if not recipients:
+        return []
+    return notify(
+        db,
+        recipient_ids=recipients,
+        type=NotificationType.TASK_STATUS_CHANGED.value,
+        priority=NotificationPriority.NORMAL.value,
+        title_ar="تحديث حالة مهمة",
+        title_en="Task status updated",
+        message_ar=f"«{task_title}» أصبح: {status_ar}.",
+        message_en=f"“{task_title}” is now: {status_en}.",
+        company_id=company_id,
+        entity_type="task",
+        entity_id=task_id,
         actor_user_id=actor_user_id,
         dedupe_key=None,
     )
@@ -611,6 +730,19 @@ def finance_reviewer_ids(db: Session) -> list[int]:
                 (User.is_superuser.is_(True))
                 | (Role.code == RoleCode.HOLDING_OWNER.value),
             )
+        ).scalars()
+    )
+
+
+def users_with_role(db: Session, *, role_code: str) -> list[int]:
+    """Active users holding a given role code, for role-addressed notifications."""
+    from backend.db.models.identity import Role, RoleCode
+
+    return list(
+        db.execute(
+            select(User.id)
+            .join(Role, Role.id == User.role_id)
+            .where(User.is_active.is_(True), Role.code == role_code)
         ).scalars()
     )
 

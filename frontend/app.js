@@ -4517,7 +4517,10 @@
     "financial_summary.resubmitted": { ar: "ملخص مالي مُعاد إرساله", en: "Financial summary resubmitted" },
     "financial_summary.approved": { ar: "ملخص مالي معتمد", en: "Financial summary approved" },
     "support.assigned": { ar: "طلب دعم مُسند", en: "Support assigned" },
+    "support.created": { ar: "طلب خدمة جديد", en: "New service request" },
     "support.status_changed": { ar: "تغيّر حالة طلب", en: "Support status changed" },
+    "task.assigned": { ar: "مهمة مُسندة", en: "Task assigned" },
+    "task.status_changed": { ar: "تغيّر حالة مهمة", en: "Task status changed" },
   };
 
   function toggleBtn(eventKey, field, on, ar, en) {
@@ -5803,7 +5806,10 @@
   }
 
   function taskRow(t) {
-    var overdue = t.due_date && t.status !== "complete" && new Date(t.due_date) < new Date();
+    // AC-17: prefer the server's verdict (it also excludes cancelled tasks).
+    var overdue = typeof t.is_overdue === "boolean"
+      ? t.is_overdue
+      : (t.due_date && t.status !== "complete" && new Date(t.due_date) < new Date());
     return (
       '<div class="av-row"' + rowClickAttr("task", t) + ">" +
       '<div class="grow"><div class="t">' + escapeHtml(t.title) + "</div>" +
