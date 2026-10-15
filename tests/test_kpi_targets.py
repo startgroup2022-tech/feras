@@ -227,3 +227,64 @@ def test_deactivation_removes_the_actual(client, kpi_world, auth):
     )
     assert row["actual_value"] is None
     assert row["status"] == "pending"
+
+
+# --------------------------------------------------------------------------
+# S02/S10 goals-versus-results on the company dashboard
+# --------------------------------------------------------------------------
+def _activate(client, auth, user, kpi_id):
+    response = client.post(
+        f"/api/v1/accounting/kpis/{kpi_id}/active",
+        json={"active": True},
+        headers=auth(user),
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_company_dashboard_exposes_goals_versus_results(client, kpi_world, auth):
+    """D02 unblocks S02/S10: an active company KPI with a target is a goal."""
+    owner = kpi_world["owner_all"]
+    alpha = kpi_world["alpha"].id
+    kpi = _create_kpi(
+        client, auth, owner, company_id=alpha, target_value="1000000"
+    ).json()
+    _activate(client, auth, owner, kpi["id"])
+
+    dashboard = client.get(
+        f"/api/v1/dashboard/holding?year={YEAR}&month={MONTH}", headers=auth(owner)
+    ).json()
+    row = next(r for r in dashboard["companies_performance"] if r["id"] == alpha)
+    goal = next(g for g in row["goals"] if g["code"] == "REV-TARGET")
+    assert Decimal(goal["actual_value"]) == Decimal("111111")  # alpha alone
+    assert Decimal(goal["target_value"]) == Decimal("1000000")
+    assert goal["favourable"] is False
+
+
+def test_goals_omit_an_inactive_definition(client, kpi_world, auth):
+    """An inert draft must not appear as a goal (D02)."""
+    owner = kpi_world["owner_all"]
+    alpha = kpi_world["alpha"].id
+    _create_kpi(client, auth, owner, company_id=alpha, target_value="1000000")
+
+    dashboard = client.get(
+        f"/api/v1/dashboard/holding?year={YEAR}&month={MONTH}", headers=auth(owner)
+    ).json()
+    row = next(r for r in dashboard["companies_performance"] if r["id"] == alpha)
+    assert row["goals"] == []
+
+
+def test_goals_are_company_scoped(client, kpi_world, auth):
+    """A company's goals never leak into another company's card."""
+    owner = kpi_world["owner_all"]
+    alpha = kpi_world["alpha"].id
+    beta = kpi_world["beta"].id
+    kpi = _create_kpi(
+        client, auth, owner, company_id=alpha, target_value="1000000"
+    ).json()
+    _activate(client, auth, owner, kpi["id"])
+
+    dashboard = client.get(
+        f"/api/v1/dashboard/holding?year={YEAR}&month={MONTH}", headers=auth(owner)
+    ).json()
+    beta_row = next(r for r in dashboard["companies_performance"] if r["id"] == beta)
+    assert beta_row["goals"] == []

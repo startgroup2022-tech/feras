@@ -127,6 +127,26 @@ def test_company_dashboard_is_scoped(client, world, auth):
     assert [c["code"] for c in body["companies"]] == ["ALPHA"]
 
 
+def test_company_dashboard_totals_are_not_holding_wide_for_a_holding_user(
+    client, world, auth
+):
+    """A holding user viewing one company must see that company's totals.
+
+    Regression: the KPI block ignored ``company_id``, so an owner scoped to a
+    single company was shown the group's revenue as if it were the company's.
+    """
+    body = client.get(
+        f"/api/v1/dashboard/company/{world['alpha'].id}?year=2027&month=10",
+        headers=auth(world["owner"]),
+    ).json()
+
+    # world: alpha revenue 111111; the holding total is 111111 + 999999.
+    assert body["kpis"]["total_revenue"] == "111111.00"
+    assert body["kpis"]["total_net_result"] == body["companies_performance"][0][
+        "net_result"
+    ]
+
+
 def test_dashboard_defaults_to_the_current_period(client, world, auth):
     body = client.get("/api/v1/dashboard/holding", headers=auth(world["owner"])).json()
 

@@ -56,7 +56,8 @@ METRIC_KEYS = (
 
 def _metrics(db: Session, user: User, company_id: int | None, year: int, month: int) -> dict[str, Decimal]:
     payload = dashboard_service.build_dashboard(
-        db, user=user, year=year, month=month, company_id=company_id
+        db, user=user, year=year, month=month, company_id=company_id,
+        include_goals=False,
     )
     if payload.get("__not_found__"):
         raise NotFoundError("Company not found.")
@@ -147,6 +148,43 @@ def list_evaluations(
         actual = resolve_actual(db, user=user, kpi=kpi, year=year, month=month)
         out.append(_evaluate(kpi, actual, year, month))
     return out
+
+
+def goals_by_company(
+    db: Session, *, user: User, year: int, month: int
+) -> dict[int, list[dict]]:
+    """Goals-versus-results for the company dashboard (S02/S10).
+
+    D02 unblocks the goals-vs-results comparison: a company-scoped, active KPI
+    with a target *is* a goal. Only active (approved) definitions with a target
+    are returned, so an inert draft never appears as a goal. Metrics for a
+    company are resolved once per company, not once per KPI, so the dashboard
+    stays bounded.
+    """
+    allowed = accessible_company_ids(user)
+    stmt = select(KpiDefinition).where(
+        KpiDefinition.is_active.is_(True),
+        KpiDefinition.target_value.isnot(None),
+        KpiDefinition.company_id.isnot(None),
+    )
+    if allowed is not None:
+        if not allowed:
+            return {}
+        stmt = stmt.where(KpiDefinition.company_id.in_(allowed))
+
+    by_company: dict[int, list[KpiDefinition]] = {}
+    for kpi in db.execute(stmt).scalars():
+        by_company.setdefault(kpi.company_id, []).append(kpi)
+
+    result: dict[int, list[dict]] = {}
+    for company_id, kpis in by_company.items():
+        metrics = _metrics(db, user=user, company_id=company_id, year=year, month=month)
+        goals = []
+        for kpi in kpis:
+            actual = metrics.get(kpi.metric_key) if kpi.metric_key else None
+            goals.append(_evaluate(kpi, actual, year, month))
+        result[company_id] = goals
+    return result
 
 
 def evaluate_sources(

@@ -489,6 +489,30 @@ class IndicatorSourcesOut(BaseModel):
     records: list[IndicatorSourceOut] = []
 
 
+class GoalOut(BaseModel):
+    """A company goal: an approved, company-scoped KPI with a target (S02/S10)."""
+
+    id: int
+    company_id: int | None = None
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    unit: str | None = None
+    period_label: str | None = None
+    period_year: int
+    period_month: int
+    metric_key: str | None = None
+    direction: str
+    target_value: Decimal | None = None
+    actual_value: Decimal | None = None
+    variance: Decimal | None = None
+    variance_pct: float | None = None
+    favourable: bool | None = None
+    is_active: bool
+    approved_at: datetime | None = None
+    status: str
+
+
 class CompanyPerformanceOut(BaseModel):
     """Per-company figures for the dashboard report/overview cards."""
 
@@ -506,6 +530,7 @@ class CompanyPerformanceOut(BaseModel):
     outstanding_receivables: Decimal | None = None
     revenue_pct: float | None = None
     last_update: datetime | None = None
+    goals: list[GoalOut] = []
 
 
 class PeriodChangeOut(BaseModel):

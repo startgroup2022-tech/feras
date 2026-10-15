@@ -48,12 +48,18 @@ def _scoped(stmt, column, user: User):
     return stmt.where(column.in_(allowed))
 
 
-def _financial_totals(db: Session, user: User, year: int, month: int) -> tuple[Decimal, Decimal, Decimal]:
+def _financial_totals(
+    db: Session, user: User, year: int, month: int, company_id: int | None = None
+) -> tuple[Decimal, Decimal, Decimal]:
     """Sum revenue/expenses/net result for the period, preferring verified data.
 
     Only an *approved* verification overrides the submitted figures. A flagged
     review means the numbers were not accepted, so the submitted values stand
     (which is also what the dashboard would show with no review at all).
+
+    ``company_id`` restricts the totals to one company; without it the totals
+    are holding-wide. A company-scoped dashboard must never report the group's
+    figures as if they were the company's.
     """
     revenue_expr = func.coalesce(
         MonthlyReportFinancialReview.verified_revenue, MonthlyReport.revenue
@@ -88,6 +94,8 @@ def _financial_totals(db: Session, user: User, year: int, month: int) -> tuple[D
         )
     )
     stmt = _scoped(stmt, MonthlyReport.company_id, user)
+    if company_id is not None:
+        stmt = stmt.where(MonthlyReport.company_id == company_id)
     row = db.execute(stmt).one()
     return (
         Decimal(row[0] or 0),
@@ -412,6 +420,7 @@ def build_dashboard(
     year: int,
     month: int,
     company_id: int | None = None,
+    include_goals: bool = True,
 ) -> dict:
     """Assemble the dashboard payload for the caller's permitted scope."""
     companies_repo = CompanyRepository(db)
@@ -426,7 +435,9 @@ def build_dashboard(
         if company is None:
             return {"__not_found__": True}
 
-    total_revenue, total_expenses, total_net = _financial_totals(db, user, year, month)
+    total_revenue, total_expenses, total_net = _financial_totals(
+        db, user, year, month, company_id
+    )
 
     submitted = reports_repo.status_counts(user, year, month)
     reports_submitted = sum(
@@ -445,6 +456,21 @@ def build_dashboard(
     attention = attention_payload(db, user, year, month)
     performance = _company_performance(db, user, year, month)
     change = _change_vs_previous(db, user, year, month)
+
+    # S02/S10 goals-versus-results: a company's active KPIs with a target are
+    # its goals. Only attached for a caller who may read KPIs, and only to the
+    # companies already in scope, so it never widens visibility. Skipped when
+    # the caller is resolving KPI metrics itself, to avoid re-entering this
+    # function through ``kpi_service``.
+    if include_goals and has_permission(user, Perm.KPI_READ):
+        from backend.services import kpi_service
+
+        goals = kpi_service.goals_by_company(db, user=user, year=year, month=month)
+        for row in performance:
+            row["goals"] = goals.get(row["id"], [])
+    else:
+        for row in performance:
+            row["goals"] = []
 
     kpis = {
         "companies_count": companies_repo.count_for_user(user) if company_id is None else 1,
