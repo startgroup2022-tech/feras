@@ -539,6 +539,106 @@ def _statements_for_period(db: Session, *, company_id: int,
     }
 
 
+def ledger_activity(
+    db: Session, *, user: User, company_id: int, account_type: str | None = None,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+) -> dict:
+    """The source lines behind revenue/expense, as one view (S26 Table 53).
+
+    Table 53: "عرض الإيرادات أو المصروفات | يعرض سطور المصدر لا تسجيلًا إضافيًا"
+    -- viewing revenue or expenses shows the source lines and adds **no** extra
+    record. So this reads the posted journal lines (with their journal header)
+    and never writes. Only ``POSTED`` journals count, matching the trial balance
+    and the financial statements, so the totals reconcile (AC-28).
+    """
+    require_permission(user, Perm.JOURNAL_READ)
+    require_company_access(user, company_id)
+
+    if account_type is not None and account_type not in {
+        AccountType.REVENUE.value, AccountType.EXPENSE.value
+    }:
+        raise ValidationError("account_type must be 'revenue' or 'expense'.")
+
+    stmt = (
+        select(
+            JournalLine.id,
+            JournalLine.journal_id,
+            JournalLine.account_id,
+            JournalLine.debit,
+            JournalLine.credit,
+            JournalLine.description,
+            Journal.number,
+            Journal.entry_date,
+            Journal.description,
+            Account.code,
+            Account.name_ar,
+            Account.name_en,
+            Account.account_type,
+            Account.currency,
+        )
+        .join(Journal, Journal.id == JournalLine.journal_id)
+        .join(Account, Account.id == JournalLine.account_id)
+        .where(
+            Journal.company_id == company_id,
+            Journal.status == JournalStatus.POSTED.value,
+        )
+        .order_by(Journal.entry_date, JournalLine.id)
+    )
+    if account_type is not None:
+        stmt = stmt.where(Account.account_type == account_type)
+    else:
+        stmt = stmt.where(
+            Account.account_type.in_(
+                [AccountType.REVENUE.value, AccountType.EXPENSE.value]
+            )
+        )
+    if fiscal_year is not None:
+        stmt = stmt.where(Journal.fiscal_year == fiscal_year)
+    if fiscal_month is not None:
+        stmt = stmt.where(Journal.fiscal_month == fiscal_month)
+
+    lines: list[dict] = []
+    totals: dict[tuple[str, str], Decimal] = {}
+    for (line_id, journal_id, account_id, debit, credit, line_desc, number,
+         entry_date, journal_desc, code, name_ar, name_en, a_type, currency) in db.execute(stmt):
+        debit = Decimal(debit or 0)
+        credit = Decimal(credit or 0)
+        # Revenue is credit-normal, expense debit-normal; the sign is derived so
+        # the sum of the lines equals the statement figure for that account.
+        amount = (credit - debit) if a_type == AccountType.REVENUE.value else (debit - credit)
+        lines.append({
+            "line_id": line_id,
+            "journal_id": journal_id,
+            "journal_number": number,
+            "entry_date": entry_date.isoformat() if entry_date else None,
+            "account_id": account_id,
+            "code": code,
+            "name_ar": name_ar,
+            "name_en": name_en,
+            "account_type": a_type,
+            "currency": currency,
+            "debit": str(debit),
+            "credit": str(credit),
+            "amount": str(amount),
+            "description": line_desc or journal_desc,
+        })
+        key = (a_type, currency)
+        totals[key] = totals.get(key, ZERO) + amount
+
+    totals_rows = [
+        {"account_type": t, "currency": c, "amount": str(a)}
+        for (t, c), a in sorted(totals.items())
+    ]
+    return {
+        "company_id": company_id,
+        "fiscal_year": fiscal_year,
+        "fiscal_month": fiscal_month,
+        "account_type": account_type,
+        "lines": lines,
+        "totals": totals_rows,
+    }
+
+
 def _previous_period(fiscal_year: int | None, fiscal_month: int | None):
     if fiscal_year is None:
         return None, None

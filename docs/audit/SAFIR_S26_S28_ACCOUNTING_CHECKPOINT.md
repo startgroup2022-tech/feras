@@ -105,6 +105,27 @@ source **without creating a copy**. It is now live:
 * Tests: `test_dashboard.py` (source records, no-copy, company scoping, 404,
   attention links) and `test_frontend_domain_views.py::test_s01_indicator_drilldown_is_wired`.
 
+## S26 Table 53 revenue/expense source-line view
+
+Table 53 (`عرض الإيرادات أو المصروفات | يعرض سطور المصدر لا تسجيلًا إضافيًا`)
+requires that opening revenue or expenses shows the **source** lines and adds
+**no** record. It is now live:
+
+* `GET /api/v1/accounting/ledger-activity?company_id=&account_type=&fiscal_year=&fiscal_month=`
+  → `accounting_service.ledger_activity`. It reads the posted `JournalLine`s
+  (joined to `Journal` and `Account`), filtered to `revenue`/`expense` accounts,
+  and **never writes**. Only `POSTED` journals count, matching the trial balance
+  and the financial statements, so the totals reconcile (Table 53 / AC-28).
+* Each row carries its source journal (`journal_number`, `entry_date`),
+  account code/name, description, signed `amount` and `currency`; the sign is
+  derived (credit-normal revenue, debit-normal expense) so the sum of the lines
+  equals the statement figure for that account. An unknown `account_type` is 422.
+* Frontend: the `ledger` accounting tab (`renderLedgerActivity`) with a
+  company/type/year/month picker; rows point back at their source journal.
+* Tests: `test_accounting_s27.py` — source lines are returned and add no record,
+  totals reconcile with the income statement, the view is company-scoped,
+  unknown type is rejected, `journal.read` is required, and the tab is wired.
+
 ## Continuation
 
 If work resumes: check out `feature/safir-s26-s28-accounting-completion`, run

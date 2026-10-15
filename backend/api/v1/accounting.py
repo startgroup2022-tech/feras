@@ -164,6 +164,19 @@ def receivables(
     return accounting_service.receivables_summary(db, user=user, company_id=company_id)
 
 
+@router.get("/ledger-activity")
+def ledger_activity(
+    user: CurrentUser, db: DbSession, company_id: int,
+    account_type: str | None = None,
+    fiscal_year: int | None = None, fiscal_month: int | None = None,
+) -> dict:
+    """View revenue or expense as its source lines, adding no record (S26 Table 53)."""
+    return accounting_service.ledger_activity(
+        db, user=user, company_id=company_id, account_type=account_type,
+        fiscal_year=fiscal_year, fiscal_month=fiscal_month,
+    )
+
+
 @router.get("/financial-statements")
 def financial_statements(
     user: CurrentUser, db: DbSession, company_id: int,

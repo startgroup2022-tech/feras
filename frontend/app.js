@@ -47,6 +47,10 @@
     empTab: "employees",
     opsTab: "tasks",
     acctTab: "balances",
+    acctLedgerCompany: null,
+    acctLedgerType: "",
+    acctLedgerYear: null,
+    acctLedgerMonth: null,
     confTab: "complaints",
     loaded: {},
   };
@@ -6277,12 +6281,13 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
     journals: ["journal.read"],
     trial: ["journal.read"],
+    ledger: ["journal.read"],
     statements: ["journal.read"],
     invoices: ["invoice.read"],
     parties: ["party.read"],
@@ -6317,6 +6322,7 @@
     if (tab === "accounts") return renderAccounts();
     if (tab === "journals") return renderJournals();
     if (tab === "trial") return renderTrialBalance();
+    if (tab === "ledger") return renderLedgerActivity();
     if (tab === "statements") return renderStatements();
     if (tab === "invoices") return renderInvoices();
     if (tab === "parties") return renderParties();
@@ -6469,6 +6475,78 @@
       });
     });
     return lines;
+  }
+
+  function renderLedgerActivity() {
+    // S26 Table 53: viewing revenue/expense shows the *source* lines and adds no
+    // record. Read-only; the rows point back at the journal that produced them.
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
+      if (!STATE.companies.length) { host.innerHTML = noticeHtml("لا توجد شركات.", "No companies."); return; }
+      var cid = STATE.acctLedgerCompany || STATE.companies[0].id;
+      STATE.acctLedgerCompany = cid;
+      var type = STATE.acctLedgerType || "";
+      var q = "?company_id=" + cid +
+        (type ? "&account_type=" + type : "") +
+        (STATE.acctLedgerYear ? "&fiscal_year=" + STATE.acctLedgerYear : "") +
+        (STATE.acctLedgerMonth ? "&fiscal_month=" + STATE.acctLedgerMonth : "");
+      return get("/api/v1/accounting/ledger-activity" + q).then(function (data) {
+        var picker = '<div class="av-form av-form-inline">' +
+          field("الشركة", "Company", selectInput("laCompany", companySelectOptions(false), cid)) +
+          field("النوع", "Type", selectInput("laType", [
+            { value: "", label: opt("الإيرادات والمصروفات", "Revenue & expenses") },
+            { value: "revenue", label: opt("الإيرادات فقط", "Revenue only") },
+            { value: "expense", label: opt("المصروفات فقط", "Expenses only") },
+          ], type)) +
+          field("السنة", "Year", numInput("laYear", STATE.acctLedgerYear || "")) +
+          field("الشهر", "Month", numInput("laMonth", STATE.acctLedgerMonth || "")) +
+          "</div>";
+        var lines = (data && data.lines) || [];
+        var table = lines.length
+          ? '<div class="av-list">' + lines.map(function (r) {
+              var name = STATE.lang === "ar" ? r.name_ar : (r.name_en || r.name_ar);
+              var kind = r.account_type === "revenue" ? dual("إيراد", "Revenue") : dual("مصروف", "Expense");
+              var meta = [kind, r.journal_number, r.entry_date, r.description]
+                .filter(function (v) { return v; }).join(" · ");
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+                escapeHtml(r.code + " · " + name) + "</div>" +
+                '<div class="s">' + escapeHtml(meta) + "</div></div>" +
+                '<div class="t">' + dec(r.amount) + " " + escapeHtml(r.currency || "") + "</div></div>";
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد سطور مصدر.", "No source lines.");
+        var totals = (data && data.totals || []).length
+          ? '<p class="note-block">' + data.totals.map(function (t) {
+              var label = t.account_type === "revenue" ? dual("إجمالي الإيرادات", "Total revenue") : dual("إجمالي المصروفات", "Total expenses");
+              return escapeHtml(label) + " " + dec(t.amount) + " " + escapeHtml(t.currency);
+            }).join(" · ") + "</p>"
+          : "";
+        host.innerHTML = panel(
+          "عرض الإيرادات والمصروفات (سطور المصدر، دون تسجيل إضافي)",
+          "Revenue & expenses view (source lines, no extra posting)",
+          picker + totals + table
+        );
+        var sel = byId("laCompany");
+        if (sel) sel.addEventListener("change", function () {
+          STATE.acctLedgerCompany = parseInt(valOf("laCompany"), 10);
+          renderLedgerActivity();
+        });
+        var tSel = byId("laType");
+        if (tSel) tSel.addEventListener("change", function () {
+          STATE.acctLedgerType = valOf("laType");
+          renderLedgerActivity();
+        });
+        var yEl = byId("laYear");
+        if (yEl) yEl.addEventListener("change", function () {
+          STATE.acctLedgerYear = valOf("laYear") ? parseInt(valOf("laYear"), 10) : null;
+          renderLedgerActivity();
+        });
+        var mEl = byId("laMonth");
+        if (mEl) mEl.addEventListener("change", function () {
+          STATE.acctLedgerMonth = valOf("laMonth") ? parseInt(valOf("laMonth"), 10) : null;
+          renderLedgerActivity();
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderTrialBalance() {

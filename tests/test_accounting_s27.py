@@ -452,3 +452,103 @@ def test_frontend_exposes_the_new_s27_tabs_and_renderers():
     # The tab buttons are permission-gated and bilingual.
     assert 'data-acct-tab="parties" data-perm="party.read"' in index
     assert 'data-acct-tab="interbalances" data-perm="interbalance.read"' in index
+
+
+# --------------------------------------------------------------------------
+# S26 Table 53: viewing revenue/expense shows the source lines, no new record
+# --------------------------------------------------------------------------
+def test_ledger_activity_shows_source_lines_and_adds_no_record(client, s27_world, auth, db):
+    owner = s27_world["owner_all"]
+    alpha = s27_world["alpha"].id
+    _seed_ledger(db, alpha)
+
+    from backend.db.models.accounting import Journal
+
+    before = db.query(Journal).filter(Journal.company_id == alpha).count()
+
+    res = client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={alpha}"
+        "&fiscal_year=2026&fiscal_month=3",
+        headers=auth(owner),
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    # Only revenue/expense lines are shown, each pointing at its journal.
+    assert {line["account_type"] for line in body["lines"]} == {"revenue"}
+    line = body["lines"][0]
+    assert line["journal_number"] == "J-1"
+    assert line["entry_date"] == "2026-03-01"
+    assert line["amount"] == "1000.00"
+    assert line["currency"] == "SAR"
+    # Viewing adds no record (Table 53: no extra posting).
+    assert db.query(Journal).filter(Journal.company_id == alpha).count() == before
+
+
+def test_ledger_activity_totals_reconcile_with_the_statement(client, s27_world, auth, db):
+    owner = s27_world["owner_all"]
+    alpha = s27_world["alpha"].id
+    _seed_ledger(db, alpha)
+
+    activity = client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={alpha}"
+        "&fiscal_year=2026&fiscal_month=3",
+        headers=auth(owner),
+    ).json()
+    fs = client.get(
+        f"/api/v1/accounting/financial-statements?company_id={alpha}"
+        "&fiscal_year=2026&fiscal_month=3",
+        headers=auth(owner),
+    ).json()
+
+    by_type = {t["account_type"]: t for t in activity["totals"]}
+    assert by_type["revenue"]["amount"] == fs["income_statement"]["total_revenue"][0]["amount"]
+
+
+def test_ledger_activity_is_company_scoped(client, s27_world, auth, db, make_user):
+    alpha = s27_world["alpha"]
+    beta = s27_world["beta"].id
+    _seed_ledger(db, alpha.id)
+
+    # A finance manager holds journal.read but is confined to the granted company;
+    # out-of-scope and non-existent are indistinguishable (same 403 body).
+    scoped = make_user("fm.alpha@corp.sa", "finance_manager", [alpha])
+    out_of_scope = client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={beta}", headers=auth(scoped)
+    )
+    missing = client.get(
+        "/api/v1/accounting/ledger-activity?company_id=999999", headers=auth(scoped)
+    )
+    assert out_of_scope.status_code == 403, out_of_scope.text
+    assert out_of_scope.json() == missing.json()
+    assert client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={alpha.id}", headers=auth(scoped)
+    ).status_code == 200
+
+
+def test_ledger_activity_rejects_an_unknown_account_type(client, s27_world, auth):
+    res = client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={s27_world['alpha'].id}"
+        "&account_type=cash",
+        headers=auth(s27_world["owner_all"]),
+    )
+    assert res.status_code == 422, res.text
+
+
+def test_ledger_activity_requires_the_ledger_permission(client, s27_world, auth):
+    alpha = s27_world["alpha"].id
+    manager = s27_world["alpha_mgr"]
+    res = client.get(
+        f"/api/v1/accounting/ledger-activity?company_id={alpha}", headers=auth(manager)
+    )
+    assert res.status_code == 403, res.text
+
+
+def test_frontend_exposes_the_ledger_activity_tab():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    app_js = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+    index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert "function renderLedgerActivity" in app_js
+    assert "ledger-activity" in app_js
+    assert 'data-acct-tab="ledger" data-perm="journal.read"' in index
