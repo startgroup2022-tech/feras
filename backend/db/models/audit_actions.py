@@ -242,3 +242,8 @@ class AuditAction:
     BUDGET_APPROVED = "budget.approved"
     KPI_CREATED = "kpi.created"
     KPI_UPDATED = "kpi.updated"
+    KPI_APPROVED = "kpi.approved"
+    KPI_ACTIVATED = "kpi.activated"
+    KPI_DEACTIVATED = "kpi.deactivated"
+    POLICY_CREATED = "accounting_policy.created"
+    POLICY_APPROVED = "accounting_policy.approved"

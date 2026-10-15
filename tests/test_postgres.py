@@ -146,7 +146,10 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the bilingual role description, which builds on branding, which builds on
     # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
     # on phase 2, which builds on the initial schema -- no branches.
-    assert head == "a2b3c4d5e6f7"
+    assert head == "d4e5f6a7b8c9"
+    assert revisions["d4e5f6a7b8c9"] == "c3d4e5f6a7b8"
+    assert revisions["c3d4e5f6a7b8"] == "b1c2d3e4f5a6"
+    assert revisions["b1c2d3e4f5a6"] == "a2b3c4d5e6f7"
     assert revisions["a2b3c4d5e6f7"] == "f1a2b3c4d5e6"
     assert revisions["f1a2b3c4d5e6"] == "e3f4a5b6c7d8"
     assert revisions["e3f4a5b6c7d8"] == "d2e3f4a5b6c7"

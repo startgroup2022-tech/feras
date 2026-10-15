@@ -723,6 +723,18 @@ PERMISSION_METADATA: list[dict] = [
     _p(Perm.BUDGET_APPROVE, "accounting", "approve",
        "اعتماد الموازنة", "Approve budget",
        "اعتماد الموازنة من المالك أو المفوض.", "Approve a budget (owner or delegate).", danger=True),
+    _p(Perm.POLICY_READ, "accounting", "view",
+       "عرض السياسات المحاسبية", "View accounting policies",
+       "عرض سياسات الضريبة والسنة المالية والفاتورة والأصول المعتمدة.",
+       "View approved tax, fiscal-year, invoice and asset policy."),
+    _p(Perm.POLICY_MANAGE, "accounting", "manage",
+       "إعداد مسودات السياسات", "Draft accounting policies",
+       "إعداد مسودة سياسة محاسبية تنتظر الاعتماد؛ المسودة لا تسري.",
+       "Record a draft accounting policy; a draft does not take effect."),
+    _p(Perm.POLICY_APPROVE, "accounting", "approve",
+       "اعتماد السياسة المحاسبية", "Approve accounting policy",
+       "اعتماد السياسة لتسري فعليًا؛ الإصدار السابق يبقى محفوظًا.",
+       "Approve a policy so it takes effect; the prior version is kept.", danger=True),
 
     # ---- Executions 04-14: KPIs ----
     _p(Perm.KPI_READ, "kpi", "view",

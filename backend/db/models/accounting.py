@@ -46,6 +46,7 @@ from backend.db.models.enums import (
     InvoiceDirection,
     InvoiceStatus,
     JournalStatus,
+    KpiDirection,
     OpeningBalanceKind,
     OpeningBalanceStatus,
 )
@@ -315,7 +316,65 @@ class Asset(Base, TimestampMixin):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    company: Mapped["Company"] = relationship()
+
+
+
+class AccountingPolicy(Base, TimestampMixin):
+    """An accountant-approved accounting policy (D01).
+
+    Tax, fiscal-year, invoice and asset policy are *configuration*, never
+    hard-coded assumptions. A policy is inert until an accountant approves it:
+    ``approved_at``/``approved_by_id`` are the only way a value becomes
+    effective, and the effective-date pair distinguishes *when a rule starts*
+    from *when it was approved*. A newer approved version supersedes the
+    previous one; the previous row is retained, never edited, so history is
+    preserved (D01).
+    """
+
+    __tablename__ = "accounting_policies"
+    __table_args__ = (
+        # One approved version per (company, kind) at a time; historical rows
+        # keep their own number.
+        UniqueConstraint(
+            "company_id", "kind", "version", name="uq_accounting_policy_version"
+        ),
+        Index("ix_accounting_policies_company_kind", "company_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # NULL company_id means a holding-wide default; a company row overrides it.
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # A PolicyKind value (tax, fiscal_year, invoice, asset, currency).
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    # Policy payload is data so a new rule needs no migration.
+    value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    value_text: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Draft until approved; approval is an explicit accountant act (D01).
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft", index=True
+    )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    supersedes_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounting_policies.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company | None"] = relationship(foreign_keys=[company_id])
 
 
 class Budget(Base, TimestampMixin):
@@ -373,8 +432,27 @@ class KpiDefinition(Base, TimestampMixin):
     period_label: Mapped[str] = mapped_column(String(60), nullable=False)
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     target_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 3), nullable=True)
+    # ---- D02 target-vs-actual (configurable, inactive until approved) ----
+    # ``metric_key`` names the dashboard metric that supplies the actual value
+    # (see ``METRIC_RESOLVERS``). NULL means "definition only, no live actual",
+    # so an unconfigured KPI never invents a number.
+    metric_key: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # ``up`` = a larger actual is better; ``down`` = smaller is better. Drives
+    # the variance sign so "positive" always means "favourable".
+    direction: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=KpiDirection.UP.value, server_default="up"
+    )
+    # A definition is never *active* until an authorised approval flips this.
+    # ``target_value``/``metric_key`` may be configured while still inert, so
+    # the whole workflow can be prepared without inventing a business approval.
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default="1"
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

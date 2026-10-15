@@ -365,6 +365,24 @@ class NotificationPriority(str, enum.Enum):
     HIGH = "high"
 
 
+class PolicyKind(str, enum.Enum):
+    """The accounting policy areas D01 says must come from approved settings."""
+
+    TAX = "tax"
+    FISCAL_YEAR = "fiscal_year"
+    INVOICE = "invoice"
+    ASSET = "asset"
+    CURRENCY = "currency"
+
+
+class PolicyStatus(str, enum.Enum):
+    """A policy is a draft until an accountant approves it (D01)."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    SUPERSEDED = "superseded"
+
+
 # --------------------------------------------------------------------------
 # Phase 9: external integrations
 # --------------------------------------------------------------------------
@@ -776,5 +794,17 @@ class BudgetStatus(str, enum.Enum):
     DRAFT = "draft"
     APPROVED = "approved"
     SUPERSEDED = "superseded"
+
+
+class KpiDirection(str, enum.Enum):
+    """D02: which way is "better" for a KPI.
+
+    Stored as data so a favourable variance always has the same sign, whether
+    the metric is revenue (higher is better) or cost/response-time (lower is
+    better). The comparison rule is therefore configuration, not code.
+    """
+
+    UP = "up"
+    DOWN = "down"
 
 

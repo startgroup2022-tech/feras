@@ -9,6 +9,7 @@ from backend.db.base import Base
 from backend.db.models.ai import AIMessage, AIConversation, AuditLog
 from backend.db.models.accounting import (
     Account,
+    AccountingPolicy,
     Asset,
     Budget,
     CompanyInterbalance,
@@ -68,6 +69,10 @@ from backend.db.models.identity import (
 )
 from backend.db.models.integrations import WebhookDelivery, WebhookEndpoint
 from backend.db.models.notifications import Notification
+from backend.db.models.notification_preferences import (
+    NotificationDeliveryLog,
+    NotificationPreference,
+)
 from backend.db.models.report import (
     MonthlyReport,
     MonthlyReportAttachment,
@@ -155,6 +160,9 @@ __all__ = [
     "DocumentCategory",
     # Phase 6: notification centre
     "Notification",
+    # D11: notification preferences and delivery log
+    "NotificationPreference",
+    "NotificationDeliveryLog",
     # Phase 9: external integrations
     "WebhookEndpoint",
     "WebhookDelivery",
@@ -208,4 +216,5 @@ __all__ = [
     "Asset",
     "Budget",
     "KpiDefinition",
+    "AccountingPolicy",
 ]

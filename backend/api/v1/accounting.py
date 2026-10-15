@@ -3,6 +3,8 @@ invoices, assets, budgets and KPIs (D01/D02/D07/D08)."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Request, status
 
 from backend.api.deps import CurrentUser, DbSession
@@ -15,14 +17,27 @@ from backend.schemas.domain import (
     InvoiceCreateRequest,
     JournalCreateRequest,
     JournalReverseRequest,
+    KpiActiveRequest,
     KpiCreateRequest,
+    KpiUpdateRequest,
     OpeningBalanceCreateRequest,
     PartyCreateRequest,
+    PolicyCreateRequest,
     SettlementCreateRequest,
 )
-from backend.services import accounting_service, audit_service
+from backend.services import accounting_service, audit_service, kpi_service
 
 router = APIRouter(prefix="/accounting", tags=["accounting"])
+
+
+def _period(request: Request) -> tuple[int, int]:
+    now = datetime.now(timezone.utc)
+    year = request.query_params.get("year")
+    month = request.query_params.get("month")
+    return (
+        int(year) if year else now.year,
+        int(month) if month else now.month,
+    )
 
 
 # ---- opening balances (D08) ----
@@ -326,3 +341,102 @@ def create_kpi(
     ctx = audit_service.request_context(request)
     kpi = accounting_service.create_kpi(db, user=user, **payload.model_dump(), **ctx)
     return accounting_service.serialise_kpi(kpi)
+
+
+@router.patch("/kpis/{kpi_id}")
+def update_kpi(
+    kpi_id: int, payload: KpiUpdateRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Record target/metric/direction. Never activates the KPI (D02)."""
+    ctx = audit_service.request_context(request)
+    kpi = kpi_service.update_kpi(
+        db, user=user, kpi_id=kpi_id, **payload.model_dump(), **ctx
+    )
+    return accounting_service.serialise_kpi(kpi)
+
+
+@router.post("/kpis/{kpi_id}/active")
+def set_kpi_active(
+    kpi_id: int, payload: KpiActiveRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Approve (activate) or deactivate a KPI, stamping the approval record."""
+    ctx = audit_service.request_context(request)
+    kpi = kpi_service.set_active(
+        db, user=user, kpi_id=kpi_id, active=payload.active, **ctx
+    )
+    return accounting_service.serialise_kpi(kpi)
+
+
+@router.get("/kpis/evaluations")
+def list_kpi_evaluations(
+    request: Request, user: CurrentUser, db: DbSession,
+    company_id: int | None = None,
+) -> list[dict]:
+    """Target-versus-actual for the period, computed from source records (D02)."""
+    year, month = _period(request)
+    return kpi_service.list_evaluations(
+        db, user=user, company_id=company_id, year=year, month=month
+    )
+
+
+@router.get("/kpis/{kpi_id}/sources")
+def kpi_sources(
+    kpi_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    """Source records behind a KPI's actual, with no copy (S01 Table 13)."""
+    year, month = _period(request)
+    return kpi_service.evaluate_sources(
+        db, user=user, kpi_id=kpi_id, year=year, month=month
+    )
+
+
+# ---- accounting policy registry (D01) ----
+@router.get("/policies")
+def list_policies(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    kind: str | None = None, approved_only: bool = False,
+) -> list[dict]:
+    return [
+        accounting_service.serialise_policy(p)
+        for p in accounting_service.list_policies(
+            db, user=user, company_id=company_id, kind=kind,
+            approved_only=approved_only,
+        )
+    ]
+
+
+@router.post("/policies", status_code=status.HTTP_201_CREATED)
+def create_policy(
+    payload: PolicyCreateRequest, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    """Record a draft accounting policy. A draft never affects a calculation."""
+    ctx = audit_service.request_context(request)
+    policy = accounting_service.create_policy(db, user=user, **payload.model_dump(), **ctx)
+    return accounting_service.serialise_policy(policy)
+
+
+@router.post("/policies/{policy_id}/approve")
+def approve_policy(
+    policy_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    """Approve a policy (accountant act); the prior version is superseded."""
+    ctx = audit_service.request_context(request)
+    policy = accounting_service.approve_policy(db, user=user, policy_id=policy_id, **ctx)
+    return accounting_service.serialise_policy(policy)
+
+
+@router.get("/policies/effective")
+def effective_policy(
+    user: CurrentUser, db: DbSession, company_id: int, kind: str,
+    on_date: str | None = None,
+) -> dict | None:
+    """The *approved* policy that applies to a company (never a draft, D01)."""
+    from datetime import date as _date
+
+    parsed = _date.fromisoformat(on_date) if on_date else None
+    policy = accounting_service.effective_policy(
+        db, company_id=company_id, kind=kind, on_date=parsed
+    )
+    return accounting_service.serialise_policy(policy) if policy else None

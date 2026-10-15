@@ -471,3 +471,33 @@ class KpiCreateRequest(BaseModel):
     name_en: str | None = Field(default=None, max_length=200)
     unit: str | None = Field(default=None, max_length=40)
     target_value: Decimal | None = None
+    metric_key: str | None = Field(default=None, max_length=60)
+    direction: str | None = Field(default=None, pattern="^(up|down)$")
+
+
+class KpiUpdateRequest(BaseModel):
+    """D02 configuration patch. Never changes the active (approved) state."""
+
+    target_value: Decimal | None = None
+    metric_key: str | None = Field(default=None, max_length=60)
+    direction: str | None = Field(default=None, pattern="^(up|down)$")
+    name_en: str | None = Field(default=None, max_length=200)
+    unit: str | None = Field(default=None, max_length=40)
+
+
+class KpiActiveRequest(BaseModel):
+    """Activation is the approval record (D02) — recorded, never assumed."""
+
+    active: bool
+
+
+class PolicyCreateRequest(BaseModel):
+    """D01: a draft accounting policy. Approval is a separate accountant act."""
+
+    kind: str = Field(pattern="^(tax|fiscal_year|invoice|asset|currency)$")
+    company_id: int | None = None
+    value: Decimal | None = None
+    value_text: str | None = Field(default=None, max_length=300)
+    currency: str | None = Field(default=None, max_length=8)
+    description: str | None = Field(default=None, max_length=2000)
+    effective_from: date | None = None

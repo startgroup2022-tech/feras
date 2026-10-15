@@ -229,6 +229,9 @@ class Perm:
     BUDGET_READ = "budget.read"
     BUDGET_MANAGE = "budget.manage"
     BUDGET_APPROVE = "budget.approve"
+    POLICY_READ = "accounting_policy.read"
+    POLICY_MANAGE = "accounting_policy.manage"
+    POLICY_APPROVE = "accounting_policy.approve"
     # KPIs / management reports (S21 / D02)
     KPI_READ = "kpi.read"
     KPI_MANAGE = "kpi.manage"
@@ -397,6 +400,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.BUDGET_READ: "View budgets",
     Perm.BUDGET_MANAGE: "Create and edit budgets",
     Perm.BUDGET_APPROVE: "Approve a budget",
+    Perm.POLICY_READ: "View approved accounting policies",
+    Perm.POLICY_MANAGE: "Draft accounting policies",
+    Perm.POLICY_APPROVE: "Approve an accounting policy",
     Perm.KPI_READ: "View KPI definitions and results",
     Perm.KPI_MANAGE: "Manage KPI definitions",
     Perm.NOTIFICATION_PREFERENCE_MANAGE: "Change your notification preferences",
@@ -806,6 +812,10 @@ ACCOUNTANT_EXT = {
     Perm.ASSET_MANAGE,
     Perm.BUDGET_READ,
     Perm.BUDGET_MANAGE,
+    # D01: the accountant drafts and approves accounting policy.
+    Perm.POLICY_READ,
+    Perm.POLICY_MANAGE,
+    Perm.POLICY_APPROVE,
     Perm.TASK_READ_OWN,
     Perm.TASK_STATUS_CHANGE,
     Perm.WEEKLY_REPORT_READ_OWN,

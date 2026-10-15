@@ -32,7 +32,7 @@ from backend.db.models.identity import User
 from backend.db.models.notifications import Notification
 from backend.rbac.authorization import require_permission
 from backend.rbac.permissions import Perm
-from backend.services import audit_service
+from backend.services import audit_service, notification_preference_service
 
 logger = logging.getLogger("safir.notifications")
 
@@ -103,6 +103,13 @@ def notify(
     for uid in sorted(valid):
         if dedupe_key and _exists(db, recipient_id=uid, dedupe_key=dedupe_key):
             continue
+        # D11: a user can mute an event type (or their whole inbox). A muted
+        # event is not created at all, so there is nothing to read and no email.
+        pref = notification_preference_service.effective_preference(
+            db, user_id=uid, event_type=type
+        )
+        if pref["muted"]:
+            continue
         row = Notification(
             recipient_id=uid,
             company_id=company_id,
@@ -125,6 +132,10 @@ def notify(
     db.flush()
     for row in created:
         db.refresh(row)
+        # In-app is the base channel: record that it was delivered to the inbox.
+        notification_preference_service.record_delivery(
+            db, notification=row, channel="in_app", status="delivered", commit=False
+        )
 
     audit_service.record(
         db,

@@ -24,6 +24,7 @@ from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
 from backend.db.models.accounting import (
     Account,
+    AccountingPolicy,
     Asset,
     Budget,
     CompanyInterbalance,
@@ -40,9 +41,12 @@ from backend.db.models.accounting import (
 from backend.db.models.enums import (
     AccountType,
     BudgetStatus,
+    PolicyKind,
+    PolicyStatus,
     InvoiceDirection,
     InvoiceStatus,
     JournalStatus,
+    KpiDirection,
     OpeningBalanceStatus,
 )
 from backend.db.models.identity import User
@@ -52,7 +56,7 @@ from backend.rbac.authorization import (
     require_permission,
 )
 from backend.rbac.permissions import Perm
-from backend.services import audit_service
+from backend.services import audit_service, kpi_service
 
 ZERO = Decimal("0")
 
@@ -1047,15 +1051,22 @@ def serialise_budget(b: Budget) -> dict:
 def create_kpi(db: Session, *, user: User, code: str, name_ar: str, data_source: str,
                calculation_method: str, period_label: str, company_id: int | None = None,
                name_en: str | None = None, unit: str | None = None,
-               target_value: Decimal | None = None, ip_address: str | None = None,
+               target_value: Decimal | None = None, metric_key: str | None = None,
+               direction: str | None = None, ip_address: str | None = None,
                user_agent: str | None = None) -> KpiDefinition:
     require_permission(user, Perm.KPI_MANAGE)
     if company_id is not None:
         require_company_access(user, company_id, write=True)
+    if metric_key is not None and metric_key not in kpi_service.METRIC_KEYS:
+        raise ValidationError(f"Unknown metric_key: {metric_key}")
     kpi = KpiDefinition(company_id=company_id, code=code, name_ar=name_ar, name_en=name_en,
                         data_source=data_source, calculation_method=calculation_method,
                         period_label=period_label, unit=unit, target_value=target_value,
-                        is_active=True, created_by_id=user.id)
+                        metric_key=metric_key,
+                        direction=(direction or KpiDirection.UP.value),
+                        # A new definition is inert until an authorised approval
+                        # activates it (D02) — configuration is never approval.
+                        is_active=False, created_by_id=user.id)
     db.add(kpi)
     db.commit()
     db.refresh(kpi)
@@ -1084,4 +1095,154 @@ def serialise_kpi(k: KpiDefinition) -> dict:
         "name_en": k.name_en, "data_source": k.data_source,
         "calculation_method": k.calculation_method, "period_label": k.period_label,
         "unit": k.unit, "target_value": k.target_value, "is_active": k.is_active,
+        "metric_key": k.metric_key, "direction": k.direction,
+        "approved_at": k.approved_at,
+    }
+
+
+# --------------------------------------------------------------------------
+# accounting policy registry (D01)
+# --------------------------------------------------------------------------
+def create_policy(db: Session, *, user: User, kind: str, company_id: int | None = None,
+                  value: Decimal | None = None, value_text: str | None = None,
+                  currency: str | None = None, description: str | None = None,
+                  effective_from: date | None = None, ip_address: str | None = None,
+                  user_agent: str | None = None) -> AccountingPolicy:
+    """Record a *draft* accounting policy. Draft is inert (D01).
+
+    A policy only becomes effective when an accountant approves it; a draft can
+    never influence a calculation. The next version number is derived from the
+    existing rows for the same (company, kind).
+    """
+    require_permission(user, Perm.POLICY_MANAGE)
+    if company_id is not None:
+        require_company_access(user, company_id, write=True)
+    if kind not in {k.value for k in PolicyKind}:
+        raise ValidationError(f"Unknown policy kind: {kind}")
+
+    latest = db.execute(
+        select(func.max(AccountingPolicy.version)).where(
+            AccountingPolicy.company_id.is_(company_id) if company_id is None
+            else AccountingPolicy.company_id == company_id,
+            AccountingPolicy.kind == kind,
+        )
+    ).scalar()
+    version = int(latest or 0) + 1
+
+    policy = AccountingPolicy(
+        company_id=company_id, kind=kind, version=version, value=value,
+        value_text=value_text, currency=currency, description=description,
+        status=PolicyStatus.DRAFT.value, effective_from=effective_from,
+        created_by_id=user.id,
+    )
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    audit_service.record(db, action=AuditAction.POLICY_CREATED, actor_user_id=user.id,
+                         entity_type="accounting_policy", entity_id=policy.id,
+                         company_id=company_id, ip_address=ip_address, user_agent=user_agent)
+    return policy
+
+
+def approve_policy(db: Session, *, user: User, policy_id: int,
+                   ip_address: str | None = None, user_agent: str | None = None,
+                   ) -> AccountingPolicy:
+    """Approve a policy so it becomes effective; supersede the prior version.
+
+    D01: approval is an explicit accountant act. The previously approved row for
+    the same (company, kind) is marked ``superseded`` but kept, never edited, so
+    the policy history survives. A holding-wide row (company_id is NULL) and a
+    company row are separate chains.
+    """
+    require_permission(user, Perm.POLICY_APPROVE)
+    policy = db.get(AccountingPolicy, policy_id)
+    if policy is None:
+        raise NotFoundError("Policy not found.")
+    if policy.company_id is not None:
+        require_company_access(user, policy.company_id, write=True)
+    if policy.status == PolicyStatus.APPROVED.value:
+        raise ConflictError("This policy is already approved.")
+
+    prior = db.execute(
+        select(AccountingPolicy).where(
+            AccountingPolicy.kind == policy.kind,
+            AccountingPolicy.company_id.is_(None) if policy.company_id is None
+            else AccountingPolicy.company_id == policy.company_id,
+            AccountingPolicy.status == PolicyStatus.APPROVED.value,
+        )
+    ).scalars().first()
+    if prior is not None:
+        prior.status = PolicyStatus.SUPERSEDED.value
+        db.add(prior)
+        policy.supersedes_id = prior.id
+
+    policy.status = PolicyStatus.APPROVED.value
+    policy.approved_by_id = user.id
+    policy.approved_at = utcnow()
+    db.add(policy)
+    db.commit()
+    db.refresh(policy)
+    audit_service.record(db, action=AuditAction.POLICY_APPROVED, actor_user_id=user.id,
+                         entity_type="accounting_policy", entity_id=policy.id,
+                         company_id=policy.company_id, ip_address=ip_address,
+                         user_agent=user_agent)
+    return policy
+
+
+def list_policies(db: Session, *, user: User, company_id: int | None = None,
+                  kind: str | None = None, approved_only: bool = False,
+                  ) -> list[AccountingPolicy]:
+    require_permission(user, Perm.POLICY_READ)
+    stmt = select(AccountingPolicy).order_by(
+        AccountingPolicy.kind, AccountingPolicy.version.desc()
+    )
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(
+            (AccountingPolicy.company_id.is_(None))
+            | (AccountingPolicy.company_id.in_(allowed))
+        )
+    if company_id is not None:
+        stmt = stmt.where(AccountingPolicy.company_id == company_id)
+    if kind is not None:
+        stmt = stmt.where(AccountingPolicy.kind == kind)
+    if approved_only:
+        stmt = stmt.where(AccountingPolicy.status == PolicyStatus.APPROVED.value)
+    return list(db.execute(stmt).scalars())
+
+
+def effective_policy(db: Session, *, company_id: int, kind: str,
+                     on_date: date | None = None) -> AccountingPolicy | None:
+    """The approved policy that applies to a company on a date.
+
+    Resolution order: a company-specific approved row wins; otherwise the
+    holding-wide (``company_id is NULL``) approved row. A draft is never
+    returned — a caller that needs a value gets ``None`` rather than an
+    unapproved assumption (D01).
+    """
+    stmt = select(AccountingPolicy).where(
+        AccountingPolicy.kind == kind,
+        AccountingPolicy.status == PolicyStatus.APPROVED.value,
+        AccountingPolicy.company_id.in_([company_id]) | AccountingPolicy.company_id.is_(None),
+    )
+    if on_date is not None:
+        stmt = stmt.where(
+            (AccountingPolicy.effective_from.is_(None))
+            | (AccountingPolicy.effective_from <= on_date)
+        )
+    rows = list(db.execute(stmt).scalars())
+    company_row = next((r for r in rows if r.company_id == company_id), None)
+    if company_row is not None:
+        return company_row
+    return next((r for r in rows if r.company_id is None), None)
+
+
+def serialise_policy(p: AccountingPolicy) -> dict:
+    return {
+        "id": p.id, "company_id": p.company_id, "kind": p.kind, "version": p.version,
+        "value": p.value, "value_text": p.value_text, "currency": p.currency,
+        "description": p.description, "status": p.status,
+        "approved_by_id": p.approved_by_id, "approved_at": p.approved_at,
+        "effective_from": p.effective_from, "supersedes_id": p.supersedes_id,
+        "created_at": p.created_at,
     }
