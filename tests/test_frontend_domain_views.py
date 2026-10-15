@@ -473,3 +473,16 @@ def test_s22_directive_reply_is_wired_to_the_respond_endpoint():
     # The reply is a note, never a status change: the owner alone closes it.
     assert 'post("/api/v1/operations/owner-decisions/" + did + "/respond"' in APP_JS
 
+
+
+def test_s23_owner_secret_note_is_wired_to_the_owner_note_endpoint():
+    """S23/AC-23: the owner's secret note is saved through its own endpoint.
+
+    The note is only rendered for the confidential owner, and the save posts to
+    the dedicated ``/owner-note`` endpoint (which is owner-only server-side).
+    """
+    assert "ownerNoteForm" in APP_JS
+    assert "/owner-note" in APP_JS
+    assert 'post("/api/v1/employees/assessments/" + a.id + "/owner-note"' in APP_JS
+    # The panel is gated on the confidential owner and a leadership assessment.
+    assert 'a.assessment_type === "leadership" && isConfidentialOwner()' in APP_JS

@@ -536,6 +536,43 @@ def approve_assessment(
     return assessment
 
 
+def save_owner_note(
+    db: Session, *, user: User, assessment_id: int, note: str | None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> Assessment:
+    """S23/AC-23: the owner saves a private note on a leadership assessment.
+
+    The note is confidential context for later periods ("ملاحظات المالك — نص
+    سري / سياق لاحق"). Only the confidential owner may write it, and the note
+    text is deliberately **not** placed in the audit payload so a secret never
+    reaches a shared activity log.
+    """
+    require_permission(user, Perm.ASSESSMENT_MANAGE)
+    assessment = _get_assessment(db, user=user, assessment_id=assessment_id)
+    if assessment.assessment_type != AssessmentType.LEADERSHIP.value:
+        raise ValidationError("Owner notes apply to confidential leadership assessments only.")
+    if not confidential_access_service.is_confidential_owner(user):
+        raise PermissionDeniedError("Only the owner may save a confidential note.")
+
+    assessment.owner_note = note
+    assessment.owner_note_at = utcnow()
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+
+    audit_service.record(
+        db,
+        action=AuditAction.ASSESSMENT_OWNER_NOTE_SAVED,
+        actor_user_id=user.id,
+        entity_type="assessment",
+        entity_id=assessment.id,
+        company_id=assessment.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return assessment
+
+
 def _weighted_score(assessment: Assessment) -> Decimal | None:
     total_weight = Decimal("0")
     weighted = Decimal("0")
@@ -631,8 +668,8 @@ def list_assessments(
     return list(db.execute(stmt).scalars())
 
 
-def serialise_assessment(assessment: Assessment) -> dict:
-    return {
+def serialise_assessment(assessment: Assessment, *, include_owner_note: bool = False) -> dict:
+    data = {
         "id": assessment.id,
         "company_id": assessment.company_id,
         "employee_id": assessment.employee_id,
@@ -663,3 +700,8 @@ def serialise_assessment(assessment: Assessment) -> dict:
             for item in assessment.items
         ],
     }
+    # S23/AC-23: the owner's secret note is only ever returned to the owner.
+    if include_owner_note:
+        data["owner_note"] = assessment.owner_note
+        data["owner_note_at"] = assessment.owner_note_at
+    return data

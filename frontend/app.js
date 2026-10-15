@@ -5476,11 +5476,28 @@
     var gapNote = a.has_evidence_gap
       ? '<p class="note-block">' + dual("الاعتماد محجوب: يوجد معيار إلزامي بدون دليل مكتمل.", "Approval is blocked: a mandatory-evidence item is incomplete.") + "</p>"
       : "";
+    // S23/AC-23: only the owner sees and edits the secret note. It is never
+    // shown to a delegate (the API omits the field for non-owners).
+    var ownerNote =
+      a.assessment_type === "leadership" && isConfidentialOwner()
+        ? panel(
+            "ملاحظات المالك (سرّية)",
+            "Owner notes (confidential)",
+            '<div class="kv"><div class="k">' + dual("نص سري — سياق لاحق", "Secret text — later context") + "</div></div>" +
+              '<form class="av-form" id="ownerNoteForm">' +
+              '<textarea class="av-input" id="ownerNoteText" rows="3" placeholder="' +
+              escAttr(dual("ملاحظة سرية للمالك فقط", "Private note for the owner only")) + '">' +
+              escapeHtml(a.owner_note || "") + "</textarea>" +
+              '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+              dual("حفظ الملاحظة السرية", "Save secret note") + "</button></div></form>",
+          )
+        : "";
     return panel("ملخص", "Summary", '<div class="kv">' +
         kv(dual("الفترة", "Period"), escapeHtml(a.period_label)) +
         kv(dual("الحالة", "Status"), escapeHtml(a.status)) +
         kv(dual("الدرجة المرجّحة", "Weighted score"), dec(a.overall_score)) +
         "</div>" + gapNote + approve) +
+      ownerNote +
       panel("المعايير", "Criteria", itemForm + list);
   }
 
@@ -5529,6 +5546,20 @@
             toast(dual("تم اعتماد التقييم.", "Assessment approved."), "ok");
             openAssessment(updated);
           }).catch(domainError);
+      });
+    }
+    // S23/AC-23: save the owner's secret note. The endpoint refuses anyone but
+    // the owner; the field is only rendered for the owner.
+    var noteForm = body.querySelector("#ownerNoteForm");
+    if (noteForm) {
+      noteForm.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        post("/api/v1/employees/assessments/" + a.id + "/owner-note", {
+          note: (body.querySelector("#ownerNoteText") || {}).value || null,
+        }).then(function (updated) {
+          toast(dual("تم حفظ الملاحظة السرية.", "Secret note saved."), "ok");
+          openAssessment(updated);
+        }).catch(domainError);
       });
     }
   }

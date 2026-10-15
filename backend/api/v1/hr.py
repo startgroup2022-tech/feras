@@ -10,12 +10,13 @@ from backend.rbac.permissions import Perm
 from backend.schemas.domain import (
     AssessmentCreateRequest,
     AssessmentItemRequest,
+    AssessmentOwnerNoteRequest,
     EmployeeCreateRequest,
     EmployeeMovementCreateRequest,
     EmployeeMovementDecisionRequest,
     EmployeeUpdateRequest,
 )
-from backend.services import audit_service, hr_service
+from backend.services import audit_service, confidential_access_service, hr_service
 from backend.services.assessment_criteria import (
     criteria_for_template,
     template_for_role,
@@ -28,6 +29,14 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 def _serialise_employee(user, employee) -> dict:
     return hr_service.serialise_employee(
         employee, include_salary=has_permission(user, Perm.EMPLOYEE_SALARY_READ)
+    )
+
+
+def _serialise_assessment(user, assessment) -> dict:
+    # S23/AC-23: the secret owner note is returned only to the confidential owner.
+    return hr_service.serialise_assessment(
+        assessment,
+        include_owner_note=confidential_access_service.is_confidential_owner(user),
     )
 
 
@@ -132,7 +141,7 @@ def list_assessments(
     assessment_type: str | None = None,
 ) -> list[dict]:
     return [
-        hr_service.serialise_assessment(a)
+        _serialise_assessment(user, a)
         for a in hr_service.list_assessments(
             db, user=user, company_id=company_id, assessment_type=assessment_type
         )
@@ -147,7 +156,7 @@ def create_assessment(
     data = payload.model_dump()
     data["assessment_type"] = payload.assessment_type.value
     assessment = hr_service.create_assessment(db, user=user, **data, **ctx)
-    return hr_service.serialise_assessment(assessment)
+    return _serialise_assessment(user, assessment)
 
 
 @router.post("/assessments/{assessment_id}/items")
@@ -158,7 +167,20 @@ def set_assessment_item(
         db, user=user, assessment_id=assessment_id, **payload.model_dump()
     )
     assessment = hr_service._get_assessment(db, user=user, assessment_id=assessment_id)
-    return hr_service.serialise_assessment(assessment)
+    return _serialise_assessment(user, assessment)
+
+
+@router.post("/assessments/{assessment_id}/owner-note")
+def save_assessment_owner_note(
+    assessment_id: int, payload: AssessmentOwnerNoteRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """S23/AC-23: the owner saves a private note on a leadership assessment."""
+    ctx = audit_service.request_context(request)
+    assessment = hr_service.save_owner_note(
+        db, user=user, assessment_id=assessment_id, note=payload.note, **ctx
+    )
+    return _serialise_assessment(user, assessment)
 
 
 @router.post("/assessments/{assessment_id}/approve")
@@ -169,4 +191,4 @@ def approve_assessment(
     assessment = hr_service.approve_assessment(
         db, user=user, assessment_id=assessment_id, **ctx
     )
-    return hr_service.serialise_assessment(assessment)
+    return _serialise_assessment(user, assessment)

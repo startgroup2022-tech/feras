@@ -189,6 +189,7 @@ class AuditAction:
     ASSESSMENT_UPDATED = "assessment.updated"
     ASSESSMENT_APPROVED = "assessment.approved"
     ASSESSMENT_APPROVAL_BLOCKED = "assessment.approval_blocked"
+    ASSESSMENT_OWNER_NOTE_SAVED = "assessment.owner_note_saved"
 
     TASK_CREATED = "task.created"
     TASK_UPDATED = "task.updated"

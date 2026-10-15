@@ -246,3 +246,35 @@ owner's approval over *Holding* employees ("فصل القابضة لا يتجا�
 * No schema change was required (the reply is a row in `owner_decision_events`,
   the audit action is an enum value), so `alembic check` stays clean and the
   head is unchanged (`f2b3c4d5e6a7`).
+
+
+## S23 / AC-23 — the owner's secret note on a confidential leadership assessment (2026-10-15)
+
+The specification's confidential leadership centre (S23) carries an owner-only
+secret note ("ملاحظات المالك — نص سري") that is context for later periods. The
+assessment module already existed; the note itself was the missing piece.
+
+* `Assessment.owner_note` / `owner_note_at` columns (migration `a3b4c5d6e7f8`,
+  revises `f2b3c4d5e6a7`).
+* `POST /api/v1/employees/assessments/{id}/owner-note` — owner-only. A non-owner
+  receives 403/404 and can never learn the note exists; the endpoint refuses any
+  assessment that is not a leadership assessment.
+* `hr_service.serialise_assessment(..., include_owner_note=False)` gates the note
+  behind a flag. The API passes `include_owner_note=is_confidential_owner(user)`,
+  so the field is **absent** for a delegated reader (AC-23: the secret must not
+  leak through a link, an export or search).
+* The note text is deliberately **not** written to the audit payload, so a secret
+  never reaches a shared activity log. The action is still audited
+  (`assessment.owner_note_saved`).
+* Frontend: the assessment detail renders the secret-note panel only for
+  `isConfidentialOwner()` on a `leadership` assessment, and posts to the
+  dedicated endpoint.
+* Tests: `tests/test_leadership_assessments.py` (3 new cases — owner save +
+  audit-without-secret, grantee never receives the note, non-owner denied) and
+  `tests/test_frontend_domain_views.py::test_s23_owner_secret_note_is_wired_to_the_owner_note_endpoint`.
+
+### Verification
+
+* `python -m pytest tests/ -q` — full suite green (exit 0); **875 tests collected**.
+* `alembic check` — "No new upgrade operations detected." Single linear head
+  `a3b4c5d6e7f8` (`tests/test_postgres.py` head assertion updated).

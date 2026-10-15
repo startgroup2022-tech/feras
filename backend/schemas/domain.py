@@ -147,6 +147,12 @@ class AssessmentItemRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=2000)
 
 
+class AssessmentOwnerNoteRequest(BaseModel):
+    """S23/AC-23: the owner's private note ("ملاحظات المالك — نص سري")."""
+
+    note: str | None = Field(default=None, max_length=4000)
+
+
 # --------------------------------------------------------------------------
 # tasks
 # --------------------------------------------------------------------------

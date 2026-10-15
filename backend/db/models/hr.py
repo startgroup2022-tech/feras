@@ -193,6 +193,11 @@ class Assessment(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # S23/AC-23: the owner's private note ("ملاحظات المالك — نص سري"). It is
+    # confidential context for later periods; it is never written into an audit
+    # payload and never returned to a non-owner reader.
+    owner_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_note_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     employee: Mapped[Employee | None] = relationship(back_populates="assessments")
     items: Mapped[list["AssessmentItem"]] = relationship(
