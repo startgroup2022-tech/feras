@@ -275,3 +275,91 @@ def test_a_marketer_without_the_permission_cannot_clarify(
         headers=auth(marketer),
     )
     assert refused.status_code == 403, refused.text
+
+
+# --------------------------------------------------------------------------
+# AC-21: publishing/analysing never changes the source report; the brief fits
+# half a page; an urgent item reaches the owner before month-end.
+# --------------------------------------------------------------------------
+def test_brief_never_modifies_the_source_report(client, mgmt_world, auth, db):
+    """AC-21: the brief references originals; it never edits or copies them."""
+    report = mgmt_world["alpha_report"]
+    before = (report.revenue, report.expenses, report.status, report.period_month)
+
+    created = client.post(
+        "/api/v1/operations/management-briefs",
+        json={
+            "period_year": report.period_year,
+            "period_month": report.period_month,
+            "executive_summary": "تحليل",
+            "axis_companies": "الشركات",
+            "source_report_ids": [report.id],
+        },
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["source_report_ids"] == [report.id]
+
+    submitted = client.post(
+        f"/api/v1/operations/management-briefs/{created.json()['id']}/submit",
+        json={},
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    # The source report is unchanged: no copy, no edit.
+    db.refresh(report)
+    assert (report.revenue, report.expenses, report.status, report.period_month) == before
+    assert db.query(MonthlyReport).count() == 2  # alpha + beta only
+
+
+def test_brief_executive_summary_cannot_exceed_half_a_page(client, mgmt_world, auth):
+    """AC-21: the brief must fit within half a page."""
+    too_long = "س" * 2001
+    refused = client.post(
+        "/api/v1/operations/management-briefs",
+        json={"period_year": 2027, "period_month": 6, "executive_summary": too_long},
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert refused.status_code == 422, refused.text
+
+    allowed = client.post(
+        "/api/v1/operations/management-briefs",
+        json={"period_year": 2027, "period_month": 6, "executive_summary": "س" * 2000},
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert allowed.status_code == 201, allowed.text
+    assert len(allowed.json()["executive_summary"]) == 2000
+
+
+def test_urgent_brief_reaches_the_owner_before_month_end(client, mgmt_world, auth):
+    """AC-21: an urgent escalation is delivered to the owner immediately."""
+    created = client.post(
+        "/api/v1/operations/management-briefs",
+        json={
+            "period_year": 2027, "period_month": 7,
+            "executive_summary": "تصعيد عاجل", "urgency": "urgent",
+        },
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["urgency"] == "urgent"
+
+    submitted = client.post(
+        f"/api/v1/operations/management-briefs/{created.json()['id']}/submit",
+        json={},
+        headers=auth(mgmt_world["bd"]),
+    )
+    assert submitted.status_code == 200, submitted.text
+
+    # The owner already has the urgent notification; nobody else was notified.
+    owner_inbox = client.get(
+        "/api/v1/notifications", headers=auth(mgmt_world["owner"])
+    ).json()
+    urgent_titles = [n["title_ar"] for n in owner_inbox["items"]]
+    assert any("عاجل" in t for t in urgent_titles), urgent_titles
+
+    mgr_inbox = client.get(
+        "/api/v1/notifications", headers=auth(mgmt_world["alpha_mgr"])
+    ).json()
+    assert all("عاجل" not in n["title_ar"] for n in mgr_inbox["items"])

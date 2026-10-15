@@ -223,6 +223,20 @@ class FormScope(str, enum.Enum):
     COMPANY = "company"
 
 
+class FormFieldScope(str, enum.Enum):
+    """How widely a single configurable field is shown (S07, Table 18).
+
+    ``نطاق الظهور`` is one of ``الكل`` (all companies), ``قطاع`` (only the
+    companies of one sector) or ``شركة`` (one company). AC-07 requires that a
+    sector-scoped field appears *only* for the companies of that sector, so the
+    scope is enforced server-side, not merely hidden in the UI.
+    """
+
+    ALL = "all"
+    SECTOR = "sector"
+    COMPANY = "company"
+
+
 class FieldType(str, enum.Enum):
     """Supported configurable field types.
 

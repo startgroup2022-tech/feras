@@ -65,6 +65,7 @@ class OpeningBalanceOut(BaseModel):
     cash: Decimal | None
     receivables: Decimal | None
     debts: Decimal | None
+    total_cash: Decimal | None = None
     source_summary_version_id: int | None
     notes: str | None
     approved_by_id: int | None

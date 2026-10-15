@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, status
 
 from backend.api.deps import CurrentUser, DbSession
-from backend.rbac.authorization import has_permission
+from backend.rbac.authorization import has_permission, require_permission
 from backend.rbac.permissions import Perm
 from backend.schemas.domain import (
     AssessmentCreateRequest,
@@ -16,6 +16,11 @@ from backend.schemas.domain import (
     EmployeeUpdateRequest,
 )
 from backend.services import audit_service, hr_service
+from backend.services.assessment_criteria import (
+    criteria_for_template,
+    template_for_role,
+    template_keys,
+)
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -102,6 +107,25 @@ def decide_movement(
 
 
 # ---- assessments (D05) ----
+@router.get("/assessments/criteria")
+def assessment_criteria(user: CurrentUser) -> dict:
+    """The role assessment criteria and their fixed weights (Table 72, AC-12).
+
+    Read-only reference data: the specification fixes both the criteria and the
+    weights per role. ``?template=accountant`` returns one template; a role code
+    is also accepted (``?template=business_development`` resolves to its
+    leadership template).
+    """
+    require_permission(user, Perm.ASSESSMENT_READ)
+    key = template_for_role(user.role_code) or "accountant"
+    return {
+        "templates": {
+            k: criteria_for_template(k) for k in template_keys()
+        },
+        "default_template": key,
+    }
+
+
 @router.get("/assessments/list")
 def list_assessments(
     user: CurrentUser, db: DbSession, company_id: int | None = None,

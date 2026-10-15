@@ -424,6 +424,45 @@ def test_opening_balance_not_auto_carried(client, domain_world, auth, db):
     assert all(row.kind == "opening" for row in rows)
 
 
+def test_opening_balance_total_cash_is_computed(client, domain_world, auth):
+    """AC-04: bank 120 and cash 30 produce total cash 150."""
+    r = client.post(
+        "/api/v1/accounting/opening-balances",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "period_year": 2027,
+            "kind": "opening",
+            "bank": "120.00",
+            "cash": "30.00",
+        },
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["total_cash"] == "150.00"
+
+    # Persistence: the computed value survives a fresh read and cannot be set
+    # directly (the request schema has no total_cash field).
+    listed = client.get(
+        "/api/v1/accounting/opening-balances", headers=auth(domain_world["owner_all"])
+    ).json()
+    row = next(o for o in listed if o["id"] == r.json()["id"])
+    assert row["total_cash"] == "150.00"
+
+    forged = client.post(
+        "/api/v1/accounting/opening-balances",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "period_year": 2028,
+            "bank": "10.00",
+            "cash": "5.00",
+            "total_cash": "999.00",
+        },
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert forged.status_code == 201, forged.text
+    assert forged.json()["total_cash"] == "15.00"
+
+
 def test_budget_approval_supersedes_previous(client, domain_world, auth, db):
     r1 = client.post(
         "/api/v1/accounting/budgets",

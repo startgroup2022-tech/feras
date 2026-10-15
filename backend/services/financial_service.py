@@ -270,9 +270,14 @@ def add_item(
         name_en = payload.get("name_en") or code
         category = payload.get("category") or "other"
         kind = payload.get("kind") or FinancialItemKind.OTHER.value
-        inclusion_rule = (
-            payload.get("inclusion_rule") or FinancialInclusionRule.INCLUDED.value
-        )
+        inclusion_rule = payload.get("inclusion_rule")
+        if not inclusion_rule:
+            # AC-07: no financial item without a calculation rule. The schema
+            # rejects this at the API edge; this guards a direct service call.
+            raise ValidationError(
+                "A financial item requires a calculation rule "
+                "(inclusion_rule): included or added."
+            )
         decision_reference = payload.get("decision_reference")
 
     item = FinancialSummaryItem(

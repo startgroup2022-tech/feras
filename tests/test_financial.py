@@ -247,6 +247,57 @@ def test_cross_currency_item_is_rejected(client, financial_world, auth):
     assert response.status_code == 422
 
 
+def test_ad_hoc_item_without_a_calculation_rule_is_rejected(client, financial_world, auth):
+    """AC-07: a financial item with no calculation rule is refused."""
+    world = financial_world
+    version = _create(client, auth, world, submitted_revenue="1000", submitted_expenses="600").json()
+    response = client.post(
+        f"/api/v1/financial/summaries/{version['id']}/items",
+        headers=auth(world["alpha_mgr"]),
+        json={"name_ar": "بند بلا قاعدة", "name_en": "No rule", "amount": "20",
+              "kind": "expense"},
+    )
+    assert response.status_code == 422, response.text
+
+    # The refusal must not have created a row or changed the result.
+    detail = client.get(
+        f"/api/v1/financial/summaries/{version['id']}", headers=auth(world["alpha_mgr"])
+    ).json()
+    assert detail["items"] == []
+    assert detail["effective_expenses"] == "600.00"
+
+
+def test_item_definition_item_does_not_need_an_explicit_rule(
+    client, financial_world, auth, make_user
+):
+    """A definition already carries the rule, so referencing it is enough."""
+    world = financial_world
+    version = _create(client, auth, world, submitted_revenue="1000", submitted_expenses="600").json()
+
+    accountant = make_user("acc.def@corp.sa", "accountant", [world["alpha"]])
+    definition = client.post(
+        "/api/v1/financial/item-definitions",
+        params={"company_id": world["alpha"].id},
+        headers=auth(accountant),
+        json={"code": "svc_fee", "name_ar": "رسوم خدمة", "name_en": "Service fee",
+              "category": "service", "kind": "expense", "inclusion_rule": "added"},
+    )
+    assert definition.status_code == 201, definition.text
+
+    created = client.post(
+        f"/api/v1/financial/summaries/{version['id']}/items",
+        headers=auth(world["alpha_mgr"]),
+        json={"definition_id": definition.json()["id"], "amount": "20"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["inclusion_rule"] == "added"
+
+    detail = client.get(
+        f"/api/v1/financial/summaries/{version['id']}", headers=auth(world["alpha_mgr"])
+    ).json()
+    assert detail["effective_expenses"] == "620.00"
+
+
 # --------------------------------------------------------------------------
 # historical correction engine
 # --------------------------------------------------------------------------

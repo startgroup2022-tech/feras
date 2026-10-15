@@ -154,16 +154,27 @@ def list_versions(form_id: int, db: DbSession, user: CurrentUser) -> list[FormVe
 
 @router.get("/{form_id}/versions/{version_id}", response_model=FormVersionOut)
 def get_version(
-    form_id: int, version_id: int, db: DbSession, user: CurrentUser
+    form_id: int,
+    version_id: int,
+    db: DbSession,
+    user: CurrentUser,
+    company_id: int | None = Query(default=None),
 ) -> FormVersionOut:
     version = form_service.get_version(db, user=user, form_id=form_id, version_id=version_id)
-    return FormVersionOut(**form_service.serialise_version(db, version))
+    company = form_service.resolve_field_scope_company(db, user=user, company_id=company_id)
+    return FormVersionOut(**form_service.serialise_version(db, version, company=company))
 
 
 @router.get("/{form_id}/current", response_model=FormVersionOut)
-def current_version(form_id: int, db: DbSession, user: CurrentUser) -> FormVersionOut:
+def current_version(
+    form_id: int,
+    db: DbSession,
+    user: CurrentUser,
+    company_id: int | None = Query(default=None),
+) -> FormVersionOut:
     version = form_service.get_current_version(db, user=user, form_id=form_id)
-    return FormVersionOut(**form_service.serialise_version(db, version))
+    company = form_service.resolve_field_scope_company(db, user=user, company_id=company_id)
+    return FormVersionOut(**form_service.serialise_version(db, version, company=company))
 
 
 @router.post(

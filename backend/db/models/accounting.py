@@ -97,6 +97,17 @@ class OpeningBalance(Base, TimestampMixin):
 
     company: Mapped["Company"] = relationship()
 
+    @property
+    def total_cash(self) -> Decimal | None:
+        """Bank + cash (AC-04). Computed, never accepted from the client.
+
+        Returns ``None`` only when both components are absent, so a genuine zero
+        balance is still distinguishable from "not entered".
+        """
+        if self.bank is None and self.cash is None:
+            return None
+        return (self.bank or Decimal("0")) + (self.cash or Decimal("0"))
+
 
 class Account(Base, TimestampMixin):
     """A chart-of-accounts entry (D01)."""

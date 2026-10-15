@@ -38,7 +38,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
-from backend.db.models.enums import FormScope, FormStatus, RequirementType
+from backend.db.models.enums import FormScope, FormFieldScope, FormStatus, RequirementType
 
 if TYPE_CHECKING:
     from backend.db.models.identity import Company
@@ -177,12 +177,40 @@ class FormField(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     default_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # S07 Table 18 ``نطاق الظهور``: which companies the field appears for --
+    # every company, the companies of one sector, or a single company. The
+    # sector/company qualifiers are only meaningful for their own scope.
+    scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=FormFieldScope.ALL.value
+    )
+    scope_sector: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    scope_company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
     # Declarative configuration: options, min, max, max_length, pattern,
     # visibility rules. Kept as JSON so new (still declarative) knobs can be
     # added without a schema change.
     config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     version: Mapped[FormVersion] = relationship(back_populates="fields")
+
+    def applies_to_company(self, company) -> bool:
+        """Whether this field is shown for ``company`` (S07 ``نطاق الظهور``).
+
+        ``company`` is a :class:`Company` row (or ``None`` when no company
+        context is available, in which case only ``all``-scoped fields apply).
+        """
+        if self.scope == FormFieldScope.ALL.value:
+            return True
+        if company is None:
+            return False
+        if self.scope == FormFieldScope.SECTOR.value:
+            if not self.scope_sector or not company.sector:
+                return False
+            return self.scope_sector.strip().casefold() == company.sector.strip().casefold()
+        if self.scope == FormFieldScope.COMPANY.value:
+            return self.scope_company_id == company.id
+        return False
 
 
 class FormRequirement(Base, TimestampMixin):

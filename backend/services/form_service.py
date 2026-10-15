@@ -31,7 +31,7 @@ from backend.core.errors import (
 )
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
-from backend.db.models.enums import FormScope, FormStatus
+from backend.db.models.enums import FormFieldScope, FormScope, FormStatus
 from backend.db.models.forms import (
     DynamicForm,
     FormCompany,
@@ -41,6 +41,7 @@ from backend.db.models.forms import (
 from backend.db.models.identity import Company, User
 from backend.rbac.authorization import (
     accessible_company_ids,
+    can_access_company,
     can_write_company,
     is_holding_wide,
     require_permission,
@@ -129,13 +130,21 @@ def serialise_field(field: FormField) -> dict:
         "is_active": field.is_active,
         "display_order": field.display_order,
         "default_value": field.default_value,
+        "scope": field.scope,
+        "scope_sector": field.scope_sector,
+        "scope_company_id": field.scope_company_id,
         "config": field.config,
     }
 
 
-def serialise_version(db: Session, version: FormVersion) -> dict:
+def serialise_version(db: Session, version: FormVersion, *, company=None) -> dict:
     from backend.services.requirement_service import serialise_requirement
 
+    fields = version.fields
+    if company is not None:
+        # S07 / AC-07: a sector- or company-scoped field is returned only for
+        # the companies it applies to; other companies never receive it.
+        fields = [f for f in fields if f.applies_to_company(company)]
     return {
         "id": version.id,
         "form_id": version.form_id,
@@ -143,7 +152,7 @@ def serialise_version(db: Session, version: FormVersion) -> dict:
         "status": version.status,
         "created_at": version.created_at,
         "published_at": version.published_at,
-        "fields": [serialise_field(f) for f in version.fields],
+        "fields": [serialise_field(f) for f in fields],
         "requirements": [serialise_requirement(r) for r in version.requirements],
     }
 
@@ -608,6 +617,73 @@ def get_current_version(db: Session, *, user: User, form_id: int) -> FormVersion
     return version
 
 
+def resolve_field_scope_company(db: Session, *, user: User, company_id: int | None):
+    """The company whose field-scope visibility should be applied (S07/AC-07).
+
+    ``None`` (no company context) returns ``None`` so only ``all``-scoped
+    fields are returned -- a scoped field is never leaked to a caller who did
+    not name the company it belongs to. A named company the caller cannot read
+    raises a non-leaking 404.
+    """
+    if company_id is None:
+        return None
+    company = db.get(Company, company_id)
+    if company is None or not can_access_company(user, company_id):
+        raise NotFoundError("Company not found.")
+    return company
+
+
+def _resolve_field_scope(db: Session, payload: dict) -> tuple[str, str | None, int | None]:
+    """Validate and normalise a field's ``نطاق الظهور`` (S07, Table 18).
+
+    Returns ``(scope, scope_sector, scope_company_id)``. A ``sector`` scope
+    must name a sector; a ``company`` scope must name a company. The unused
+    qualifier is always cleared, so a field can never carry a stale sector when
+    it is switched back to ``all``.
+    """
+    from backend.db.models.group import Sector
+
+    scope = payload.get("scope") or FormFieldScope.ALL.value
+    if scope not in {s.value for s in FormFieldScope}:
+        raise ValidationError("Unknown field visibility scope.")
+
+    sector = (payload.get("scope_sector") or "").strip() or None
+    company_id = payload.get("scope_company_id")
+
+    if scope == FormFieldScope.SECTOR.value:
+        if not sector:
+            raise ValidationError("A sector-scoped field must name a sector.")
+        known = db.execute(
+            select(Sector).where(
+                or_(
+                    Sector.code == sector,
+                    Sector.name_en == sector,
+                    Sector.name_ar == sector,
+                )
+            )
+        ).scalar_one_or_none()
+        if known is None:
+            raise ValidationError("The named sector does not exist.")
+        # Store the catalogue's English name: that is the value companies carry
+        # in their free-text ``sector`` column, so visibility resolves without a
+        # database round-trip per field.
+        sector = known.name_en
+        company_id = None
+    elif scope == FormFieldScope.COMPANY.value:
+        if company_id is None:
+            raise ValidationError("A company-scoped field must name a company.")
+        company = db.get(Company, int(company_id))
+        if company is None:
+            raise ValidationError("The named company does not exist.")
+        company_id = company.id
+        sector = None
+    else:
+        sector = None
+        company_id = None
+
+    return scope, sector, company_id
+
+
 def add_field(
     db: Session,
     *,
@@ -633,6 +709,8 @@ def add_field(
     if order is None or order == 0:
         order = (max([f.display_order for f in draft.fields], default=0)) + 1
 
+    scope, scope_sector, scope_company_id = _resolve_field_scope(db, payload)
+
     field = FormField(
         form_version_id=draft.id,
         key=key,
@@ -647,6 +725,9 @@ def add_field(
         is_active=bool(payload.get("is_active", True)),
         display_order=order,
         default_value=payload.get("default_value"),
+        scope=scope,
+        scope_sector=scope_sector,
+        scope_company_id=scope_company_id,
         config=payload.get("config"),
     )
     _validate_field_config(field)
@@ -726,6 +807,17 @@ def update_field(
     for attr in ("is_required", "is_active", "display_order"):
         if attr in payload and payload[attr] is not None:
             setattr(field, attr, payload[attr])
+
+    # S07 ``نطاق الظهور``: resolve the scope from the merged state so switching
+    # scope clears the qualifier that no longer applies (never a stale sector).
+    if any(k in payload for k in ("scope", "scope_sector", "scope_company_id")):
+        merged = {
+            "scope": payload.get("scope", field.scope),
+            "scope_sector": payload.get("scope_sector", field.scope_sector),
+            "scope_company_id": payload.get("scope_company_id", field.scope_company_id),
+        }
+        field.scope, field.scope_sector, field.scope_company_id = _resolve_field_scope(db, merged)
+
     _validate_field_config(field)
     db.add(field)
     db.commit()
@@ -821,6 +913,7 @@ __all__ = [
     "publish_form",
     "remove_field",
     "reorder_fields",
+    "resolve_field_scope_company",
     "serialise_field",
     "serialise_form",
     "serialise_version",

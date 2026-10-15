@@ -792,6 +792,11 @@ ACCOUNTANT_EXT = {
     # S21: the accountant reads the management brief (the spec lists the
     # accountant's financial reports alongside it), but does not author it.
     Perm.MANAGEMENT_BRIEF_READ,
+    # S07 / AC-07: the spec gives form-and-field (incl. special-item) item
+    # configuration to the owner *and* the accountant. Without this the
+    # accountant cannot create the item definitions the special-item screen
+    # requires.
+    Perm.FINANCIAL_ITEM_MANAGE,
     Perm.OPENING_BALANCE_READ,
     Perm.OPENING_BALANCE_MANAGE,
     Perm.OPENING_BALANCE_APPROVE,

@@ -47,6 +47,7 @@ from backend.rbac.authorization import (
 )
 from backend.rbac.permissions import Perm
 from backend.services import audit_service, confidential_access_service
+from backend.services.assessment_criteria import fixed_weight_for_code
 
 
 # --------------------------------------------------------------------------
@@ -422,6 +423,13 @@ def set_assessment_item(
         raise ValidationError(
             f"Score must be between {ASSESSMENT_SCORE_MIN} and {ASSESSMENT_SCORE_MAX}."
         )
+
+    # AC-12: a criterion drawn from the role catalogue carries a *fixed* weight.
+    # The supplied weight is ignored for such a criterion, so the weight cannot
+    # be changed by accident (or by an out-of-band client).
+    fixed_weight = fixed_weight_for_code(criterion_code)
+    if fixed_weight is not None:
+        weight = fixed_weight
 
     item = db.execute(
         select(AssessmentItem).where(

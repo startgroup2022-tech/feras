@@ -226,7 +226,7 @@ def test_only_owner_can_create_users(client, auth, make_user):
 def test_only_owner_can_create_companies(client, auth, make_user):
     owner = make_user("owner@corp.sa", "holding_owner")
     accountant = make_user("acc@corp.sa", "accountant")
-    payload = {"code": "NEWCO", "name_ar": "شركة جديدة", "name_en": "New Co"}
+    payload = {"code": "NEWCO", "name_ar": "شركة جديدة", "name_en": "New Co", "sector": "تقنية"}
 
     assert client.post("/api/v1/companies", headers=auth(accountant), json=payload).status_code == 403
     assert client.post("/api/v1/companies", headers=auth(owner), json=payload).status_code == 201
@@ -239,7 +239,7 @@ def test_duplicate_company_code_is_rejected(client, auth, make_user, make_compan
     response = client.post(
         "/api/v1/companies",
         headers=auth(owner),
-        json={"code": "DUP", "name_ar": "أخرى", "name_en": "Other"},
+        json={"code": "DUP", "name_ar": "أخرى", "name_en": "Other", "sector": "تقنية"},
     )
 
     assert response.status_code == 409

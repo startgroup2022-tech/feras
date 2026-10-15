@@ -136,6 +136,7 @@
     },
     "ph.formCode": { ar: "مثال: capex", en: "e.g. capex" },
     "ph.fieldKey": { ar: "مثال: amount", en: "e.g. amount" },
+    "ph.scopeSector": { ar: "مثال: Technology", en: "e.g. Technology" },
     "ph.requirementKey": { ar: "مثال: quote", en: "e.g. quote" },
     "ph.workflowCode": { ar: "مثال: capex_flow", en: "e.g. capex_flow" },
     "ph.comment": { ar: "أضف تعليقًا…", en: "Add a comment…" },
@@ -3539,7 +3540,8 @@
   }
 
   function editSubmissionForm(s) {
-    get("/api/v1/forms/" + s.form_id + "/versions/" + s.form_version_id)
+    get("/api/v1/forms/" + s.form_id + "/versions/" + s.form_version_id +
+        (s.company_id ? "?company_id=" + s.company_id : ""))
       .then(function (version) {
         openModal({
           title: dual("تعديل الطلب", "Edit request"),
@@ -5125,6 +5127,11 @@
     return el ? String(el.value).trim() : "";
   }
 
+  function setVal(id, value) {
+    var el = byId(id);
+    if (el) el.value = value == null ? "" : String(value);
+  }
+
   function numVal(id) {
     var v = valOf(id);
     if (v === "") return null;
@@ -5430,6 +5437,14 @@
     var items = a.items || [];
     var itemForm = has("assessment.manage") && a.status !== "approved"
       ? '<form class="av-form av-form-inline" id="assessItemForm">' +
+        field("قالب المعايير", "Criteria template", selectInput("aiTemplate", [
+          { value: "", label: opt("— بدون قالب —", "— No template —") },
+          { value: "accountant", label: opt("المحاسب 35/20/20/15/10", "Accountant 35/20/20/15/10") },
+          { value: "marketing", label: opt("التسويق 35/25/20/10/10", "Marketing 35/25/20/10/10") },
+          { value: "designer", label: opt("المصمم 35/25/25/15", "Designer 35/25/25/15") },
+          { value: "business_development_lead", label: opt("قيادة تطوير الأعمال", "BD lead") },
+          { value: "company_lead", label: opt("قيادة الشركة", "Company lead") },
+        ], "")) +
         field("معيار (كود)", "Criterion code", textInput("aiCode", "")) +
         field("الاسم (عربي)", "Name (AR)", textInput("aiNameAr", "")) +
         field("الاسم (إنجليزي)", "Name (EN)", textInput("aiNameEn", "")) +
@@ -5469,6 +5484,24 @@
   function bindAssessmentDetail(body, a) {
     var form = body.querySelector("#assessItemForm");
     if (form) {
+      // AC-12: picking a role template prefills the criterion and locks the
+      // specification's fixed weight, so the weight is never typed by hand.
+      var tmplSel = form.querySelector("#aiTemplate");
+      if (tmplSel) {
+        tmplSel.addEventListener("change", function () {
+          var key = tmplSel.value;
+          if (!key) return;
+          get("/api/v1/employees/assessments/criteria").then(function (data) {
+            var rows = (data.templates || {})[key] || [];
+            if (!rows.length) return;
+            var first = rows[0];
+            setVal("aiCode", first.criterion_code);
+            setVal("aiNameAr", first.criterion_name_ar);
+            setVal("aiNameEn", first.criterion_name_en || "");
+            setVal("aiWeight", first.weight);
+          }).catch(domainError);
+        });
+      }
       form.addEventListener("submit", function (ev) {
         ev.preventDefault();
         post("/api/v1/employees/assessments/" + a.id + "/items", {
@@ -6478,7 +6511,8 @@
               '<div class="grow"><div class="t">' + escapeHtml(companyNameById(o.company_id)) + " · " +
               escapeHtml(o.kind) + "</div>" +
               '<div class="s">' + dec(o.period_month) + "/" + dec(o.period_year) +
-              " · " + dual("بنك", "Bank") + " " + dec(o.bank) + " · " + dual("نقد", "Cash") + " " + dec(o.cash) + "</div></div>" +
+              " · " + dual("بنك", "Bank") + " " + dec(o.bank) + " · " + dual("نقد", "Cash") + " " + dec(o.cash) +
+              " · " + dual("إجمالي النقد", "Total cash") + " " + dec(o.total_cash) + "</div></div>" +
               statusBadgeFromMap(o.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "warn"], approved: ["معتمد", "Approved", "ok"] }) +
               "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
           }).join("") + "</div>"
@@ -7824,6 +7858,8 @@
             field("الاسم (عربي)", "Name (AR)", textInput("ccNameAr", "")) +
             field("الاسم (إنجليزي)", "Name (EN)", textInput("ccNameEn", "")) +
             field("القطاع", "Sector", textInput("ccSector", "")) +
+            field("تاريخ التأسيس", "Founded on", dateInput("ccFounded", "")) +
+            field("بداية المتابعة", "Monitoring start", dateInput("ccTracking", "")) +
             field("العملة", "Currency", textInput("ccCurrency", "SAR")) +
             field("الدولة", "Country", textInput("ccCountry", "")) +
             '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
@@ -7842,8 +7878,10 @@
           post("/api/v1/companies", {
             code: valOf("ccCode"),
             name_ar: valOf("ccNameAr"),
-            name_en: valOf("ccNameEn"),
-            sector: valOf("ccSector") || null,
+            name_en: valOf("ccNameEn") || null,
+            sector: valOf("ccSector"),
+            founded_on: valOf("ccFounded") || null,
+            tracking_start_date: valOf("ccTracking") || null,
             currency: valOf("ccCurrency") || "SAR",
             country: valOf("ccCountry") || null,
           }).then(function () {
@@ -9199,6 +9237,12 @@
         { value: "0", label: STATE.lang === "ar" ? "لا" : "No" },
         { value: "1", label: STATE.lang === "ar" ? "نعم" : "Yes" },
       ], "0")) +
+      field("نطاق الظهور", "Visibility scope", selectInput("afScope", [
+        { value: "all", label: dual("الكل", "All") },
+        { value: "sector", label: dual("قطاع", "Sector") },
+        { value: "company", label: dual("شركة", "Company") },
+      ], "all")) +
+      field("القطاع", "Sector", textInput("afScopeSector", "", "ph.scopeSector")) +
       '<div class="av-form-actions"><button class="btn-outline" id="afAdd">' +
       dual("إضافة حقل", "Add field") + "</button></div></div>"
     );
@@ -9208,13 +9252,21 @@
     var btn = root.querySelector("#afAdd");
     if (!btn) return;
     btn.addEventListener("click", function () {
+      var scope = root.querySelector("#afScope").value;
       var payload = {
         key: root.querySelector("#afKey").value.trim(),
         field_type: root.querySelector("#afType").value,
         label_ar: root.querySelector("#afLabelAr").value.trim() || root.querySelector("#afKey").value.trim(),
         label_en: root.querySelector("#afLabelEn").value.trim() || root.querySelector("#afKey").value.trim(),
         is_required: root.querySelector("#afRequired").value === "1",
+        scope: scope,
       };
+      // S07 ``نطاق الظهور``: only send the qualifier the chosen scope needs.
+      if (scope === "sector") {
+        payload.scope_sector = root.querySelector("#afScopeSector").value.trim();
+      } else if (scope === "company") {
+        payload.scope_company_id = primaryCompanyId() || null;
+      }
       busy(btn, true);
       post("/api/v1/forms/" + formId + "/fields", payload)
         .then(function () {

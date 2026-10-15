@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -88,7 +89,8 @@ class Company(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
     name_ar: Mapped[str] = mapped_column(String(180), nullable=False)
-    name_en: Mapped[str] = mapped_column(String(180), nullable=False)
+    # F-01: only the Arabic name is mandatory; the English name is optional.
+    name_en: Mapped[str | None] = mapped_column(String(180), nullable=True)
     sector: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=CompanyStatus.ACTIVE.value, index=True
@@ -109,6 +111,12 @@ class Company(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    # F-01 / AC-03: the founding date is separate from the date monitoring
+    # starts; the latter is the reference point for opening balances, so the two
+    # must never be collapsed into one field.
+    founded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    tracking_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     users: Mapped[list["UserCompanyAccess"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"

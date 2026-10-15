@@ -83,3 +83,32 @@ def test_reseeding_backfills_a_missing_grant(db):
     assert _writable_company_ids(db, owner.email) == {
         c.id for c in db.query(Company).all()
     }
+
+
+def test_seed_installs_the_weekly_report_question_template(db):
+    """AC-18: the S18 template has at most five questions, includes the advisor
+    evaluation, and never re-asks the task count."""
+    from backend.db.models.operations import (
+        WEEKLY_REPORT_MAX_QUESTIONS,
+        WeeklyReportQuestion,
+    )
+
+    seed_demo.seed(reset=False)
+    db.expire_all()
+
+    questions = (
+        db.query(WeeklyReportQuestion)
+        .filter(WeeklyReportQuestion.is_active.is_(True))
+        .order_by(WeeklyReportQuestion.order_index)
+        .all()
+    )
+    assert 0 < len(questions) <= WEEKLY_REPORT_MAX_QUESTIONS
+
+    codes = {q.code for q in questions}
+    assert "weekly_advisor_evaluation" in codes, "advisor evaluation question missing"
+    assert not any("task" in code for code in codes), "template re-asks the task count"
+
+    # Idempotent: a second seed must not duplicate the template.
+    seed_demo.seed(reset=False)
+    db.expire_all()
+    assert db.query(WeeklyReportQuestion).count() == len(questions)

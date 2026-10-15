@@ -88,6 +88,43 @@ SUPPORT_REQUESTS = [
     ("SAF-LOG", "دعم في إعداد نموذج تسعير", SupportCategory.GENERAL, SupportStatus.NEW),
 ]
 
+# S18 / AC-18: the weekly employee report asks at most five core questions and
+# must include the evaluation of the assigned advisor. It must *not* re-ask the
+# number of tasks, which already lives on the tasks screen, so no task-count
+# question appears here. Exact wording is owner data (D02), so this is a
+# sensible default the owner can rename through the template API.
+WEEKLY_QUESTIONS = [
+    ("weekly_achievements", "ما أبرز ما أنجزته هذا الأسبوع؟",
+     "What did you achieve this week?"),
+    ("weekly_challenges", "ما التحديات أو المعوقات التي واجهتك؟",
+     "What challenges or blockers did you face?"),
+    ("weekly_next_steps", "ما خططك وخطواتك للأسبوع القادم؟",
+     "What are your plans for next week?"),
+    ("weekly_advisor_evaluation", "قيّم أداء المستشار الخارجي المعيّن لك هذا الأسبوع.",
+     "Evaluate the external advisor assigned to you this week."),
+    ("weekly_support_needed", "هل تحتاج دعمًا أو توضيحًا من الإدارة؟",
+     "Do you need support or clarification from management?"),
+]
+
+
+def _seed_weekly_questions(db) -> None:
+    """Idempotently install the S18 weekly-report question template (AC-18)."""
+    from backend.db.models.operations import WeeklyReportQuestion
+
+    existing = {
+        code
+        for (code,) in db.execute(select(WeeklyReportQuestion.code)).all()
+    }
+    for index, (code, text_ar, text_en) in enumerate(WEEKLY_QUESTIONS):
+        if code in existing:
+            continue
+        db.add(
+            WeeklyReportQuestion(
+                code=code, text_ar=text_ar, text_en=text_en, order_index=index
+            )
+        )
+    db.commit()
+
 
 def _reset(db) -> None:
     """Delete demo rows only -- identified by the demo email domain."""
@@ -126,6 +163,9 @@ def seed(reset: bool) -> None:
 
         seed_default_categories(db)
         print("  document categories synced")
+
+        _seed_weekly_questions(db)
+        print("  weekly report questions synced")
 
         if reset:
             _reset(db)

@@ -156,6 +156,7 @@ def serialise_opening_balance(ob: OpeningBalance) -> dict:
         "period_month": ob.period_month, "kind": ob.kind, "status": ob.status,
         "currency": ob.currency, "bank": ob.bank, "cash": ob.cash,
         "receivables": ob.receivables, "debts": ob.debts,
+        "total_cash": ob.total_cash,
         "source_summary_version_id": ob.source_summary_version_id, "notes": ob.notes,
         "approved_by_id": ob.approved_by_id, "approved_at": ob.approved_at,
         "created_at": ob.created_at,

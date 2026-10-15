@@ -151,6 +151,49 @@ def test_position_cannot_report_to_itself(client, world, auth, make_user):
     assert bad.status_code == 422, bad.text
 
 
+def test_company_manager_never_reports_to_business_development(client, world, auth, make_user):
+    """AC-24: BD coordinates; it does not command a subsidiary manager."""
+    owner = make_user("owner_pos6@corp.sa", "holding_owner", [world["alpha"]])
+    bd = make_user("bd_pos@corp.sa", "business_development", [world["alpha"]])
+    mgr = make_user("mgr_pos@corp.sa", "company_manager", [world["alpha"]])
+
+    bd_position = client.post(
+        "/api/v1/admin/positions",
+        json=_position_payload(world["alpha"].id, code="BD-LEAD", holder_user_id=bd.id),
+        headers=auth(owner),
+    ).json()
+
+    bad = client.post(
+        "/api/v1/admin/positions",
+        json=_position_payload(
+            world["alpha"].id,
+            code="MGR",
+            holder_user_id=mgr.id,
+            reports_to_position_id=bd_position["id"],
+        ),
+        headers=auth(owner),
+    )
+    assert bad.status_code == 422, bad.text
+
+    # The owner is a valid parent: both roles report to the owner.
+    owner_position = client.post(
+        "/api/v1/admin/positions",
+        json=_position_payload(world["alpha"].id, code="OWNER-SEAT", holder_user_id=owner.id),
+        headers=auth(owner),
+    ).json()
+    good = client.post(
+        "/api/v1/admin/positions",
+        json=_position_payload(
+            world["alpha"].id,
+            code="MGR2",
+            holder_user_id=mgr.id,
+            reports_to_position_id=owner_position["id"],
+        ),
+        headers=auth(owner),
+    )
+    assert good.status_code == 201, good.text
+
+
 # --------------------------------------------------------------------------
 # S01 motivational sentence library
 # --------------------------------------------------------------------------

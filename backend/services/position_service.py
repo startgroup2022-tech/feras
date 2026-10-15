@@ -25,6 +25,32 @@ from backend.rbac.permissions import Perm
 from backend.services import audit_service
 
 
+def _assert_reporting_line_respects_role_structure(
+    db: Session, *, child_holder_user_id: int | None, parent: Position
+) -> None:
+    """AC-24: a company manager never reports to business development.
+
+    The spec fixes the holding structure: both the business-development manager
+    and every subsidiary manager report to the owner. Business development
+    coordinates but does not command a subsidiary manager, so a reporting line
+    that makes a company manager a subordinate of a business-development
+    position is refused -- it would misrepresent the org chart the spec pins.
+    """
+    if child_holder_user_id is None or parent.holder_user_id is None:
+        return
+    child = db.get(User, child_holder_user_id)
+    parent_holder = db.get(User, parent.holder_user_id)
+    if child is None or parent_holder is None:
+        return
+    child_role = child.role.code if child.role else None
+    parent_role = parent_holder.role.code if parent_holder.role else None
+    if child_role == "company_manager" and parent_role == "business_development":
+        raise ValidationError(
+            "A company manager cannot report to business development; "
+            "both report to the owner."
+        )
+
+
 def _serialise(db: Session, position: Position) -> dict:
     company = db.get(Company, position.company_id)
     holder = db.get(User, position.holder_user_id) if position.holder_user_id else None
@@ -124,6 +150,11 @@ def create_position(
         parent = db.get(Position, parent_id)
         if parent is None or parent.company_id != company.id:
             raise ValidationError("The reporting line must stay within the same company.")
+        _assert_reporting_line_respects_role_structure(
+            db,
+            child_holder_user_id=payload.get("holder_user_id"),
+            parent=parent,
+        )
 
     status = payload.get("status") or PositionStatus.ACTIVE.value
     if status not in {s.value for s in PositionStatus}:
@@ -204,6 +235,11 @@ def update_position(
         parent = db.get(Position, parent_id)
         if parent is None or parent.company_id != position.company_id:
             raise ValidationError("The reporting line must stay within the same company.")
+        _assert_reporting_line_respects_role_structure(
+            db,
+            child_holder_user_id=position.holder_user_id,
+            parent=parent,
+        )
         position.reports_to_position_id = parent_id
 
     if payload.get("status") is not None:

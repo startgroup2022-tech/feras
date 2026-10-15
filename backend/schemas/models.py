@@ -144,7 +144,7 @@ class CompanyOut(BaseModel):
     id: int
     code: str
     name_ar: str
-    name_en: str
+    name_en: str | None = None
     sector: str | None
     status: str
     health: str
@@ -157,13 +157,17 @@ class CompanyOut(BaseModel):
     currency: str = "SAR"
     address: str | None = None
     phone: str | None = None
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
 
 class CompanyCreateRequest(BaseModel):
     code: str = Field(min_length=2, max_length=40)
     name_ar: str = Field(min_length=1, max_length=180)
-    name_en: str = Field(min_length=1, max_length=180)
-    sector: str | None = Field(default=None, max_length=120)
+    name_en: str | None = Field(default=None, max_length=180)
+    # F-01 / AC-03: the sector is mandatory; a company may not be registered
+    # without one.
+    sector: str = Field(min_length=1, max_length=120)
     contact_email: InternalEmail | None = None
     legal_name_ar: str | None = Field(default=None, max_length=200)
     legal_name_en: str | None = Field(default=None, max_length=200)
@@ -173,6 +177,9 @@ class CompanyCreateRequest(BaseModel):
     currency: str = Field(default="SAR", min_length=3, max_length=8)
     address: str | None = Field(default=None, max_length=1000)
     phone: str | None = Field(default=None, max_length=40)
+    # AC-03: the founding date and the monitoring-start date are distinct.
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
     @field_validator("company_type")
     @classmethod
@@ -188,7 +195,7 @@ class CompanyUpdateRequest(BaseModel):
 
     name_ar: str | None = Field(default=None, min_length=1, max_length=180)
     name_en: str | None = Field(default=None, min_length=1, max_length=180)
-    sector: str | None = Field(default=None, max_length=120)
+    sector: str | None = Field(default=None, min_length=1, max_length=120)
     health: str | None = Field(default=None, max_length=20)
     status: str | None = Field(default=None, max_length=20)
     contact_email: InternalEmail | None = None
@@ -200,6 +207,8 @@ class CompanyUpdateRequest(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=8)
     address: str | None = Field(default=None, max_length=1000)
     phone: str | None = Field(default=None, max_length=40)
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
     @field_validator("health")
     @classmethod
