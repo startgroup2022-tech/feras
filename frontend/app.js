@@ -2050,10 +2050,46 @@
               (fr.financial_notes ? reportField("ملاحظات", "Notes", fr.financial_notes) : "") +
               (fr.flagged_reason ? reportField("سبب التحفظ", "Flag reason", fr.flagged_reason) : "")
             : "") +
+          (r.financial_part
+            ? '<div class="sec-title">' + dual("الجزء المالي (F-03)", "Financial part (F-03)") + "</div>" +
+              '<div class="kv">' +
+              kv(dual("حالة الملخص المالي", "Financial summary status"), finStatusBadge(r.financial_part.status)) +
+              (r.financial_part.effective_version
+                ? kv(dual("النسخة المعتمدة", "Approved version"),
+                    dual("نسخة " + toArabicDigits(String(r.financial_part.effective_version.version_number)),
+                         "v" + r.financial_part.effective_version.version_number))
+                : kv(dual("النسخة المعتمدة", "Approved version"), dual("لا بيانات", "No data"))) +
+              (r.financial_part.current_version && (!r.financial_part.effective_version ||
+                r.financial_part.current_version.id !== r.financial_part.effective_version.id)
+                ? kv(dual("النسخة الجارية", "Current version"),
+                    dual("نسخة " + toArabicDigits(String(r.financial_part.current_version.version_number)),
+                         "v" + r.financial_part.current_version.version_number) +
+                    " · " + finStatusBadge(r.financial_part.current_version.status))
+                : "") +
+              "</div>" +
+              '<div class="s">' + dual("الأرقام مسحوبة من الملخص المالي المعتمد، لا تُنسخ في التقرير.",
+                "Figures are read from the approved financial summary, never copied into the report.") + "</div>"
+            : "") +
+          '<div id="repOrganize"></div>' +
           '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
 
         loadClarifications(id);
+
+        // S09: AI text organization. The proposal never overwrites the report;
+        // the manager applies a field explicitly through the normal PATCH.
+        var organizeHost = byId("repOrganize");
+        if (organizeHost && has("monthly_report.update") && r.status === "draft") {
+          organizeHost.innerHTML =
+            '<div class="sec-title">' + dual("تنظيم النص بالذكاء الاصطناعي", "AI text organization") + "</div>" +
+            '<div class="pbtns" style="margin-top:8px"><button type="button" class="btn-outline" id="repOrganizeBtn">' +
+            dual("اقترح تنظيمًا", "Suggest organization") + "</button></div>" +
+            '<div id="repOrganizeOut"></div>';
+          var orgBtn = byId("repOrganizeBtn");
+          if (orgBtn) {
+            orgBtn.addEventListener("click", function () { organizeReportNarrative(id, orgBtn); });
+          }
+        }
 
         var actions = byId("repActions");
         var btns = [];
@@ -2076,6 +2112,81 @@
       })
       .catch(function (err) {
         if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  var REPORT_FIELD_LABELS = {
+    important_developments: ["أهم التطورات", "Developments"],
+    new_customers: ["عملاء جدد", "New customers"],
+    new_opportunities: ["فرص جديدة", "New opportunities"],
+    major_problems: ["مشاكل رئيسية", "Major problems"],
+    support_required: ["الدعم المطلوب", "Support required"],
+    marketing_status: ["حالة التسويق", "Marketing status"],
+    business_development_status: ["حالة تطوير الأعمال", "Business development status"],
+    management_notes: ["ملاحظات الإدارة", "Management notes"],
+  };
+
+  function organizeReportNarrative(id, btn) {
+    var out = byId("repOrganizeOut");
+    if (!out) return;
+    busy(btn, true);
+    post("/api/v1/monthly-reports/" + id + "/organize-narrative")
+      .then(function (res) {
+        busy(btn, false);
+        var proposals = (res && res.proposals) || [];
+        if (!proposals.length) {
+          out.innerHTML = '<p class="av-empty">' + dual("لا يوجد نص لتنظيمه.", "There is no text to organize.") + "</p>";
+          return;
+        }
+        out.innerHTML = proposals.map(function (p) {
+          var lbl = REPORT_FIELD_LABELS[p.field] || [p.field, p.field];
+          var warn = p.grounded
+            ? ""
+            : '<div class="s" style="color:var(--miss)">' +
+              dual("تنبيه: احتوى الاقتراح أرقامًا غير موجودة في الأصل، فتم استخدام التنظيم الآمن.",
+                "Note: the suggestion cited numbers absent from the original, so the safe organization was used.") +
+              "</div>";
+          return '<div class="note-block" data-field="' + escAttr(p.field) + '">' +
+            '<span class="lbl">' + dual(lbl[0], lbl[1]) + "</span>" +
+            '<div class="s">' + dual("الأصل (يبقى كما هو)", "Original (unchanged)") + "</div>" +
+            '<div class="orig">' + escapeHtml(p.original) + "</div>" +
+            '<div class="s">' + dual("الاقتراح", "Suggestion") + "</div>" +
+            '<div class="prop">' + escapeHtml(p.organized) + "</div>" +
+            warn +
+            (p.changed
+              ? '<div class="pbtns" style="margin-top:6px"><button type="button" class="btn-outline" data-org-apply="' +
+                escAttr(p.field) + '">' + dual("اعتماد المقترح", "Apply suggestion") + "</button></div>"
+              : '<div class="s">' + dual("لا تغيير.", "No change.") + "</div>") +
+            "</div>";
+        }).join("");
+        out.querySelectorAll("[data-org-apply]").forEach(function (b) {
+          b.addEventListener("click", function () { applyOrganizedField(id, b, proposals); });
+        });
+      })
+      .catch(function (err) {
+        busy(btn, false);
+        out.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function applyOrganizedField(id, btn, proposals) {
+    var field = btn.getAttribute("data-org-apply");
+    var found = null;
+    for (var i = 0; i < proposals.length; i++) {
+      if (proposals[i].field === field) { found = proposals[i]; break; }
+    }
+    if (!found) return;
+    var payload = {};
+    payload[field] = found.organized;
+    busy(btn, true);
+    patch("/api/v1/monthly-reports/" + id, payload)
+      .then(function () {
+        toast(dual("تم اعتماد التنظيم.", "Organization applied."), "ok");
+        refreshAll().then(function () { openReport(id); });
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+        busy(btn, false);
       });
   }
 
@@ -4546,11 +4657,12 @@
   };
   var LEAD_STATUS = {
     new: { ar: "جديد", en: "New", cls: "rev" },
+    assigned: { ar: "مُوزَّع", en: "Assigned", cls: "warn" },
     in_progress: { ar: "قيد المعالجة", en: "In progress", cls: "ok" },
-    contacted: { ar: "تم التواصل", en: "Contacted", cls: "ok" },
+    qualified: { ar: "مؤهل", en: "Qualified", cls: "ok" },
+    escalated: { ar: "مُصعَّد", en: "Escalated", cls: "miss" },
     converted: { ar: "مُحوَّل", en: "Converted", cls: "ok" },
     closed: { ar: "مغلق", en: "Closed", cls: "ok" },
-    rejected: { ar: "مرفوض", en: "Rejected", cls: "miss" },
   };
   var LEAD_PRIORITY = {
     low: { ar: "منخفضة", en: "Low" },
@@ -4859,7 +4971,18 @@
   }
 
   function openLead(id) {
-    return get("/api/v1/leads/" + id).then(function (lead) {
+    var campaignPromise = has("campaign.read")
+      ? get("/api/v1/operations/campaigns").catch(function () { return []; })
+      : Promise.resolve([]);
+    return campaignPromise.then(function (campaigns) {
+      return get("/api/v1/leads/" + id).then(function (lead) {
+        return paintLeadModal(lead, campaigns || []);
+      });
+    });
+  }
+
+  function paintLeadModal(lead, campaigns) {
+      var id = lead.id;
       var payload = lead.payload || {};
       var detailRows = Object.keys(payload)
         .filter(function (k) { return payload[k] !== null && payload[k] !== ""; })
@@ -4945,6 +5068,16 @@
               })
               .join("") +
             "</select>" +
+            // S13/§18: link the lead to its campaign (never a copied name).
+            (campaigns && campaigns.length
+              ? '<select id="leadCampSel">' +
+                '<option value="">' + dual("بلا حملة", "No campaign") + "</option>" +
+                campaigns.map(function (c) {
+                  return '<option value="' + c.id + '"' + (c.id === lead.campaign_id ? " selected" : "") + ">" +
+                    escapeHtml(c.name) + "</option>";
+                }).join("") +
+                "</select>"
+              : "") +
             '<button class="btn-solid" id="leadSave">' + dual("حفظ", "Save") + "</button>" +
             "</div>"
           : "");
@@ -4981,9 +5114,11 @@
         saveBtn.addEventListener("click", function () {
           var statusSel = byId("leadStatusSel");
           var priSel = byId("leadPriSel");
+          var campSel = byId("leadCampSel");
           var payloadOut = {};
           if (statusSel) payloadOut.status = statusSel.value;
           if (priSel) payloadOut.priority = priSel.value;
+          if (campSel && campSel.value) payloadOut.campaign_id = parseInt(campSel.value, 10);
           patch("/api/v1/leads/" + id, payloadOut)
             .then(function () {
               toast(STATE.lang === "ar" ? "تم تحديث الطلب." : "Lead updated.", "ok");
@@ -4996,7 +5131,6 @@
             });
         });
       }
-    });
   }
 
   function refreshNotifications() {
@@ -6074,19 +6208,45 @@
                 '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
                 dual("حفظ النتائج", "Save results") + "</button></div></form>"
               : "";
+            var linked = (c.linked_lead_count || 0);
+            var linkedBar = '<div class="s" style="margin-top:6px">' +
+              dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
+              ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
+              dual("عرض العملاء", "View leads") + "</button></div>" +
+              '<div id="campLeads' + c.id + '"></div>';
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
               '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
               " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
               statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + results + "</div>";
+              "</div>" + results + linkedBar + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد حملات.", "No campaigns.");
       host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  function loadCampaignLeads(id) {
+    var host = byId("campLeads" + id);
+    if (!host) return;
+    host.innerHTML = '<div class="s">' + dual("جارٍ التحميل…", "Loading…") + "</div>";
+    return get("/api/v1/operations/campaigns/" + id + "/leads").then(function (leads) {
+      leads = leads || [];
+      host.innerHTML = leads.length
+        ? '<div class="av-list">' + leads.map(function (l) {
+            return '<div class="av-row"><div class="grow"><div class="t">' + escapeHtml(l.full_name) + "</div>" +
+              '<div class="s">' + escapeHtml(l.reference) + " · " + escapeHtml(l.email || "") + "</div></div>" +
+              statusBadgeFromMap(l.status, { new: ["جديد", "New", "warn"], contacted: ["تم التواصل", "Contacted", "ok"], qualified: ["مؤهل", "Qualified", "ok"], converted: ["محوَّل", "Converted", "rev"], closed: ["مغلق", "Closed", "miss"], lost: ["مفقود", "Lost", "miss"] }) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا يوجد عملاء مرتبطون.", "No linked leads.");
+    }).catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function onOpsAct(action, id, el) {
+    if (action === "camp-leads") {
+      return loadCampaignLeads(id);
+    }
     if (action === "brief-submit") {
       return submitManagementBrief(id, el);
     }

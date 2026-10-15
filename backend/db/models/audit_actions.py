@@ -75,6 +75,7 @@ class AuditAction:
     # ai
     AI_CONVERSATION_STARTED = "ai.conversation_started"
     AI_MESSAGE_SENT = "ai.message_sent"
+    AI_TEXT_ORGANIZED = "ai.text_organized"
 
     # Phase 3: dynamic forms builder
     FORM_CREATED = "form.created"

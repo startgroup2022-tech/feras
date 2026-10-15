@@ -24,8 +24,11 @@ from backend.services import audit_service, report_service
 router = APIRouter(prefix="/monthly-reports", tags=["monthly-reports"])
 
 
-def _to_out(report) -> MonthlyReportOut:
-    return MonthlyReportOut(**report_service.serialise(report))
+def _to_out(report, db=None, user=None) -> MonthlyReportOut:
+    financial_part = None
+    if db is not None and user is not None:
+        financial_part = report_service.financial_part_status(db, report=report, user=user)
+    return MonthlyReportOut(**report_service.serialise(report, financial_part=financial_part))
 
 
 @router.get("", response_model=list[MonthlyReportOut])
@@ -44,7 +47,7 @@ def list_reports(
     reports = MonthlyReportRepository(db).list_for_user(
         user, company_id=company_id, year=year
     )
-    return [_to_out(r) for r in reports]
+    return [_to_out(r, db, user) for r in reports]
 
 
 @router.get("/{report_id}", response_model=MonthlyReportOut)
@@ -55,7 +58,7 @@ def get_report(report_id: int, user: CurrentUser, db: DbSession) -> MonthlyRepor
         from backend.core.errors import NotFoundError
 
         raise NotFoundError("Report not found.")
-    return _to_out(report)
+    return _to_out(report, db, user)
 
 
 @router.post("", response_model=MonthlyReportOut, status_code=status.HTTP_201_CREATED)
@@ -77,7 +80,7 @@ def create_report(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
-    return _to_out(report)
+    return _to_out(report, db, user)
 
 
 @router.patch("/{report_id}", response_model=MonthlyReportOut)
@@ -97,7 +100,27 @@ def update_report(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
-    return _to_out(report)
+    return _to_out(report, db, user)
+
+
+@router.post("/{report_id}/organize-narrative")
+def organize_report_narrative(
+    report_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    """S09: return an AI organization *proposal* for the report's narrative.
+
+    The suggestion is advisory: the stored report is never modified by this
+    call, so the original text always survives (spec: "يعرض اقتراح تنظيم مع بقاء
+    الأصل"). The manager applies any accepted change through the normal PATCH.
+    """
+    ctx = audit_service.request_context(request)
+    return report_service.organize_report_narrative(
+        db,
+        user=user,
+        report_id=report_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
 
 
 @router.post("/{report_id}/submit", response_model=MonthlyReportOut)
@@ -112,7 +135,7 @@ def submit_report(
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
-    return _to_out(report)
+    return _to_out(report, db, user)
 
 
 @router.post(

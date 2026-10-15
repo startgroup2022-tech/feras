@@ -132,7 +132,9 @@ def list_campaigns(
     user: CurrentUser, db: DbSession, company_id: int | None = None
 ) -> list[dict]:
     return [
-        operations_service.serialise_campaign(c)
+        operations_service.serialise_campaign(
+            c, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=c.id)
+        )
         for c in operations_service.list_campaigns(db, user=user, company_id=company_id)
     ]
 
@@ -143,7 +145,9 @@ def create_campaign(
 ) -> dict:
     ctx = audit_service.request_context(request)
     campaign = operations_service.create_campaign(db, user=user, **payload.model_dump(), **ctx)
-    return operations_service.serialise_campaign(campaign)
+    return operations_service.serialise_campaign(
+        campaign, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=campaign.id)
+    )
 
 
 @router.patch("/campaigns/{campaign_id}")
@@ -158,7 +162,24 @@ def update_campaign(
     campaign = operations_service.update_campaign(
         db, user=user, campaign_id=campaign_id, changes=changes, **ctx
     )
-    return operations_service.serialise_campaign(campaign)
+    return operations_service.serialise_campaign(
+        campaign, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=campaign.id)
+    )
+
+
+@router.get("/campaigns/{campaign_id}/leads")
+def list_campaign_leads(
+    campaign_id: int, user: CurrentUser, db: DbSession
+) -> list[dict]:
+    """S14 'عرض العملاء': the linked lead records, not a second copy."""
+    from backend.services import website_lead_service
+
+    return [
+        website_lead_service.serialise_lead(lead)
+        for lead in operations_service.list_campaign_leads(
+            db, user=user, campaign_id=campaign_id
+        )
+    ]
 
 
 # ---- complaints (D04, confidential) ----

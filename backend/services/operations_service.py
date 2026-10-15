@@ -432,15 +432,56 @@ def list_campaigns(db: Session, *, user: User, company_id: int | None = None) ->
     return list(db.execute(stmt).scalars())
 
 
-def serialise_campaign(c: Campaign) -> dict:
+def serialise_campaign(c: Campaign, *, linked_lead_count: int | None = None) -> dict:
     return {
         "id": c.id, "company_id": c.company_id, "name": c.name, "platform": c.platform,
         "goal": c.goal, "start_date": c.start_date, "end_date": c.end_date,
         "budget": c.budget, "spend": c.spend, "currency": c.currency,
+        # ``lead_count`` is the manually entered external result (spec S14
+        # "نتائج خارجية"). ``linked_lead_count`` is the number of *linked* lead
+        # records. They are reported side by side and never summed: AC-14
+        # forbids double counting a customer registered both manually and by
+        # link.
         "lead_count": c.lead_count, "conversion_count": c.conversion_count,
+        "linked_lead_count": linked_lead_count,
         "status": c.status, "manager_note": c.manager_note, "marketing_note": c.marketing_note,
         "created_at": c.created_at,
     }
+
+
+def linked_lead_count(db: Session, *, campaign_id: int) -> int:
+    """How many leads are linked to this campaign (S14 'عرض العملاء')."""
+    from backend.db.models.website import WebsiteLead
+
+    return int(
+        db.execute(
+            select(func.count(WebsiteLead.id)).where(
+                WebsiteLead.campaign_id == campaign_id
+            )
+        ).scalar_one()
+    )
+
+
+def list_campaign_leads(db: Session, *, user: User, campaign_id: int) -> list:
+    """The *same* lead records linked to a campaign -- never a second copy.
+
+    S14's "عرض العملاء" opens the linked records; this returns the existing
+    ``website_leads`` rows, so the campaign view and the leads view show one
+    record, not two.
+    """
+    require_permission(user, Perm.CAMPAIGN_READ)
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise NotFoundError("Campaign not found.")
+    require_company_access(user, campaign.company_id, write=False)
+    from backend.db.models.website import WebsiteLead
+
+    stmt = (
+        select(WebsiteLead)
+        .where(WebsiteLead.campaign_id == campaign_id)
+        .order_by(WebsiteLead.created_at.desc(), WebsiteLead.id.desc())
+    )
+    return list(db.execute(stmt).scalars())
 
 
 # --------------------------------------------------------------------------

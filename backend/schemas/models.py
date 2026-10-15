@@ -308,6 +308,24 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
 
+class FinancialPartVersionOut(BaseModel):
+    id: int
+    version_number: int
+    status: str
+
+
+class FinancialPartOut(BaseModel):
+    """The linked F-03 financial part of a monthly report (spec Table 42).
+
+    ``status`` is ``no_data`` when the company has not started a financial
+    summary for the period, so the report shows the absence honestly.
+    """
+
+    status: str
+    effective_version: FinancialPartVersionOut | None = None
+    current_version: FinancialPartVersionOut | None = None
+
+
 class MonthlyReportOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -335,6 +353,7 @@ class MonthlyReportOut(BaseModel):
     updated_at: datetime
     financial_review: FinancialReviewOut | None = None
     attachments: list[AttachmentOut] = []
+    financial_part: FinancialPartOut | None = None
 
 
 class FinancialReviewRequest(BaseModel):
@@ -618,6 +637,23 @@ class AIInsightOut(BaseModel):
     detail_en: str
     tone: str
     metric: str | None = None
+
+
+class AIOrganizeFieldOut(BaseModel):
+    """One narrative field's organization suggestion (S09)."""
+
+    field: str
+    original: str
+    organized: str
+    provider: str
+    grounded: bool = True
+    ungrounded_numbers: list[str] = []
+    changed: bool = False
+
+
+class AIOrganizeResponse(BaseModel):
+    proposals: list[AIOrganizeFieldOut]
+    fields_considered: int
 
 
 # --------------------------------------------------------------------------
