@@ -82,8 +82,69 @@ only `ai.holding` cannot reach the insights endpoint. Regression test in
   reading of the source document. The source file must be supplied to certify
   specification completeness.
 
+## Frontend wiring for the above (verified in a browser)
+
+The four decisions above are not only backend-complete; each has a live UI path:
+
+* **D01** — `frontend/app.js` `renderPolicies()` (tab `policies`, gated on
+  `accounting_policy.read`); draft form needs `accounting_policy.manage`,
+  approve button needs `accounting_policy.approve`.
+* **D11** — `renderNotificationPreferences()` (inbox "Channel preferences"),
+  reads `GET /notifications/preferences` and writes each toggle through
+  `PUT /notifications/preferences/{event_type}`.
+* **S02/S10** — `goalsHtml(r.goals)` inside `biCompanyTable()` shows each
+  company's approved target-versus-actual goals.
+* **D02** — KPI evaluations/targets surface through the accounting `kpis` tab.
+
+Browser evidence (accountant account, seeded demo database): the accounting
+policies tab rendered the draft form and the approved tax policy v1; the
+notification preferences panel rendered one row per event type and a toggle
+click issued `PUT /notifications/preferences/%2A` returning 200; `report.submitted`
+showed Email ✓ exactly as written through the API. Server log confirms every
+call.
+
 ## Test evidence
 
-* `python -m pytest tests/ -q` — 809 passed.
+* `python -m pytest tests/ -q` — 817 passed (2026-10-14; exit 0).
+* `tests/test_frontend_domain_views.py` — 33 passed (contract tests for the new
+  views, plus an i18n scan that fails on any untranslated literal `dual(ar,en)`).
 * `alembic check` — "No new upgrade operations detected."
 * Migration head: `d4e5f6a7b8c9` (single linear chain).
+
+## Still owner-gated after this batch (do not invent)
+
+* **D09** base-currency-change *procedure* (a documented rate + date + source and
+  a history-preserving switch) is not built; the guard that blocks mixing
+  currencies without an approved rule is already live.
+* **D01** depreciation method/rate and tax values are stored as neutral data; the
+  accountant supplies and approves the actual values through the new registry.
+* The original Word specification was not present in this workspace, so the
+  matrix is derived from `docs/reference/SAFIR_SPEC_RECOVERED.md` and cannot be
+  certified as a verbatim reading of the source document.
+
+## D02 investigation — company-scoped KPI creation (resolved, 2026-10-15)
+
+Symptom: creating a KPI bound to a company returned 403
+("You do not have access to this company's data.") for the seeded owner.
+
+Root cause: **seed-data gap, not an authorization defect.** `can_write_company`
+deliberately requires an explicit `user_company_access` row with `can_write`;
+being holding-wide widens *reads* only. The seed granted that row to the company
+managers and BD but to *no* holding-staff account — so the owner and accountant,
+the two roles whose job is company-scoped accounting, were refused every write.
+
+A first attempt to "fix" `can_write_company` by letting holding-wide users write
+any company was **reverted**: it broke two deliberate isolation tests
+(`test_campaign_write_requires_company_access`,
+`test_bd_cannot_write_a_project_for_another_company`) and would have weakened
+company isolation. The model is correct; the seed was wrong.
+
+Fix (`scripts/seed_demo.py`): grant the owner, accountant, marketing and design
+roles every company; make `ensure_user` idempotent so re-seeding backfills a
+missing grant. Regression coverage in `tests/test_seed_demo.py` (3 tests; all
+fail against the unpatched seed).
+
+Verified end to end against the live API: the accountant now creates a chart of
+accounts entry and an opening balance (201/200), both persist on re-read, and a
+company manager writing another company still receives 403 for accounts, opening
+balances and KPI drill-down.

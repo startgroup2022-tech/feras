@@ -156,17 +156,28 @@ def seed(reset: bool) -> None:
             existing = db.execute(
                 select(User).where(User.email == email)
             ).scalar_one_or_none()
-            if existing is not None:
-                return existing
-            user = create_user(
-                db,
-                email=email,
-                password=DEMO_PASSWORD,
-                full_name_ar=name_ar,
-                full_name_en=name_en,
-                role_code=role_code,
-            )
+            if existing is None:
+                user = create_user(
+                    db,
+                    email=email,
+                    password=DEMO_PASSWORD,
+                    full_name_ar=name_ar,
+                    full_name_en=name_en,
+                    role_code=role_code,
+                )
+            else:
+                user = existing
+            # Backfill grants so re-seeding an existing database repairs a
+            # missing company grant instead of leaving the user unable to write.
+            held = {
+                a.company_id
+                for a in db.execute(
+                    select(UserCompanyAccess).where(UserCompanyAccess.user_id == user.id)
+                ).scalars()
+            }
             for code in company_codes:
+                if companies[code].id in held:
+                    continue
                 db.add(
                     UserCompanyAccess(
                         user_id=user.id,
@@ -180,8 +191,16 @@ def seed(reset: bool) -> None:
             db.refresh(user)
             return user
 
+        # Holding staff act across the whole group, so they are granted every
+        # company with write access. Being holding-wide widens *reads* only;
+        # a write still needs an explicit ``user_company_access`` row, and
+        # without these grants the owner and accountant -- the roles that post
+        # journals, invoices and opening balances -- would be refused by
+        # ``require_company_access(write=True)``.
+        all_company_codes = tuple(companies)
         owner = ensure_user(
-            f"owner@{DEMO_EMAIL_DOMAIN}", "عبدالله السفير", "Abdullah Al-Safir", "holding_owner"
+            f"owner@{DEMO_EMAIL_DOMAIN}", "عبدالله السفير", "Abdullah Al-Safir",
+            "holding_owner", all_company_codes,
         )
         manager = ensure_user(
             f"manager.tech@{DEMO_EMAIL_DOMAIN}", "مدير شركة التقنية", "Technology Manager",
@@ -196,14 +215,21 @@ def seed(reset: bool) -> None:
             "company_manager", ("SAF-REAL",),
         )
         accountant = ensure_user(
-            f"accountant@{DEMO_EMAIL_DOMAIN}", "المحاسب", "Group Accountant", "accountant"
+            f"accountant@{DEMO_EMAIL_DOMAIN}", "المحاسب", "Group Accountant", "accountant",
+            all_company_codes,
         )
         bd = ensure_user(
             f"bd@{DEMO_EMAIL_DOMAIN}", "تطوير الأعمال", "Business Development",
             "business_development", ("SAF-TECH",),
         )
-        ensure_user(f"marketing@{DEMO_EMAIL_DOMAIN}", "التسويق", "Marketing", "marketing")
-        ensure_user(f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer")
+        ensure_user(
+            f"marketing@{DEMO_EMAIL_DOMAIN}", "التسويق", "Marketing", "marketing",
+            all_company_codes,
+        )
+        ensure_user(
+            f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer",
+            all_company_codes,
+        )
         print("  8 demo users (one per role, plus two company managers)")
 
         # ---- monthly reports for October 2027 ----

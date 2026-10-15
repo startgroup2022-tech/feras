@@ -6986,10 +6986,35 @@
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  function kpiStatusBadge(ev) {
+    var cls = ev.status === "active" ? "rev" : "";
+    var label = ev.status === "active"
+      ? dual("نشط", "Active")
+      : dual("بانتظار الاعتماد", "Pending approval");
+    return '<span class="status ' + cls + '"><i></i>' + label + "</span>";
+  }
+
+  function kpiVarianceCell(ev) {
+    if (ev.actual_value == null || ev.target_value == null) {
+      return '<span class="s">' + dual("لا نتيجة بعد", "No result yet") + "</span>";
+    }
+    var pct = ev.variance_pct == null ? "" : " (" + (ev.variance_pct >= 0 ? "+" : "") + NUM.format(ev.variance_pct) + "%)";
+    var cls = ev.favourable ? "rev" : "warn";
+    return '<span class="status ' + cls + '"><i></i>' + dual("الفرق", "Variance") + " " +
+      (ev.variance >= 0 ? "+" : "") + dec(ev.variance) + escapeHtml(pct) + "</span>";
+  }
+
+  // D02: target-versus-actual comes from the server's evaluation endpoint, never
+  // from client arithmetic, and every figure keeps its own source drill-down.
   function renderKpis() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/kpis").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/kpis").catch(function () { return []; }),
+      get("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()).catch(function () { return []; }),
+    ]).then(function (res) {
       var rows = res[1] || [];
+      var evals = res[2] || [];
       var canManage = has("kpi.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="kpiForm">' +
@@ -7005,17 +7030,107 @@
         : "";
       var list = rows.length
         ? '<div class="av-list">' + rows.map(function (k) {
+            var toggle = canManage
+              ? actBtn("kpi.manage", k.is_active ? "kpi-deactivate" : "kpi-activate", k.id,
+                  k.is_active ? "إيقاف" : "اعتماد", k.is_active ? "Deactivate" : "Approve")
+              : "";
             return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
               escapeHtml(k.code + " · " + (STATE.lang === "ar" ? k.name_ar : k.name_en || k.name_ar)) + "</div>" +
               '<div class="s">' + dual("المصدر", "Source") + " " + escapeHtml(k.data_source) +
               " · " + dual("الطريقة", "Method") + " " + escapeHtml(k.calculation_method) +
               " · " + escapeHtml(k.period_label) + "</div></div>" +
               (k.target_value != null ? '<span class="status rev"><i></i>' + dual("المستهدف", "Target") + " " + dec(k.target_value) + "</span>" : "") +
+              toggle +
               "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد مؤشرات.", "No KPIs.");
-      host.innerHTML = panel("مؤشرات الأداء (D02: مصدر + طريقة + فترة)", "KPIs (D02: source + method + period)", create + list);
+      var evaluations = evals.length
+        ? '<div class="av-list">' + evals.map(function (ev) {
+            return '<div class="av-row" data-kpi-open="' + ev.id + '"><div class="grow"><div class="t">' +
+              escapeHtml(ev.code + " · " + (STATE.lang === "ar" ? ev.name_ar : ev.name_en || ev.name_ar)) + "</div>" +
+              '<div class="s">' + dual("المستهدف", "Target") + " " + dec(ev.target_value) +
+              " · " + dual("المتحقق", "Actual") + " " + dec(ev.actual_value) +
+              (ev.unit ? " · " + escapeHtml(ev.unit) : "") + "</div></div>" +
+              kpiVarianceCell(ev) + kpiStatusBadge(ev) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد نتائج لهذه الفترة.", "No results for this period.");
+      var body =
+        panel("المؤشرات · المستهدف مقابل المتحقق (" + kpiPeriodText() + ")",
+              "KPIs · target versus actual",
+              evaluations + '<div class="av-empty">' +
+              dual("اختر مؤشرًا لعرض السجلات المصدر خلف النتيجة.",
+                   "Select a KPI to see the source records behind its result.") + "</div>") +
+        panel("تعريفات المؤشرات (D02: مصدر + طريقة + فترة)",
+              "KPI definitions (D02: source + method + period)", create + list);
+      host.innerHTML = body;
+      host.querySelectorAll("[data-kpi-open]").forEach(function (row) {
+        row.addEventListener("click", function (e) {
+          if (e.target.closest && e.target.closest("[data-stop]")) return;
+          openKpiSources(row.getAttribute("data-kpi-open"));
+        });
+      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function kpiPeriodText() {
+    var p = periodLabel();
+    return p.ar ? p.ar : String(STATE.year || "");
+  }
+
+  // Drill-down: fetch the evaluation *with its source records* for one KPI.
+  // Source records carry {kind, record_id, label_ar} and are opened through the
+  // same navigators the dashboard drill-down uses, so a KPI can never show a
+  // snapshot that drifts from the underlying record.
+  function openKpiSources(id) {
+    openModal({
+      title: dual("سجلات المصدر", "Source records"),
+      body: loadingHtml(),
+      wide: true,
+      onMount: function () {
+        get("/api/v1/accounting/kpis/" + id + "/sources?" + finPeriodQuery())
+          .then(function (ev) {
+            var host = byId("modalBody");
+            if (!host) return;
+            var rows = ev.sources || [];
+            var head = kpiVarianceCell(ev);
+            if (!rows.length) {
+              host.innerHTML = head + emptyHtml(
+                "لا توجد سجلات مصدر لهذه الفترة.",
+                "No source records for this period.",
+              );
+              return;
+            }
+            host.innerHTML = head +
+              '<table class="table"><thead><tr><th>' + dual("النوع", "Type") +
+              "</th><th>" + dual("السجل", "Record") + "</th></tr></thead><tbody>" +
+              rows.map(function (r) {
+                var typeLabel = r.kind === "company"
+                  ? dual("شركة", "Company")
+                  : r.kind === "support_request"
+                    ? dual("طلب", "Request")
+                    : dual("تقرير", "Report");
+                return '<tr data-kpi-kind="' + escapeHtml(r.kind) +
+                  '" data-kpi-id="' + r.record_id + '" style="cursor:pointer"><td>' +
+                  typeLabel + "</td><td>" + escapeHtml(r.label_ar) + "</td></tr>";
+              }).join("") + "</tbody></table>";
+            host.querySelectorAll("[data-kpi-kind]").forEach(function (el) {
+              el.addEventListener("click", function () {
+                var kind = el.getAttribute("data-kpi-kind");
+                var recId = parseInt(el.getAttribute("data-kpi-id"), 10);
+                closeModal();
+                if (kind === "company") openCompany(recId);
+                else if (kind === "support_request") navTo("support");
+                else if (kind === "monthly_report") openReport(recId);
+              });
+            });
+          })
+          .catch(function (err) {
+            var host = byId("modalBody");
+            if (host) host.innerHTML = errorHtml(errText(err));
+          });
+      },
+    });
   }
 
   var POLICY_KINDS = ["tax", "fiscal_year", "invoice", "asset", "currency"];
@@ -7078,6 +7193,12 @@
   }
 
   function onAcctAct(action, id, el) {
+    if (action === "kpi-activate" || action === "kpi-deactivate") {
+      busy(el, true);
+      return post("/api/v1/accounting/kpis/" + id + "/active", { active: action === "kpi-activate" })
+        .then(function () { toast(dual("تم تحديث اعتماد المؤشر.", "KPI approval updated."), "ok"); return renderKpis(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
     if (action === "jn-add-line") return addJournalLine();
     if (action === "policy-approve") {
       busy(el, true);

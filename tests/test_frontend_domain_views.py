@@ -428,6 +428,22 @@ def test_d11_notification_preferences_panel_is_wired():
     assert "NOTIF_EVENT_LABEL" in APP_JS
 
 
+def test_d02_kpi_evaluations_and_sources_are_wired():
+    # D02: the KPI tab must show target-versus-actual from the server's
+    # evaluation endpoint (not client arithmetic) and let a user drill into the
+    # source records behind an actual. Activation writes to the active endpoint.
+    assert "function renderKpis(" in APP_JS
+    assert "/api/v1/accounting/kpis/evaluations" in APP_JS
+    assert "/api/v1/accounting/kpis/" in APP_JS
+    assert "/sources" in APP_JS
+    assert "function openKpiSources(" in APP_JS
+    # Activating/deactivating a KPI records the owner approval server-side.
+    assert "/active" in APP_JS
+    assert '"kpi-activate"' in APP_JS and '"kpi-deactivate"' in APP_JS
+    # The variance is taken from the payload, never recomputed here.
+    assert "ev.variance_pct" in APP_JS and "ev.favourable" in APP_JS
+
+
 def test_every_literal_dual_call_has_both_languages():
     """No untranslated internal string (spec §E, T01).
 

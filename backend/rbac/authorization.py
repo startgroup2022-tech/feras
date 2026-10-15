@@ -114,7 +114,14 @@ def can_access_company(user: User, company_id: int) -> bool:
 
 
 def can_write_company(user: User, company_id: int) -> bool:
-    """Whether the user may modify the given company's data."""
+    """Whether the user may modify the given company's data.
+
+    A write always needs an explicit ``user_company_access`` row with
+    ``can_write``. Being holding-wide widens *reads* only: it lets a holding
+    user see every company, but it is not itself a grant to modify one. This
+    keeps a holding-wide role that lacks a company grant (a marketer, say)
+    from writing outside the companies it was actually given.
+    """
     if user.is_superuser:
         return True
     for access in user.company_access:
