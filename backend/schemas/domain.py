@@ -449,6 +449,12 @@ class SettlementCreateRequest(BaseModel):
     reference: str | None = Field(default=None, max_length=120)
 
 
+class InvoiceJournalLinkRequest(BaseModel):
+    """S27/AC-27: attach the single ledger entry that records the invoice."""
+
+    journal_id: int
+
+
 class AssetCreateRequest(BaseModel):
     company_id: int
     name: str = Field(min_length=1, max_length=200)

@@ -2357,7 +2357,7 @@
       }
       var totals = report.totals || {};
       host.innerHTML =
-        finTotalsStrip(totals, report.counts || {}) +
+        finTotalsStrip(totals, report.counts || {}, report.totals_by_currency || {}) +
         rows.map(finRow).join("") +
         finDefinitionsPanel(definitions);
       host.querySelectorAll("[data-fin-period]").forEach(function (el) {
@@ -2427,22 +2427,48 @@
     }).catch(function (err) { domainError(err); busy(btn, false); });
   }
 
-  function finTotalsStrip(totals, counts) {
+  function finTotalsStrip(totals, counts, byCurrency) {
+    var buckets = byCurrency || {};
+    var codes = Object.keys(buckets);
+    // AC-10 / T10: when companies report in more than one currency the strip
+    // shows one labelled group per currency rather than a mixed sum. The plain
+    // single-currency strip is kept when there is exactly one (or none).
+    var moneyBlock;
+    if (codes.length > 1) {
+      moneyBlock = codes.map(function (code) {
+        var b = buckets[code] || {};
+        return (
+          '<div class="fin-currency"><div class="plabel">' + escapeHtml(code) + "</div>" +
+          finMoneyLine("الإيرادات الفعلية", "effective revenue", b.effective_revenue) +
+          finMoneyLine("المصروفات الفعلية", "effective expenses", b.effective_expenses) +
+          finMoneyLine("النتيجة", "result", b.calculated_result) +
+          "</div>"
+        );
+      }).join("");
+    } else {
+      var one = codes.length === 1 ? buckets[codes[0]] : totals;
+      moneyBlock =
+        '<div><div class="pnum">' + finMoney(one.effective_revenue) + '</div><div class="plabel">' +
+        dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
+        '<div class="psep"></div>' +
+        '<div><div class="pnum">' + finMoney(one.effective_expenses) + '</div><div class="plabel">' +
+        dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
+        '<div class="psep"></div>' +
+        '<div><div class="pnum">' + finMoney(one.calculated_result) + '</div><div class="plabel">' +
+        dual("النتيجة", "result") + "</div></div>";
+    }
     return (
       '<div class="perm-summary" style="margin-bottom:14px">' +
       '<div><div class="pnum">' + plainNum(counts.approved || 0) + '</div><div class="plabel">' +
       dual("ملخصات معتمدة", "approved summaries") + "</div></div>" +
       '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.effective_revenue) + '</div><div class="plabel">' +
-      dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
-      '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.effective_expenses) + '</div><div class="plabel">' +
-      dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
-      '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.calculated_result) + '</div><div class="plabel">' +
-      dual("النتيجة", "result") + "</div></div>" +
+      moneyBlock +
       "</div>"
     );
+  }
+
+  function finMoneyLine(ar, en, value) {
+    return '<div class="s">' + dual(ar, en) + ": " + finMoney(value) + "</div>";
   }
 
   function finRow(r) {

@@ -552,3 +552,192 @@ def test_frontend_exposes_the_ledger_activity_tab():
     assert "function renderLedgerActivity" in app_js
     assert "ledger-activity" in app_js
     assert 'data-acct-tab="ledger" data-perm="journal.read"' in index
+
+
+# --------------------------------------------------------------------------
+# AC-27: the invoice and its ledger entry keep *one* reference
+# --------------------------------------------------------------------------
+def _account(db, company_id, code, atype):
+    from sqlalchemy import select
+
+    from backend.db.models.accounting import Account
+
+    existing = db.execute(
+        select(Account).where(Account.company_id == company_id, Account.code == code)
+    ).scalars().first()
+    if existing is not None:
+        return existing
+    acct = Account(company_id=company_id, code=code, name_ar="حساب", account_type=atype)
+    db.add(acct)
+    db.commit()
+    db.refresh(acct)
+    return acct
+
+
+def _posted_journal(client, auth, user, company_id, db, *, currency="SAR"):
+    debit = _account(db, company_id, "1100", "asset")
+    credit = _account(db, company_id, "4100", "revenue")
+    created = client.post(
+        "/api/v1/accounting/journals",
+        json={
+            "company_id": company_id,
+            "entry_date": "2027-10-01",
+            "currency": currency,
+            "lines": [
+                {"account_id": debit.id, "debit": "1000.00", "credit": "0"},
+                {"account_id": credit.id, "debit": "0", "credit": "1000.00"},
+            ],
+        },
+        headers=auth(user),
+    )
+    assert created.status_code == 201, created.text
+    journal_id = created.json()["id"]
+    posted = client.post(
+        f"/api/v1/accounting/journals/{journal_id}/post", headers=auth(user)
+    )
+    assert posted.status_code == 200, posted.text
+    return journal_id
+
+
+def test_invoice_and_journal_keep_one_reference(client, s27_world, auth, db):
+    """AC-27: linking stores the entry id on the invoice; the entry is not re-created."""
+    alpha = s27_world["alpha"].id
+    inv = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L1")
+    assert inv.status_code == 201, inv.text
+    invoice_id = inv.json()["id"]
+    assert inv.json()["journal_id"] is None
+
+    journal_id = _posted_journal(client, auth, s27_world["accountant_all"], alpha, db)
+    linked = client.post(
+        f"/api/v1/accounting/invoices/{invoice_id}/journal",
+        json={"journal_id": journal_id},
+        headers=auth(s27_world["accountant_all"]),
+    )
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["journal_id"] == journal_id
+
+    # Reading the invoice back returns the same single reference (persisted).
+    listed = client.get(
+        f"/api/v1/accounting/invoices?company_id={alpha}",
+        headers=auth(s27_world["accountant_all"]),
+    ).json()
+    row = next(r for r in listed if r["id"] == invoice_id)
+    assert row["journal_id"] == journal_id
+
+    # The ledger still holds exactly one journal -- the link created no copy.
+    journals = client.get(
+        f"/api/v1/accounting/journals?company_id={alpha}",
+        headers=auth(s27_world["accountant_all"]),
+    ).json()
+    assert [j["id"] for j in journals] == [journal_id]
+
+
+def test_a_journal_cannot_be_linked_to_two_invoices(client, s27_world, auth, db):
+    """AC-27: one entry, one reference -- a second invoice cannot reuse it."""
+    alpha = s27_world["alpha"].id
+    first = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L2")
+    second = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L3")
+    journal_id = _posted_journal(client, auth, s27_world["accountant_all"], alpha, db)
+
+    ok = client.post(
+        f"/api/v1/accounting/invoices/{first.json()['id']}/journal",
+        json={"journal_id": journal_id},
+        headers=auth(s27_world["accountant_all"]),
+    )
+    assert ok.status_code == 200, ok.text
+
+    clash = client.post(
+        f"/api/v1/accounting/invoices/{second.json()['id']}/journal",
+        json={"journal_id": journal_id},
+        headers=auth(s27_world["accountant_all"]),
+    )
+    assert clash.status_code == 409, clash.text
+
+
+def test_an_invoice_cannot_carry_two_entries(client, s27_world, auth, db):
+    alpha = s27_world["alpha"].id
+    inv = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L4")
+    first = _posted_journal(client, auth, s27_world["accountant_all"], alpha, db)
+    second = _posted_journal(client, auth, s27_world["accountant_all"], alpha, db)
+
+    assert client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": first}, headers=auth(s27_world["accountant_all"]),
+    ).status_code == 200
+    again = client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": second}, headers=auth(s27_world["accountant_all"]),
+    )
+    assert again.status_code == 409, again.text
+
+
+def test_link_requires_a_posted_journal_of_the_same_company(client, s27_world, auth, db):
+    alpha = s27_world["alpha"].id
+    inv = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L5")
+
+    # A draft entry is not an effect.
+    debit = _account(db, alpha, "1101", "asset")
+    credit = _account(db, alpha, "4101", "revenue")
+    draft = client.post(
+        "/api/v1/accounting/journals",
+        json={
+            "company_id": alpha, "entry_date": "2027-10-02",
+            "lines": [
+                {"account_id": debit.id, "debit": "5.00", "credit": "0"},
+                {"account_id": credit.id, "debit": "0", "credit": "5.00"},
+            ],
+        },
+        headers=auth(s27_world["accountant_all"]),
+    ).json()
+    not_posted = client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": draft["id"]}, headers=auth(s27_world["accountant_all"]),
+    )
+    assert not_posted.status_code == 409, not_posted.text
+
+    # A journal of another company is a 404, never a leak.
+    beta = s27_world["beta"].id
+    foreign = _posted_journal(client, auth, s27_world["accountant_all"], beta, db)
+    cross = client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": foreign}, headers=auth(s27_world["accountant_all"]),
+    )
+    assert cross.status_code == 404, cross.text
+
+
+def test_link_refuses_a_currency_mismatch(client, s27_world, auth, db):
+    """T10: the link can never bridge two currencies."""
+    alpha = s27_world["alpha"].id
+    inv = _invoice(
+        client, auth, s27_world["accountant_all"], alpha, number="INV-L6", currency="SAR"
+    )
+    journal_id = _posted_journal(
+        client, auth, s27_world["accountant_all"], alpha, db, currency="USD"
+    )
+    res = client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": journal_id}, headers=auth(s27_world["accountant_all"]),
+    )
+    assert res.status_code == 422, res.text
+
+
+def test_link_is_audited_and_permission_gated(client, s27_world, auth, db):
+    from backend.db.models.ai import AuditLog
+
+    alpha = s27_world["alpha"].id
+    inv = _invoice(client, auth, s27_world["accountant_all"], alpha, number="INV-L7")
+    journal_id = _posted_journal(client, auth, s27_world["accountant_all"], alpha, db)
+
+    # A manager without the invoice permission cannot link.
+    denied = client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": journal_id}, headers=auth(s27_world["alpha_mgr"]),
+    )
+    assert denied.status_code == 403, denied.text
+
+    client.post(
+        f"/api/v1/accounting/invoices/{inv.json()['id']}/journal",
+        json={"journal_id": journal_id}, headers=auth(s27_world["accountant_all"]),
+    )
+    actions = [row.action for row in db.query(AuditLog).all()]
+    assert "invoice.journal_linked" in actions

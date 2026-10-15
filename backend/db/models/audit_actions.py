@@ -234,6 +234,7 @@ class AuditAction:
     JOURNAL_REVERSED = "journal.reversed"
     INVOICE_CREATED = "invoice.created"
     INVOICE_UPDATED = "invoice.updated"
+    INVOICE_JOURNAL_LINKED = "invoice.journal_linked"
     SETTLEMENT_RECORDED = "settlement.recorded"
     PARTY_CREATED = "party.created"
     PARTY_UPDATED = "party.updated"

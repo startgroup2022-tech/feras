@@ -20,6 +20,7 @@ from backend.schemas import (
     CompanyPerformanceOut,
     DashboardKpis,
     DashboardResponse,
+    DataCompletenessOut,
     IndicatorSourceOut,
     IndicatorSourcesOut,
     MotivationTextOut,
@@ -47,6 +48,11 @@ def _response(data: dict, *, scope: str, company_id: int | None, year: int, mont
         companies_performance=[
             CompanyPerformanceOut(**row) for row in data["companies_performance"]
         ],
+        data_completeness=(
+            DataCompletenessOut(**data["data_completeness"])
+            if data.get("data_completeness")
+            else None
+        ),
         change_vs_previous=PeriodChangeOut(**data["change_vs_previous"]),
         companies_missing_report=[
             CompanyOut.model_validate(c) for c in data["companies_missing_report"]

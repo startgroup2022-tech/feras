@@ -285,3 +285,65 @@ def test_attention_indicator_returns_the_flagged_companies(
         r["kind"] == "company" and r["record_id"] == flagged.id
         for r in body["records"]
     )
+
+
+# --------------------------------------------------------------------------
+# S10 / AC-10: data completeness -- "no data or under review", never a bare zero
+# --------------------------------------------------------------------------
+def test_completeness_reports_under_review_for_a_submitted_report(client, world, auth):
+    """AC-10: a submitted (unapproved) period reads "under review", not "zero"."""
+    body = client.get(HOLDING, headers=auth(world["owner"])).json()
+
+    completeness = body["data_completeness"]
+    assert completeness["overall"] == "under_review"
+    assert completeness["has_data"] is True
+    statuses = {c["code"]: c["status"] for c in completeness["companies"]}
+    assert statuses["ALPHA"] == "under_review"
+    assert statuses["BETA"] == "under_review"
+
+    # Each performance row also carries its own completeness flag.
+    per_company = {r["code"]: r["data_completeness"] for r in body["companies_performance"]}
+    assert per_company["ALPHA"] == "under_review"
+
+
+def test_completeness_is_no_data_for_a_company_without_a_report(
+    client, world, auth, make_company
+):
+    """AC-10: absence of a report is ``no_data``, not a zero figure."""
+    make_company("EMPTYCO", "شركة بلا تقرير")
+
+    body = client.get(HOLDING, headers=auth(world["owner"])).json()
+    row = next(r for r in body["companies_performance"] if r["code"] == "EMPTYCO")
+    assert row["data_completeness"] == "no_data"
+    assert row["has_report"] is False
+    # The absence is explicit rather than a fabricated zero.
+    assert row["revenue"] is None
+
+    statuses = {c["code"]: c["status"] for c in body["data_completeness"]["companies"]}
+    assert statuses["EMPTYCO"] == "no_data"
+
+
+def test_completeness_is_complete_only_after_financial_approval(
+    client, world, auth, db
+):
+    """AC-10: only an approved verification marks the period complete."""
+    from backend.db.models.report import MonthlyReportFinancialReview
+    from backend.db.models.enums import FinancialReviewStatus
+
+    review = MonthlyReportFinancialReview(
+        report_id=world["alpha_report"].id,
+        reviewer_id=world["accountant"].id,
+        status=FinancialReviewStatus.APPROVED.value,
+        verified_revenue=world["alpha_report"].revenue,
+        verified_expenses=world["alpha_report"].expenses,
+        verified_net_result=world["alpha_report"].net_result,
+    )
+    db.add(review)
+    db.commit()
+
+    body = client.get(HOLDING, headers=auth(world["owner"])).json()
+    statuses = {c["code"]: c["status"] for c in body["data_completeness"]["companies"]}
+    assert statuses["ALPHA"] == "complete"
+    assert statuses["BETA"] == "under_review"
+    # Mixed states across the group read as "partial".
+    assert body["data_completeness"]["overall"] == "partial"

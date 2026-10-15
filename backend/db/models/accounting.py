@@ -257,11 +257,19 @@ class Invoice(Base, TimestampMixin):
         String(20), nullable=False, default=InvoiceStatus.DRAFT.value, index=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # S27/AC-27: the invoice and its ledger entry keep *one* reference. The
+    # link is set once, explicitly, by the accountant (invoice-posting timing is
+    # D01-gated); it is unique, so a second invoice cannot point at the same
+    # entry and re-linking the same pair is refused rather than duplicated.
+    journal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journals.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     company: Mapped["Company"] = relationship()
+    journal: Mapped["Journal | None"] = relationship(foreign_keys=[journal_id])
     lines: Mapped[list["InvoiceLine"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan"
     )

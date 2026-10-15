@@ -756,6 +756,56 @@ def record_settlement(db: Session, *, user: User, invoice_id: int, amount: Decim
     return settlement
 
 
+def link_invoice_to_journal(
+    db: Session, *, user: User, invoice_id: int, journal_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> Invoice:
+    """Link an invoice to the single ledger entry that records it (S27/AC-27).
+
+    AC-27: "the invoice and the entry keep one reference". The link is set once
+    and is unique in both directions -- an invoice cannot carry two entries and
+    two invoices cannot share one entry -- so the same operation is never posted
+    twice. Both records must belong to the same company and share a currency, so
+    the link can never bridge two companies or mix currencies (T10). The entry
+    must already be *posted*: a draft is not an effect.
+    """
+    require_permission(user, Perm.INVOICE_MANAGE)
+    invoice = db.get(Invoice, invoice_id)
+    if invoice is None:
+        raise NotFoundError("Invoice not found.")
+    require_company_access(user, invoice.company_id, write=True)
+
+    journal = db.get(Journal, journal_id)
+    if journal is None or journal.company_id != invoice.company_id:
+        # "not yours" and "does not exist" are indistinguishable (isolation).
+        raise NotFoundError("Journal not found.")
+    if journal.status != JournalStatus.POSTED.value:
+        raise ConflictError("Only a posted journal can be linked to an invoice.")
+    if journal.currency != invoice.currency:
+        raise ValidationError("The invoice and the journal must share a currency.")
+    if invoice.journal_id == journal.id:
+        raise ConflictError("The invoice is already linked to this journal.")
+    if invoice.journal_id is not None:
+        raise ConflictError("The invoice is already linked to a journal.")
+    existing = db.execute(
+        select(Invoice.id).where(
+            Invoice.journal_id == journal.id, Invoice.id != invoice.id
+        )
+    ).scalar()
+    if existing is not None:
+        raise ConflictError("This journal is already linked to another invoice.")
+
+    invoice.journal_id = journal.id
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+    audit_service.record(db, action=AuditAction.INVOICE_JOURNAL_LINKED, actor_user_id=user.id,
+                         entity_type="invoice", entity_id=invoice.id, company_id=invoice.company_id,
+                         ip_address=ip_address, user_agent=user_agent,
+                         metadata={"journal_id": journal.id})
+    return invoice
+
+
 def list_invoices(db: Session, *, user: User, company_id: int | None = None) -> list[Invoice]:
     require_permission(user, Perm.INVOICE_READ)
     stmt = select(Invoice).order_by(Invoice.created_at.desc())
@@ -772,6 +822,7 @@ def serialise_invoice(inv: Invoice) -> dict:
         "id": inv.id, "company_id": inv.company_id, "number": inv.number,
         "party_name": inv.party_name, "party_id": inv.party_id,
         "direction": inv.direction,
+        "journal_id": inv.journal_id,
         "issue_date": inv.issue_date, "due_date": inv.due_date,
         "currency": inv.currency, "total": inv.total, "settled_amount": inv.settled_amount,
         "outstanding": (inv.total or ZERO) - (inv.settled_amount or ZERO),

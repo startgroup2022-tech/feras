@@ -559,6 +559,22 @@ class CompanyPerformanceOut(BaseModel):
     revenue_pct: float | None = None
     last_update: datetime | None = None
     goals: list[GoalOut] = []
+    # S10 Table 44 ``اكتمال البيانات``: no_data / under_review / complete.
+    data_completeness: str = "no_data"
+
+
+class DataCompletenessCompanyOut(BaseModel):
+    id: int
+    code: str
+    status: str
+
+
+class DataCompletenessOut(BaseModel):
+    """S10 ``اكتمال البيانات`` -- lets the UI say "no data" instead of zero."""
+
+    overall: str
+    has_data: bool
+    companies: list[DataCompletenessCompanyOut] = []
 
 
 class PeriodChangeOut(BaseModel):
@@ -582,6 +598,7 @@ class DashboardResponse(BaseModel):
     kpis: DashboardKpis
     companies: list[CompanyOut] = []
     companies_performance: list[CompanyPerformanceOut] = []
+    data_completeness: DataCompletenessOut | None = None
     change_vs_previous: PeriodChangeOut | None = None
     companies_missing_report: list[CompanyOut] = []
     companies_requiring_attention: list[AttentionCompanyOut] = []

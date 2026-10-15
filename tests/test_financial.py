@@ -491,6 +491,91 @@ def test_approved_figure_flows_to_the_effective_report(client, financial_world, 
 
 
 # --------------------------------------------------------------------------
+# AC-10: a currency difference separates the results (T10)
+# --------------------------------------------------------------------------
+def _set_currency(db, company, code):
+    company.currency = code
+    db.add(company)
+    db.commit()
+
+
+def test_two_currencies_are_never_added_together(
+    client, financial_world, auth, tmp_path, monkeypatch, db
+):
+    """AC-10: with two currencies the group strip carries no mixed sum."""
+    world = financial_world
+    _set_currency(db, world["alpha"], "SAR")
+    _set_currency(db, world["beta"], "USD")
+
+    for company, mgr, revenue, expenses in (
+        (world["alpha"], world["alpha_mgr"], "1000", "600"),
+        (world["beta"], world["beta_mgr"], "2000", "800"),
+    ):
+        version = client.post(
+            "/api/v1/financial/summaries",
+            headers=auth(mgr),
+            json={
+                "company_id": company.id, "period_year": YEAR, "period_month": MONTH,
+                "submitted_revenue": revenue, "submitted_expenses": expenses,
+            },
+        ).json()
+        _upload(client, auth, mgr, version["id"], tmp_path, monkeypatch)
+        client.post(f"/api/v1/financial/summaries/{version['id']}/submit", headers=auth(mgr))
+        client.post(
+            f"/api/v1/financial/summaries/{version['id']}/approve", headers=auth(world["accountant"])
+        )
+
+    report = client.get(
+        f"/api/v1/financial/report?year={YEAR}&month={MONTH}", headers=auth(world["owner"])
+    ).json()
+
+    # No mixed total: the combined figure is not 3000.
+    assert report["totals"]["effective_revenue"] is None
+    assert report["totals"]["calculated_result"] is None
+
+    # Each currency keeps its own sum.
+    by_ccy = report["totals_by_currency"]
+    assert by_ccy["SAR"]["effective_revenue"] == "1000.00"
+    assert by_ccy["SAR"]["calculated_result"] == "400.00"
+    assert by_ccy["USD"]["effective_revenue"] == "2000.00"
+    assert by_ccy["USD"]["calculated_result"] == "1200.00"
+
+
+def test_one_currency_still_totals_normally(
+    client, financial_world, auth, tmp_path, monkeypatch, db
+):
+    """AC-10: a single shared currency keeps the plain group total."""
+    world = financial_world
+    _set_currency(db, world["alpha"], "SAR")
+    _set_currency(db, world["beta"], "SAR")
+
+    for company, mgr, revenue, expenses in (
+        (world["alpha"], world["alpha_mgr"], "1000", "600"),
+        (world["beta"], world["beta_mgr"], "500", "200"),
+    ):
+        version = client.post(
+            "/api/v1/financial/summaries",
+            headers=auth(mgr),
+            json={
+                "company_id": company.id, "period_year": YEAR, "period_month": MONTH,
+                "submitted_revenue": revenue, "submitted_expenses": expenses,
+            },
+        ).json()
+        _upload(client, auth, mgr, version["id"], tmp_path, monkeypatch)
+        client.post(f"/api/v1/financial/summaries/{version['id']}/submit", headers=auth(mgr))
+        client.post(
+            f"/api/v1/financial/summaries/{version['id']}/approve", headers=auth(world["accountant"])
+        )
+
+    report = client.get(
+        f"/api/v1/financial/report?year={YEAR}&month={MONTH}", headers=auth(world["owner"])
+    ).json()
+    assert report["totals"]["effective_revenue"] == "1500.00"
+    assert report["totals"]["calculated_result"] == "700.00"
+    assert report["totals_by_currency"]["SAR"]["effective_revenue"] == "1500.00"
+
+
+# --------------------------------------------------------------------------
 # notification and audit
 # --------------------------------------------------------------------------
 def test_submission_notifies_the_accountant(client, financial_world, auth, tmp_path, monkeypatch, db):

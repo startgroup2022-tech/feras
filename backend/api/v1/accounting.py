@@ -15,6 +15,7 @@ from backend.schemas.domain import (
     BudgetCreateRequest,
     InterbalanceCreateRequest,
     InvoiceCreateRequest,
+    InvoiceJournalLinkRequest,
     JournalCreateRequest,
     JournalReverseRequest,
     KpiActiveRequest,
@@ -256,6 +257,19 @@ def record_interbalance(
         db, user=user, **payload.model_dump(), **ctx
     )
     return accounting_service.serialise_interbalance(balance)
+
+
+@router.post("/invoices/{invoice_id}/journal")
+def link_invoice_journal(
+    invoice_id: int, payload: InvoiceJournalLinkRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Link the invoice to the single ledger entry that records it (S27/AC-27)."""
+    ctx = audit_service.request_context(request)
+    invoice = accounting_service.link_invoice_to_journal(
+        db, user=user, invoice_id=invoice_id, journal_id=payload.journal_id, **ctx
+    )
+    return accounting_service.serialise_invoice(invoice)
 
 
 @router.post("/invoices/{invoice_id}/settlements", status_code=status.HTTP_201_CREATED)

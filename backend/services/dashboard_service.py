@@ -283,9 +283,60 @@ def _company_performance(db: Session, user: User, year: int, month: int) -> list
                 "outstanding_receivables": report.outstanding_receivables if report else None,
                 "revenue_pct": growth,
                 "last_update": report.updated_at if report else None,
+                # S10 Table 44 ``اكتمال البيانات``: "no data or under review".
+                # This is what lets the UI say "no data" instead of a
+                # misleading zero (AC-10): a company with no report is
+                # ``no_data``; a submitted-but-unapproved report is
+                # ``under_review``; only an approved review is ``complete``.
+                "data_completeness": _completeness(report, review),
             }
         )
     return payload
+
+
+def _completeness(report, review) -> str:
+    """Classify a period's data state for one company (S10 ``اكتمال البيانات``)."""
+    if report is None or report.status == ReportStatus.DRAFT.value:
+        return "no_data"
+    if review is not None:
+        return "complete"
+    return "under_review"
+
+
+def data_completeness(
+    db: Session, user: User, year: int, month: int, company_id: int | None = None
+) -> dict:
+    """The period's completeness, so the dashboard can distinguish no-data (S10).
+
+    ``no_data`` is a distinct state from a genuine zero: a company that has not
+    reported is not a company with zero revenue. The caller renders "لا بيانات"
+    for ``no_data``/``under_review`` and only trusts the figures for
+    ``complete``.
+    """
+    rows = _company_performance(db, user, year, month)
+    if company_id is not None:
+        rows = [r for r in rows if r["id"] == company_id]
+    return _summarise_completeness(rows)
+
+
+def _summarise_completeness(rows: list[dict]) -> dict:
+    statuses = [r["data_completeness"] for r in rows]
+    if not statuses:
+        overall = "no_data"
+    elif all(s == "complete" for s in statuses):
+        overall = "complete"
+    elif any(s == "complete" for s in statuses):
+        overall = "partial"
+    else:
+        overall = "under_review" if any(s == "under_review" for s in statuses) else "no_data"
+    return {
+        "overall": overall,
+        "has_data": any(s != "no_data" for s in statuses),
+        "companies": [
+            {"id": r["id"], "code": r["code"], "status": r["data_completeness"]}
+            for r in rows
+        ],
+    }
 
 
 def _attention_rows(db: Session, user: User, year: int, month: int):
@@ -492,6 +543,7 @@ def build_dashboard(
         "kpis": kpis,
         "companies": companies,
         "companies_performance": performance,
+        "data_completeness": _summarise_completeness(performance),
         "change_vs_previous": change,
         "companies_missing_report": missing,
         "companies_requiring_attention": attention,
