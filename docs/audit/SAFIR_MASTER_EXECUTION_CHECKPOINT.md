@@ -201,3 +201,48 @@ through service → API → persistence, with a test that exercises the API path
   `SAFIR_OPEN_DECISIONS_AND_ASSUMPTIONS.md`); nothing here presumes an approval.
 * The original Word specification must still be supplied to certify a verbatim
   reading; the matrix continues to cite the recovered text.
+
+## S22 directive execution reply + S11/AC-11 holding termination (2026-10-15)
+
+Two genuinely missing business workflows, each wired through service → API →
+persistence with automated acceptance tests.
+
+### S22 — the named executor replies to a directive
+
+The specification makes the owner the *issuer* of a decision or a binding
+directive and the named person the *executor*. Previously only the owner could
+touch a decision; the executor had no way to report execution.
+
+* `POST /api/v1/operations/owner-decisions/{id}/respond` accepts a note from the
+  named `executor_user_id`. It records an `OwnerDecisionEvent`, advances an
+  `open` decision to `in_progress`, and **can never** reach `done`/`cancelled`
+  (only the owner closes a decision).
+* A stranger receives **404**, never a 403 that would reveal the decision
+  exists (isolation rule preserved).
+* The issuer (owner) is notified of the reply; the reply never widens the
+  audience.
+* Audit action `owner_decision.responded`.
+* Frontend: `frontend/app.js` `renderDecisionsView()` offers the reply control
+  only to `d.executor_user_id === USER.id` and posts to `/respond`.
+* Tests: `tests/test_owner_decisions.py` (4 new cases) and
+  `tests/test_frontend_domain_views.py::test_s22_directive_reply_is_wired_to_the_respond_endpoint`.
+
+### S11 / AC-11 — terminating a Holding employee never bypasses the owner
+
+S11 separates the manager's authority over *subsidiary* employees from the
+owner's approval over *Holding* employees ("فصل القابضة لا يتجاوز قرار المالك").
+
+* `hr_service.update_employee` refuses a `status=terminated` change on an
+  employee whose company is `company_type == holding` unless the caller is the
+  owner (or delegated super admin). The check reads the company row, so it
+  holds even when the manager carries a write grant on the Holding company.
+* Tests: `tests/test_employee_termination.py` (5 cases): manager may terminate a
+  subsidiary employee, may **not** terminate a Holding employee (403), the owner
+  may; BD cannot edit a subsidiary salary; creating an employee mints no login.
+
+### Verification
+
+* `python -m pytest tests/ -q` — full suite green (exit 0); 870 tests collected.
+* No schema change was required (the reply is a row in `owner_decision_events`,
+  the audit action is an enum value), so `alembic check` stays clean and the
+  head is unchanged (`f2b3c4d5e6a7`).

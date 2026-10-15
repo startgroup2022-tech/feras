@@ -838,6 +838,77 @@ def update_owner_decision(
     return decision
 
 
+def respond_to_owner_decision(
+    db: Session, *, user: User, decision_id: int, note: str,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> OwnerDecision:
+    """S22: the named executor (e.g. a subsidiary manager) replies to a directive.
+
+    The owner *issues* a decision or directive; the person it names responds with
+    an execution update. A response is deliberately narrower than an owner edit:
+    it records a follow-up note and can move an ``open`` decision to
+    ``in_progress``, but it can never mark it ``done`` or ``cancelled`` -- only
+    the owner closes a decision. A response never widens the audience, so the
+    owner is notified of the reply.
+    """
+    require_permission(user, Perm.OWNER_DECISION_READ)
+    decision = db.get(OwnerDecision, decision_id)
+    if decision is None:
+        raise NotFoundError("Owner decision not found.")
+    if decision.executor_user_id != user.id:
+        # "Not yours" and "does not exist" are the same answer (isolation rule).
+        raise NotFoundError("Owner decision not found.")
+    if decision.company_id is not None:
+        require_company_access(user, decision.company_id, write=True)
+
+    text = (note or "").strip()
+    if not text:
+        raise ValidationError("A response note is required.")
+
+    if decision.status == OwnerDecisionStatus.OPEN.value:
+        decision.status = OwnerDecisionStatus.IN_PROGRESS.value
+    db.add(decision)
+    db.add(OwnerDecisionEvent(decision_id=decision.id, status=decision.status,
+                              note=text, actor_id=user.id))
+    db.commit()
+    db.refresh(decision)
+
+    audit_service.record(db, action=AuditAction.OWNER_DECISION_RESPONDED,
+                         actor_user_id=user.id, entity_type="owner_decision",
+                         entity_id=decision.id, company_id=decision.company_id,
+                         ip_address=ip_address, user_agent=user_agent)
+    _notify_decision_response(db, decision=decision, actor=user, note=text)
+    return decision
+
+
+def _notify_decision_response(
+    db: Session, *, decision: OwnerDecision, actor: User, note: str
+) -> None:
+    """Tell the issuer (the owner) that the named executor replied."""
+    recipient = decision.created_by_id
+    if not recipient or recipient == actor.id:
+        return
+    try:
+        notification_service.notify(
+            db,
+            recipient_ids=[recipient],
+            type=NotificationType.SYSTEM.value,
+            priority=NotificationPriority.NORMAL.value,
+            title_ar="رد على توجيه",
+            title_en="Reply to a directive",
+            message_ar=f"ردّ المعني على «{decision.title}»: {note[:120]}",
+            message_en=f"The assignee replied on “{decision.title}”: {note[:120]}",
+            entity_type="owner_decision",
+            entity_id=decision.id,
+            actor_user_id=actor.id,
+            dedupe_key=None,
+        )
+    except Exception:  # noqa: BLE001 - a notification must never break the reply
+        import logging
+
+        logging.getLogger("safir.operations").exception("decision reply notification failed")
+
+
 def list_owner_decisions(db: Session, *, user: User, company_id: int | None = None) -> list[OwnerDecision]:
     require_permission(user, Perm.OWNER_DECISION_READ)
     stmt = select(OwnerDecision).order_by(OwnerDecision.created_at.desc())

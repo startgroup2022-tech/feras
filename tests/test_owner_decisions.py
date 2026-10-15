@@ -104,3 +104,101 @@ def test_archiving_preserves_the_trail_and_deletes_nothing(
     )
     assert len(events) == 2
     assert archived.json()["history"]  # history is returned on the serialised row
+
+
+def _create_for_executor(client, auth, owner, executor_id, **overrides):
+    payload = {
+        "number": "DIR-1",
+        "title": "توجيه تنفيذي",
+        "body": "نفّذ الخطة.",
+        "company_id": None,
+        "executor_user_id": executor_id,
+    }
+    payload.update(overrides)
+    return client.post(
+        "/api/v1/operations/owner-decisions", json=payload, headers=auth(owner)
+    )
+
+
+def test_executor_reply_records_follow_up_and_notifies_owner(
+    client, decision_world, auth, db
+):
+    """S22: the person a directive names replies with an execution update."""
+    from backend.db.models.notifications import Notification
+    from backend.db.models.operations import OwnerDecisionEvent
+
+    mgr = decision_world["alpha_mgr"]
+    created = _create_for_executor(
+        client, auth, decision_world["owner_all"], mgr.id
+    )
+    assert created.status_code == 201, created.text
+    decision_id = created.json()["id"]
+    assert created.json()["status"] == "open"
+
+    reply = client.post(
+        f"/api/v1/operations/owner-decisions/{decision_id}/respond",
+        json={"note": "بدأ التنفيذ الفعلي."},
+        headers=auth(mgr),
+    )
+    assert reply.status_code == 200, reply.text
+    body = reply.json()
+    # A reply advances an open decision but can never close it.
+    assert body["status"] == "in_progress"
+
+    events = (
+        db.query(OwnerDecisionEvent)
+        .filter(OwnerDecisionEvent.decision_id == decision_id)
+        .all()
+    )
+    assert any("بدأ التنفيذ الفعلي." in (e.note or "") for e in events)
+
+    # The owner is told; the reply does not silently disappear.
+    notes = db.query(Notification).all()
+    assert any(n.entity_type == "owner_decision" for n in notes)
+
+
+def test_a_reply_cannot_close_a_decision(client, decision_world, auth):
+    """Only the owner closes a decision; a reply never reaches ``done``."""
+    mgr = decision_world["alpha_mgr"]
+    decision_id = _create_for_executor(
+        client, auth, decision_world["owner_all"], mgr.id
+    ).json()["id"]
+
+    reply = client.post(
+        f"/api/v1/operations/owner-decisions/{decision_id}/respond",
+        json={"note": "انتهى العمل."},
+        headers=auth(mgr),
+    )
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["status"] in {"open", "in_progress"}
+
+
+def test_a_non_executor_cannot_reply_and_cannot_learn_it_exists(
+    client, decision_world, auth
+):
+    """Isolation: a stranger gets 404, never a hint that the decision exists."""
+    mgr = decision_world["alpha_mgr"]
+    decision_id = _create_for_executor(
+        client, auth, decision_world["owner_all"], mgr.id
+    ).json()["id"]
+
+    r = client.post(
+        f"/api/v1/operations/owner-decisions/{decision_id}/respond",
+        json={"note": "محاولة غير مصرح بها."},
+        headers=auth(decision_world["beta_mgr"]),
+    )
+    assert r.status_code == 404
+
+
+def test_a_reply_requires_a_note(client, decision_world, auth):
+    mgr = decision_world["alpha_mgr"]
+    decision_id = _create_for_executor(
+        client, auth, decision_world["owner_all"], mgr.id
+    ).json()["id"]
+
+    r = client.post(
+        f"/api/v1/operations/owner-decisions/{decision_id}/respond",
+        json={"note": ""},
+        headers=auth(mgr),
+    )
+    assert r.status_code == 422

@@ -6268,12 +6268,18 @@
                 ], d.status) +
                 '<button class="btn-outline" data-act="dec-status" data-id="' + d.id + '">' + dual("تحديث", "Update") + "</button></div>"
               : "";
+            // S22: the person the directive names replies with an execution update.
+            var reply = USER && d.executor_user_id === USER.id
+              ? '<div class="av-user-controls" data-stop="1">' +
+                textInput("dcReply" + d.id, "") +
+                '<button class="btn-outline" data-act="dec-reply" data-id="' + d.id + '">' + dual("رد", "Reply") + "</button></div>"
+              : "";
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
               '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
               dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
               statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
-              "</div>" + controls + "</div>";
+              "</div>" + controls + reply + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد قرارات.", "No decisions.");
       host.innerHTML = panel("قرارات المالك", "Owner decisions", create + list);
@@ -6298,6 +6304,16 @@
           var did = btn.getAttribute("data-id");
           patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
             .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+            .catch(domainError);
+        });
+      });
+      host.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var did = btn.getAttribute("data-id");
+          var note = valOf("dcReply" + did);
+          if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+          post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
+            .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
             .catch(domainError);
         });
       });

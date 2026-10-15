@@ -211,6 +211,7 @@ class AuditAction:
 
     OWNER_DECISION_CREATED = "owner_decision.created"
     OWNER_DECISION_UPDATED = "owner_decision.updated"
+    OWNER_DECISION_RESPONDED = "owner_decision.responded"
 
     # S21: the BD five-axis management brief.
     MANAGEMENT_BRIEF_CREATED = "management_brief.created"

@@ -16,6 +16,7 @@ from backend.schemas.domain import (
     ComplaintDecisionRequest,
     ManagementBriefSaveRequest,
     OwnerDecisionCreateRequest,
+    OwnerDecisionRespondRequest,
     OwnerDecisionUpdateRequest,
     ProjectRecordCreateRequest,
     ProjectRecordUpdateRequest,
@@ -308,6 +309,19 @@ def update_owner_decision(
     d = operations_service.update_owner_decision(
         db, user=user, decision_id=decision_id, new_status=status_value,
         follow_up_note=data.get("follow_up_note"), **ctx,
+    )
+    return operations_service.serialise_owner_decision(d)
+
+
+@router.post("/owner-decisions/{decision_id}/respond")
+def respond_to_owner_decision(
+    decision_id: int, payload: OwnerDecisionRespondRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """S22: the named executor replies to a directive (execution update)."""
+    ctx = audit_service.request_context(request)
+    d = operations_service.respond_to_owner_decision(
+        db, user=user, decision_id=decision_id, note=payload.note, **ctx
     )
     return operations_service.serialise_owner_decision(d)
 

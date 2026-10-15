@@ -148,9 +148,16 @@ def update_employee(
     # Salary fields are sensitive and need the dedicated permission.
     salary_fields = {"base_salary", "housing_allowance", "transport_allowance", "currency"}
     if salary_fields & set(changes) and not _can_read_salary(user):
-        from backend.core.errors import PermissionDeniedError
-
         raise PermissionDeniedError("You may not change salary information.")
+
+    # S11 / AC-11: terminating a *subsidiary* employee is within the manager's
+    # authority, but terminating a Holding employee must be approved by the owner
+    # and cannot bypass that decision.
+    if changes.get("status") == EmployeeStatus.TERMINATED.value and _is_holding_employee(db, employee):
+        if not confidential_access_service.is_confidential_owner(user):
+            raise PermissionDeniedError(
+                "Terminating a Holding employee requires the owner's approval."
+            )
 
     for key, value in changes.items():
         if value is not None and hasattr(employee, key):
@@ -177,6 +184,22 @@ def _can_read_salary(user: User) -> bool:
     from backend.rbac.authorization import has_permission
 
     return has_permission(user, Perm.EMPLOYEE_SALARY_READ)
+
+
+def _is_holding_employee(db: Session, employee: Employee) -> bool:
+    """True when the employee belongs to the Holding entity itself.
+
+    S11 draws a distinction between a subsidiary employee (the manager's
+    authority) and a Holding employee (whose appointment/termination the owner
+    approves). The holding is the company whose ``company_type`` is ``holding``.
+    """
+    from backend.db.models.enums import CompanyType
+    from backend.db.models.identity import Company
+
+    if employee.company_id is None:
+        return False
+    row = db.get(Company, employee.company_id)
+    return row is not None and row.company_type == CompanyType.HOLDING.value
 
 
 def serialise_employee(employee: Employee, *, include_salary: bool) -> dict:

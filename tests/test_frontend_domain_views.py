@@ -463,3 +463,13 @@ def test_every_literal_dual_call_has_both_languages():
             offenders.append(m.group(0))
     assert offenders == [], f"untranslated dual() calls: {offenders[:10]}"
 
+
+def test_s22_directive_reply_is_wired_to_the_respond_endpoint():
+    """S22: the named executor can reply; the control posts to /respond."""
+    assert "dec-reply" in APP_JS
+    assert "/respond" in APP_JS
+    # The reply control is offered only to the executor named on the decision.
+    assert "d.executor_user_id === USER.id" in APP_JS
+    # The reply is a note, never a status change: the owner alone closes it.
+    assert 'post("/api/v1/operations/owner-decisions/" + did + "/respond"' in APP_JS
+

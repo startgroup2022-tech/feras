@@ -290,6 +290,12 @@ class OwnerDecisionUpdateRequest(BaseModel):
     follow_up_note: str | None = Field(default=None, max_length=4000)
 
 
+class OwnerDecisionRespondRequest(BaseModel):
+    """S22: the named executor's execution reply to a directive."""
+
+    note: str = Field(min_length=1, max_length=4000)
+
+
 # --------------------------------------------------------------------------
 # projects & opportunities (S20)
 # --------------------------------------------------------------------------
