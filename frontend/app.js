@@ -1579,6 +1579,7 @@
       "budget.read",
       "opening_balance.read",
       "kpi.read",
+      "accounting_policy.read",
     ],
     confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
     admin: [
@@ -3982,11 +3983,32 @@
         return (
           '<div class="av-row" data-bi-co="' + r.id + '"><div class="co-dot" style="background:' + PALETTE[r.id % PALETTE.length] + '">' + initial(r.name_ar) + "</div>" +
           '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en || r.name_ar) + '</div>' +
-          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(rev.ar, rev.en) + " · " + dual("صافي ", "Net ") + dual(net.ar, net.en) + "</div></div>" +
+          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(rev.ar, rev.en) + " · " + dual("صافي ", "Net ") + dual(net.ar, net.en) + "</div>" +
+          goalsHtml(r.goals) + "</div>" +
           growthHtml(r.revenue_pct) + healthBadge(r.health) + "</div>"
         );
       }).join("") + "</div>"
     );
+  }
+
+  // S02/S10: goals-versus-results. A goal is an approved (active) KPI with a
+  // target; the API already resolved the actual against the same metric. We
+  // show target, actual and the favourable/unfavourable flag — never a figure
+  // the API did not return.
+  function goalsHtml(goals) {
+    if (!goals || !goals.length) return "";
+    return goals.map(function (g) {
+      var name = STATE.lang === "ar" ? g.name_ar : g.name_en || g.name_ar;
+      var target = dec(g.target_value);
+      var actual = g.actual_value == null ? "—" : dec(g.actual_value);
+      var cls = g.favourable === false ? "warn" : "ok";
+      var arrow = g.favourable === false ? "▼" : "▲";
+      return (
+        '<div class="s" style="margin-top:2px">' +
+        '<span class="status ' + cls + '"><i></i>' + escapeHtml(name) + " " + arrow + " " +
+        escapeHtml(target) + " / " + escapeHtml(actual) + "</span></div>"
+      );
+    }).join("");
   }
 
   // ---- advanced analytics view -----------------------------------------
@@ -4375,6 +4397,13 @@
           renderInboxList();
         });
       });
+      var prefsBtn = byId("inboxPrefs");
+      if (prefsBtn) prefsBtn.addEventListener("click", function () {
+        var panelHost = byId("inboxPrefsPanel");
+        var hidden = panelHost.classList.toggle("view-hidden");
+        prefsBtn.classList.toggle("on", !hidden);
+        if (!hidden) renderNotificationPreferences();
+      });
     }
     host.innerHTML = loadingHtml();
     return refreshNotifications().then(renderInboxList);
@@ -4414,6 +4443,87 @@
       });
     });
     return Promise.resolve();
+  }
+
+  // D11: per-event channel preferences. In-app is the base channel; email is
+  // opt-in. The preference is what the notify pipeline reads, so muting here
+  // is exactly what stops an event appearing in the list above.
+  function renderNotificationPreferences() {
+    var host = byId("inboxPrefsPanel");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/notifications/preferences").then(function (data) {
+      var items = (data && data.items) || [];
+      var events = (data && data.event_types) || [];
+      var byEvent = {};
+      items.forEach(function (p) { byEvent[p.event_type] = p; });
+      var defaultRow = byEvent["*"] || { in_app: true, email: false, muted: false };
+      var rows = ["*"].concat(
+        events.filter(function (e) { return e !== "*"; })
+      );
+      var body =
+        '<div class="av-list">' +
+        rows.map(function (key) {
+          var p = byEvent[key] || defaultRow;
+          var label = key === "*"
+            ? dual("الافتراضي لكل الأحداث", "Default for all events")
+            : escapeHtml(NOTIF_EVENT_LABEL[key] ? (STATE.lang === "ar" ? NOTIF_EVENT_LABEL[key].ar : NOTIF_EVENT_LABEL[key].en) : key);
+          return (
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            label + "</div></div>" +
+            toggleBtn(key, "in_app", p.in_app, "داخل المنصة", "In-app") +
+            toggleBtn(key, "email", p.email, "البريد", "Email") +
+            toggleBtn(key, "muted", p.muted, "كتم", "Mute") +
+            "</div>"
+          );
+        }).join("") + "</div>";
+      host.innerHTML = panel(
+        "تفضيلات القنوات (D11: القناة الأساسية داخل المنصة؛ البريد اختياري)",
+        "Channel preferences (D11: in-app is the base channel; email is optional)",
+        body
+      );
+      host.querySelectorAll("[data-pref]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var ev = btn.getAttribute("data-pref");
+          var field = btn.getAttribute("data-field");
+          var next = btn.getAttribute("data-on") !== "1";
+          var payload = {};
+          payload[field] = next;
+          busy(btn, true);
+          put("/api/v1/notifications/preferences/" + encodeURIComponent(ev), payload)
+            .then(function () { return renderNotificationPreferences(); })
+            .catch(function (err) { domainError(err); busy(btn, false); });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Arabic/English labels for the notification event types the backend defines
+  // (NotificationType). An unlabelled type falls back to its raw code.
+  var NOTIF_EVENT_LABEL = {
+    "system": { ar: "النظام", en: "System" },
+    "approval.assigned": { ar: "موافقة مُسندة", en: "Approval assigned" },
+    "approval.approved": { ar: "موافقة معتمدة", en: "Approval approved" },
+    "approval.rejected": { ar: "موافقة مرفوضة", en: "Approval rejected" },
+    "approval.returned": { ar: "موافقة مُعادة", en: "Approval returned" },
+    "submission.incomplete": { ar: "إرسال غير مكتمل", en: "Submission incomplete" },
+    "document.expiring": { ar: "مستند على وشك الانتهاء", en: "Document expiring" },
+    "document.expired": { ar: "مستند منتهي", en: "Document expired" },
+    "report.submitted": { ar: "تقرير شهري مُرسل", en: "Monthly report submitted" },
+    "financial_summary.submitted": { ar: "ملخص مالي مُرسل", en: "Financial summary submitted" },
+    "financial_summary.returned": { ar: "ملخص مالي مُعاد", en: "Financial summary returned" },
+    "financial_summary.resubmitted": { ar: "ملخص مالي مُعاد إرساله", en: "Financial summary resubmitted" },
+    "financial_summary.approved": { ar: "ملخص مالي معتمد", en: "Financial summary approved" },
+    "support.assigned": { ar: "طلب دعم مُسند", en: "Support assigned" },
+    "support.status_changed": { ar: "تغيّر حالة طلب", en: "Support status changed" },
+  };
+
+  function toggleBtn(eventKey, field, on, ar, en) {
+    return (
+      '<button class="btn-ghost" data-pref="' + escAttr(eventKey) + '" data-field="' + field +
+      '" data-on="' + (on ? "1" : "0") + '" style="margin-inline-start:6px">' +
+      dual(ar, en) + " " + (on ? "✓" : "✕") + "</button>"
+    );
   }
 
   // ---- website leads view ---------------------------------------------
@@ -6281,7 +6391,7 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis", "policies"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
@@ -6295,6 +6405,7 @@
     assets: ["asset.read"],
     budgets: ["budget.read"],
     kpis: ["kpi.read"],
+    policies: ["accounting_policy.read"],
   };
   function canAcctTab(t) { return (ACCT_TAB_PERM[t] || []).some(has); }
   function firstAcctTab() {
@@ -6330,6 +6441,7 @@
     if (tab === "assets") return renderAssets();
     if (tab === "budgets") return renderBudgets();
     if (tab === "kpis") return renderKpis();
+    if (tab === "policies") return renderPolicies();
     return Promise.resolve();
   }
 
@@ -6906,8 +7018,73 @@
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  var POLICY_KINDS = ["tax", "fiscal_year", "invoice", "asset", "currency"];
+  function policyKindLabel(k) {
+    var map = {
+      tax: ["الضريبة", "Tax"],
+      fiscal_year: ["السنة المالية", "Fiscal year"],
+      invoice: ["الفاتورة", "Invoice"],
+      asset: ["الأصول", "Asset"],
+      currency: ["العملة", "Currency"],
+    };
+    return dual.apply(null, map[k] || [k, k]);
+  }
+  function renderPolicies() {
+    var host = byId("acctContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/policies").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("accounting_policy.manage");
+      var canApprove = has("accounting_policy.approve");
+      var kindOptions = POLICY_KINDS.map(function (k) {
+        return { value: k, label: policyKindLabel(k) };
+      });
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="policyForm">' +
+          field("النوع", "Kind", selectInput("polKind", kindOptions, "tax")) +
+          field("الشركة", "Company", selectInput("polCompany", [{ value: "", label: dual("القابضة (افتراضي)", "Holding (default)") }].concat(companySelectOptions(true)), "")) +
+          field("القيمة", "Value", numInput("polValue", "")) +
+          field("قيمة نصية", "Text value", textInput("polText", "")) +
+          field("الوصف", "Description", textInput("polDesc", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("حفظ مسودة", "Save draft") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (p) {
+            var approved = p.status === "approved";
+            var badge = approved
+              ? '<span class="status ok"><i></i>' + dual("معتمدة", "Approved") + "</span>"
+              : '<span class="status warn"><i></i>' + dual("مسودة", "Draft") + "</span>";
+            var approveBtn = (!approved && canApprove)
+              ? '<button class="btn-ghost" data-act="policy-approve" data-id="' + p.id + '">' + dual("اعتماد", "Approve") + "</button>"
+              : "";
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(policyKindLabel(p.kind)) + " · " + dual("نسخة", "v") + " " + p.version +
+              (p.company_id ? " · " + dual("شركة #", "company #") + p.company_id : " · " + dual("افتراضي القابضة", "holding default")) +
+              "</div>" +
+              '<div class="s">' + escapeHtml(p.value != null ? String(p.value) : (p.value_text || "")) +
+              (p.description ? " · " + escapeHtml(p.description) : "") + "</div></div>" +
+              badge + approveBtn + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد سياسات محاسبية معتمدة بعد.", "No accounting policies yet.");
+      host.innerHTML = panel(
+        "السياسات المحاسبية (D01: مسودة لا تسري، والاعتماد هو ما يسري)",
+        "Accounting policies (D01: a draft is inert; approval makes it effective)",
+        create + list
+      );
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function onAcctAct(action, id, el) {
     if (action === "jn-add-line") return addJournalLine();
+    if (action === "policy-approve") {
+      busy(el, true);
+      return post("/api/v1/accounting/policies/" + id + "/approve", {})
+        .then(function () { toast(dual("تم اعتماد السياسة.", "Policy approved."), "ok"); return renderPolicies(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
     if (action === "ob-submit") {
       busy(el, true);
       return post("/api/v1/accounting/opening-balances/" + id + "/submit", {})
@@ -7065,6 +7242,17 @@
         period_label: valOf("kpPeriod"),
         target_value: numVal("kpTarget"),
       }).then(function () { toast(dual("تمت إضافة المؤشر.", "KPI added."), "ok"); return renderKpis(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "policyForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/policies", {
+        kind: valOf("polKind"),
+        company_id: valOf("polCompany") ? parseInt(valOf("polCompany"), 10) : null,
+        value: numVal("polValue"),
+        value_text: valOf("polText") || null,
+        description: valOf("polDesc") || null,
+      }).then(function () { toast(dual("تم حفظ المسودة.", "Draft saved."), "ok"); return renderPolicies(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "complaintForm") {

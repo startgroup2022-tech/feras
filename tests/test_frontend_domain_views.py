@@ -60,6 +60,7 @@ NEW_ENDPOINTS = [
     "/api/v1/accounting/assets",
     "/api/v1/accounting/budgets",
     "/api/v1/accounting/kpis",
+    "/api/v1/accounting/policies",
     "/api/v1/confidential-access/grants",
 ]
 
@@ -392,4 +393,37 @@ def test_s01_indicator_drilldown_is_wired():
         "open_support_requests",
     ):
         assert 'data-drill="' + kpi + '"' in INDEX, kpi
+
+
+def test_d01_accounting_policies_tab_is_wired():
+    # D01: an accountant drafts a policy and approves it; a draft is inert.
+    # The screen must be reachable, gated by the policy permission, and its
+    # renderer must call the real endpoints.
+    assert 'data-acct-tab="policies"' in INDEX
+    assert 'data-perm="accounting_policy.read"' in INDEX
+    assert "function renderPolicies(" in APP_JS
+    assert 'tab === "policies"' in APP_JS
+    assert "/api/v1/accounting/policies" in APP_JS
+    # The tab is listed in the catalogue and mapped to its permission.
+    assert '"policies"' in APP_JS
+    assert 'policies: ["accounting_policy.read"]' in APP_JS
+
+
+def test_s02_s10_goals_are_rendered_on_the_company_table():
+    # S02/S10: goals-versus-results must be visible, resolved from the API's
+    # goals array rather than recomputed in the browser.
+    assert "function goalsHtml(" in APP_JS
+    assert "goalsHtml(r.goals)" in APP_JS
+
+
+def test_d11_notification_preferences_panel_is_wired():
+    # D11: the notification centre is the base channel; a user can opt into
+    # email or mute an event, and the change is persisted server-side.
+    assert 'id="inboxPrefsPanel"' in INDEX
+    assert 'id="inboxPrefs"' in INDEX
+    assert "function renderNotificationPreferences(" in APP_JS
+    assert "/api/v1/notifications/preferences" in APP_JS
+    # The per-event toggle writes to the preference endpoint.
+    assert "/api/v1/notifications/preferences/" in APP_JS
+    assert "NOTIF_EVENT_LABEL" in APP_JS
 
