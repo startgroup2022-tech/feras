@@ -427,3 +427,23 @@ def test_d11_notification_preferences_panel_is_wired():
     assert "/api/v1/notifications/preferences/" in APP_JS
     assert "NOTIF_EVENT_LABEL" in APP_JS
 
+
+def test_every_literal_dual_call_has_both_languages():
+    """No untranslated internal string (spec §E, T01).
+
+    ``dual(ar, en)`` is the internal equivalent of the public site's ``_t``.
+    A literal call whose English slot is empty, or whose English slot is
+    actually Arabic, is a string that never switches language.
+    """
+    import re
+
+    pattern = re.compile(r'dual\(\s*("(?:[^"\\]|\\.)*")\s*,\s*("(?:[^"\\]|\\.)*")\s*\)')
+    arabic = re.compile(r"[\u0600-\u06FF]")
+    offenders = []
+    for m in pattern.finditer(APP_JS):
+        ar = m.group(1).strip('"')
+        en = m.group(2).strip('"')
+        if en == "" or (arabic.search(en) and not arabic.search(ar)):
+            offenders.append(m.group(0))
+    assert offenders == [], f"untranslated dual() calls: {offenders[:10]}"
+
