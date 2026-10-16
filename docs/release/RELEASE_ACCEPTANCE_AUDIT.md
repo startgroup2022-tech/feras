@@ -5,7 +5,7 @@
 **Audited branch:** `feature/safir-s26-s28-accounting-completion` (PR #5)
 **Integration branch:** `frontend-app-conversion`
 **Baseline (integration HEAD):** `abfcd0de5f16640135a68fa6a03079988099857c`
-**Audit HEAD:** `5273cd04298d3b43d062c6f44d833545278e7d9d`
+**Audit HEAD:** `c52557a0e38656b3b3cc7172226bf426627d55ea`
 **Authoritative source:** `docs/reference/Platform_Executive_Specifications_v1.docx`
 (original Word file — 451 paragraphs, 85 tables, screens S01–S28, AC-01…AC-28).
 **Date:** 2026-10-14.
