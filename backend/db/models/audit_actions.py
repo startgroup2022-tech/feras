@@ -251,3 +251,9 @@ class AuditAction:
     KPI_DEACTIVATED = "kpi.deactivated"
     POLICY_CREATED = "accounting_policy.created"
     POLICY_APPROVED = "accounting_policy.approved"
+
+    # S28: the monthly financial report (generated from the ledger, finalised).
+    FINANCIAL_REPORT_GENERATED = "monthly_financial_report.generated"
+    FINANCIAL_REPORT_ANALYSIS_UPDATED = "monthly_financial_report.analysis_updated"
+    FINANCIAL_REPORT_FINALISED = "monthly_financial_report.finalised"
+    FINANCIAL_REPORT_ARCHIVED = "monthly_financial_report.archived"

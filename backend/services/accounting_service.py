@@ -14,6 +14,8 @@ Policy-dependent behaviour is deliberately absent:
 
 from __future__ import annotations
 
+import json
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -34,6 +36,7 @@ from backend.db.models.accounting import (
     Journal,
     JournalLine,
     KpiDefinition,
+    MonthlyFinancialReport,
     OpeningBalance,
     Party,
     Settlement,
@@ -47,8 +50,11 @@ from backend.db.models.enums import (
     InvoiceStatus,
     JournalStatus,
     KpiDirection,
+    MonthlyFinancialReportStatus,
+    NotificationType,
     OpeningBalanceStatus,
 )
+from backend.db.models.financial import FinancialPeriod, FinancialSummaryVersion
 from backend.db.models.identity import User
 from backend.rbac.authorization import (
     accessible_company_ids,
@@ -56,7 +62,7 @@ from backend.rbac.authorization import (
     require_permission,
 )
 from backend.rbac.permissions import Perm
-from backend.services import audit_service, kpi_service
+from backend.services import audit_service, kpi_service, notification_service
 
 ZERO = Decimal("0")
 
@@ -1297,4 +1303,340 @@ def serialise_policy(p: AccountingPolicy) -> dict:
         "approved_by_id": p.approved_by_id, "approved_at": p.approved_at,
         "effective_from": p.effective_from, "supersedes_id": p.supersedes_id,
         "created_at": p.created_at,
+    }
+
+
+# --------------------------------------------------------------------------
+# S28: monthly financial report (Table 57 -- draw the accounts, add analysis)
+# --------------------------------------------------------------------------
+def _current_source_version_id(db: Session, *, company_id: int, year: int, month: int):
+    """The approved financial summary version current for a company/month, if any.
+
+    Used as the report's provenance: the group report must distinguish the
+    holding's own accounts from the subsidiary summaries (S28 scope).
+    """
+    period = db.execute(
+        select(FinancialPeriod).where(
+            FinancialPeriod.company_id == company_id,
+            FinancialPeriod.period_year == year,
+            FinancialPeriod.period_month == month,
+        )
+    ).scalars().first()
+    if period is None or period.effective_version_id is None:
+        return None
+    version = db.get(FinancialSummaryVersion, period.effective_version_id)
+    if version is None or version.company_id != company_id:
+        return None
+    return version.id
+
+
+def _report_figures(db: Session, *, company_id: int, year: int, month: int) -> dict:
+    """Draw the accounts for the month: statements + trial balance + summary.
+
+    Reads only *posted* journals, so the summary reconciles with the trial
+    balance (AC-28) and two currencies are never added together (T10).
+    """
+    statements = _statements_for_period(
+        db, company_id=company_id, fiscal_year=year, fiscal_month=month
+    )
+    trial = _trial_balance_unchecked(db, company_id=company_id, year=year, month=month)
+
+    # A concise, per-currency summary so the group view can read one line per
+    # currency without summing across currencies.
+    def _money(value: Decimal) -> str:
+        return str(value.quantize(Decimal("0.01")))
+
+    summary: list[dict] = []
+    revenue_by_currency = {r["currency"]: Decimal(r["amount"])
+                           for r in statements["income_statement"]["total_revenue"]}
+    expenses_by_currency = {r["currency"]: Decimal(r["amount"])
+                            for r in statements["income_statement"]["total_expenses"]}
+    for currency in sorted(set(revenue_by_currency) | set(expenses_by_currency)):
+        revenue = revenue_by_currency.get(currency, ZERO)
+        expenses = expenses_by_currency.get(currency, ZERO)
+        summary.append({
+            "currency": currency,
+            "revenue": _money(revenue),
+            "expenses": _money(expenses),
+            "net": _money(revenue - expenses),
+        })
+
+    return {
+        "period_year": year,
+        "period_month": month,
+        "summary": summary,
+        "income_statement": statements["income_statement"],
+        "balance_sheet": statements["balance_sheet"],
+        "trial_balance": {
+            "balanced": trial["balanced"],
+            "total_debit": trial["total_debit"],
+            "total_credit": trial["total_credit"],
+        },
+    }
+
+
+def _trial_balance_unchecked(db: Session, *, company_id: int, year: int, month: int) -> dict:
+    """The trial balance without an RBAC check, for internal report generation.
+
+    ``trial_balance`` gates on ``journal.read`` and company access; the report
+    caller has already passed ``financial_report.*`` and company access, so the
+    extra gate would be redundant (and the accountant does hold ``journal.read``
+    anyway).
+    """
+    stmt = (
+        select(
+            JournalLine.account_id,
+            func.coalesce(func.sum(JournalLine.debit), 0),
+            func.coalesce(func.sum(JournalLine.credit), 0),
+        )
+        .join(Journal, Journal.id == JournalLine.journal_id)
+        .where(
+            Journal.company_id == company_id,
+            Journal.status == JournalStatus.POSTED.value,
+            Journal.fiscal_year == year,
+            Journal.fiscal_month == month,
+        )
+        .group_by(JournalLine.account_id)
+    )
+    total_debit = ZERO
+    total_credit = ZERO
+    for _account_id, debit, credit in db.execute(stmt):
+        total_debit += Decimal(debit or 0)
+        total_credit += Decimal(credit or 0)
+    return {
+        "total_debit": str(total_debit),
+        "total_credit": str(total_credit),
+        "balanced": total_debit == total_credit,
+    }
+
+
+def generate_monthly_financial_report(
+    db: Session, *, user: User, company_id: int, period_year: int, period_month: int,
+    currency: str = "SAR", ip_address: str | None = None, user_agent: str | None = None,
+) -> MonthlyFinancialReport:
+    """Generate (or regenerate the draft of) a company's monthly financial report.
+
+    Table 57: "إعداد التقرير المالي الشهري | يسحب الحسابات ويضيف التحليل" -- the
+    action draws the accounts and adds the analysis. The drawn figures are the
+    posted-journal statements for the month; the analysis is added separately
+    (``update_report_analysis``). A finalised report is immutable.
+    """
+    require_permission(user, Perm.FINANCIAL_REPORT_MANAGE)
+    require_company_access(user, company_id, write=True)
+    if period_month < 1 or period_month > 12:
+        raise ValidationError("period_month must be between 1 and 12.")
+
+    existing = db.execute(
+        select(MonthlyFinancialReport).where(
+            MonthlyFinancialReport.company_id == company_id,
+            MonthlyFinancialReport.period_year == period_year,
+            MonthlyFinancialReport.period_month == period_month,
+        )
+    ).scalars().first()
+    if existing is not None and existing.status != MonthlyFinancialReportStatus.DRAFT.value:
+        raise ConflictError(
+            "A finalised or archived report cannot be regenerated; a correction "
+            "is a new report."
+        )
+
+    figures = _report_figures(db, company_id=company_id,
+                              year=period_year, month=period_month)
+    source_version_id = _current_source_version_id(
+        db, company_id=company_id, year=period_year, month=period_month
+    )
+
+    if existing is None:
+        report = MonthlyFinancialReport(
+            company_id=company_id, period_year=period_year, period_month=period_month,
+            status=MonthlyFinancialReportStatus.DRAFT.value, currency=currency,
+            figures=json.dumps(figures, ensure_ascii=False),
+            source_version_id=source_version_id, generated_at=utcnow(),
+            generated_by_id=user.id,
+        )
+        db.add(report)
+    else:
+        report = existing
+        report.figures = json.dumps(figures, ensure_ascii=False)
+        report.currency = currency
+        report.source_version_id = source_version_id
+        report.generated_at = utcnow()
+        report.generated_by_id = user.id
+        db.add(report)
+
+    db.commit()
+    db.refresh(report)
+    audit_service.record(
+        db, action=AuditAction.FINANCIAL_REPORT_GENERATED, actor_user_id=user.id,
+        entity_type="monthly_financial_report", entity_id=report.id, company_id=company_id,
+        metadata={"period_year": period_year, "period_month": period_month},
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    return report
+
+
+def _scoped_report(db: Session, *, user: User, report_id: int) -> MonthlyFinancialReport:
+    """Fetch a report the caller may see, else raise NotFound (never 403).
+
+    "Not yours" and "does not exist" must be indistinguishable, so an
+    out-of-scope report is reported as missing rather than forbidden.
+    """
+    report = db.get(MonthlyFinancialReport, report_id)
+    allowed = accessible_company_ids(user)
+    if report is None or (allowed is not None and report.company_id not in set(allowed)):
+        raise NotFoundError("Financial report not found.")
+    return report
+
+
+def update_report_analysis(
+    db: Session, *, user: User, report_id: int, analysis: str | None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> MonthlyFinancialReport:
+    """Set the accountant's added analysis on a draft report (Table 57)."""
+    require_permission(user, Perm.FINANCIAL_REPORT_MANAGE)
+    report = _scoped_report(db, user=user, report_id=report_id)
+    require_company_access(user, report.company_id, write=True)
+    if report.status != MonthlyFinancialReportStatus.DRAFT.value:
+        raise ConflictError("Only a draft report's analysis can be edited.")
+    report.analysis = analysis
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    audit_service.record(
+        db, action=AuditAction.FINANCIAL_REPORT_ANALYSIS_UPDATED, actor_user_id=user.id,
+        entity_type="monthly_financial_report", entity_id=report.id,
+        company_id=report.company_id, ip_address=ip_address, user_agent=user_agent,
+    )
+    return report
+
+
+def finalise_monthly_financial_report(
+    db: Session, *, user: User, report_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> MonthlyFinancialReport:
+    """Finalise a draft report: it becomes immutable and the BD + owner are told.
+
+    Table 57: the report "notifies the Business Development manager and the owner
+    according to permissions". Finalising is the explicit accountant act that
+    fixes the report; a later correction is a new report.
+    """
+    require_permission(user, Perm.FINANCIAL_REPORT_FINALISE)
+    report = _scoped_report(db, user=user, report_id=report_id)
+    require_company_access(user, report.company_id, write=True)
+    if report.status != MonthlyFinancialReportStatus.DRAFT.value:
+        raise ConflictError("Only a draft report can be finalised.")
+    if report.figures is None:
+        raise ConflictError("Generate the report before finalising it.")
+
+    report.status = MonthlyFinancialReportStatus.FINALISED.value
+    report.finalised_at = utcnow()
+    report.finalised_by_id = user.id
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    audit_service.record(
+        db, action=AuditAction.FINANCIAL_REPORT_FINALISED, actor_user_id=user.id,
+        entity_type="monthly_financial_report", entity_id=report.id,
+        company_id=report.company_id, ip_address=ip_address, user_agent=user_agent,
+    )
+
+    # Table 57: notify BD and owner (per permissions). Sensitive figures never
+    # appear in the notification body (D11).
+    from backend.db.models.identity import RoleCode
+
+    recipients = set(notification_service.users_with_role(
+        db, role_code=RoleCode.BUSINESS_DEVELOPMENT.value
+    ))
+    recipients |= set(notification_service.users_with_role(
+        db, role_code=RoleCode.HOLDING_OWNER.value
+    ))
+    recipients.discard(user.id)
+    notification_service.notify(
+        db,
+        recipient_ids=sorted(recipients),
+        type=NotificationType.FINANCIAL_REPORT_FINALISED.value,
+        title_ar="اعتماد التقرير المالي الشهري",
+        title_en="Monthly financial report finalised",
+        message_ar=(
+            f"تم اعتماد التقرير المالي الشهري للفترة "
+            f"{report.period_month}/{report.period_year}."
+        ),
+        message_en=(
+            f"The monthly financial report for {report.period_month}/{report.period_year} "
+            "was finalised."
+        ),
+        company_id=report.company_id,
+        entity_type="monthly_financial_report",
+        entity_id=report.id,
+        dedupe_key=f"fin_report_finalised:{report.id}",
+        actor_user_id=user.id,
+    )
+    return report
+
+
+def archive_monthly_financial_report(
+    db: Session, *, user: User, report_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> MonthlyFinancialReport:
+    """Archive a finalised report (read-only history)."""
+    require_permission(user, Perm.FINANCIAL_REPORT_FINALISE)
+    report = _scoped_report(db, user=user, report_id=report_id)
+    require_company_access(user, report.company_id, write=True)
+    if report.status != MonthlyFinancialReportStatus.FINALISED.value:
+        raise ConflictError("Only a finalised report can be archived.")
+    report.status = MonthlyFinancialReportStatus.ARCHIVED.value
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    audit_service.record(
+        db, action=AuditAction.FINANCIAL_REPORT_ARCHIVED, actor_user_id=user.id,
+        entity_type="monthly_financial_report", entity_id=report.id,
+        company_id=report.company_id, ip_address=ip_address, user_agent=user_agent,
+    )
+    return report
+
+
+def list_monthly_financial_reports(
+    db: Session, *, user: User, company_id: int | None = None,
+    period_year: int | None = None, period_month: int | None = None,
+) -> list[MonthlyFinancialReport]:
+    """List financial reports in the caller's scope (the archive, S28)."""
+    require_permission(user, Perm.FINANCIAL_REPORT_READ)
+    stmt = select(MonthlyFinancialReport).order_by(
+        MonthlyFinancialReport.period_year.desc(),
+        MonthlyFinancialReport.period_month.desc(),
+    )
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(MonthlyFinancialReport.company_id.in_(allowed)) if allowed \
+            else stmt.where(False)
+    if company_id is not None:
+        stmt = stmt.where(MonthlyFinancialReport.company_id == company_id)
+    if period_year is not None:
+        stmt = stmt.where(MonthlyFinancialReport.period_year == period_year)
+    if period_month is not None:
+        stmt = stmt.where(MonthlyFinancialReport.period_month == period_month)
+    return list(db.execute(stmt).scalars())
+
+
+def get_monthly_financial_report(db: Session, *, user: User, report_id: int) -> MonthlyFinancialReport:
+    require_permission(user, Perm.FINANCIAL_REPORT_READ)
+    return _scoped_report(db, user=user, report_id=report_id)
+
+
+def serialise_financial_report(r: MonthlyFinancialReport) -> dict:
+    return {
+        "id": r.id,
+        "company_id": r.company_id,
+        "period_year": r.period_year,
+        "period_month": r.period_month,
+        "status": r.status,
+        "currency": r.currency,
+        "figures": json.loads(r.figures) if r.figures else None,
+        "analysis": r.analysis,
+        "source_version_id": r.source_version_id,
+        "generated_at": r.generated_at,
+        "generated_by_id": r.generated_by_id,
+        "finalised_at": r.finalised_at,
+        "finalised_by_id": r.finalised_by_id,
+        "created_at": r.created_at,
     }

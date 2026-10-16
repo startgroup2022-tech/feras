@@ -13,6 +13,8 @@ from backend.schemas.domain import (
     AssetCreateRequest,
     BudgetApproveRequest,
     BudgetCreateRequest,
+    FinancialReportAnalysisRequest,
+    FinancialReportGenerateRequest,
     InterbalanceCreateRequest,
     InvoiceCreateRequest,
     InvoiceJournalLinkRequest,
@@ -454,3 +456,74 @@ def effective_policy(
         db, company_id=company_id, kind=kind, on_date=parsed
     )
     return accounting_service.serialise_policy(policy) if policy else None
+
+
+# ---- monthly financial report (S28 Table 57) ----
+@router.get("/financial-reports")
+def list_financial_reports(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    period_year: int | None = None, period_month: int | None = None,
+) -> list[dict]:
+    """The financial report archive (S28), scoped to the caller's companies."""
+    return [
+        accounting_service.serialise_financial_report(r)
+        for r in accounting_service.list_monthly_financial_reports(
+            db, user=user, company_id=company_id,
+            period_year=period_year, period_month=period_month,
+        )
+    ]
+
+
+@router.get("/financial-reports/{report_id}")
+def get_financial_report(
+    report_id: int, user: CurrentUser, db: DbSession
+) -> dict:
+    report = accounting_service.get_monthly_financial_report(db, user=user, report_id=report_id)
+    return accounting_service.serialise_financial_report(report)
+
+
+@router.post("/financial-reports", status_code=status.HTTP_201_CREATED)
+def generate_financial_report(
+    payload: FinancialReportGenerateRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Draw the accounts for a company/month into a report draft (Table 57)."""
+    ctx = audit_service.request_context(request)
+    report = accounting_service.generate_monthly_financial_report(
+        db, user=user, **payload.model_dump(), **ctx
+    )
+    return accounting_service.serialise_financial_report(report)
+
+
+@router.patch("/financial-reports/{report_id}/analysis")
+def update_financial_report_analysis(
+    report_id: int, payload: FinancialReportAnalysisRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    report = accounting_service.update_report_analysis(
+        db, user=user, report_id=report_id, analysis=payload.analysis, **ctx
+    )
+    return accounting_service.serialise_financial_report(report)
+
+
+@router.post("/financial-reports/{report_id}/finalise")
+def finalise_financial_report(
+    report_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    report = accounting_service.finalise_monthly_financial_report(
+        db, user=user, report_id=report_id, **ctx
+    )
+    return accounting_service.serialise_financial_report(report)
+
+
+@router.post("/financial-reports/{report_id}/archive")
+def archive_financial_report(
+    report_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    report = accounting_service.archive_monthly_financial_report(
+        db, user=user, report_id=report_id, **ctx
+    )
+    return accounting_service.serialise_financial_report(report)

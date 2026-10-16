@@ -19,6 +19,7 @@ from backend.db.models.accounting import (
     Journal,
     JournalLine,
     KpiDefinition,
+    MonthlyFinancialReport,
     OpeningBalance,
     Party,
     Settlement,
@@ -216,5 +217,6 @@ __all__ = [
     "Asset",
     "Budget",
     "KpiDefinition",
+    "MonthlyFinancialReport",
     "AccountingPolicy",
 ]

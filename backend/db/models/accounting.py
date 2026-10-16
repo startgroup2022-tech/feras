@@ -47,6 +47,7 @@ from backend.db.models.enums import (
     InvoiceStatus,
     JournalStatus,
     KpiDirection,
+    MonthlyFinancialReportStatus,
     OpeningBalanceKind,
     OpeningBalanceStatus,
 )
@@ -545,3 +546,69 @@ class CompanyInterbalance(Base, TimestampMixin):
     )
 
     company: Mapped["Company"] = relationship(foreign_keys=[company_id])
+
+
+class MonthlyFinancialReport(Base, TimestampMixin):
+    """The monthly financial report (S28 ``التقرير المالي الشهري``).
+
+    Table 57 defines the action as "يسحب الحسابات ويضيف التحليل" -- *draws the
+    accounts and adds the analysis*. The report is therefore a real record that
+    is **generated from the posted ledger** (income statement + balance sheet +
+    trial-balance reconciliation for one company and month), carrying the
+    accountant's analysis on top. It is the "internal statements / financial
+    performance analysis / report archive" the spec lists under S28.
+
+    Boundaries honoured:
+
+    * Figures are drawn from *posted* journals and stored per currency, so two
+      currencies are never added together (T10) and the summary reconciles with
+      the trial balance (AC-28).
+    * ``source_version_id`` records which approved financial summary was current
+      when the report was generated, so the group report distinguishes the
+      holding's own accounts from the subsidiary summaries (S28 scope).
+    * A finalised report is immutable; a new month is a new report.
+    """
+
+    __tablename__ = "monthly_financial_reports"
+    __table_args__ = (
+        # One report per company, year and month (regenerate updates the draft).
+        UniqueConstraint(
+            "company_id", "period_year", "period_month", name="uq_monthly_fin_report"
+        ),
+        Index("ix_monthly_fin_reports_company_period", "company_id", "period_year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=MonthlyFinancialReportStatus.DRAFT.value,
+        index=True,
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    # Drawn figures (per currency, stored as strings to preserve exact decimals
+    # in the same shape the statements service returns).
+    figures: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    # The accountant's added analysis (Table 57: "adds the analysis").
+    analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Which approved financial summary version was current when generated.
+    source_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_summary_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    generated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    finalised_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finalised_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()

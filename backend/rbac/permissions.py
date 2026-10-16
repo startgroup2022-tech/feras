@@ -239,6 +239,10 @@ class Perm:
     NOTIFICATION_PREFERENCE_MANAGE = "notification.preference.manage"
     # Confidential delegated access (D04)
     CONFIDENTIAL_ACCESS_MANAGE = "confidential_access.manage"
+    # S28: the monthly financial report and its archive
+    FINANCIAL_REPORT_READ = "financial_report.read"
+    FINANCIAL_REPORT_MANAGE = "financial_report.manage"
+    FINANCIAL_REPORT_FINALISE = "financial_report.finalise"
 
 
 
@@ -411,6 +415,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.MANAGEMENT_BRIEF_READ: "View the BD management brief",
     Perm.MANAGEMENT_BRIEF_SUBMIT: "Author and submit the BD management brief",
     Perm.REPORT_CLARIFY: "Raise or answer a report clarification",
+    Perm.FINANCIAL_REPORT_READ: "View the monthly financial report",
+    Perm.FINANCIAL_REPORT_MANAGE: "Generate and annotate the monthly financial report",
+    Perm.FINANCIAL_REPORT_FINALISE: "Finalise or archive a monthly financial report",
 }
 
 
@@ -785,6 +792,8 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.PARTY_READ,
     Perm.INTERBALANCE_READ,
     Perm.KPI_MANAGE,
+    # S28 Table 80: BD reads the holding's financial reports (read-only).
+    Perm.FINANCIAL_REPORT_READ,
 }
 
 # Accountant: the holding accounts surface (D01) plus budget approval input.
@@ -826,6 +835,10 @@ ACCOUNTANT_EXT = {
     Perm.WEEKLY_REPORT_READ_OWN,
     Perm.WEEKLY_REPORT_SUBMIT,
     Perm.KPI_READ,
+    # S28: the accountant owns the monthly financial report.
+    Perm.FINANCIAL_REPORT_READ,
+    Perm.FINANCIAL_REPORT_MANAGE,
+    Perm.FINANCIAL_REPORT_FINALISE,
 }
 
 # Marketing: campaigns and confidential complaint submission (D02/D04).
@@ -863,6 +876,8 @@ COMPANY_MANAGER_EXT = {
     Perm.OPENING_BALANCE_MANAGE,
     Perm.OWNER_DECISION_READ,
     Perm.KPI_READ,
+    # S28: a company-scoped manager reads its own company's financial report.
+    Perm.FINANCIAL_REPORT_READ,
 }
 
 # External Consultant (S19 / D04): only explicitly granted data; no ledger, no
@@ -897,6 +912,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         Perm.PARTY_READ,
         Perm.INTERBALANCE_READ,
         Perm.TASK_READ_OWN,
+        # S28: the finance manager reads the holding's financial reports.
+        Perm.FINANCIAL_REPORT_READ,
     },
     RoleCode.HR_MANAGER.value: HR_MANAGER | {
         Perm.EMPLOYEE_READ,

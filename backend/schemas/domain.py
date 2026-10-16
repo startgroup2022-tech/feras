@@ -480,6 +480,21 @@ class BudgetApproveRequest(BaseModel):
     source: str | None = Field(default=None, max_length=200)
 
 
+class FinancialReportGenerateRequest(BaseModel):
+    """S28: draw the accounts for a company and month into a report draft."""
+
+    company_id: int
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    currency: str = Field(default="SAR", max_length=8)
+
+
+class FinancialReportAnalysisRequest(BaseModel):
+    """S28 Table 57: the accountant's added analysis."""
+
+    analysis: str | None = Field(default=None, max_length=8000)
+
+
 class KpiCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=60, pattern=_CODE)
     name_ar: str = Field(min_length=1, max_length=200)

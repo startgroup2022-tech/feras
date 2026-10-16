@@ -373,6 +373,8 @@ class NotificationType(str, enum.Enum):
     SUPPORT_STATUS_CHANGED = "support.status_changed"
     TASK_ASSIGNED = "task.assigned"
     TASK_STATUS_CHANGED = "task.status_changed"
+    # S28: the monthly financial report was finalised by the accountant.
+    FINANCIAL_REPORT_FINALISED = "financial_report.finalised"
     SYSTEM = "system"
 
 
@@ -811,6 +813,19 @@ class BudgetStatus(str, enum.Enum):
     DRAFT = "draft"
     APPROVED = "approved"
     SUPERSEDED = "superseded"
+
+
+class MonthlyFinancialReportStatus(str, enum.Enum):
+    """S28 ``التقرير المالي الشهري``: generated from the ledger, then finalised.
+
+    A report is prepared from the *posted* journals (the accounts) plus the
+    approved effective figures; ``FINALISED`` is an explicit accountant act and
+    an archived report is read-only.
+    """
+
+    DRAFT = "draft"
+    FINALISED = "finalised"
+    ARCHIVED = "archived"
 
 
 class KpiDirection(str, enum.Enum):

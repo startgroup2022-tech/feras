@@ -1581,6 +1581,7 @@
       "opening_balance.read",
       "kpi.read",
       "accounting_policy.read",
+      "financial_report.read",
     ],
     confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
     admin: [
@@ -4658,6 +4659,7 @@
     "support.status_changed": { ar: "تغيّر حالة طلب", en: "Support status changed" },
     "task.assigned": { ar: "مهمة مُسندة", en: "Task assigned" },
     "task.status_changed": { ar: "تغيّر حالة مهمة", en: "Task status changed" },
+    "financial_report.finalised": { ar: "تقرير مالي شهري معتمد", en: "Monthly financial report finalised" },
   };
 
   function toggleBtn(eventKey, field, on, ar, en) {
@@ -6663,7 +6665,7 @@
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis", "policies"];
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis", "policies", "reports"];
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
@@ -6678,6 +6680,7 @@
     budgets: ["budget.read"],
     kpis: ["kpi.read"],
     policies: ["accounting_policy.read"],
+    reports: ["financial_report.read"],
   };
   function canAcctTab(t) { return (ACCT_TAB_PERM[t] || []).some(has); }
   function firstAcctTab() {
@@ -6714,6 +6717,7 @@
     if (tab === "budgets") return renderBudgets();
     if (tab === "kpis") return renderKpis();
     if (tab === "policies") return renderPolicies();
+    if (tab === "reports") return renderFinancialReports();
     return Promise.resolve();
   }
 
@@ -7465,6 +7469,63 @@
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  // S28 Table 57: the accountant draws the accounts for a month, adds the
+  // analysis, then finalises; the BD and owner read the archive.
+  var FIN_REPORT_STATUS = {
+    draft: ["مسودة", "Draft", "warn"],
+    finalised: ["معتمد", "Finalised", "ok"],
+    archived: ["مؤرشف", "Archived", "rev"],
+  };
+  function renderFinancialReports() {
+    var host = byId("acctContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/financial-reports").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("financial_report.manage");
+      var canFinalise = has("financial_report.finalise");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="finReportForm">' +
+          field("الشركة", "Company", selectInput("frCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("السنة", "Year", numInput("frYear", STATE.year || "")) +
+          field("الشهر", "Month", numInput("frMonth", STATE.month || "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("سحب الحسابات وإعداد التقرير", "Draw accounts & prepare report") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (r) {
+            var summary = (r.figures && r.figures.summary) || [];
+            var money = summary.map(function (s) {
+              return escapeHtml(s.currency) + " " + dec(s.net);
+            }).join(" · ") || dual("لا حركة", "No movement");
+            var actions = "";
+            if (r.status === "draft" && canManage) {
+              actions += '<input class="inp" data-field="analysis" data-id="' + r.id + '" style="min-width:220px" placeholder="' + dual("التحليل", "Analysis") + '" value="' + escAttr(r.analysis || "") + '">';
+              actions += actBtn("financial_report.manage", "fr-analysis", r.id, "حفظ التحليل", "Save analysis");
+            }
+            if (r.status === "draft" && canFinalise) {
+              actions += actBtn("financial_report.finalise", "fr-finalise", r.id, "اعتماد", "Finalise");
+            }
+            if (r.status === "finalised" && canFinalise) {
+              actions += actBtn("financial_report.finalise", "fr-archive", r.id, "أرشفة", "Archive");
+            }
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+              '<div class="s">' + money + "</div></div>" +
+              statusBadgeFromMap(r.status, FIN_REPORT_STATUS) +
+              "</div>" + (actions ? '<div class="av-user-controls" data-stop="1">' + actions + "</div>" : "") + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
+      host.innerHTML = panel(
+        "التقرير المالي الشهري (S28: يسحب الحسابات ويضيف التحليل، والمعتمد لا يُعدّل)",
+        "Monthly financial report (S28: draws the accounts and adds the analysis; a finalised report is immutable)",
+        create + list
+      );
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function onAcctAct(action, id, el) {
     if (action === "kpi-activate" || action === "kpi-deactivate") {
       busy(el, true);
@@ -7519,6 +7580,32 @@
       busy(el, true);
       return post("/api/v1/accounting/budgets/" + id + "/approve", {})
         .then(function () { toast(dual("تم اعتماد الموازنة.", "Budget approved."), "ok"); return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "fr-analysis") {
+      busy(el, true);
+      var input = document.querySelector('[data-field="analysis"][data-id="' + id + '"]');
+      return patch("/api/v1/accounting/financial-reports/" + id + "/analysis",
+                   { analysis: input ? input.value : null })
+        .then(function () { toast(dual("تم حفظ التحليل.", "Analysis saved."), "ok"); return renderFinancialReports(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "fr-finalise") {
+      return confirmDialog({
+        title: dual("اعتماد التقرير المالي", "Finalise the financial report"),
+        message: dual("بعد الاعتماد لا يمكن تعديل التقرير. متابعة؟", "A finalised report cannot be edited. Continue?"),
+      }).then(function (ok) {
+        if (!ok) return;
+        busy(el, true);
+        return post("/api/v1/accounting/financial-reports/" + id + "/finalise", {})
+          .then(function () { toast(dual("تم اعتماد التقرير المالي.", "Financial report finalised."), "ok"); return renderFinancialReports(); })
+          .catch(function (err) { domainError(err); busy(el, false); });
+      });
+    }
+    if (action === "fr-archive") {
+      busy(el, true);
+      return post("/api/v1/accounting/financial-reports/" + id + "/archive", {})
+        .then(function () { toast(dual("تمت أرشفة التقرير.", "Report archived."), "ok"); return renderFinancialReports(); })
         .catch(function (err) { domainError(err); busy(el, false); });
     }
     if (action === "conf-grant-create") return createConfGrant(el);
@@ -7647,6 +7734,15 @@
         value_text: valOf("polText") || null,
         description: valOf("polDesc") || null,
       }).then(function () { toast(dual("تم حفظ المسودة.", "Draft saved."), "ok"); return renderPolicies(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "finReportForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/financial-reports", {
+        company_id: parseInt(valOf("frCompany"), 10),
+        period_year: parseInt(valOf("frYear"), 10),
+        period_month: numVal("frMonth"),
+      }).then(function () { toast(dual("تم إعداد التقرير.", "Report prepared."), "ok"); return renderFinancialReports(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "complaintForm") {

@@ -752,6 +752,20 @@ PERMISSION_METADATA: list[dict] = [
     _p(Perm.NOTIFICATION_PREFERENCE_MANAGE, "notifications", "manage",
        "إدارة تفضيلات الإشعارات", "Manage notification preferences",
        "ضبط قنوات الإشعارات لكل نوع حدث.", "Configure notification channels per event type."),
+
+    # ---- S28: monthly financial report ----
+    _p(Perm.FINANCIAL_REPORT_READ, "accounting", "view",
+       "عرض التقرير المالي الشهري", "View the monthly financial report",
+       "عرض التقرير المالي الشهري والقوائم والأرشيف.",
+       "View the monthly financial report, statements and archive."),
+    _p(Perm.FINANCIAL_REPORT_MANAGE, "accounting", "manage",
+       "إعداد التقرير المالي الشهري", "Prepare the monthly financial report",
+       "سحب الحسابات وإضافة التحليل للتقرير المالي الشهري.",
+       "Draw the accounts and add the analysis to the monthly financial report."),
+    _p(Perm.FINANCIAL_REPORT_FINALISE, "accounting", "approve",
+       "اعتماد وأرشفة التقرير المالي", "Finalise or archive the financial report",
+       "اعتماد التقرير المالي الشهري وأرشفته؛ المعتمد لا يُعدّل.",
+       "Finalise or archive the monthly financial report; a finalised report is immutable.", danger=True),
 ]
 
 _METADATA_BY_CODE = {m["code"]: m for m in PERMISSION_METADATA}
