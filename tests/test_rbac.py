@@ -6,6 +6,8 @@ import pytest
 
 from backend.rbac.authorization import (
     accessible_company_ids,
+    can_access_company,
+    can_write_company,
     has_permission,
     is_holding_wide,
     role_permissions,
@@ -120,6 +122,53 @@ def test_holding_wide_user_has_unrestricted_scope(db, make_user):
     assert accessible_company_ids(accountant) is None
 
 
+def test_holding_wide_widens_reads_but_not_writes(db, make_company, make_user):
+    """Holding-wide scope widens *reads* only.
+
+    Being holding-wide means "not confined to a single company", so a holding
+    user reads every company. It is not itself a grant to modify one: a write
+    still needs an explicit ``user_company_access`` row with ``can_write``.
+    This is what stops a holding-wide role with no company grant (a marketer,
+    for instance) from writing outside the companies it was actually given.
+    """
+    alpha = make_company("ALPHA", "ألفا")
+    owner_no_grant = make_user("owner@corp.sa", "holding_owner")
+    marketer = make_user("marketing@corp.sa", "marketing", [alpha])
+
+    # Reads are unrestricted for holding-wide users...
+    assert can_access_company(owner_no_grant, alpha.id) is True
+    assert accessible_company_ids(owner_no_grant) is None
+    # ...but neither is a write grant on its own.
+    assert can_write_company(owner_no_grant, alpha.id) is False
+    # A grant on one company does not leak into another.
+    assert can_write_company(marketer, alpha.id) is True
+
+
+def test_write_grant_is_required_even_for_a_holding_wide_owner(db, make_company, make_user):
+    """The owner writes a company only where it holds an explicit grant."""
+    alpha = make_company("ALPHA", "ألفا")
+    beta = make_company("BETA", "بيتا")
+    owner_alpha_only = make_user("owner@corp.sa", "holding_owner", [alpha])
+
+    assert can_write_company(owner_alpha_only, alpha.id) is True
+    assert can_write_company(owner_alpha_only, beta.id) is False
+
+
+def test_company_scoped_user_needs_an_explicit_write_grant(db, make_company, make_user):
+    """A confined role may only write companies it was granted with can_write."""
+    alpha = make_company("ALPHA", "ألفا")
+    beta = make_company("BETA", "بيتا")
+    reader = make_user("reader@corp.sa", "company_manager", [alpha], can_write=False)
+    writer = make_user("writer@corp.sa", "company_manager", [beta])
+
+    # Read grant without a write grant: may read, may not write.
+    assert can_access_company(reader, alpha.id) is True
+    assert can_write_company(reader, alpha.id) is False
+    # No grant at all for BETA.
+    assert can_write_company(reader, beta.id) is False
+    assert can_write_company(writer, beta.id) is True
+
+
 def test_company_manager_scope_is_its_grants(db, make_company, make_user):
     alpha = make_company("ALPHA", "ألفا")
     make_company("BETA", "بيتا")
@@ -177,7 +226,7 @@ def test_only_owner_can_create_users(client, auth, make_user):
 def test_only_owner_can_create_companies(client, auth, make_user):
     owner = make_user("owner@corp.sa", "holding_owner")
     accountant = make_user("acc@corp.sa", "accountant")
-    payload = {"code": "NEWCO", "name_ar": "شركة جديدة", "name_en": "New Co"}
+    payload = {"code": "NEWCO", "name_ar": "شركة جديدة", "name_en": "New Co", "sector": "تقنية"}
 
     assert client.post("/api/v1/companies", headers=auth(accountant), json=payload).status_code == 403
     assert client.post("/api/v1/companies", headers=auth(owner), json=payload).status_code == 201
@@ -190,7 +239,7 @@ def test_duplicate_company_code_is_rejected(client, auth, make_user, make_compan
     response = client.post(
         "/api/v1/companies",
         headers=auth(owner),
-        json={"code": "DUP", "name_ar": "أخرى", "name_en": "Other"},
+        json={"code": "DUP", "name_ar": "أخرى", "name_en": "Other", "sector": "تقنية"},
     )
 
     assert response.status_code == 409

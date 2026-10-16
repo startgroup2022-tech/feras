@@ -88,6 +88,76 @@ def test_title_is_required(client, world, auth):
 
 
 # --------------------------------------------------------------------------
+# S16/AC-16: a new request reaches the specialist directly and informs BD
+# --------------------------------------------------------------------------
+def _inbox(db, user):
+    from backend.db.models.notifications import Notification
+
+    return (
+        db.query(Notification)
+        .filter(Notification.recipient_id == user.id)
+        .order_by(Notification.id)
+        .all()
+    )
+
+
+def test_new_request_notifies_the_owning_specialist(client, world, auth, db, make_user):
+    designer = make_user("designer.notify@corp.sa", "designer")
+
+    response = client.post(
+        BASE,
+        headers=auth(world["alpha_mgr"]),
+        json={
+            "company_id": world["alpha"].id,
+            "title": "تصميم حملة",
+            "category": SupportCategory.DESIGN.value,
+        },
+    )
+
+    assert response.status_code == 201
+    rows = _inbox(db, designer)
+    assert len(rows) == 1
+    assert rows[0].type == "support.assigned"
+    assert rows[0].entity_type == "support_request"
+    assert rows[0].entity_id == response.json()["id"]
+
+
+def test_new_request_informs_bd_without_gating_it(client, world, auth, db, bd_user):
+    """AC-16: BD is informed for visibility; the request is not pending BD approval."""
+    response = client.post(
+        BASE,
+        headers=auth(world["alpha_mgr"]),
+        json={
+            "company_id": world["alpha"].id,
+            "title": "تصميم حملة",
+            "category": SupportCategory.DESIGN.value,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == SupportStatus.NEW.value
+    rows = _inbox(db, bd_user)
+    assert len(rows) == 1
+    assert rows[0].type == "support.created"
+
+
+def test_requester_is_not_notified_of_its_own_request(client, world, auth, db):
+    """The subsidiary manager who raised the request is not notified of it."""
+    response = client.post(
+        BASE,
+        headers=auth(world["alpha_mgr"]),
+        json={
+            "company_id": world["alpha"].id,
+            "title": "طلب داخلي",
+            "category": SupportCategory.MARKETING.value,
+        },
+    )
+
+    assert response.status_code == 201
+    assert _inbox(db, world["alpha_mgr"]) == []
+
+
+# --------------------------------------------------------------------------
 # visibility
 # --------------------------------------------------------------------------
 def test_manager_sees_only_its_company_requests(client, world, auth):

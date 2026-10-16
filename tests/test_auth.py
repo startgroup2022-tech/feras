@@ -53,6 +53,20 @@ def test_login_rejects_inactive_account(client, db, make_user):
     assert response.status_code == 401
 
 
+def test_deactivating_an_account_blocks_subsequent_requests(client, db, auth, make_user):
+    """AC-25: disabling an account prevents later requests, not just new logins."""
+    user = make_user("owner@holding.sa", "holding_owner")
+    headers = auth(user)
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+    user.is_active = False
+    db.add(user)
+    db.commit()
+
+    blocked = client.get("/api/v1/auth/me", headers=headers)
+    assert blocked.status_code == 401
+
+
 def test_login_validates_email_syntax(client):
     response = client.post(LOGIN, json={"email": "not-an-email", "password": "TestPass!2027"})
 

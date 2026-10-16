@@ -212,13 +212,67 @@ def test_owner_creates_a_company(client, auth, make_user):
     assert body["status"] == "active"
 
 
+def test_company_requires_a_sector(client, auth, make_user):
+    """AC-03: the sector is mandatory; a company cannot be registered without it."""
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    missing = client.post(
+        COMPANIES, headers=auth(owner), json={"code": "NOSEC", "name_ar": "شركة"}
+    )
+    blank = client.post(
+        COMPANIES, headers=auth(owner), json={"code": "BLANK", "name_ar": "شركة", "sector": ""}
+    )
+
+    assert missing.status_code == 422
+    assert blank.status_code == 422
+
+
+def test_company_keeps_founding_and_tracking_dates_apart(client, auth, make_user):
+    """F-01/AC-03: founding date and monitoring-start date are distinct fields."""
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(
+        COMPANIES,
+        headers=auth(owner),
+        json={
+            "code": "DATED",
+            "name_ar": "شركة مؤرخة",
+            "sector": "تقنية",
+            "founded_on": "2015-03-01",
+            "tracking_start_date": "2027-01-01",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["founded_on"] == "2015-03-01"
+    assert body["tracking_start_date"] == "2027-01-01"
+
+    # The two dates persist independently on re-read.
+    fetched = client.get(f"{COMPANIES}/{body['id']}", headers=auth(owner)).json()
+    assert fetched["founded_on"] == "2015-03-01"
+    assert fetched["tracking_start_date"] == "2027-01-01"
+
+
+def test_company_english_name_is_optional(client, auth, make_user):
+    """F-01: only the Arabic name is mandatory."""
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(
+        COMPANIES, headers=auth(owner), json={"code": "ARONLY", "name_ar": "شركة", "sector": "تقنية"}
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["name_en"] is None
+
+
 def test_company_code_is_normalised_to_upper_case(client, auth, make_user):
     owner = make_user("owner@corp.sa", "holding_owner")
 
     response = client.post(
         COMPANIES,
         headers=auth(owner),
-        json={"code": "lower", "name_ar": "شركة", "name_en": "Co"},
+        json={"code": "lower", "name_ar": "شركة", "name_en": "Co", "sector": "تقنية"},
     )
 
     assert response.status_code == 201
@@ -227,7 +281,7 @@ def test_company_code_is_normalised_to_upper_case(client, auth, make_user):
 
 def test_company_code_is_unique(client, auth, make_user):
     owner = make_user("owner@corp.sa", "holding_owner")
-    payload = {"code": "NEWCO", "name_ar": "شركة", "name_en": "Co"}
+    payload = {"code": "NEWCO", "name_ar": "شركة", "name_en": "Co", "sector": "تقنية"}
     client.post(COMPANIES, headers=auth(owner), json=payload)
 
     duplicate = client.post(COMPANIES, headers=auth(owner), json=payload)

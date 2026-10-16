@@ -44,6 +44,14 @@ class NotificationSummaryOut(BaseModel):
     by_type: dict[str, int] = {}
 
 
+class NotificationPreferenceRequest(BaseModel):
+    """D11: a user's channel choice for one event type (all fields optional)."""
+
+    in_app: bool | None = None
+    email: bool | None = None
+    muted: bool | None = None
+
+
 # --------------------------------------------------------------------------
 # analytics
 # --------------------------------------------------------------------------

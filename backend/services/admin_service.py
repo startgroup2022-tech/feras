@@ -211,6 +211,8 @@ def update_company(
         "currency",
         "address",
         "phone",
+        "founded_on",
+        "tracking_start_date",
     )
     for field in editable:
         if field in payload and payload[field] is not None:

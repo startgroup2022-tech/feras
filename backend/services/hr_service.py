@@ -47,6 +47,7 @@ from backend.rbac.authorization import (
 )
 from backend.rbac.permissions import Perm
 from backend.services import audit_service, confidential_access_service
+from backend.services.assessment_criteria import fixed_weight_for_code
 
 
 # --------------------------------------------------------------------------
@@ -147,9 +148,16 @@ def update_employee(
     # Salary fields are sensitive and need the dedicated permission.
     salary_fields = {"base_salary", "housing_allowance", "transport_allowance", "currency"}
     if salary_fields & set(changes) and not _can_read_salary(user):
-        from backend.core.errors import PermissionDeniedError
-
         raise PermissionDeniedError("You may not change salary information.")
+
+    # S11 / AC-11: terminating a *subsidiary* employee is within the manager's
+    # authority, but terminating a Holding employee must be approved by the owner
+    # and cannot bypass that decision.
+    if changes.get("status") == EmployeeStatus.TERMINATED.value and _is_holding_employee(db, employee):
+        if not confidential_access_service.is_confidential_owner(user):
+            raise PermissionDeniedError(
+                "Terminating a Holding employee requires the owner's approval."
+            )
 
     for key, value in changes.items():
         if value is not None and hasattr(employee, key):
@@ -176,6 +184,22 @@ def _can_read_salary(user: User) -> bool:
     from backend.rbac.authorization import has_permission
 
     return has_permission(user, Perm.EMPLOYEE_SALARY_READ)
+
+
+def _is_holding_employee(db: Session, employee: Employee) -> bool:
+    """True when the employee belongs to the Holding entity itself.
+
+    S11 draws a distinction between a subsidiary employee (the manager's
+    authority) and a Holding employee (whose appointment/termination the owner
+    approves). The holding is the company whose ``company_type`` is ``holding``.
+    """
+    from backend.db.models.enums import CompanyType
+    from backend.db.models.identity import Company
+
+    if employee.company_id is None:
+        return False
+    row = db.get(Company, employee.company_id)
+    return row is not None and row.company_type == CompanyType.HOLDING.value
 
 
 def serialise_employee(employee: Employee, *, include_salary: bool) -> dict:
@@ -423,6 +447,13 @@ def set_assessment_item(
             f"Score must be between {ASSESSMENT_SCORE_MIN} and {ASSESSMENT_SCORE_MAX}."
         )
 
+    # AC-12: a criterion drawn from the role catalogue carries a *fixed* weight.
+    # The supplied weight is ignored for such a criterion, so the weight cannot
+    # be changed by accident (or by an out-of-band client).
+    fixed_weight = fixed_weight_for_code(criterion_code)
+    if fixed_weight is not None:
+        weight = fixed_weight
+
     item = db.execute(
         select(AssessmentItem).where(
             AssessmentItem.assessment_id == assessment.id,
@@ -495,6 +526,43 @@ def approve_assessment(
     audit_service.record(
         db,
         action=AuditAction.ASSESSMENT_APPROVED,
+        actor_user_id=user.id,
+        entity_type="assessment",
+        entity_id=assessment.id,
+        company_id=assessment.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return assessment
+
+
+def save_owner_note(
+    db: Session, *, user: User, assessment_id: int, note: str | None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> Assessment:
+    """S23/AC-23: the owner saves a private note on a leadership assessment.
+
+    The note is confidential context for later periods ("ملاحظات المالك — نص
+    سري / سياق لاحق"). Only the confidential owner may write it, and the note
+    text is deliberately **not** placed in the audit payload so a secret never
+    reaches a shared activity log.
+    """
+    require_permission(user, Perm.ASSESSMENT_MANAGE)
+    assessment = _get_assessment(db, user=user, assessment_id=assessment_id)
+    if assessment.assessment_type != AssessmentType.LEADERSHIP.value:
+        raise ValidationError("Owner notes apply to confidential leadership assessments only.")
+    if not confidential_access_service.is_confidential_owner(user):
+        raise PermissionDeniedError("Only the owner may save a confidential note.")
+
+    assessment.owner_note = note
+    assessment.owner_note_at = utcnow()
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+
+    audit_service.record(
+        db,
+        action=AuditAction.ASSESSMENT_OWNER_NOTE_SAVED,
         actor_user_id=user.id,
         entity_type="assessment",
         entity_id=assessment.id,
@@ -600,8 +668,8 @@ def list_assessments(
     return list(db.execute(stmt).scalars())
 
 
-def serialise_assessment(assessment: Assessment) -> dict:
-    return {
+def serialise_assessment(assessment: Assessment, *, include_owner_note: bool = False) -> dict:
+    data = {
         "id": assessment.id,
         "company_id": assessment.company_id,
         "employee_id": assessment.employee_id,
@@ -632,3 +700,8 @@ def serialise_assessment(assessment: Assessment) -> dict:
             for item in assessment.items
         ],
     }
+    # S23/AC-23: the owner's secret note is only ever returned to the owner.
+    if include_owner_note:
+        data["owner_note"] = assessment.owner_note
+        data["owner_note_at"] = assessment.owner_note_at
+    return data

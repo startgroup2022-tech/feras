@@ -1,7 +1,7 @@
 # Safir Holding 2027 — backend runtime dependencies.
 # Phase 1: FastAPI + SQLAlchemy + Alembic, JWT auth, SQLite for local dev.
 
-fastapi==0.115.6
+fastapi==0.143.3
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.36
 alembic==1.14.0
@@ -17,7 +17,11 @@ email-validator==2.2.0
 psycopg[binary]==3.3.6
 
 # Auth
-PyJWT==2.10.1
+# PyJWT 2.10.1 and python-multipart 0.0.20 carried published advisories
+# (JWT handling; multipart/urlencoded DoS and parser differential); FastAPI
+# 0.115.6 pulled starlette 0.41.3, which had Range-header DoS and form-limit
+# bypass advisories. These pins are the first patched releases in the 1.x line.
+PyJWT==2.15.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
-python-multipart==0.0.20
+python-multipart==0.0.32

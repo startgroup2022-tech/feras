@@ -14,10 +14,11 @@ from backend.api.deps import CurrentUser, DbSession, require
 from backend.rbac.permissions import Perm
 from backend.schemas import (
     NotificationOut,
+    NotificationPreferenceRequest,
     NotificationSummaryOut,
     PageOut,
 )
-from backend.services import notification_service
+from backend.services import notification_preference_service, notification_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -75,3 +76,39 @@ def scan_documents(
     timer) or triggered by an administrator without a background worker.
     """
     return notification_service.scan_document_expiry(db, actor_user_id=actor.id)
+
+
+# ---- D11: channel preferences and delivery log ----
+@router.get("/preferences")
+def list_preferences(db: DbSession, user: CurrentUser) -> dict:
+    """The caller's own channel preferences (never another user's)."""
+    rows = notification_preference_service.list_preferences(db, user=user)
+    return {
+        "items": [notification_preference_service.serialise_preference(p) for p in rows],
+        "event_types": sorted(notification_preference_service.VALID_EVENT_TYPES),
+    }
+
+
+@router.put("/preferences/{event_type}")
+def set_preference(
+    event_type: str, payload: NotificationPreferenceRequest,
+    db: DbSession, user: CurrentUser,
+) -> dict:
+    """Set the caller's channel choice for one event type (``*`` = default)."""
+    pref = notification_preference_service.set_preference(
+        db, user=user, event_type=event_type,
+        in_app=payload.in_app, email=payload.email, muted=payload.muted,
+    )
+    return notification_preference_service.serialise_preference(pref)
+
+
+@router.get("/deliveries")
+def delivery_log(
+    db: DbSession, user: CurrentUser,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    """The caller's own delivery log (status, attempts, minimised excerpt)."""
+    return notification_preference_service.list_delivery_log(
+        db, user=user, limit=limit, offset=offset
+    )

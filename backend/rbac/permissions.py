@@ -220,11 +220,18 @@ class Perm:
     INVOICE_READ = "invoice.read"
     INVOICE_MANAGE = "invoice.manage"
     SETTLEMENT_MANAGE = "settlement.manage"
+    PARTY_READ = "party.read"
+    PARTY_MANAGE = "party.manage"
+    INTERBALANCE_READ = "interbalance.read"
+    INTERBALANCE_MANAGE = "interbalance.manage"
     ASSET_READ = "asset.read"
     ASSET_MANAGE = "asset.manage"
     BUDGET_READ = "budget.read"
     BUDGET_MANAGE = "budget.manage"
     BUDGET_APPROVE = "budget.approve"
+    POLICY_READ = "accounting_policy.read"
+    POLICY_MANAGE = "accounting_policy.manage"
+    POLICY_APPROVE = "accounting_policy.approve"
     # KPIs / management reports (S21 / D02)
     KPI_READ = "kpi.read"
     KPI_MANAGE = "kpi.manage"
@@ -232,6 +239,10 @@ class Perm:
     NOTIFICATION_PREFERENCE_MANAGE = "notification.preference.manage"
     # Confidential delegated access (D04)
     CONFIDENTIAL_ACCESS_MANAGE = "confidential_access.manage"
+    # S28: the monthly financial report and its archive
+    FINANCIAL_REPORT_READ = "financial_report.read"
+    FINANCIAL_REPORT_MANAGE = "financial_report.manage"
+    FINANCIAL_REPORT_FINALISE = "financial_report.finalise"
 
 
 
@@ -384,11 +395,18 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.INVOICE_READ: "View invoices and receivables",
     Perm.INVOICE_MANAGE: "Create and edit invoices",
     Perm.SETTLEMENT_MANAGE: "Record invoice settlements",
+    Perm.PARTY_READ: "View customers and suppliers",
+    Perm.PARTY_MANAGE: "Manage the customer and supplier directory",
+    Perm.INTERBALANCE_READ: "View inter-company balances",
+    Perm.INTERBALANCE_MANAGE: "Record inter-company balances",
     Perm.ASSET_READ: "View assets",
     Perm.ASSET_MANAGE: "Manage assets",
     Perm.BUDGET_READ: "View budgets",
     Perm.BUDGET_MANAGE: "Create and edit budgets",
     Perm.BUDGET_APPROVE: "Approve a budget",
+    Perm.POLICY_READ: "View approved accounting policies",
+    Perm.POLICY_MANAGE: "Draft accounting policies",
+    Perm.POLICY_APPROVE: "Approve an accounting policy",
     Perm.KPI_READ: "View KPI definitions and results",
     Perm.KPI_MANAGE: "Manage KPI definitions",
     Perm.NOTIFICATION_PREFERENCE_MANAGE: "Change your notification preferences",
@@ -397,6 +415,9 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.MANAGEMENT_BRIEF_READ: "View the BD management brief",
     Perm.MANAGEMENT_BRIEF_SUBMIT: "Author and submit the BD management brief",
     Perm.REPORT_CLARIFY: "Raise or answer a report clarification",
+    Perm.FINANCIAL_REPORT_READ: "View the monthly financial report",
+    Perm.FINANCIAL_REPORT_MANAGE: "Generate and annotate the monthly financial report",
+    Perm.FINANCIAL_REPORT_FINALISE: "Finalise or archive a monthly financial report",
 }
 
 
@@ -768,7 +789,11 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.INVOICE_READ,
     Perm.ASSET_READ,
     Perm.BUDGET_READ,
+    Perm.PARTY_READ,
+    Perm.INTERBALANCE_READ,
     Perm.KPI_MANAGE,
+    # S28 Table 80: BD reads the holding's financial reports (read-only).
+    Perm.FINANCIAL_REPORT_READ,
 }
 
 # Accountant: the holding accounts surface (D01) plus budget approval input.
@@ -776,6 +801,11 @@ ACCOUNTANT_EXT = {
     # S21: the accountant reads the management brief (the spec lists the
     # accountant's financial reports alongside it), but does not author it.
     Perm.MANAGEMENT_BRIEF_READ,
+    # S07 / AC-07: the spec gives form-and-field (incl. special-item) item
+    # configuration to the owner *and* the accountant. Without this the
+    # accountant cannot create the item definitions the special-item screen
+    # requires.
+    Perm.FINANCIAL_ITEM_MANAGE,
     Perm.OPENING_BALANCE_READ,
     Perm.OPENING_BALANCE_MANAGE,
     Perm.OPENING_BALANCE_APPROVE,
@@ -788,15 +818,27 @@ ACCOUNTANT_EXT = {
     Perm.INVOICE_READ,
     Perm.INVOICE_MANAGE,
     Perm.SETTLEMENT_MANAGE,
+    Perm.PARTY_READ,
+    Perm.PARTY_MANAGE,
+    Perm.INTERBALANCE_READ,
+    Perm.INTERBALANCE_MANAGE,
     Perm.ASSET_READ,
     Perm.ASSET_MANAGE,
     Perm.BUDGET_READ,
     Perm.BUDGET_MANAGE,
+    # D01: the accountant drafts and approves accounting policy.
+    Perm.POLICY_READ,
+    Perm.POLICY_MANAGE,
+    Perm.POLICY_APPROVE,
     Perm.TASK_READ_OWN,
     Perm.TASK_STATUS_CHANGE,
     Perm.WEEKLY_REPORT_READ_OWN,
     Perm.WEEKLY_REPORT_SUBMIT,
     Perm.KPI_READ,
+    # S28: the accountant owns the monthly financial report.
+    Perm.FINANCIAL_REPORT_READ,
+    Perm.FINANCIAL_REPORT_MANAGE,
+    Perm.FINANCIAL_REPORT_FINALISE,
 }
 
 # Marketing: campaigns and confidential complaint submission (D02/D04).
@@ -834,6 +876,8 @@ COMPANY_MANAGER_EXT = {
     Perm.OPENING_BALANCE_MANAGE,
     Perm.OWNER_DECISION_READ,
     Perm.KPI_READ,
+    # S28: a company-scoped manager reads its own company's financial report.
+    Perm.FINANCIAL_REPORT_READ,
 }
 
 # External Consultant (S19 / D04): only explicitly granted data; no ledger, no
@@ -865,7 +909,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         Perm.ASSET_READ,
         Perm.BUDGET_READ,
         Perm.KPI_READ,
+        Perm.PARTY_READ,
+        Perm.INTERBALANCE_READ,
         Perm.TASK_READ_OWN,
+        # S28: the finance manager reads the holding's financial reports.
+        Perm.FINANCIAL_REPORT_READ,
     },
     RoleCode.HR_MANAGER.value: HR_MANAGER | {
         Perm.EMPLOYEE_READ,

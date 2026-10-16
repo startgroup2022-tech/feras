@@ -18,6 +18,7 @@ from backend.db.models.enums import (
     AssignmentType,
     DocumentStatus,
     FieldType,
+    FormFieldScope,
     FormScope,
     FormStatus,
     RequirementType,
@@ -88,6 +89,10 @@ class FormFieldOut(BaseModel):
     is_active: bool
     display_order: int
     default_value: str | None = None
+    # S07 Table 18 ``نطاق الظهور``.
+    scope: FormFieldScope = FormFieldScope.ALL
+    scope_sector: str | None = None
+    scope_company_id: int | None = None
     config: dict | None = None
 
 
@@ -104,6 +109,9 @@ class FormFieldIn(BaseModel):
     is_active: bool = True
     display_order: int = 0
     default_value: str | None = Field(default=None, max_length=4000)
+    scope: FormFieldScope = FormFieldScope.ALL
+    scope_sector: str | None = Field(default=None, max_length=120)
+    scope_company_id: int | None = None
     config: dict[str, Any] | None = None
 
 
@@ -118,6 +126,9 @@ class FormFieldUpdateRequest(BaseModel):
     is_active: bool | None = None
     display_order: int | None = None
     default_value: str | None = Field(default=None, max_length=4000)
+    scope: FormFieldScope | None = None
+    scope_sector: str | None = Field(default=None, max_length=120)
+    scope_company_id: int | None = None
     config: dict[str, Any] | None = None
 
 

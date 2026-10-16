@@ -22,6 +22,7 @@ from backend.db.models.enums import (
     CampaignStatus,
     EmployeeMovementType,
     EmployeeStatus,
+    InvoiceDirection,
     JournalStatus,
     ManagementBriefUrgency,
     MovementStatus,
@@ -64,6 +65,7 @@ class OpeningBalanceOut(BaseModel):
     cash: Decimal | None
     receivables: Decimal | None
     debts: Decimal | None
+    total_cash: Decimal | None = None
     source_summary_version_id: int | None
     notes: str | None
     approved_by_id: int | None
@@ -143,6 +145,12 @@ class AssessmentItemRequest(BaseModel):
     evidence_text: str | None = Field(default=None, max_length=4000)
     evidence_complete: bool = False
     comment: str | None = Field(default=None, max_length=2000)
+
+
+class AssessmentOwnerNoteRequest(BaseModel):
+    """S23/AC-23: the owner's private note ("ملاحظات المالك — نص سري")."""
+
+    note: str | None = Field(default=None, max_length=4000)
 
 
 # --------------------------------------------------------------------------
@@ -288,6 +296,12 @@ class OwnerDecisionUpdateRequest(BaseModel):
     follow_up_note: str | None = Field(default=None, max_length=4000)
 
 
+class OwnerDecisionRespondRequest(BaseModel):
+    """S22: the named executor's execution reply to a directive."""
+
+    note: str = Field(min_length=1, max_length=4000)
+
+
 # --------------------------------------------------------------------------
 # projects & opportunities (S20)
 # --------------------------------------------------------------------------
@@ -399,6 +413,8 @@ class InvoiceCreateRequest(BaseModel):
     company_id: int
     number: str = Field(min_length=1, max_length=60)
     party_name: str = Field(min_length=1, max_length=200)
+    direction: InvoiceDirection = InvoiceDirection.ISSUED
+    party_id: int | None = None
     lines: list[InvoiceLineIn] = Field(default_factory=list)
     currency: str = Field(default="SAR", max_length=8)
     issue_date: date | None = None
@@ -407,10 +423,36 @@ class InvoiceCreateRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class PartyCreateRequest(BaseModel):
+    company_id: int
+    name: str = Field(min_length=1, max_length=200)
+    name_en: str | None = Field(default=None, max_length=200)
+    party_type: str = Field(default="customer", max_length=20)
+    currency: str = Field(default="SAR", max_length=8)
+    contact: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class InterbalanceCreateRequest(BaseModel):
+    company_id: int
+    counterparty_company_id: int | None = None
+    counterparty_name: str | None = Field(default=None, max_length=200)
+    currency: str = Field(default="SAR", max_length=8)
+    amount: Decimal
+    reason: str | None = Field(default=None, max_length=2000)
+    journal_reference: str | None = Field(default=None, max_length=120)
+
+
 class SettlementCreateRequest(BaseModel):
     amount: Decimal
     settled_on: date | None = None
     reference: str | None = Field(default=None, max_length=120)
+
+
+class InvoiceJournalLinkRequest(BaseModel):
+    """S27/AC-27: attach the single ledger entry that records the invoice."""
+
+    journal_id: int
 
 
 class AssetCreateRequest(BaseModel):
@@ -438,6 +480,21 @@ class BudgetApproveRequest(BaseModel):
     source: str | None = Field(default=None, max_length=200)
 
 
+class FinancialReportGenerateRequest(BaseModel):
+    """S28: draw the accounts for a company and month into a report draft."""
+
+    company_id: int
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    currency: str = Field(default="SAR", max_length=8)
+
+
+class FinancialReportAnalysisRequest(BaseModel):
+    """S28 Table 57: the accountant's added analysis."""
+
+    analysis: str | None = Field(default=None, max_length=8000)
+
+
 class KpiCreateRequest(BaseModel):
     code: str = Field(min_length=1, max_length=60, pattern=_CODE)
     name_ar: str = Field(min_length=1, max_length=200)
@@ -448,3 +505,33 @@ class KpiCreateRequest(BaseModel):
     name_en: str | None = Field(default=None, max_length=200)
     unit: str | None = Field(default=None, max_length=40)
     target_value: Decimal | None = None
+    metric_key: str | None = Field(default=None, max_length=60)
+    direction: str | None = Field(default=None, pattern="^(up|down)$")
+
+
+class KpiUpdateRequest(BaseModel):
+    """D02 configuration patch. Never changes the active (approved) state."""
+
+    target_value: Decimal | None = None
+    metric_key: str | None = Field(default=None, max_length=60)
+    direction: str | None = Field(default=None, pattern="^(up|down)$")
+    name_en: str | None = Field(default=None, max_length=200)
+    unit: str | None = Field(default=None, max_length=40)
+
+
+class KpiActiveRequest(BaseModel):
+    """Activation is the approval record (D02) — recorded, never assumed."""
+
+    active: bool
+
+
+class PolicyCreateRequest(BaseModel):
+    """D01: a draft accounting policy. Approval is a separate accountant act."""
+
+    kind: str = Field(pattern="^(tax|fiscal_year|invoice|asset|currency)$")
+    company_id: int | None = None
+    value: Decimal | None = None
+    value_text: str | None = Field(default=None, max_length=300)
+    currency: str | None = Field(default=None, max_length=8)
+    description: str | None = Field(default=None, max_length=2000)
+    effective_from: date | None = None

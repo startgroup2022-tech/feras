@@ -28,6 +28,15 @@ from backend.rbac.authorization import accessible_company_ids
 
 ZERO = Decimal("0")
 
+_EMPTY_TOTALS = (
+    "effective_revenue",
+    "effective_expenses",
+    "calculated_result",
+    "total_cash",
+    "outstanding_debts",
+    "customer_receivables",
+)
+
 # The status precedence used to classify a period that has several versions.
 _STATUS_PRECEDENCE = [
     FinancialSummaryStatus.APPROVED.value,
@@ -69,14 +78,13 @@ def effective_period_report(
     }
 
     rows: list[dict] = []
-    totals = {
-        "effective_revenue": ZERO,
-        "effective_expenses": ZERO,
-        "calculated_result": ZERO,
-        "total_cash": ZERO,
-        "outstanding_debts": ZERO,
-        "customer_receivables": ZERO,
-    }
+    # AC-10 / T10: "a currency difference separates the results". Amounts are
+    # only ever summed inside one currency, so the group strip can never add a
+    # SAR revenue to a USD one. ``totals`` keeps the familiar single-currency
+    # shape when every contributing company shares a currency; with two or more
+    # currencies it carries no number at all (``None``, not a mixed sum) and the
+    # per-currency breakdown in ``totals_by_currency`` is the real answer.
+    totals_by_currency: dict[str, dict[str, Decimal]] = {}
     counts = {
         "approved": 0,
         "submitted": 0,
@@ -84,6 +92,19 @@ def effective_period_report(
         "draft": 0,
         "missing": 0,
     }
+
+    def _bucket(currency: str) -> dict[str, Decimal]:
+        return totals_by_currency.setdefault(
+            currency or "",
+            {
+                "effective_revenue": ZERO,
+                "effective_expenses": ZERO,
+                "calculated_result": ZERO,
+                "total_cash": ZERO,
+                "outstanding_debts": ZERO,
+                "customer_receivables": ZERO,
+            },
+        )
 
     for company in companies:
         period = periods.get(company.id)
@@ -115,18 +136,31 @@ def effective_period_report(
         rows.append(row)
 
         if effective is not None:
-            totals["effective_revenue"] += effective.effective_revenue or ZERO
-            totals["effective_expenses"] += effective.effective_expenses or ZERO
-            totals["calculated_result"] += effective.calculated_result or ZERO
-            totals["total_cash"] += effective.calculated_total_cash or ZERO
-            totals["outstanding_debts"] += effective.outstanding_debts or ZERO
-            totals["customer_receivables"] += effective.customer_receivables or ZERO
+            bucket = _bucket(row["currency"])
+            bucket["effective_revenue"] += effective.effective_revenue or ZERO
+            bucket["effective_expenses"] += effective.effective_expenses or ZERO
+            bucket["calculated_result"] += effective.calculated_result or ZERO
+            bucket["total_cash"] += effective.calculated_total_cash or ZERO
+            bucket["outstanding_debts"] += effective.outstanding_debts or ZERO
+            bucket["customer_receivables"] += effective.customer_receivables or ZERO
+
+    currencies = sorted(c for c in totals_by_currency if c)
+    single = currencies[0] if len(currencies) == 1 else None
+    if single is not None:
+        totals = {k: str(v) for k, v in totals_by_currency[single].items()}
+    else:
+        # Two or more currencies (or none at all): never present a mixed sum.
+        totals = {k: None for k in _EMPTY_TOTALS}
 
     return {
         "period_year": year,
         "period_month": month,
         "companies": rows,
         "totals": totals,
+        "totals_by_currency": {
+            c: {k: str(v) for k, v in values.items()}
+            for c, values in sorted(totals_by_currency.items())
+        },
         "counts": counts,
     }
 

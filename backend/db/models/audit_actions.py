@@ -75,6 +75,7 @@ class AuditAction:
     # ai
     AI_CONVERSATION_STARTED = "ai.conversation_started"
     AI_MESSAGE_SENT = "ai.message_sent"
+    AI_TEXT_ORGANIZED = "ai.text_organized"
 
     # Phase 3: dynamic forms builder
     FORM_CREATED = "form.created"
@@ -189,6 +190,7 @@ class AuditAction:
     ASSESSMENT_UPDATED = "assessment.updated"
     ASSESSMENT_APPROVED = "assessment.approved"
     ASSESSMENT_APPROVAL_BLOCKED = "assessment.approval_blocked"
+    ASSESSMENT_OWNER_NOTE_SAVED = "assessment.owner_note_saved"
 
     TASK_CREATED = "task.created"
     TASK_UPDATED = "task.updated"
@@ -211,6 +213,7 @@ class AuditAction:
 
     OWNER_DECISION_CREATED = "owner_decision.created"
     OWNER_DECISION_UPDATED = "owner_decision.updated"
+    OWNER_DECISION_RESPONDED = "owner_decision.responded"
 
     # S21: the BD five-axis management brief.
     MANAGEMENT_BRIEF_CREATED = "management_brief.created"
@@ -231,7 +234,11 @@ class AuditAction:
     JOURNAL_REVERSED = "journal.reversed"
     INVOICE_CREATED = "invoice.created"
     INVOICE_UPDATED = "invoice.updated"
+    INVOICE_JOURNAL_LINKED = "invoice.journal_linked"
     SETTLEMENT_RECORDED = "settlement.recorded"
+    PARTY_CREATED = "party.created"
+    PARTY_UPDATED = "party.updated"
+    INTERBALANCE_RECORDED = "interbalance.recorded"
     ASSET_CREATED = "asset.created"
     ASSET_UPDATED = "asset.updated"
     BUDGET_CREATED = "budget.created"
@@ -239,3 +246,14 @@ class AuditAction:
     BUDGET_APPROVED = "budget.approved"
     KPI_CREATED = "kpi.created"
     KPI_UPDATED = "kpi.updated"
+    KPI_APPROVED = "kpi.approved"
+    KPI_ACTIVATED = "kpi.activated"
+    KPI_DEACTIVATED = "kpi.deactivated"
+    POLICY_CREATED = "accounting_policy.created"
+    POLICY_APPROVED = "accounting_policy.approved"
+
+    # S28: the monthly financial report (generated from the ledger, finalised).
+    FINANCIAL_REPORT_GENERATED = "monthly_financial_report.generated"
+    FINANCIAL_REPORT_ANALYSIS_UPDATED = "monthly_financial_report.analysis_updated"
+    FINANCIAL_REPORT_FINALISED = "monthly_financial_report.finalised"
+    FINANCIAL_REPORT_ARCHIVED = "monthly_financial_report.archived"

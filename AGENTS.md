@@ -54,6 +54,13 @@ Request flow: `api/v1/*` (thin routers) â†’ `services/*` (all business rules) â†
   build responses; repositories own scoping queries.
 - **Isolation**: "not yours" and "does not exist" both return 404. Never reveal
   that an out-of-scope record exists.
+- **Write access is always an explicit grant**: `can_write_company` requires a
+  `user_company_access` row with `can_write`. Holding-wide scope (`is_holding_wide`)
+  widens *reads* only - it is not itself a write grant. So a holding-wide role
+  with no company grant (a marketer, say) cannot write any company. Do not
+  "fix" a 403 here by widening the check; grant the company instead
+  (`scripts/seed_demo.py`). Tests: `tests/test_rbac.py`,
+  `tests/test_holding_domain.py::test_campaign_write_requires_company_access`.
 - **Pydantic v2 gotcha**: `field_validator` does **not** run on fields left at
   their default, so cross-field rules (e.g. `flagged_reason` required when
   `is_financially_accurate=False`) must use `model_validator(mode="after")`.

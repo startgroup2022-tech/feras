@@ -63,16 +63,22 @@ EDITABLE_STATUSES = {
 # value validation
 # --------------------------------------------------------------------------
 def validate_values(
-    db: Session, version: FormVersion, values: dict | None, *, partial: bool
+    db: Session, version: FormVersion, values: dict | None, *, partial: bool, company=None
 ) -> dict:
     """Validate/normalise submitted values against a form version.
 
     ``partial`` is used for drafts: missing required fields are tolerated, but
     any present value is still type-checked. On submit, ``partial`` is False
     and every required field must be present and non-empty.
+
+    When ``company`` is supplied, only the fields that apply to that company
+    are considered (S07 ``نطاق الظهور`` / AC-07): a sector- or company-scoped
+    field is neither required nor accepted for a company it does not apply to.
     """
     values = values or {}
     fields = [f for f in version.fields if f.is_active]
+    if company is not None:
+        fields = [f for f in fields if f.applies_to_company(company)]
     by_key = {f.key: f for f in fields}
     errors: list[str] = []
 
@@ -487,7 +493,10 @@ def create_submission(
     require_company_access(actor, company_id, write=True)
     _assert_form_available_to_company(db, form, company_id)
 
-    values = validate_values(db, version, payload.get("values"), partial=True)
+    company = db.get(Company, company_id)
+    values = validate_values(
+        db, version, payload.get("values"), partial=True, company=company
+    )
 
     submission = FormSubmission(
         reference="PENDING",  # replaced after flush once the id exists
@@ -576,7 +585,13 @@ def update_submission(
 
     version = db.get(FormVersion, submission.form_version_id)
     if payload.get("values") is not None:
-        submission.values = validate_values(db, version, payload["values"], partial=True)
+        submission.values = validate_values(
+            db,
+            version,
+            payload["values"],
+            partial=True,
+            company=db.get(Company, submission.company_id),
+        )
     if payload.get("title") is not None:
         submission.title = payload["title"]
     if payload.get("department_id") is not None:
@@ -699,7 +714,13 @@ def submit_submission(
 
     version = db.get(FormVersion, submission.form_version_id)
     # Full validation on submit (drafts were only partially validated).
-    submission.values = validate_values(db, version, submission.values, partial=False)
+    submission.values = validate_values(
+        db,
+        version,
+        submission.values,
+        partial=False,
+        company=db.get(Company, submission.company_id),
+    )
 
     results = evaluate_requirements(db, submission)
     unmet = mandatory_unmet(db, submission)

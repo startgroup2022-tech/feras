@@ -123,6 +123,13 @@ class WebsiteLead(Base, TimestampMixin):
     routed_company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # The marketing campaign that produced the lead (S13/S14, spec §18). A
+    # foreign key, never a copy of the campaign's name, so a lead is *linked*
+    # to its campaign. Campaigns live in ``operations.py``; the FK is by name to
+    # avoid an import cycle, matching the rest of this module.
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     final_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     contacted_at: Mapped[datetime | None] = mapped_column(

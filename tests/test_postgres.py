@@ -134,11 +134,12 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the management reports & clarifications (S21/S02/
-    # S09) build on the advisor monthly reports (S19), which build on the
-    # support design metadata and external delivery (S16), which builds on the
-    # projects & opportunities register (S20), which builds on the
-    # motivational sentence library (S01), which builds on the
+    # A single linear chain: the lead-to-campaign link (S13/S14) builds on the
+    # owner secret note (S23), which builds on the management reports &
+    # clarifications (S21/S02/S09), which build on the advisor monthly reports
+    # (S19), which build on the support design metadata and external delivery
+    # (S16), which builds on the projects & opportunities register (S20), which
+    # builds on the motivational sentence library (S01), which builds on the
     # organisational positions (S24), which build on the managed sector
     # catalogue, which builds on the Executions 04-14 holding-business domain,
     # which builds on the Execution 02 financial workflow, which builds on the
@@ -146,7 +147,17 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the bilingual role description, which builds on branding, which builds on
     # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
     # on phase 2, which builds on the initial schema -- no branches.
-    assert head == "f1a2b3c4d5e6"
+    assert head == "d6e7f8a9b0c1"
+    assert revisions["d6e7f8a9b0c1"] == "c5d6e7f8a9b0"
+    assert revisions["c5d6e7f8a9b0"] == "b4c5d6e7f8a9"
+    assert revisions["b4c5d6e7f8a9"] == "a3b4c5d6e7f8"
+    assert revisions["a3b4c5d6e7f8"] == "f2b3c4d5e6a7"
+    assert revisions["f2b3c4d5e6a7"] == "e6f7a8b9c0d1"
+    assert revisions["e6f7a8b9c0d1"] == "d4e5f6a7b8c9"
+    assert revisions["d4e5f6a7b8c9"] == "c3d4e5f6a7b8"
+    assert revisions["c3d4e5f6a7b8"] == "b1c2d3e4f5a6"
+    assert revisions["b1c2d3e4f5a6"] == "a2b3c4d5e6f7"
+    assert revisions["a2b3c4d5e6f7"] == "f1a2b3c4d5e6"
     assert revisions["f1a2b3c4d5e6"] == "e3f4a5b6c7d8"
     assert revisions["e3f4a5b6c7d8"] == "d2e3f4a5b6c7"
     assert revisions["d2e3f4a5b6c7"] == "c9d0e1f2a3b4"

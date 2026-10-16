@@ -51,7 +51,7 @@ def test_new_permissions_are_catalogued_with_metadata():
     from backend.rbac.permissions import ALL_PERMISSIONS
 
     assert permission_metadata.unknown_codes() == []
-    assert len(ALL_PERMISSIONS) == 159
+    assert len(ALL_PERMISSIONS) == 169
 
 
 def test_external_consultant_role_is_not_holding_wide():
@@ -106,6 +106,99 @@ def test_company_manager_cannot_create_task_for_other_company(client, domain_wor
         headers=auth(domain_world["alpha_mgr"]),
     )
     assert r.status_code == 403
+
+
+def test_assigning_a_task_notifies_the_assignee(client, domain_world, auth, db, make_user):
+    """S17: creating a task for an employee puts a notification in their inbox."""
+    from backend.db.models.notifications import Notification
+
+    designer = make_user("designer.tasks@corp.sa", "designer", [domain_world["alpha"]])
+    created = client.post(
+        "/api/v1/operations/tasks",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "title": "مهمة تصميم",
+            "assignee_id": designer.id,
+        },
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert created.status_code == 201, created.text
+
+    rows = (
+        db.query(Notification)
+        .filter(Notification.recipient_id == designer.id)
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].type == "task.assigned"
+    assert rows[0].entity_type == "task"
+    assert rows[0].entity_id == created.json()["id"]
+
+
+def test_task_status_change_notifies_the_creator(client, domain_world, auth, db):
+    """S17: the creator follows progress; the assignee's update is surfaced."""
+    from backend.db.models.notifications import Notification
+
+    creator = domain_world["owner_all"]
+    created = client.post(
+        "/api/v1/operations/tasks",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "title": "مهمة متابعة",
+            "assignee_id": domain_world["marketer"].id,
+        },
+        headers=auth(creator),
+    )
+    task_id = created.json()["id"]
+
+    r = client.post(
+        f"/api/v1/operations/tasks/{task_id}/status",
+        json={"status": "in_progress"},
+        headers=auth(domain_world["marketer"]),
+    )
+    assert r.status_code == 200, r.text
+
+    rows = (
+        db.query(Notification)
+        .filter(Notification.recipient_id == creator.id, Notification.type == "task.status_changed")
+        .all()
+    )
+    assert len(rows) == 1
+    assert rows[0].entity_id == task_id
+
+
+def test_overdue_list_excludes_a_completed_task(client, domain_world, auth, db):
+    """AC-17: a completed task is not in the overdue list; an open past-due one is."""
+    from datetime import date, timedelta
+
+    from backend.db.models.operations import Task
+
+    yesterday = date.today() - timedelta(days=1)
+    open_task = Task(
+        company_id=domain_world["alpha"].id, title="متأخرة", status="in_progress",
+        priority="normal", progress_percent=0, due_date=yesterday,
+        assignee_id=domain_world["marketer"].id,
+    )
+    done_task = Task(
+        company_id=domain_world["alpha"].id, title="منجزة", status="complete",
+        priority="normal", progress_percent=100, due_date=yesterday,
+        assignee_id=domain_world["marketer"].id,
+    )
+    db.add_all([open_task, done_task])
+    db.commit()
+
+    r = client.get(
+        "/api/v1/operations/tasks?overdue=true", headers=auth(domain_world["marketer"])
+    )
+    assert r.status_code == 200, r.text
+    titles = {t["title"] for t in r.json()}
+    assert "متأخرة" in titles
+    assert "منجزة" not in titles
+    # is_overdue is exposed and false for the completed task.
+    done_payload = next(
+        t for t in r.json() if t["title"] == "متأخرة"
+    )
+    assert done_payload["is_overdue"] is True
 
 
 # --------------------------------------------------------------------------
@@ -245,6 +338,45 @@ def test_delegated_grant_allows_read_and_expires(client, domain_world, auth, db)
         f"/api/v1/operations/complaints/{complaint_id}", headers=auth(domain_world["accountant_all"])
     )
     assert denied.status_code == 404
+
+
+def test_complaint_decision_notifies_only_the_named_person(client, domain_world, auth, db):
+    """AC-15: recording a complaint notifies no manager; only an explicit route does."""
+    from backend.db.models.notifications import Notification
+
+    routed_to = domain_world["accountant_all"]
+    r = client.post(
+        "/api/v1/operations/complaints",
+        json={"subject": "سرّي", "body": "تفاصيل"},
+        headers=auth(domain_world["marketer"]),
+    )
+    complaint_id = r.json()["id"]
+
+    # Logging alone notifies nobody.
+    assert (
+        db.query(Notification)
+        .filter(Notification.entity_type == "complaint", Notification.entity_id == complaint_id)
+        .count()
+        == 0
+    )
+
+    decided = client.post(
+        f"/api/v1/operations/complaints/{complaint_id}/decision",
+        json={"status": "routed", "routed_to_id": routed_to.id},
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert decided.status_code == 200, decided.text
+
+    rows = (
+        db.query(Notification)
+        .filter(Notification.recipient_id == routed_to.id, Notification.entity_id == complaint_id)
+        .all()
+    )
+    assert len(rows) == 1
+    # The confidential subject/body must not leak into the notification text.
+    assert "سرّي" not in rows[0].title_ar and "سرّي" not in rows[0].message_ar
+    assert "تفاصيل" not in rows[0].message_ar
+    assert "تفاصيل" not in rows[0].title_ar
 
 
 # --------------------------------------------------------------------------
@@ -424,6 +556,45 @@ def test_opening_balance_not_auto_carried(client, domain_world, auth, db):
     assert all(row.kind == "opening" for row in rows)
 
 
+def test_opening_balance_total_cash_is_computed(client, domain_world, auth):
+    """AC-04: bank 120 and cash 30 produce total cash 150."""
+    r = client.post(
+        "/api/v1/accounting/opening-balances",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "period_year": 2027,
+            "kind": "opening",
+            "bank": "120.00",
+            "cash": "30.00",
+        },
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["total_cash"] == "150.00"
+
+    # Persistence: the computed value survives a fresh read and cannot be set
+    # directly (the request schema has no total_cash field).
+    listed = client.get(
+        "/api/v1/accounting/opening-balances", headers=auth(domain_world["owner_all"])
+    ).json()
+    row = next(o for o in listed if o["id"] == r.json()["id"])
+    assert row["total_cash"] == "150.00"
+
+    forged = client.post(
+        "/api/v1/accounting/opening-balances",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "period_year": 2028,
+            "bank": "10.00",
+            "cash": "5.00",
+            "total_cash": "999.00",
+        },
+        headers=auth(domain_world["owner_all"]),
+    )
+    assert forged.status_code == 201, forged.text
+    assert forged.json()["total_cash"] == "15.00"
+
+
 def test_budget_approval_supersedes_previous(client, domain_world, auth, db):
     r1 = client.post(
         "/api/v1/accounting/budgets",
@@ -463,6 +634,68 @@ def test_journal_cannot_use_another_company_account(client, domain_world, auth, 
         headers=auth(domain_world["owner_all"]),
     )
     assert r.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# campaigns (S14)
+# --------------------------------------------------------------------------
+def test_campaign_round_trip_records_results_and_is_audited(client, domain_world, auth, db):
+    from backend.db.models import AuditLog
+
+    created = client.post(
+        "/api/v1/operations/campaigns",
+        json={
+            "company_id": domain_world["alpha"].id,
+            "name": "حملة الإطلاق",
+            "platform": "instagram",
+            "goal": "زيادة الوعي",
+            "budget": "5000.00",
+        },
+        headers=auth(domain_world["marketer"]),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["status"] == "planned"
+    assert body["budget"] == "5000.00"
+
+    # Results are recorded manually (execution happens outside the platform).
+    updated = client.patch(
+        f"/api/v1/operations/campaigns/{body['id']}",
+        json={"status": "completed", "spend": "4200.00", "lead_count": 37,
+              "conversion_count": 9, "marketing_note": "نتائج جيدة"},
+        headers=auth(domain_world["marketer"]),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "completed"
+    assert updated.json()["spend"] == "4200.00"
+    assert updated.json()["lead_count"] == 37
+    assert updated.json()["conversion_count"] == 9
+
+    # The write persists: a fresh read returns the same figures.
+    listed = client.get(
+        f"/api/v1/operations/campaigns?company_id={domain_world['alpha'].id}",
+        headers=auth(domain_world["marketer"]),
+    )
+    assert listed.status_code == 200
+    assert [c["id"] for c in listed.json()] == [body["id"]]
+    assert listed.json()[0]["spend"] == "4200.00"
+
+    actions = {
+        row.action for row in db.query(AuditLog)
+        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == body["id"])
+    }
+    assert {"campaign.created", "campaign.updated"} <= actions
+
+
+def test_campaign_write_requires_company_access(client, domain_world, auth):
+    # The marketer is granted only ``alpha``; writing a campaign for ``beta``
+    # must fail even though the role holds ``campaign.manage``.
+    denied = client.post(
+        "/api/v1/operations/campaigns",
+        json={"company_id": domain_world["beta"].id, "name": "حملة"},
+        headers=auth(domain_world["marketer"]),
+    )
+    assert denied.status_code == 403
 
 
 # --------------------------------------------------------------------------

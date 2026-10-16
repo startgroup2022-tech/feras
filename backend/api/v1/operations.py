@@ -16,6 +16,7 @@ from backend.schemas.domain import (
     ComplaintDecisionRequest,
     ManagementBriefSaveRequest,
     OwnerDecisionCreateRequest,
+    OwnerDecisionRespondRequest,
     OwnerDecisionUpdateRequest,
     ProjectRecordCreateRequest,
     ProjectRecordUpdateRequest,
@@ -34,12 +35,13 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 @router.get("/tasks")
 def list_tasks(
     user: CurrentUser, db: DbSession, company_id: int | None = None,
-    status_filter: str | None = None, mine: bool = False,
+    status_filter: str | None = None, mine: bool = False, overdue: bool = False,
 ) -> list[dict]:
     return [
         operations_service.serialise_task(t)
         for t in operations_service.list_tasks(
-            db, user=user, company_id=company_id, status=status_filter, mine=mine
+            db, user=user, company_id=company_id, status=status_filter, mine=mine,
+            overdue=overdue,
         )
     ]
 
@@ -130,7 +132,9 @@ def list_campaigns(
     user: CurrentUser, db: DbSession, company_id: int | None = None
 ) -> list[dict]:
     return [
-        operations_service.serialise_campaign(c)
+        operations_service.serialise_campaign(
+            c, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=c.id)
+        )
         for c in operations_service.list_campaigns(db, user=user, company_id=company_id)
     ]
 
@@ -141,7 +145,9 @@ def create_campaign(
 ) -> dict:
     ctx = audit_service.request_context(request)
     campaign = operations_service.create_campaign(db, user=user, **payload.model_dump(), **ctx)
-    return operations_service.serialise_campaign(campaign)
+    return operations_service.serialise_campaign(
+        campaign, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=campaign.id)
+    )
 
 
 @router.patch("/campaigns/{campaign_id}")
@@ -156,7 +162,24 @@ def update_campaign(
     campaign = operations_service.update_campaign(
         db, user=user, campaign_id=campaign_id, changes=changes, **ctx
     )
-    return operations_service.serialise_campaign(campaign)
+    return operations_service.serialise_campaign(
+        campaign, linked_lead_count=operations_service.linked_lead_count(db, campaign_id=campaign.id)
+    )
+
+
+@router.get("/campaigns/{campaign_id}/leads")
+def list_campaign_leads(
+    campaign_id: int, user: CurrentUser, db: DbSession
+) -> list[dict]:
+    """S14 'عرض العملاء': the linked lead records, not a second copy."""
+    from backend.services import website_lead_service
+
+    return [
+        website_lead_service.serialise_lead(lead)
+        for lead in operations_service.list_campaign_leads(
+            db, user=user, campaign_id=campaign_id
+        )
+    ]
 
 
 # ---- complaints (D04, confidential) ----
@@ -307,6 +330,19 @@ def update_owner_decision(
     d = operations_service.update_owner_decision(
         db, user=user, decision_id=decision_id, new_status=status_value,
         follow_up_note=data.get("follow_up_note"), **ctx,
+    )
+    return operations_service.serialise_owner_decision(d)
+
+
+@router.post("/owner-decisions/{decision_id}/respond")
+def respond_to_owner_decision(
+    decision_id: int, payload: OwnerDecisionRespondRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """S22: the named executor replies to a directive (execution update)."""
+    ctx = audit_service.request_context(request)
+    d = operations_service.respond_to_owner_decision(
+        db, user=user, decision_id=decision_id, note=payload.note, **ctx
     )
     return operations_service.serialise_owner_decision(d)
 

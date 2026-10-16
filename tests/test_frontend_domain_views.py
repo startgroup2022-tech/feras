@@ -52,10 +52,15 @@ NEW_ENDPOINTS = [
     "/api/v1/accounting/accounts",
     "/api/v1/accounting/journals",
     "/api/v1/accounting/trial-balance",
+    "/api/v1/accounting/financial-statements",
     "/api/v1/accounting/invoices",
+    "/api/v1/accounting/parties",
+    "/api/v1/accounting/interbalances",
+    "/api/v1/accounting/receivables",
     "/api/v1/accounting/assets",
     "/api/v1/accounting/budgets",
     "/api/v1/accounting/kpis",
+    "/api/v1/accounting/policies",
     "/api/v1/confidential-access/grants",
 ]
 
@@ -360,3 +365,124 @@ def test_toast_region_announces_messages():
     assert 'setAttribute("role", "status")' in APP_JS
     assert 'setAttribute("role", "alert")' in APP_JS
 
+
+def test_s01_priorities_panel_is_present_and_hydrated():
+    # S01 Table 12 lists "الأولويات | روابط سجلات | حسب الوصول" as a dashboard
+    # field. The panel must exist in the markup and be filled from the live
+    # dashboard payload, not from demo content.
+    assert 'id="prioritiesList"' in INDEX
+    assert "function hydratePriorities(" in APP_JS
+    assert "hydratePriorities(data)" in APP_JS
+    assert "prioritiesList" in APP_JS
+
+
+def test_s01_indicator_drilldown_is_wired():
+    # S01 AC-01: "فتح تفصيل مؤشر يعرض سجلات مصدره" — opening an indicator shows
+    # its source records, and Table 13's عرض التفاصيل must not create a copy.
+    assert "function openIndicatorSources(" in APP_JS
+    assert "/api/v1/dashboard/indicator/" in APP_JS
+    assert "function bindIndicatorDrills(" in APP_JS
+    assert "bindIndicatorDrills()" in APP_JS  # called at boot
+    # Every KPI tile that has a source indicator carries a drill target.
+    for kpi in (
+        "companies_count",
+        "total_revenue",
+        "total_net_result",
+        "reports_submitted",
+        "companies_requiring_attention",
+        "open_support_requests",
+    ):
+        assert 'data-drill="' + kpi + '"' in INDEX, kpi
+
+
+def test_d01_accounting_policies_tab_is_wired():
+    # D01: an accountant drafts a policy and approves it; a draft is inert.
+    # The screen must be reachable, gated by the policy permission, and its
+    # renderer must call the real endpoints.
+    assert 'data-acct-tab="policies"' in INDEX
+    assert 'data-perm="accounting_policy.read"' in INDEX
+    assert "function renderPolicies(" in APP_JS
+    assert 'tab === "policies"' in APP_JS
+    assert "/api/v1/accounting/policies" in APP_JS
+    # The tab is listed in the catalogue and mapped to its permission.
+    assert '"policies"' in APP_JS
+    assert 'policies: ["accounting_policy.read"]' in APP_JS
+
+
+def test_s02_s10_goals_are_rendered_on_the_company_table():
+    # S02/S10: goals-versus-results must be visible, resolved from the API's
+    # goals array rather than recomputed in the browser.
+    assert "function goalsHtml(" in APP_JS
+    assert "goalsHtml(r.goals)" in APP_JS
+
+
+def test_d11_notification_preferences_panel_is_wired():
+    # D11: the notification centre is the base channel; a user can opt into
+    # email or mute an event, and the change is persisted server-side.
+    assert 'id="inboxPrefsPanel"' in INDEX
+    assert 'id="inboxPrefs"' in INDEX
+    assert "function renderNotificationPreferences(" in APP_JS
+    assert "/api/v1/notifications/preferences" in APP_JS
+    # The per-event toggle writes to the preference endpoint.
+    assert "/api/v1/notifications/preferences/" in APP_JS
+    assert "NOTIF_EVENT_LABEL" in APP_JS
+
+
+def test_d02_kpi_evaluations_and_sources_are_wired():
+    # D02: the KPI tab must show target-versus-actual from the server's
+    # evaluation endpoint (not client arithmetic) and let a user drill into the
+    # source records behind an actual. Activation writes to the active endpoint.
+    assert "function renderKpis(" in APP_JS
+    assert "/api/v1/accounting/kpis/evaluations" in APP_JS
+    assert "/api/v1/accounting/kpis/" in APP_JS
+    assert "/sources" in APP_JS
+    assert "function openKpiSources(" in APP_JS
+    # Activating/deactivating a KPI records the owner approval server-side.
+    assert "/active" in APP_JS
+    assert '"kpi-activate"' in APP_JS and '"kpi-deactivate"' in APP_JS
+    # The variance is taken from the payload, never recomputed here.
+    assert "ev.variance_pct" in APP_JS and "ev.favourable" in APP_JS
+
+
+def test_every_literal_dual_call_has_both_languages():
+    """No untranslated internal string (spec §E, T01).
+
+    ``dual(ar, en)`` is the internal equivalent of the public site's ``_t``.
+    A literal call whose English slot is empty, or whose English slot is
+    actually Arabic, is a string that never switches language.
+    """
+    import re
+
+    pattern = re.compile(r'dual\(\s*("(?:[^"\\]|\\.)*")\s*,\s*("(?:[^"\\]|\\.)*")\s*\)')
+    arabic = re.compile(r"[\u0600-\u06FF]")
+    offenders = []
+    for m in pattern.finditer(APP_JS):
+        ar = m.group(1).strip('"')
+        en = m.group(2).strip('"')
+        if en == "" or (arabic.search(en) and not arabic.search(ar)):
+            offenders.append(m.group(0))
+    assert offenders == [], f"untranslated dual() calls: {offenders[:10]}"
+
+
+def test_s22_directive_reply_is_wired_to_the_respond_endpoint():
+    """S22: the named executor can reply; the control posts to /respond."""
+    assert "dec-reply" in APP_JS
+    assert "/respond" in APP_JS
+    # The reply control is offered only to the executor named on the decision.
+    assert "d.executor_user_id === USER.id" in APP_JS
+    # The reply is a note, never a status change: the owner alone closes it.
+    assert 'post("/api/v1/operations/owner-decisions/" + did + "/respond"' in APP_JS
+
+
+
+def test_s23_owner_secret_note_is_wired_to_the_owner_note_endpoint():
+    """S23/AC-23: the owner's secret note is saved through its own endpoint.
+
+    The note is only rendered for the confidential owner, and the save posts to
+    the dedicated ``/owner-note`` endpoint (which is owner-only server-side).
+    """
+    assert "ownerNoteForm" in APP_JS
+    assert "/owner-note" in APP_JS
+    assert 'post("/api/v1/employees/assessments/" + a.id + "/owner-note"' in APP_JS
+    # The panel is gated on the confidential owner and a leadership assessment.
+    assert 'a.assessment_type === "leadership" && isConfidentialOwner()' in APP_JS

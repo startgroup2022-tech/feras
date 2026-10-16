@@ -247,6 +247,57 @@ def test_cross_currency_item_is_rejected(client, financial_world, auth):
     assert response.status_code == 422
 
 
+def test_ad_hoc_item_without_a_calculation_rule_is_rejected(client, financial_world, auth):
+    """AC-07: a financial item with no calculation rule is refused."""
+    world = financial_world
+    version = _create(client, auth, world, submitted_revenue="1000", submitted_expenses="600").json()
+    response = client.post(
+        f"/api/v1/financial/summaries/{version['id']}/items",
+        headers=auth(world["alpha_mgr"]),
+        json={"name_ar": "بند بلا قاعدة", "name_en": "No rule", "amount": "20",
+              "kind": "expense"},
+    )
+    assert response.status_code == 422, response.text
+
+    # The refusal must not have created a row or changed the result.
+    detail = client.get(
+        f"/api/v1/financial/summaries/{version['id']}", headers=auth(world["alpha_mgr"])
+    ).json()
+    assert detail["items"] == []
+    assert detail["effective_expenses"] == "600.00"
+
+
+def test_item_definition_item_does_not_need_an_explicit_rule(
+    client, financial_world, auth, make_user
+):
+    """A definition already carries the rule, so referencing it is enough."""
+    world = financial_world
+    version = _create(client, auth, world, submitted_revenue="1000", submitted_expenses="600").json()
+
+    accountant = make_user("acc.def@corp.sa", "accountant", [world["alpha"]])
+    definition = client.post(
+        "/api/v1/financial/item-definitions",
+        params={"company_id": world["alpha"].id},
+        headers=auth(accountant),
+        json={"code": "svc_fee", "name_ar": "رسوم خدمة", "name_en": "Service fee",
+              "category": "service", "kind": "expense", "inclusion_rule": "added"},
+    )
+    assert definition.status_code == 201, definition.text
+
+    created = client.post(
+        f"/api/v1/financial/summaries/{version['id']}/items",
+        headers=auth(world["alpha_mgr"]),
+        json={"definition_id": definition.json()["id"], "amount": "20"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["inclusion_rule"] == "added"
+
+    detail = client.get(
+        f"/api/v1/financial/summaries/{version['id']}", headers=auth(world["alpha_mgr"])
+    ).json()
+    assert detail["effective_expenses"] == "620.00"
+
+
 # --------------------------------------------------------------------------
 # historical correction engine
 # --------------------------------------------------------------------------
@@ -437,6 +488,91 @@ def test_approved_figure_flows_to_the_effective_report(client, financial_world, 
     assert report["counts"]["approved"] == 1
     assert report["totals"]["effective_revenue"] == "1000.00"
     assert report["totals"]["calculated_result"] == "400.00"
+
+
+# --------------------------------------------------------------------------
+# AC-10: a currency difference separates the results (T10)
+# --------------------------------------------------------------------------
+def _set_currency(db, company, code):
+    company.currency = code
+    db.add(company)
+    db.commit()
+
+
+def test_two_currencies_are_never_added_together(
+    client, financial_world, auth, tmp_path, monkeypatch, db
+):
+    """AC-10: with two currencies the group strip carries no mixed sum."""
+    world = financial_world
+    _set_currency(db, world["alpha"], "SAR")
+    _set_currency(db, world["beta"], "USD")
+
+    for company, mgr, revenue, expenses in (
+        (world["alpha"], world["alpha_mgr"], "1000", "600"),
+        (world["beta"], world["beta_mgr"], "2000", "800"),
+    ):
+        version = client.post(
+            "/api/v1/financial/summaries",
+            headers=auth(mgr),
+            json={
+                "company_id": company.id, "period_year": YEAR, "period_month": MONTH,
+                "submitted_revenue": revenue, "submitted_expenses": expenses,
+            },
+        ).json()
+        _upload(client, auth, mgr, version["id"], tmp_path, monkeypatch)
+        client.post(f"/api/v1/financial/summaries/{version['id']}/submit", headers=auth(mgr))
+        client.post(
+            f"/api/v1/financial/summaries/{version['id']}/approve", headers=auth(world["accountant"])
+        )
+
+    report = client.get(
+        f"/api/v1/financial/report?year={YEAR}&month={MONTH}", headers=auth(world["owner"])
+    ).json()
+
+    # No mixed total: the combined figure is not 3000.
+    assert report["totals"]["effective_revenue"] is None
+    assert report["totals"]["calculated_result"] is None
+
+    # Each currency keeps its own sum.
+    by_ccy = report["totals_by_currency"]
+    assert by_ccy["SAR"]["effective_revenue"] == "1000.00"
+    assert by_ccy["SAR"]["calculated_result"] == "400.00"
+    assert by_ccy["USD"]["effective_revenue"] == "2000.00"
+    assert by_ccy["USD"]["calculated_result"] == "1200.00"
+
+
+def test_one_currency_still_totals_normally(
+    client, financial_world, auth, tmp_path, monkeypatch, db
+):
+    """AC-10: a single shared currency keeps the plain group total."""
+    world = financial_world
+    _set_currency(db, world["alpha"], "SAR")
+    _set_currency(db, world["beta"], "SAR")
+
+    for company, mgr, revenue, expenses in (
+        (world["alpha"], world["alpha_mgr"], "1000", "600"),
+        (world["beta"], world["beta_mgr"], "500", "200"),
+    ):
+        version = client.post(
+            "/api/v1/financial/summaries",
+            headers=auth(mgr),
+            json={
+                "company_id": company.id, "period_year": YEAR, "period_month": MONTH,
+                "submitted_revenue": revenue, "submitted_expenses": expenses,
+            },
+        ).json()
+        _upload(client, auth, mgr, version["id"], tmp_path, monkeypatch)
+        client.post(f"/api/v1/financial/summaries/{version['id']}/submit", headers=auth(mgr))
+        client.post(
+            f"/api/v1/financial/summaries/{version['id']}/approve", headers=auth(world["accountant"])
+        )
+
+    report = client.get(
+        f"/api/v1/financial/report?year={YEAR}&month={MONTH}", headers=auth(world["owner"])
+    ).json()
+    assert report["totals"]["effective_revenue"] == "1500.00"
+    assert report["totals"]["calculated_result"] == "700.00"
+    assert report["totals_by_currency"]["SAR"]["effective_revenue"] == "1500.00"
 
 
 # --------------------------------------------------------------------------

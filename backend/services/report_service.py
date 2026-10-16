@@ -32,7 +32,11 @@ from backend.db.models.report import (
     MonthlyReportFinancialReview,
     ReportClarification,
 )
-from backend.rbac.authorization import require_company_access, require_permission
+from backend.rbac.authorization import (
+    has_permission,
+    require_company_access,
+    require_permission,
+)
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import MonthlyReportRepository
 from backend.services import audit_service, notification_service
@@ -116,6 +120,48 @@ def update_report(
         metadata={"fields": sorted(payload.keys())},
     )
     return report
+
+
+def organize_report_narrative(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """Return an AI organization *proposal* for a report's narrative (S09).
+
+    The report itself is never modified: this reads the narrative fields and
+    returns a suggestion for each, so the manager reviews it and keeps or
+    discards it. The action is scoped like an edit -- a caller who could not
+    write the report cannot reach its text -- and it is audited.
+    """
+    from backend.ai import organize as organize_module
+
+    require_permission(user, Perm.REPORT_UPDATE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id, write=True)
+    # Organization is an editing action, so it obeys the same lock as an edit:
+    # only a draft report can be organised.
+    if report.status != ReportStatus.DRAFT.value:
+        raise ConflictError("Only draft reports can be edited.")
+
+    fields = {name: getattr(report, name) for name in organize_module.ORGANIZABLE_FIELDS}
+    proposal = organize_module.organize_narrative(fields)
+
+    audit_service.record(
+        db,
+        action=AuditAction.AI_TEXT_ORGANIZED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"fields": [p["field"] for p in proposal["proposals"]]},
+    )
+    return proposal
 
 
 def submit_report(
@@ -492,7 +538,7 @@ def _get_scoped_or_404(db: Session, user: User, report_id: int) -> MonthlyReport
     return report
 
 
-def serialise(report: MonthlyReport) -> dict:
+def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> dict:
     """Attach company display names for the API response."""
     data = {
         "id": report.id,
@@ -519,6 +565,7 @@ def serialise(report: MonthlyReport) -> dict:
         "updated_at": report.updated_at,
         "financial_review": report.financial_review,
         "attachments": report.attachments,
+        "financial_part": financial_part,
     }
     return data
 
@@ -527,10 +574,62 @@ __all__ = [
     "create_report",
     "update_report",
     "submit_report",
+    "organize_report_narrative",
     "review_financially",
     "add_attachment",
     "remove_attachment",
+    "financial_part_status",
     "serialise",
     "MonthlyReport",
     "Decimal",
 ]
+
+
+def financial_part_status(
+    db: Session, *, report: MonthlyReport, user: User
+) -> dict | None:
+    """The linked F-03 financial part for a report's period (spec Table 42/AC-09).
+
+    A report always shows the status of the financial part it is tied to: the
+    company's financial period for the same year and month, with its single
+    effective (approved) version or the current in-flight version. The figures
+    are read from F-03, never copied into the report, so the report's own
+    narrative and the accountant-verified numbers cannot drift apart.
+
+    Returns ``None`` when the caller may not read financial summaries, or when no
+    financial period exists yet -- in which case the report honestly shows "لا
+    بيانات" for the financial part rather than a zero.
+    """
+    from backend.db.models.financial import FinancialPeriod
+    from backend.repositories.scoped import FinancialPeriodRepository
+
+    if not has_permission(user, Perm.FINANCIAL_SUMMARY_READ_OWN) and not has_permission(
+        user, Perm.FINANCIAL_SUMMARY_READ_ALL
+    ):
+        return None
+
+    period = FinancialPeriodRepository(db).get_by_company_period(
+        report.company_id, report.period_year, report.period_month
+    )
+    if period is None:
+        return {"status": "no_data", "effective_version": None, "current_version": None}
+
+    effective = period.effective_version
+    current = None
+    if period.versions:
+        current = sorted(period.versions, key=lambda v: v.version_number, reverse=True)[0]
+
+    def _shape(version) -> dict | None:
+        if version is None:
+            return None
+        return {
+            "id": version.id,
+            "version_number": version.version_number,
+            "status": version.status,
+        }
+
+    return {
+        "status": effective.status if effective is not None else (current.status if current else "no_data"),
+        "effective_version": _shape(effective),
+        "current_version": _shape(current),
+    }

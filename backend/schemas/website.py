@@ -348,6 +348,7 @@ class LeadOut(BaseModel):
     priority: str
     routed_team: str | None = None
     routed_company_id: int | None = None
+    campaign_id: int | None = None
     assigned_to_id: int | None = None
     assigned_to_name_ar: str | None = None
     assigned_to_name_en: str | None = None
@@ -385,6 +386,7 @@ class LeadUpdateRequest(BaseModel):
     priority: LeadPriority | None = None
     routed_team: str | None = Field(default=None, max_length=60)
     routed_company_id: int | None = None
+    campaign_id: int | None = None
     assigned_to_id: int | None = None
     final_result: str | None = Field(default=None, max_length=_TEXT_MAX)
     internal_notes: str | None = Field(default=None, max_length=_TEXT_MAX)

@@ -677,6 +677,7 @@ def serialise_lead(lead: WebsiteLead) -> dict:
         "priority": lead.priority,
         "routed_team": lead.routed_team,
         "routed_company_id": lead.routed_company_id,
+        "campaign_id": lead.campaign_id,
         "assigned_to_id": lead.assigned_to_id,
         "assigned_to_name_ar": lead.assigned_to.full_name_ar if lead.assigned_to else None,
         "assigned_to_name_en": lead.assigned_to.full_name_en if lead.assigned_to else None,
@@ -780,6 +781,7 @@ def update_lead(
     lead = get_lead(db, user=user, lead_id=lead_id)
 
     previous_status = lead.status
+    previous_company_id = lead.routed_company_id
     for field, value in changes.items():
         if value is None:
             continue
@@ -790,6 +792,13 @@ def update_lead(
                 lead.closed_at = utcnow()
         elif field == "status":
             continue
+        elif field == "campaign_id":
+            # A lead is *linked* to a campaign by foreign key, never by copying
+            # the campaign's name (spec §18 / AC-13). The campaign must exist and
+            # be within the caller's scope; otherwise the link is rejected rather
+            # than silently dropped.
+            _require_accessible_campaign(db, user=user, campaign_id=value)
+            lead.campaign_id = value
         else:
             setattr(lead, field, value)
 
@@ -809,7 +818,83 @@ def update_lead(
     )
     if lead.status != previous_status:
         _emit_lead_status(db, lead=lead, previous=previous_status)
+    # S13/Table 58: "توزيع على الشركة" links the lead to a company and shows it
+    # to that company's manager, who is notified. A lead merely re-saved with the
+    # same company does not re-notify.
+    if lead.routed_company_id and lead.routed_company_id != previous_company_id:
+        _notify_company_manager(db, lead=lead, company_id=lead.routed_company_id)
     return lead
+
+
+def _require_accessible_campaign(db: Session, *, user: User, campaign_id: int) -> None:
+    """Reject a campaign link the caller may not write to. Never leaks existence."""
+    from backend.db.models.operations import Campaign
+    from backend.rbac.authorization import can_write_company
+
+    campaign = db.get(Campaign, campaign_id)
+    # Linking a lead to a company's campaign exposes the lead to that company,
+    # so it is a write to the campaign's company. Out-of-scope and missing both
+    # raise the same 404, so existence is never revealed.
+    if campaign is None or not can_write_company(user, campaign.company_id):
+        raise NotFoundError("Campaign not found.")
+
+
+def _notify_company_manager(db: Session, *, lead: WebsiteLead, company_id: int) -> None:
+    """Tell the routed company's manager a lead was assigned to them (S13)."""
+    try:
+        from backend.db.models.identity import Company, Role, RoleCode, User, UserCompanyAccess
+        from backend.services import notification_service
+
+        manager_ids = set(
+            db.execute(
+                select(UserCompanyAccess.user_id).where(
+                    UserCompanyAccess.company_id == company_id,
+                    UserCompanyAccess.can_read.is_(True),
+                )
+            ).scalars()
+        )
+        if manager_ids:
+            manager_ids = set(
+                db.execute(
+                    select(User.id)
+                    .join(Role, Role.id == User.role_id)
+                    .where(
+                        User.id.in_(manager_ids),
+                        User.is_active.is_(True),
+                        Role.code.in_(
+                            [
+                                RoleCode.COMPANY_MANAGER.value,
+                                RoleCode.COMPANY_OWNER.value,
+                            ]
+                        ),
+                    )
+                ).scalars()
+            )
+        if not manager_ids:
+            return
+        company = db.get(Company, company_id)
+        name_ar = company.name_ar if company else ""
+        name_en = (company.name_en if company and company.name_en else name_ar)
+        notification_service.notify(
+            db,
+            recipient_ids=list(manager_ids),
+            type="system",
+            title_ar=f"عميل محتمل مُوزَّع على {name_ar}",
+            title_en=f"A lead was routed to {name_en}",
+            message_ar=f"العميل {lead.reference} ({lead.full_name}) أُحيل إلى شركتك للمتابعة.",
+            message_en=(
+                f"Lead {lead.reference} ({lead.full_name}) was referred to your "
+                "company for follow-up."
+            ),
+            priority=lead.priority,
+            company_id=company_id,
+            entity_type="website_lead",
+            entity_id=lead.id,
+            dedupe_key=f"lead_routed:{lead.id}:{company_id}",
+            emit_webhook=False,
+        )
+    except Exception:  # noqa: BLE001 - a notification must never fail a lead update
+        logger.exception("failed to notify company manager about lead %s", lead.reference)
 
 
 def _serialise_note(note: LeadNote) -> dict:

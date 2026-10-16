@@ -47,6 +47,10 @@
     empTab: "employees",
     opsTab: "tasks",
     acctTab: "balances",
+    acctLedgerCompany: null,
+    acctLedgerType: "",
+    acctLedgerYear: null,
+    acctLedgerMonth: null,
     confTab: "complaints",
     loaded: {},
   };
@@ -132,6 +136,7 @@
     },
     "ph.formCode": { ar: "مثال: capex", en: "e.g. capex" },
     "ph.fieldKey": { ar: "مثال: amount", en: "e.g. amount" },
+    "ph.scopeSector": { ar: "مثال: Technology", en: "e.g. Technology" },
     "ph.requirementKey": { ar: "مثال: quote", en: "e.g. quote" },
     "ph.workflowCode": { ar: "مثال: capex_flow", en: "e.g. capex_flow" },
     "ph.comment": { ar: "أضف تعليقًا…", en: "Add a comment…" },
@@ -557,6 +562,135 @@
     var sectorCount = Object.keys(sectors).length;
     setText('[data-kpi="sector_count"]', toArabicDigits(String(sectorCount)));
     setText('[data-kpi="sector_count_en"]', String(sectorCount));
+  }
+
+  // S01 AC-01: opening an indicator shows its source records. Table 13's
+  // "عرض التفاصيل" opens the linked source without creating a copy, so this
+  // only reads the API and lists links; it never writes.
+  var DRILL_LABELS = {
+    companies_count: { ar: "عدد الشركات", en: "Companies" },
+    total_revenue: { ar: "إجمالي الإيرادات", en: "Total Revenue" },
+    total_expenses: { ar: "إجمالي المصروفات", en: "Total Expenses" },
+    total_net_result: { ar: "صافي النتائج", en: "Net Result" },
+    reports_submitted: { ar: "التقارير المستلمة", en: "Reports Submitted" },
+    reports_missing: { ar: "التقارير المفقودة", en: "Reports Missing" },
+    companies_requiring_attention: { ar: "شركات تحتاج متابعة", en: "Need Attention" },
+    open_support_requests: { ar: "الطلبات المفتوحة", en: "Open Requests" },
+    pending_financial_reviews: { ar: "مراجعات مالية معلقة", en: "Pending Reviews" },
+  };
+
+  function openIndicatorSources(indicator) {
+    var label = DRILL_LABELS[indicator] || { ar: indicator, en: indicator };
+    openModal({
+      title: dual(label.ar, label.en),
+      body: loadingHtml(),
+      wide: true,
+      onMount: function () {
+        get(
+          "/api/v1/dashboard/indicator/" + encodeURIComponent(indicator) +
+            "/sources" + period,
+        )
+          .then(function (data) {
+            var host = byId("modalBody");
+            if (!host) return;
+            var rows = data.records || [];
+            if (!rows.length) {
+              host.innerHTML = emptyHtml(
+                "لا توجد سجلات مصدر لهذا المؤشر.",
+                "No source records for this indicator.",
+              );
+              return;
+            }
+            host.innerHTML =
+              '<table class="table"><thead><tr><th>' +
+              dual("النوع", "Type") + "</th><th>" + dual("السجل", "Record") +
+              "</th></tr></thead><tbody>" +
+              rows.map(function (r) {
+                var typeLabel = r.kind === "company"
+                  ? dual("شركة", "Company")
+                  : r.kind === "support_request"
+                    ? dual("طلب", "Request")
+                    : dual("تقرير", "Report");
+                return '<tr data-src-kind="' + escapeHtml(r.kind) +
+                  '" data-src-id="' + r.record_id + '" style="cursor:pointer"><td>' +
+                  typeLabel + "</td><td>" + escapeHtml(r.label_ar) + "</td></tr>";
+              }).join("") +
+              "</tbody></table>";
+            host.querySelectorAll("[data-src-kind]").forEach(function (el) {
+              el.addEventListener("click", function () {
+                var kind = el.getAttribute("data-src-kind");
+                var id = parseInt(el.getAttribute("data-src-id"), 10);
+                closeModal();
+                if (kind === "company") openCompany(id);
+                else if (kind === "support_request") navTo("support");
+                else if (kind === "monthly_report") openReport(id);
+              });
+            });
+          })
+          .catch(function (err) {
+            var host = byId("modalBody");
+            if (host) host.innerHTML = errorHtml(err && err.message);
+          });
+      },
+    });
+  }
+
+  // Wire every KPI tile that has a drill target, once.
+  function bindIndicatorDrills() {
+    document.querySelectorAll("[data-drill]").forEach(function (el) {
+      if (el.getAttribute("data-drill-bound")) return;
+      el.setAttribute("data-drill-bound", "1");
+      var go = function () {
+        openIndicatorSources(el.getAttribute("data-drill"));
+      };
+      el.addEventListener("click", go);
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      });
+    });
+  }
+
+  // S01 "الأولويات": record links the caller may act on, restricted per access
+  // by the backend, so every entry is openable.
+  function hydratePriorities(data) {
+    var host = byId("prioritiesList");
+    if (!host) return;
+    var rows = data.priorities || [];
+    if (!rows.length) {
+      host.innerHTML = emptyHtml("لا توجد أولويات حالية.", "No current priorities.");
+      return;
+    }
+    host.innerHTML = rows.map(function (p) {
+      var label = STATE.lang === "ar"
+        ? (p.label_ar || p.label_en || "")
+        : (p.label_en || p.label_ar || "");
+      var sub = p.overdue
+        ? dual("متأخر", "Overdue")
+        : (p.reason ? escapeHtml(p.reason) : "");
+      var icon = p.kind === "company" ? "🏢"
+        : p.kind === "support_request" ? "💬" : "📌";
+      return '<div class="av-row" data-priority-kind="' + escapeHtml(p.kind) +
+        '" data-priority-id="' + p.record_id + '">' +
+        '<div class="grow"><div class="t">' + icon + " " + escapeHtml(label) +
+        '</div>' + (sub ? '<div class="s">' + sub + "</div>" : "") +
+        "</div></div>";
+    }).join("");
+    host.querySelectorAll("[data-priority-kind]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var kind = el.getAttribute("data-priority-kind");
+        var id = parseInt(el.getAttribute("data-priority-id"), 10);
+        if (kind === "company") {
+          openCompany(id);
+        } else if (kind === "owner_decision") {
+          navTo("decisions");
+        } else if (kind === "support_request") {
+          navTo("support");
+        }
+      });
+    });
   }
 
   // The dashboard report cards offer "View Report" (a real report exists) or
@@ -1446,6 +1580,8 @@
       "budget.read",
       "opening_balance.read",
       "kpi.read",
+      "accounting_policy.read",
+      "financial_report.read",
     ],
     confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
     admin: [
@@ -1915,10 +2051,46 @@
               (fr.financial_notes ? reportField("ملاحظات", "Notes", fr.financial_notes) : "") +
               (fr.flagged_reason ? reportField("سبب التحفظ", "Flag reason", fr.flagged_reason) : "")
             : "") +
+          (r.financial_part
+            ? '<div class="sec-title">' + dual("الجزء المالي (F-03)", "Financial part (F-03)") + "</div>" +
+              '<div class="kv">' +
+              kv(dual("حالة الملخص المالي", "Financial summary status"), finStatusBadge(r.financial_part.status)) +
+              (r.financial_part.effective_version
+                ? kv(dual("النسخة المعتمدة", "Approved version"),
+                    dual("نسخة " + toArabicDigits(String(r.financial_part.effective_version.version_number)),
+                         "v" + r.financial_part.effective_version.version_number))
+                : kv(dual("النسخة المعتمدة", "Approved version"), dual("لا بيانات", "No data"))) +
+              (r.financial_part.current_version && (!r.financial_part.effective_version ||
+                r.financial_part.current_version.id !== r.financial_part.effective_version.id)
+                ? kv(dual("النسخة الجارية", "Current version"),
+                    dual("نسخة " + toArabicDigits(String(r.financial_part.current_version.version_number)),
+                         "v" + r.financial_part.current_version.version_number) +
+                    " · " + finStatusBadge(r.financial_part.current_version.status))
+                : "") +
+              "</div>" +
+              '<div class="s">' + dual("الأرقام مسحوبة من الملخص المالي المعتمد، لا تُنسخ في التقرير.",
+                "Figures are read from the approved financial summary, never copied into the report.") + "</div>"
+            : "") +
+          '<div id="repOrganize"></div>' +
           '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
 
         loadClarifications(id);
+
+        // S09: AI text organization. The proposal never overwrites the report;
+        // the manager applies a field explicitly through the normal PATCH.
+        var organizeHost = byId("repOrganize");
+        if (organizeHost && has("monthly_report.update") && r.status === "draft") {
+          organizeHost.innerHTML =
+            '<div class="sec-title">' + dual("تنظيم النص بالذكاء الاصطناعي", "AI text organization") + "</div>" +
+            '<div class="pbtns" style="margin-top:8px"><button type="button" class="btn-outline" id="repOrganizeBtn">' +
+            dual("اقترح تنظيمًا", "Suggest organization") + "</button></div>" +
+            '<div id="repOrganizeOut"></div>';
+          var orgBtn = byId("repOrganizeBtn");
+          if (orgBtn) {
+            orgBtn.addEventListener("click", function () { organizeReportNarrative(id, orgBtn); });
+          }
+        }
 
         var actions = byId("repActions");
         var btns = [];
@@ -1941,6 +2113,81 @@
       })
       .catch(function (err) {
         if (body) body.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  var REPORT_FIELD_LABELS = {
+    important_developments: ["أهم التطورات", "Developments"],
+    new_customers: ["عملاء جدد", "New customers"],
+    new_opportunities: ["فرص جديدة", "New opportunities"],
+    major_problems: ["مشاكل رئيسية", "Major problems"],
+    support_required: ["الدعم المطلوب", "Support required"],
+    marketing_status: ["حالة التسويق", "Marketing status"],
+    business_development_status: ["حالة تطوير الأعمال", "Business development status"],
+    management_notes: ["ملاحظات الإدارة", "Management notes"],
+  };
+
+  function organizeReportNarrative(id, btn) {
+    var out = byId("repOrganizeOut");
+    if (!out) return;
+    busy(btn, true);
+    post("/api/v1/monthly-reports/" + id + "/organize-narrative")
+      .then(function (res) {
+        busy(btn, false);
+        var proposals = (res && res.proposals) || [];
+        if (!proposals.length) {
+          out.innerHTML = '<p class="av-empty">' + dual("لا يوجد نص لتنظيمه.", "There is no text to organize.") + "</p>";
+          return;
+        }
+        out.innerHTML = proposals.map(function (p) {
+          var lbl = REPORT_FIELD_LABELS[p.field] || [p.field, p.field];
+          var warn = p.grounded
+            ? ""
+            : '<div class="s" style="color:var(--miss)">' +
+              dual("تنبيه: احتوى الاقتراح أرقامًا غير موجودة في الأصل، فتم استخدام التنظيم الآمن.",
+                "Note: the suggestion cited numbers absent from the original, so the safe organization was used.") +
+              "</div>";
+          return '<div class="note-block" data-field="' + escAttr(p.field) + '">' +
+            '<span class="lbl">' + dual(lbl[0], lbl[1]) + "</span>" +
+            '<div class="s">' + dual("الأصل (يبقى كما هو)", "Original (unchanged)") + "</div>" +
+            '<div class="orig">' + escapeHtml(p.original) + "</div>" +
+            '<div class="s">' + dual("الاقتراح", "Suggestion") + "</div>" +
+            '<div class="prop">' + escapeHtml(p.organized) + "</div>" +
+            warn +
+            (p.changed
+              ? '<div class="pbtns" style="margin-top:6px"><button type="button" class="btn-outline" data-org-apply="' +
+                escAttr(p.field) + '">' + dual("اعتماد المقترح", "Apply suggestion") + "</button></div>"
+              : '<div class="s">' + dual("لا تغيير.", "No change.") + "</div>") +
+            "</div>";
+        }).join("");
+        out.querySelectorAll("[data-org-apply]").forEach(function (b) {
+          b.addEventListener("click", function () { applyOrganizedField(id, b, proposals); });
+        });
+      })
+      .catch(function (err) {
+        busy(btn, false);
+        out.innerHTML = errorHtml(errText(err));
+      });
+  }
+
+  function applyOrganizedField(id, btn, proposals) {
+    var field = btn.getAttribute("data-org-apply");
+    var found = null;
+    for (var i = 0; i < proposals.length; i++) {
+      if (proposals[i].field === field) { found = proposals[i]; break; }
+    }
+    if (!found) return;
+    var payload = {};
+    payload[field] = found.organized;
+    busy(btn, true);
+    patch("/api/v1/monthly-reports/" + id, payload)
+      .then(function () {
+        toast(dual("تم اعتماد التنظيم.", "Organization applied."), "ok");
+        refreshAll().then(function () { openReport(id); });
+      })
+      .catch(function (err) {
+        toast(errText(err), "err");
+        busy(btn, false);
       });
   }
 
@@ -2111,7 +2358,7 @@
       }
       var totals = report.totals || {};
       host.innerHTML =
-        finTotalsStrip(totals, report.counts || {}) +
+        finTotalsStrip(totals, report.counts || {}, report.totals_by_currency || {}) +
         rows.map(finRow).join("") +
         finDefinitionsPanel(definitions);
       host.querySelectorAll("[data-fin-period]").forEach(function (el) {
@@ -2181,22 +2428,48 @@
     }).catch(function (err) { domainError(err); busy(btn, false); });
   }
 
-  function finTotalsStrip(totals, counts) {
+  function finTotalsStrip(totals, counts, byCurrency) {
+    var buckets = byCurrency || {};
+    var codes = Object.keys(buckets);
+    // AC-10 / T10: when companies report in more than one currency the strip
+    // shows one labelled group per currency rather than a mixed sum. The plain
+    // single-currency strip is kept when there is exactly one (or none).
+    var moneyBlock;
+    if (codes.length > 1) {
+      moneyBlock = codes.map(function (code) {
+        var b = buckets[code] || {};
+        return (
+          '<div class="fin-currency"><div class="plabel">' + escapeHtml(code) + "</div>" +
+          finMoneyLine("الإيرادات الفعلية", "effective revenue", b.effective_revenue) +
+          finMoneyLine("المصروفات الفعلية", "effective expenses", b.effective_expenses) +
+          finMoneyLine("النتيجة", "result", b.calculated_result) +
+          "</div>"
+        );
+      }).join("");
+    } else {
+      var one = codes.length === 1 ? buckets[codes[0]] : totals;
+      moneyBlock =
+        '<div><div class="pnum">' + finMoney(one.effective_revenue) + '</div><div class="plabel">' +
+        dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
+        '<div class="psep"></div>' +
+        '<div><div class="pnum">' + finMoney(one.effective_expenses) + '</div><div class="plabel">' +
+        dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
+        '<div class="psep"></div>' +
+        '<div><div class="pnum">' + finMoney(one.calculated_result) + '</div><div class="plabel">' +
+        dual("النتيجة", "result") + "</div></div>";
+    }
     return (
       '<div class="perm-summary" style="margin-bottom:14px">' +
       '<div><div class="pnum">' + plainNum(counts.approved || 0) + '</div><div class="plabel">' +
       dual("ملخصات معتمدة", "approved summaries") + "</div></div>" +
       '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.effective_revenue) + '</div><div class="plabel">' +
-      dual("الإيرادات الفعلية", "effective revenue") + "</div></div>" +
-      '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.effective_expenses) + '</div><div class="plabel">' +
-      dual("المصروفات الفعلية", "effective expenses") + "</div></div>" +
-      '<div class="psep"></div>' +
-      '<div><div class="pnum">' + finMoney(totals.calculated_result) + '</div><div class="plabel">' +
-      dual("النتيجة", "result") + "</div></div>" +
+      moneyBlock +
       "</div>"
     );
+  }
+
+  function finMoneyLine(ar, en, value) {
+    return '<div class="s">' + dual(ar, en) + ": " + finMoney(value) + "</div>";
   }
 
   function finRow(r) {
@@ -3405,7 +3678,8 @@
   }
 
   function editSubmissionForm(s) {
-    get("/api/v1/forms/" + s.form_id + "/versions/" + s.form_version_id)
+    get("/api/v1/forms/" + s.form_id + "/versions/" + s.form_version_id +
+        (s.company_id ? "?company_id=" + s.company_id : ""))
       .then(function (version) {
         openModal({
           title: dual("تعديل الطلب", "Edit request"),
@@ -3849,11 +4123,32 @@
         return (
           '<div class="av-row" data-bi-co="' + r.id + '"><div class="co-dot" style="background:' + PALETTE[r.id % PALETTE.length] + '">' + initial(r.name_ar) + "</div>" +
           '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en || r.name_ar) + '</div>' +
-          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(rev.ar, rev.en) + " · " + dual("صافي ", "Net ") + dual(net.ar, net.en) + "</div></div>" +
+          '<div class="s">' + dual("إيرادات ", "Revenue ") + dual(rev.ar, rev.en) + " · " + dual("صافي ", "Net ") + dual(net.ar, net.en) + "</div>" +
+          goalsHtml(r.goals) + "</div>" +
           growthHtml(r.revenue_pct) + healthBadge(r.health) + "</div>"
         );
       }).join("") + "</div>"
     );
+  }
+
+  // S02/S10: goals-versus-results. A goal is an approved (active) KPI with a
+  // target; the API already resolved the actual against the same metric. We
+  // show target, actual and the favourable/unfavourable flag — never a figure
+  // the API did not return.
+  function goalsHtml(goals) {
+    if (!goals || !goals.length) return "";
+    return goals.map(function (g) {
+      var name = STATE.lang === "ar" ? g.name_ar : g.name_en || g.name_ar;
+      var target = dec(g.target_value);
+      var actual = g.actual_value == null ? "—" : dec(g.actual_value);
+      var cls = g.favourable === false ? "warn" : "ok";
+      var arrow = g.favourable === false ? "▼" : "▲";
+      return (
+        '<div class="s" style="margin-top:2px">' +
+        '<span class="status ' + cls + '"><i></i>' + escapeHtml(name) + " " + arrow + " " +
+        escapeHtml(target) + " / " + escapeHtml(actual) + "</span></div>"
+      );
+    }).join("");
   }
 
   // ---- advanced analytics view -----------------------------------------
@@ -4242,6 +4537,13 @@
           renderInboxList();
         });
       });
+      var prefsBtn = byId("inboxPrefs");
+      if (prefsBtn) prefsBtn.addEventListener("click", function () {
+        var panelHost = byId("inboxPrefsPanel");
+        var hidden = panelHost.classList.toggle("view-hidden");
+        prefsBtn.classList.toggle("on", !hidden);
+        if (!hidden) renderNotificationPreferences();
+      });
     }
     host.innerHTML = loadingHtml();
     return refreshNotifications().then(renderInboxList);
@@ -4283,6 +4585,91 @@
     return Promise.resolve();
   }
 
+  // D11: per-event channel preferences. In-app is the base channel; email is
+  // opt-in. The preference is what the notify pipeline reads, so muting here
+  // is exactly what stops an event appearing in the list above.
+  function renderNotificationPreferences() {
+    var host = byId("inboxPrefsPanel");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/notifications/preferences").then(function (data) {
+      var items = (data && data.items) || [];
+      var events = (data && data.event_types) || [];
+      var byEvent = {};
+      items.forEach(function (p) { byEvent[p.event_type] = p; });
+      var defaultRow = byEvent["*"] || { in_app: true, email: false, muted: false };
+      var rows = ["*"].concat(
+        events.filter(function (e) { return e !== "*"; })
+      );
+      var body =
+        '<div class="av-list">' +
+        rows.map(function (key) {
+          var p = byEvent[key] || defaultRow;
+          var label = key === "*"
+            ? dual("الافتراضي لكل الأحداث", "Default for all events")
+            : escapeHtml(NOTIF_EVENT_LABEL[key] ? (STATE.lang === "ar" ? NOTIF_EVENT_LABEL[key].ar : NOTIF_EVENT_LABEL[key].en) : key);
+          return (
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            label + "</div></div>" +
+            toggleBtn(key, "in_app", p.in_app, "داخل المنصة", "In-app") +
+            toggleBtn(key, "email", p.email, "البريد", "Email") +
+            toggleBtn(key, "muted", p.muted, "كتم", "Mute") +
+            "</div>"
+          );
+        }).join("") + "</div>";
+      host.innerHTML = panel(
+        "تفضيلات القنوات (D11: القناة الأساسية داخل المنصة؛ البريد اختياري)",
+        "Channel preferences (D11: in-app is the base channel; email is optional)",
+        body
+      );
+      host.querySelectorAll("[data-pref]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var ev = btn.getAttribute("data-pref");
+          var field = btn.getAttribute("data-field");
+          var next = btn.getAttribute("data-on") !== "1";
+          var payload = {};
+          payload[field] = next;
+          busy(btn, true);
+          put("/api/v1/notifications/preferences/" + encodeURIComponent(ev), payload)
+            .then(function () { return renderNotificationPreferences(); })
+            .catch(function (err) { domainError(err); busy(btn, false); });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Arabic/English labels for the notification event types the backend defines
+  // (NotificationType). An unlabelled type falls back to its raw code.
+  var NOTIF_EVENT_LABEL = {
+    "system": { ar: "النظام", en: "System" },
+    "approval.assigned": { ar: "موافقة مُسندة", en: "Approval assigned" },
+    "approval.approved": { ar: "موافقة معتمدة", en: "Approval approved" },
+    "approval.rejected": { ar: "موافقة مرفوضة", en: "Approval rejected" },
+    "approval.returned": { ar: "موافقة مُعادة", en: "Approval returned" },
+    "submission.incomplete": { ar: "إرسال غير مكتمل", en: "Submission incomplete" },
+    "document.expiring": { ar: "مستند على وشك الانتهاء", en: "Document expiring" },
+    "document.expired": { ar: "مستند منتهي", en: "Document expired" },
+    "report.submitted": { ar: "تقرير شهري مُرسل", en: "Monthly report submitted" },
+    "financial_summary.submitted": { ar: "ملخص مالي مُرسل", en: "Financial summary submitted" },
+    "financial_summary.returned": { ar: "ملخص مالي مُعاد", en: "Financial summary returned" },
+    "financial_summary.resubmitted": { ar: "ملخص مالي مُعاد إرساله", en: "Financial summary resubmitted" },
+    "financial_summary.approved": { ar: "ملخص مالي معتمد", en: "Financial summary approved" },
+    "support.assigned": { ar: "طلب دعم مُسند", en: "Support assigned" },
+    "support.created": { ar: "طلب خدمة جديد", en: "New service request" },
+    "support.status_changed": { ar: "تغيّر حالة طلب", en: "Support status changed" },
+    "task.assigned": { ar: "مهمة مُسندة", en: "Task assigned" },
+    "task.status_changed": { ar: "تغيّر حالة مهمة", en: "Task status changed" },
+    "financial_report.finalised": { ar: "تقرير مالي شهري معتمد", en: "Monthly financial report finalised" },
+  };
+
+  function toggleBtn(eventKey, field, on, ar, en) {
+    return (
+      '<button class="btn-ghost" data-pref="' + escAttr(eventKey) + '" data-field="' + field +
+      '" data-on="' + (on ? "1" : "0") + '" style="margin-inline-start:6px">' +
+      dual(ar, en) + " " + (on ? "✓" : "✕") + "</button>"
+    );
+  }
+
   // ---- website leads view ---------------------------------------------
   var LEAD_SERVICE = {
     company_formation: { ar: "تأسيس شركة", en: "Company formation" },
@@ -4298,11 +4685,12 @@
   };
   var LEAD_STATUS = {
     new: { ar: "جديد", en: "New", cls: "rev" },
+    assigned: { ar: "مُوزَّع", en: "Assigned", cls: "warn" },
     in_progress: { ar: "قيد المعالجة", en: "In progress", cls: "ok" },
-    contacted: { ar: "تم التواصل", en: "Contacted", cls: "ok" },
+    qualified: { ar: "مؤهل", en: "Qualified", cls: "ok" },
+    escalated: { ar: "مُصعَّد", en: "Escalated", cls: "miss" },
     converted: { ar: "مُحوَّل", en: "Converted", cls: "ok" },
     closed: { ar: "مغلق", en: "Closed", cls: "ok" },
-    rejected: { ar: "مرفوض", en: "Rejected", cls: "miss" },
   };
   var LEAD_PRIORITY = {
     low: { ar: "منخفضة", en: "Low" },
@@ -4611,7 +4999,18 @@
   }
 
   function openLead(id) {
-    return get("/api/v1/leads/" + id).then(function (lead) {
+    var campaignPromise = has("campaign.read")
+      ? get("/api/v1/operations/campaigns").catch(function () { return []; })
+      : Promise.resolve([]);
+    return campaignPromise.then(function (campaigns) {
+      return get("/api/v1/leads/" + id).then(function (lead) {
+        return paintLeadModal(lead, campaigns || []);
+      });
+    });
+  }
+
+  function paintLeadModal(lead, campaigns) {
+      var id = lead.id;
       var payload = lead.payload || {};
       var detailRows = Object.keys(payload)
         .filter(function (k) { return payload[k] !== null && payload[k] !== ""; })
@@ -4697,6 +5096,16 @@
               })
               .join("") +
             "</select>" +
+            // S13/§18: link the lead to its campaign (never a copied name).
+            (campaigns && campaigns.length
+              ? '<select id="leadCampSel">' +
+                '<option value="">' + dual("بلا حملة", "No campaign") + "</option>" +
+                campaigns.map(function (c) {
+                  return '<option value="' + c.id + '"' + (c.id === lead.campaign_id ? " selected" : "") + ">" +
+                    escapeHtml(c.name) + "</option>";
+                }).join("") +
+                "</select>"
+              : "") +
             '<button class="btn-solid" id="leadSave">' + dual("حفظ", "Save") + "</button>" +
             "</div>"
           : "");
@@ -4733,9 +5142,11 @@
         saveBtn.addEventListener("click", function () {
           var statusSel = byId("leadStatusSel");
           var priSel = byId("leadPriSel");
+          var campSel = byId("leadCampSel");
           var payloadOut = {};
           if (statusSel) payloadOut.status = statusSel.value;
           if (priSel) payloadOut.priority = priSel.value;
+          if (campSel && campSel.value) payloadOut.campaign_id = parseInt(campSel.value, 10);
           patch("/api/v1/leads/" + id, payloadOut)
             .then(function () {
               toast(STATE.lang === "ar" ? "تم تحديث الطلب." : "Lead updated.", "ok");
@@ -4748,7 +5159,6 @@
             });
         });
       }
-    });
   }
 
   function refreshNotifications() {
@@ -4880,6 +5290,11 @@
   function valOf(id) {
     var el = byId(id);
     return el ? String(el.value).trim() : "";
+  }
+
+  function setVal(id, value) {
+    var el = byId(id);
+    if (el) el.value = value == null ? "" : String(value);
   }
 
   function numVal(id) {
@@ -5187,6 +5602,14 @@
     var items = a.items || [];
     var itemForm = has("assessment.manage") && a.status !== "approved"
       ? '<form class="av-form av-form-inline" id="assessItemForm">' +
+        field("قالب المعايير", "Criteria template", selectInput("aiTemplate", [
+          { value: "", label: opt("— بدون قالب —", "— No template —") },
+          { value: "accountant", label: opt("المحاسب 35/20/20/15/10", "Accountant 35/20/20/15/10") },
+          { value: "marketing", label: opt("التسويق 35/25/20/10/10", "Marketing 35/25/20/10/10") },
+          { value: "designer", label: opt("المصمم 35/25/25/15", "Designer 35/25/25/15") },
+          { value: "business_development_lead", label: opt("قيادة تطوير الأعمال", "BD lead") },
+          { value: "company_lead", label: opt("قيادة الشركة", "Company lead") },
+        ], "")) +
         field("معيار (كود)", "Criterion code", textInput("aiCode", "")) +
         field("الاسم (عربي)", "Name (AR)", textInput("aiNameAr", "")) +
         field("الاسم (إنجليزي)", "Name (EN)", textInput("aiNameEn", "")) +
@@ -5215,17 +5638,52 @@
     var gapNote = a.has_evidence_gap
       ? '<p class="note-block">' + dual("الاعتماد محجوب: يوجد معيار إلزامي بدون دليل مكتمل.", "Approval is blocked: a mandatory-evidence item is incomplete.") + "</p>"
       : "";
+    // S23/AC-23: only the owner sees and edits the secret note. It is never
+    // shown to a delegate (the API omits the field for non-owners).
+    var ownerNote =
+      a.assessment_type === "leadership" && isConfidentialOwner()
+        ? panel(
+            "ملاحظات المالك (سرّية)",
+            "Owner notes (confidential)",
+            '<div class="kv"><div class="k">' + dual("نص سري — سياق لاحق", "Secret text — later context") + "</div></div>" +
+              '<form class="av-form" id="ownerNoteForm">' +
+              '<textarea class="av-input" id="ownerNoteText" rows="3" placeholder="' +
+              escAttr(dual("ملاحظة سرية للمالك فقط", "Private note for the owner only")) + '">' +
+              escapeHtml(a.owner_note || "") + "</textarea>" +
+              '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+              dual("حفظ الملاحظة السرية", "Save secret note") + "</button></div></form>",
+          )
+        : "";
     return panel("ملخص", "Summary", '<div class="kv">' +
         kv(dual("الفترة", "Period"), escapeHtml(a.period_label)) +
         kv(dual("الحالة", "Status"), escapeHtml(a.status)) +
         kv(dual("الدرجة المرجّحة", "Weighted score"), dec(a.overall_score)) +
         "</div>" + gapNote + approve) +
+      ownerNote +
       panel("المعايير", "Criteria", itemForm + list);
   }
 
   function bindAssessmentDetail(body, a) {
     var form = body.querySelector("#assessItemForm");
     if (form) {
+      // AC-12: picking a role template prefills the criterion and locks the
+      // specification's fixed weight, so the weight is never typed by hand.
+      var tmplSel = form.querySelector("#aiTemplate");
+      if (tmplSel) {
+        tmplSel.addEventListener("change", function () {
+          var key = tmplSel.value;
+          if (!key) return;
+          get("/api/v1/employees/assessments/criteria").then(function (data) {
+            var rows = (data.templates || {})[key] || [];
+            if (!rows.length) return;
+            var first = rows[0];
+            setVal("aiCode", first.criterion_code);
+            setVal("aiNameAr", first.criterion_name_ar);
+            setVal("aiNameEn", first.criterion_name_en || "");
+            setVal("aiWeight", first.weight);
+          }).catch(domainError);
+        });
+      }
       form.addEventListener("submit", function (ev) {
         ev.preventDefault();
         post("/api/v1/employees/assessments/" + a.id + "/items", {
@@ -5250,6 +5708,20 @@
             toast(dual("تم اعتماد التقييم.", "Assessment approved."), "ok");
             openAssessment(updated);
           }).catch(domainError);
+      });
+    }
+    // S23/AC-23: save the owner's secret note. The endpoint refuses anyone but
+    // the owner; the field is only rendered for the owner.
+    var noteForm = body.querySelector("#ownerNoteForm");
+    if (noteForm) {
+      noteForm.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        post("/api/v1/employees/assessments/" + a.id + "/owner-note", {
+          note: (body.querySelector("#ownerNoteText") || {}).value || null,
+        }).then(function (updated) {
+          toast(dual("تم حفظ الملاحظة السرية.", "Secret note saved."), "ok");
+          openAssessment(updated);
+        }).catch(domainError);
       });
     }
   }
@@ -5527,7 +5999,10 @@
   }
 
   function taskRow(t) {
-    var overdue = t.due_date && t.status !== "complete" && new Date(t.due_date) < new Date();
+    // AC-17: prefer the server's verdict (it also excludes cancelled tasks).
+    var overdue = typeof t.is_overdue === "boolean"
+      ? t.is_overdue
+      : (t.due_date && t.status !== "complete" && new Date(t.due_date) < new Date());
     return (
       '<div class="av-row"' + rowClickAttr("task", t) + ">" +
       '<div class="grow"><div class="t">' + escapeHtml(t.title) + "</div>" +
@@ -5761,19 +6236,45 @@
                 '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
                 dual("حفظ النتائج", "Save results") + "</button></div></form>"
               : "";
+            var linked = (c.linked_lead_count || 0);
+            var linkedBar = '<div class="s" style="margin-top:6px">' +
+              dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
+              ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
+              dual("عرض العملاء", "View leads") + "</button></div>" +
+              '<div id="campLeads' + c.id + '"></div>';
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
               '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
               " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
               statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + results + "</div>";
+              "</div>" + results + linkedBar + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد حملات.", "No campaigns.");
       host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  function loadCampaignLeads(id) {
+    var host = byId("campLeads" + id);
+    if (!host) return;
+    host.innerHTML = '<div class="s">' + dual("جارٍ التحميل…", "Loading…") + "</div>";
+    return get("/api/v1/operations/campaigns/" + id + "/leads").then(function (leads) {
+      leads = leads || [];
+      host.innerHTML = leads.length
+        ? '<div class="av-list">' + leads.map(function (l) {
+            return '<div class="av-row"><div class="grow"><div class="t">' + escapeHtml(l.full_name) + "</div>" +
+              '<div class="s">' + escapeHtml(l.reference) + " · " + escapeHtml(l.email || "") + "</div></div>" +
+              statusBadgeFromMap(l.status, { new: ["جديد", "New", "warn"], contacted: ["تم التواصل", "Contacted", "ok"], qualified: ["مؤهل", "Qualified", "ok"], converted: ["محوَّل", "Converted", "rev"], closed: ["مغلق", "Closed", "miss"], lost: ["مفقود", "Lost", "miss"] }) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا يوجد عملاء مرتبطون.", "No linked leads.");
+    }).catch(function (err) { host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function onOpsAct(action, id, el) {
+    if (action === "camp-leads") {
+      return loadCampaignLeads(id);
+    }
     if (action === "brief-submit") {
       return submitManagementBrief(id, el);
     }
@@ -5986,12 +6487,18 @@
                 ], d.status) +
                 '<button class="btn-outline" data-act="dec-status" data-id="' + d.id + '">' + dual("تحديث", "Update") + "</button></div>"
               : "";
+            // S22: the person the directive names replies with an execution update.
+            var reply = USER && d.executor_user_id === USER.id
+              ? '<div class="av-user-controls" data-stop="1">' +
+                textInput("dcReply" + d.id, "") +
+                '<button class="btn-outline" data-act="dec-reply" data-id="' + d.id + '">' + dual("رد", "Reply") + "</button></div>"
+              : "";
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
               '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
               dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
               statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
-              "</div>" + controls + "</div>";
+              "</div>" + controls + reply + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد قرارات.", "No decisions.");
       host.innerHTML = panel("قرارات المالك", "Owner decisions", create + list);
@@ -6016,6 +6523,16 @@
           var did = btn.getAttribute("data-id");
           patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
             .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+            .catch(domainError);
+        });
+      });
+      host.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var did = btn.getAttribute("data-id");
+          var note = valOf("dcReply" + did);
+          if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+          post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
+            .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
             .catch(domainError);
         });
       });
@@ -6145,32 +6662,100 @@
       bindHost(host, onAcctAct);
     }
     if (!STATE.acctTab || !canAcctTab(STATE.acctTab)) STATE.acctTab = firstAcctTab();
+    STATE.acctSection = ACCT_TAB_SECTION[STATE.acctTab] || ACCT_SECTIONS[0];
+    syncAcctSections();
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "invoices", "assets", "budgets", "kpis"];
+  // Approved accountant sections (spec Table 81 / AC-28). The accountant's area
+  // is grouped into exactly these five; the fine-grained chips are the buttons
+  // *within* the active section, so selecting a section shows only its buttons.
+  var ACCT_SECTIONS = ["holding_accounts", "invoices_dues", "subsidiary_finance", "financial_reports", "tasks_requests"];
+  var ACCT_SECTION_PERM = {
+    holding_accounts: ["account.read", "journal.read", "opening_balance.read"],
+    invoices_dues: ["invoice.read", "party.read", "interbalance.read"],
+    subsidiary_finance: ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+    financial_reports: ["financial_report.read", "asset.read", "budget.read", "kpi.read", "accounting_policy.read"],
+    tasks_requests: ["task.read_own", "task.read_all", "support_request.read_own", "support_request.read_all"],
+  };
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "company_finance", "reports", "statements_internal", "assets", "budgets", "kpis", "policies", "tasks"];
+  var ACCT_TAB_SECTION = {
+    balances: "holding_accounts", accounts: "holding_accounts", journals: "holding_accounts",
+    trial: "holding_accounts", ledger: "holding_accounts", statements: "holding_accounts",
+    invoices: "invoices_dues", parties: "invoices_dues", interbalances: "invoices_dues",
+    company_finance: "subsidiary_finance",
+    reports: "financial_reports", statements_internal: "financial_reports", assets: "financial_reports",
+    budgets: "financial_reports", kpis: "financial_reports", policies: "financial_reports",
+    tasks: "tasks_requests",
+  };
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
     journals: ["journal.read"],
     trial: ["journal.read"],
+    ledger: ["journal.read"],
+    statements: ["journal.read"],
     invoices: ["invoice.read"],
+    parties: ["party.read"],
+    interbalances: ["interbalance.read"],
+    company_finance: ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+    reports: ["financial_report.read"],
+    statements_internal: ["journal.read"],
     assets: ["asset.read"],
     budgets: ["budget.read"],
     kpis: ["kpi.read"],
+    policies: ["accounting_policy.read"],
+    tasks: ["task.read_own", "task.read_all", "support_request.read_own", "support_request.read_all"],
   };
   function canAcctTab(t) { return (ACCT_TAB_PERM[t] || []).some(has); }
+  function canAcctSection(s) { return (ACCT_SECTION_PERM[s] || []).some(has); }
+  function visibleAcctSections() { return ACCT_SECTIONS.filter(canAcctSection); }
+  function firstAcctSection() {
+    var ok = visibleAcctSections();
+    return ok.length ? ok[0] : ACCT_SECTIONS[0];
+  }
   function firstAcctTab() {
     for (var i = 0; i < ACCT_TABS.length; i++) if (canAcctTab(ACCT_TABS[i])) return ACCT_TABS[i];
     return "balances";
   }
+  function firstTabInSection(section) {
+    for (var i = 0; i < ACCT_TABS.length; i++) {
+      if (ACCT_TAB_SECTION[ACCT_TABS[i]] === section && canAcctTab(ACCT_TABS[i])) return ACCT_TABS[i];
+    }
+    return firstAcctTab();
+  }
+  function syncAcctSections() {
+    if (ACCT_SECTIONS.indexOf(STATE.acctSection) < 0) STATE.acctSection = firstAcctSection();
+    document.querySelectorAll("[data-acct-section-btn]").forEach(function (b) {
+      var s = b.getAttribute("data-acct-section-btn");
+      var allowed = canAcctSection(s);
+      b.style.display = allowed ? "" : "none";
+      b.classList.toggle("on", s === STATE.acctSection);
+    });
+    document.querySelectorAll("[data-acct-tab]").forEach(function (b) {
+      var t = b.getAttribute("data-acct-tab");
+      var inSection = ACCT_TAB_SECTION[t] === STATE.acctSection;
+      b.style.display = (inSection && canAcctTab(t)) ? "" : "none";
+    });
+  }
   function bindAcctTabs() {
+    document.querySelectorAll("[data-acct-section-btn]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var s = btn.getAttribute("data-acct-section-btn");
+        if (!canAcctSection(s)) return;
+        STATE.acctSection = s;
+        STATE.acctTab = firstTabInSection(s);
+        syncAcctSections();
+        renderAcctTab(STATE.acctTab);
+      });
+    });
     document.querySelectorAll("[data-acct-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var t = btn.getAttribute("data-acct-tab");
         if (!canAcctTab(t)) return;
         STATE.acctTab = t;
-        document.querySelectorAll("[data-acct-tab]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+        STATE.acctSection = ACCT_TAB_SECTION[t] || STATE.acctSection;
+        syncAcctSections();
         renderAcctTab(t);
       });
     });
@@ -6185,11 +6770,76 @@
     if (tab === "accounts") return renderAccounts();
     if (tab === "journals") return renderJournals();
     if (tab === "trial") return renderTrialBalance();
+    if (tab === "ledger") return renderLedgerActivity();
+    if (tab === "statements") return renderStatements();
     if (tab === "invoices") return renderInvoices();
+    if (tab === "parties") return renderParties();
+    if (tab === "interbalances") return renderInterbalances();
+    if (tab === "company_finance") return renderCompanyFinanceComparison();
+    if (tab === "reports") return renderFinancialReports();
+    if (tab === "statements_internal") return renderStatements();
     if (tab === "assets") return renderAssets();
     if (tab === "budgets") return renderBudgets();
     if (tab === "kpis") return renderKpis();
+    if (tab === "policies") return renderPolicies();
+    if (tab === "tasks") return renderTasksRegistry();
     return Promise.resolve();
+  }
+
+  // AC-28 "ماليات الشركات": company financial reports, performance comparison
+  // and the group financial summary, all read-only for the accountant.
+  function renderCompanyFinanceComparison() {
+    var host = byId("acctContent");
+    var FIN_MAP = {
+      draft: ["مسودة", "Draft", "warn"],
+      finalised: ["معتمد", "Finalised", "ok"],
+      archived: ["مؤرشف", "Archived", "rev"],
+    };
+    return get("/api/v1/accounting/financial-reports").catch(function () { return []; }).then(function (reports) {
+      var list = reports.length
+        ? '<div class="av-list">' + reports.map(function (r) {
+            return '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+              '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
+              statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
+      var group = has("dashboard.holding") ? groupReportPanel() : "";
+      host.innerHTML = panel(
+        "ماليات الشركات (المقارنة والملخص المالي للمجموعة)",
+        "Subsidiary finance (comparison and group financial summary)",
+        group + list
+      );
+      if (has("dashboard.holding")) bindHost(host, onAcctAct);
+      return null;
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // AC-28 "المهام والطلبات": the accountant's tasks and service requests.
+  function renderTasksRegistry() {
+    var host = byId("acctContent");
+    return Promise.all([
+      get("/api/v1/operations/tasks").catch(function () { return []; }),
+      get("/api/v1/support-requests").catch(function () { return []; }),
+    ]).then(function (res) {
+      var tasks = res[0] || [];
+      var tlist = tasks.length
+        ? '<div class="av-list">' + tasks.map(taskRow).join("") + "</div>"
+        : noticeHtml("لا توجد مهام.", "No tasks.");
+      var reqs = res[1] || [];
+      var rlist = reqs.length
+        ? '<div class="av-list">' + reqs.map(function (r) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(r.subject || r.title || "") + "</div></div>" +
+              statusBadgeFromMap(r.status, {}) + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد طلبات.", "No requests.");
+      host.innerHTML =
+        panel("الطلبات الجديدة", "New tasks & requests", tlist) +
+        panel("سجل الطلبات", "Requests registry", rlist);
+      return null;
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderOpeningBalances() {
@@ -6225,7 +6875,8 @@
               '<div class="grow"><div class="t">' + escapeHtml(companyNameById(o.company_id)) + " · " +
               escapeHtml(o.kind) + "</div>" +
               '<div class="s">' + dec(o.period_month) + "/" + dec(o.period_year) +
-              " · " + dual("بنك", "Bank") + " " + dec(o.bank) + " · " + dual("نقد", "Cash") + " " + dec(o.cash) + "</div></div>" +
+              " · " + dual("بنك", "Bank") + " " + dec(o.bank) + " · " + dual("نقد", "Cash") + " " + dec(o.cash) +
+              " · " + dual("إجمالي النقد", "Total cash") + " " + dec(o.total_cash) + "</div></div>" +
               statusBadgeFromMap(o.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "warn"], approved: ["معتمد", "Approved", "ok"] }) +
               "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
           }).join("") + "</div>"
@@ -6336,6 +6987,78 @@
     return lines;
   }
 
+  function renderLedgerActivity() {
+    // S26 Table 53: viewing revenue/expense shows the *source* lines and adds no
+    // record. Read-only; the rows point back at the journal that produced them.
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
+      if (!STATE.companies.length) { host.innerHTML = noticeHtml("لا توجد شركات.", "No companies."); return; }
+      var cid = STATE.acctLedgerCompany || STATE.companies[0].id;
+      STATE.acctLedgerCompany = cid;
+      var type = STATE.acctLedgerType || "";
+      var q = "?company_id=" + cid +
+        (type ? "&account_type=" + type : "") +
+        (STATE.acctLedgerYear ? "&fiscal_year=" + STATE.acctLedgerYear : "") +
+        (STATE.acctLedgerMonth ? "&fiscal_month=" + STATE.acctLedgerMonth : "");
+      return get("/api/v1/accounting/ledger-activity" + q).then(function (data) {
+        var picker = '<div class="av-form av-form-inline">' +
+          field("الشركة", "Company", selectInput("laCompany", companySelectOptions(false), cid)) +
+          field("النوع", "Type", selectInput("laType", [
+            { value: "", label: opt("الإيرادات والمصروفات", "Revenue & expenses") },
+            { value: "revenue", label: opt("الإيرادات فقط", "Revenue only") },
+            { value: "expense", label: opt("المصروفات فقط", "Expenses only") },
+          ], type)) +
+          field("السنة", "Year", numInput("laYear", STATE.acctLedgerYear || "")) +
+          field("الشهر", "Month", numInput("laMonth", STATE.acctLedgerMonth || "")) +
+          "</div>";
+        var lines = (data && data.lines) || [];
+        var table = lines.length
+          ? '<div class="av-list">' + lines.map(function (r) {
+              var name = STATE.lang === "ar" ? r.name_ar : (r.name_en || r.name_ar);
+              var kind = r.account_type === "revenue" ? dual("إيراد", "Revenue") : dual("مصروف", "Expense");
+              var meta = [kind, r.journal_number, r.entry_date, r.description]
+                .filter(function (v) { return v; }).join(" · ");
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+                escapeHtml(r.code + " · " + name) + "</div>" +
+                '<div class="s">' + escapeHtml(meta) + "</div></div>" +
+                '<div class="t">' + dec(r.amount) + " " + escapeHtml(r.currency || "") + "</div></div>";
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد سطور مصدر.", "No source lines.");
+        var totals = (data && data.totals || []).length
+          ? '<p class="note-block">' + data.totals.map(function (t) {
+              var label = t.account_type === "revenue" ? dual("إجمالي الإيرادات", "Total revenue") : dual("إجمالي المصروفات", "Total expenses");
+              return escapeHtml(label) + " " + dec(t.amount) + " " + escapeHtml(t.currency);
+            }).join(" · ") + "</p>"
+          : "";
+        host.innerHTML = panel(
+          "عرض الإيرادات والمصروفات (سطور المصدر، دون تسجيل إضافي)",
+          "Revenue & expenses view (source lines, no extra posting)",
+          picker + totals + table
+        );
+        var sel = byId("laCompany");
+        if (sel) sel.addEventListener("change", function () {
+          STATE.acctLedgerCompany = parseInt(valOf("laCompany"), 10);
+          renderLedgerActivity();
+        });
+        var tSel = byId("laType");
+        if (tSel) tSel.addEventListener("change", function () {
+          STATE.acctLedgerType = valOf("laType");
+          renderLedgerActivity();
+        });
+        var yEl = byId("laYear");
+        if (yEl) yEl.addEventListener("change", function () {
+          STATE.acctLedgerYear = valOf("laYear") ? parseInt(valOf("laYear"), 10) : null;
+          renderLedgerActivity();
+        });
+        var mEl = byId("laMonth");
+        if (mEl) mEl.addEventListener("change", function () {
+          STATE.acctLedgerMonth = valOf("laMonth") ? parseInt(valOf("laMonth"), 10) : null;
+          renderLedgerActivity();
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function renderTrialBalance() {
     var host = byId("acctContent");
     return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
@@ -6372,15 +7095,124 @@
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  function statementSection(titleAr, titleEn, rows, totals) {
+    var body = (rows || []).length
+      ? '<div class="av-list">' + rows.map(function (r) {
+          var name = STATE.lang === "ar" ? r.name_ar : (r.name_en || r.name_ar);
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            escapeHtml(r.code + " · " + name) + "</div></div>" +
+            '<div class="t">' + dec(r.amount) + " " + escapeHtml(r.currency || "") + "</div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد مبالغ.", "No amounts.");
+    var footer = (totals || []).length
+      ? '<p class="note-block">' + totals.map(function (t) {
+          return escapeHtml(t.label) + " " + dec(t.amount) + " " + escapeHtml(t.currency);
+        }).join(" · ") + "</p>"
+      : "";
+    return panel(titleAr, titleEn, body + footer);
+  }
+
+  function statementPeriodLabel(fy, fm) {
+    return (fy || "—") + (fm ? " / " + fm : "");
+  }
+
+  function renderStatements() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), Promise.resolve()]).then(function () {
+      if (!STATE.companies.length) { host.innerHTML = noticeHtml("لا توجد شركات.", "No companies."); return; }
+      var cid = STATE.acctStmtCompany || STATE.companies[0].id;
+      STATE.acctStmtCompany = cid;
+      var compare = !!STATE.acctStmtCompare;
+      var q = "?company_id=" + cid +
+        (STATE.acctStmtYear ? "&fiscal_year=" + STATE.acctStmtYear : "") +
+        (STATE.acctStmtMonth ? "&fiscal_month=" + STATE.acctStmtMonth : "") +
+        (compare ? "&compare_previous=true" : "");
+      return get("/api/v1/accounting/financial-statements" + q).then(function (fs) {
+        var picker = '<div class="av-form av-form-inline">' +
+          field("الشركة", "Company", selectInput("fsCompany", companySelectOptions(false), cid)) +
+          field("السنة", "Year", numInput("fsYear", STATE.acctStmtYear || "")) +
+          field("الشهر", "Month", numInput("fsMonth", STATE.acctStmtMonth || "")) +
+          field("المقارنة", "Compare", selectInput("fsCompare",
+            [{ value: "", label: opt("بدون", "None") }, { value: "1", label: opt("الفترة السابقة", "Previous period") }],
+            compare ? "1" : "")) +
+          "</div>";
+        var is = fs.income_statement || {};
+        var bs = fs.balance_sheet || {};
+        var netTotals = (is.net || []).map(function (n) {
+          return { label: dual("صافي", "Net") + " (" + statementPeriodLabel(fs.fiscal_year, fs.fiscal_month) + ")",
+                   amount: n.amount, currency: n.currency };
+        });
+        var revTotals = (is.total_revenue || []).map(function (n) {
+          return { label: dual("إجمالي الإيرادات", "Total revenue"), amount: n.amount, currency: n.currency };
+        }).concat((is.total_expenses || []).map(function (n) {
+          return { label: dual("إجمالي المصروفات", "Total expenses"), amount: n.amount, currency: n.currency };
+        })).concat(netTotals);
+        var bsTotals = (bs.total_assets || []).map(function (n) {
+          return { label: dual("إجمالي الأصول", "Total assets"), amount: n.amount, currency: n.currency };
+        }).concat((bs.total_liabilities || []).map(function (n) {
+          return { label: dual("إجمالي الالتزامات", "Total liabilities"), amount: n.amount, currency: n.currency };
+        })).concat((bs.total_equity || []).map(function (n) {
+          return { label: dual("حقوق الملكية", "Equity"), amount: n.amount, currency: n.currency };
+        })).concat((bs.balanced || []).map(function (b) {
+          return { label: b.currency, amount: b.balanced ? dual("متوازن", "Balanced") : dual("غير متوازن", "Not balanced"), currency: "" };
+        }));
+        var prev = "";
+        if (fs.previous) {
+          var pis = fs.previous.income_statement || {};
+          var prevNet = (pis.net || []).map(function (n) {
+            return { label: dual("صافي", "Net") + " (" + statementPeriodLabel(fs.previous.fiscal_year, fs.previous.fiscal_month) + ")",
+                     amount: n.amount, currency: n.currency };
+          });
+          prev = statementSection("الفترة السابقة — قائمة الدخل", "Previous period — income statement",
+            pis.revenue || [], prevNet);
+        }
+        host.innerHTML = panel(
+          "القوائم المالية (القيود المُرحّلة فقط؛ الأرقام بعملاتها دون جمع)",
+          "Financial statements (posted journals only; amounts kept per currency)",
+          picker +
+          statementSection("قائمة الدخل", "Income statement", (is.revenue || []).concat(is.expenses || []), revTotals) +
+          statementSection("الميزانية العمومية", "Balance sheet", (bs.assets || []).concat(bs.liabilities || []).concat(bs.equity || []), bsTotals) +
+          prev
+        );
+        var sel = byId("fsCompany");
+        if (sel) sel.addEventListener("change", function () {
+          STATE.acctStmtCompany = parseInt(valOf("fsCompany"), 10);
+          renderStatements();
+        });
+        var yEl = byId("fsYear");
+        if (yEl) yEl.addEventListener("change", function () {
+          STATE.acctStmtYear = valOf("fsYear") ? parseInt(valOf("fsYear"), 10) : null;
+          renderStatements();
+        });
+        var mEl = byId("fsMonth");
+        if (mEl) mEl.addEventListener("change", function () {
+          STATE.acctStmtMonth = valOf("fsMonth") ? parseInt(valOf("fsMonth"), 10) : null;
+          renderStatements();
+        });
+        var cEl = byId("fsCompare");
+        if (cEl) cEl.addEventListener("change", function () {
+          STATE.acctStmtCompare = valOf("fsCompare") === "1";
+          renderStatements();
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function renderInvoices() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/invoices").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/invoices").catch(function () { return []; }),
+      get("/api/v1/accounting/receivables").catch(function () { return null; }),
+    ]).then(function (res) {
       var rows = res[1] || [];
+      var summary = res[2];
       var canManage = has("invoice.manage");
       var create = canManage
         ? '<form class="av-form" id="invoiceForm">' +
           '<div class="av-form-inline">' +
           field("الشركة", "Company", selectInput("ivCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("النوع", "Direction", selectInput("ivDirection", [{ value: "issued", label: opt("صادرة (مستحق لنا)", "Issued (receivable)") }, { value: "received", label: opt("واردة (مستحق علينا)", "Received (payable)") }], "issued")) +
           field("الرقم", "Number", textInput("ivNumber", "")) +
           field("الطرف", "Party", textInput("ivParty", "")) +
           field("تاريخ الإصدار", "Issue date", dateInput("ivIssue", "")) +
@@ -6395,6 +7227,12 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء فاتورة", "Create invoice") + "</button></div></form>"
         : "";
+      var totals = summary
+        ? '<div class="av-grid cols-2">' +
+          moneyBlock("مستحق لنا (فواتير صادرة)", "Receivable (issued)", summary.receivables) +
+          moneyBlock("مستحق علينا (فواتير واردة)", "Payable (received)", summary.payables) +
+          "</div>"
+        : "";
       var list = rows.length
         ? '<div class="av-list">' + rows.map(function (iv) {
             var settle = iv.status !== "settled" && has("settlement.manage")
@@ -6405,12 +7243,85 @@
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
               '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
-              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + "</div></div>" +
+              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
+              dirBadge(iv.direction) +
               statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
               "</div>" + settle + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد فواتير.", "No invoices.");
-      host.innerHTML = panel("الفواتير والذمم (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", create + list);
+      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function moneyBlock(ar, en, rows) {
+    var body = (rows || []).length
+      ? '<div class="av-list">' + rows.map(function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dec(r.amount) + " " + escapeHtml(r.currency) + "</div></div></div>";
+        }).join("") + "</div>"
+      : noticeHtml("لا مبالغ مستحقة.", "Nothing outstanding.");
+    return '<div class="av-card">' + panel(ar, en, body) + "</div>";
+  }
+
+  function dirBadge(direction) {
+    var issued = direction !== "received";
+    return '<span class="badge ' + (issued ? "ok" : "warn") + '">' +
+      (issued ? dual("مستحق لنا", "Receivable") : dual("مستحق علينا", "Payable")) + "</span>";
+  }
+
+  function renderParties() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/parties").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("party.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="partyForm">' +
+          field("الشركة", "Company", selectInput("ptCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الاسم", "Name", textInput("ptName", "")) +
+          field("النوع", "Type", selectInput("ptType", [{ value: "customer", label: opt("عميل", "Customer") }, { value: "supplier", label: opt("مورد", "Supplier") }], "customer")) +
+          field("العملة", "Currency", textInput("ptCurrency", "SAR")) +
+          field("التواصل", "Contact", textInput("ptContact", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة طرف", "Add party") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (p) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(p.name) + "</div>" +
+              '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
+              escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
+              " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا يوجد عملاء أو موردون.", "No customers or suppliers.");
+      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + list);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function renderInterbalances() {
+    var host = byId("acctContent");
+    return Promise.all([ensureCompanies(), get("/api/v1/accounting/interbalances").catch(function () { return []; })]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("interbalance.manage");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="interbalanceForm">' +
+          field("الشركة", "Company", selectInput("ibCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("الشركة المقابلة", "Counterparty", selectInput("ibCounterparty", [{ value: "", label: opt("بدون", "None") }].concat(companySelectOptions(false)), "")) +
+          field("العملة", "Currency", textInput("ibCurrency", "SAR")) +
+          field("المبلغ", "Amount", numInput("ibAmount", "")) +
+          field("السبب", "Reason", textInput("ibReason", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("تسجيل رصيد", "Record balance") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (b) {
+            var other = b.counterparty_company_id ? companyNameById(b.counterparty_company_id) : (b.counterparty_name || "—");
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(companyNameById(b.company_id) + " ↔ " + other) + "</div>" +
+              '<div class="s">' + dec(b.amount) + " " + escapeHtml(b.currency) +
+              (b.reason ? " · " + escapeHtml(b.reason) : "") + "</div></div></div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أرصدة بين الشركات.", "No inter-company balances.");
+      host.innerHTML = panel("أرصدة الشركات (S27: رصيد بعملته وسببه، وليس إيرادًا ولا رسوم خدمة)", "Inter-company balances (S27: a balance with its currency and reason — not revenue, not a service fee)", create + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6445,6 +7356,7 @@
     var host = byId("acctContent");
     return Promise.all([ensureCompanies(), get("/api/v1/accounting/budgets").catch(function () { return []; })]).then(function (res) {
       var rows = res[1] || [];
+      STATE.budgetRows = rows;
       var canManage = has("budget.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="budgetForm">' +
@@ -6460,23 +7372,71 @@
             var approve = b.status !== "approved" && has("budget.approve")
               ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
               : "";
+            var utilBtn = b.status === "approved" && has("budget.read")
+              ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
+              : "";
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
               " · v" + dec(b.version) + "</div>" +
               '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
               " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
               statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
-              "</div>" + (approve ? '<div class="av-user-controls" data-stop="1">' + approve + "</div>" : "") + "</div>";
+              "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد موازنات.", "No budgets.");
-      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + list);
+      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  // AC-28: an over-budget year reports the variance and never creates a payment
+  // approval (Table 56 "يفتح المصدر والفروق دون اعتماد صرف").
+  function budgetUtilPanel() {
+    var u = STATE.budgetUtil;
+    if (!u) return "";
+    var over = u.over_budget
+      ? '<span class="status warn"><i></i>' + dual("متجاوزة", "Over budget") + "</span>"
+      : '<span class="status ok"><i></i>' + dual("داخل الموازنة", "Within budget") + "</span>";
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+      '<div style="display:flex;align-items:center;gap:11px"><div class="grow">' +
+      '<div class="t">' + dual("فروق الموازنة", "Budget variances") + " · " +
+      escapeHtml(companyNameById(u.company_id)) + " · " + dec(u.fiscal_year) + "</div>" +
+      '<div class="s">' + dual("الموازنة", "Budget") + " " + dec(u.budget_total) +
+      " · " + dual("الفعلي", "Actual") + " " + dec(u.actual_expenses) +
+      " · " + dual("الفرق", "Variance") + " " + dec(u.variance) + " " + escapeHtml(u.currency) +
+      "</div></div>" + over +
+      '<button class="btn-ghost" data-act="bg-util-close">' + dual("إغلاق", "Close") + "</button>" +
+      "</div></div>";
+  }
+
+  function kpiStatusBadge(ev) {
+    var cls = ev.status === "active" ? "rev" : "";
+    var label = ev.status === "active"
+      ? dual("نشط", "Active")
+      : dual("بانتظار الاعتماد", "Pending approval");
+    return '<span class="status ' + cls + '"><i></i>' + label + "</span>";
+  }
+
+  function kpiVarianceCell(ev) {
+    if (ev.actual_value == null || ev.target_value == null) {
+      return '<span class="s">' + dual("لا نتيجة بعد", "No result yet") + "</span>";
+    }
+    var pct = ev.variance_pct == null ? "" : " (" + (ev.variance_pct >= 0 ? "+" : "") + NUM.format(ev.variance_pct) + "%)";
+    var cls = ev.favourable ? "rev" : "warn";
+    return '<span class="status ' + cls + '"><i></i>' + dual("الفرق", "Variance") + " " +
+      (ev.variance >= 0 ? "+" : "") + dec(ev.variance) + escapeHtml(pct) + "</span>";
+  }
+
+  // D02: target-versus-actual comes from the server's evaluation endpoint, never
+  // from client arithmetic, and every figure keeps its own source drill-down.
   function renderKpis() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/kpis").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/kpis").catch(function () { return []; }),
+      get("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()).catch(function () { return []; }),
+    ]).then(function (res) {
       var rows = res[1] || [];
+      var evals = res[2] || [];
       var canManage = has("kpi.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="kpiForm">' +
@@ -6492,21 +7452,278 @@
         : "";
       var list = rows.length
         ? '<div class="av-list">' + rows.map(function (k) {
+            var toggle = canManage
+              ? actBtn("kpi.manage", k.is_active ? "kpi-deactivate" : "kpi-activate", k.id,
+                  k.is_active ? "إيقاف" : "اعتماد", k.is_active ? "Deactivate" : "Approve")
+              : "";
             return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
               escapeHtml(k.code + " · " + (STATE.lang === "ar" ? k.name_ar : k.name_en || k.name_ar)) + "</div>" +
               '<div class="s">' + dual("المصدر", "Source") + " " + escapeHtml(k.data_source) +
               " · " + dual("الطريقة", "Method") + " " + escapeHtml(k.calculation_method) +
               " · " + escapeHtml(k.period_label) + "</div></div>" +
               (k.target_value != null ? '<span class="status rev"><i></i>' + dual("المستهدف", "Target") + " " + dec(k.target_value) + "</span>" : "") +
+              toggle +
               "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد مؤشرات.", "No KPIs.");
-      host.innerHTML = panel("مؤشرات الأداء (D02: مصدر + طريقة + فترة)", "KPIs (D02: source + method + period)", create + list);
+      var evaluations = evals.length
+        ? '<div class="av-list">' + evals.map(function (ev) {
+            return '<div class="av-row" data-kpi-open="' + ev.id + '"><div class="grow"><div class="t">' +
+              escapeHtml(ev.code + " · " + (STATE.lang === "ar" ? ev.name_ar : ev.name_en || ev.name_ar)) + "</div>" +
+              '<div class="s">' + dual("المستهدف", "Target") + " " + dec(ev.target_value) +
+              " · " + dual("المتحقق", "Actual") + " " + dec(ev.actual_value) +
+              (ev.unit ? " · " + escapeHtml(ev.unit) : "") + "</div></div>" +
+              kpiVarianceCell(ev) + kpiStatusBadge(ev) +
+              "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد نتائج لهذه الفترة.", "No results for this period.");
+      var body =
+        panel("المؤشرات · المستهدف مقابل المتحقق (" + kpiPeriodText() + ")",
+              "KPIs · target versus actual",
+              evaluations + '<div class="av-empty">' +
+              dual("اختر مؤشرًا لعرض السجلات المصدر خلف النتيجة.",
+                   "Select a KPI to see the source records behind its result.") + "</div>") +
+        panel("تعريفات المؤشرات (D02: مصدر + طريقة + فترة)",
+              "KPI definitions (D02: source + method + period)", create + list);
+      host.innerHTML = body;
+      host.querySelectorAll("[data-kpi-open]").forEach(function (row) {
+        row.addEventListener("click", function (e) {
+          if (e.target.closest && e.target.closest("[data-stop]")) return;
+          openKpiSources(row.getAttribute("data-kpi-open"));
+        });
+      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
+  function kpiPeriodText() {
+    var p = periodLabel();
+    return p.ar ? p.ar : String(STATE.year || "");
+  }
+
+  // Drill-down: fetch the evaluation *with its source records* for one KPI.
+  // Source records carry {kind, record_id, label_ar} and are opened through the
+  // same navigators the dashboard drill-down uses, so a KPI can never show a
+  // snapshot that drifts from the underlying record.
+  function openKpiSources(id) {
+    openModal({
+      title: dual("سجلات المصدر", "Source records"),
+      body: loadingHtml(),
+      wide: true,
+      onMount: function () {
+        get("/api/v1/accounting/kpis/" + id + "/sources?" + finPeriodQuery())
+          .then(function (ev) {
+            var host = byId("modalBody");
+            if (!host) return;
+            var rows = ev.sources || [];
+            var head = kpiVarianceCell(ev);
+            if (!rows.length) {
+              host.innerHTML = head + emptyHtml(
+                "لا توجد سجلات مصدر لهذه الفترة.",
+                "No source records for this period.",
+              );
+              return;
+            }
+            host.innerHTML = head +
+              '<table class="table"><thead><tr><th>' + dual("النوع", "Type") +
+              "</th><th>" + dual("السجل", "Record") + "</th></tr></thead><tbody>" +
+              rows.map(function (r) {
+                var typeLabel = r.kind === "company"
+                  ? dual("شركة", "Company")
+                  : r.kind === "support_request"
+                    ? dual("طلب", "Request")
+                    : dual("تقرير", "Report");
+                return '<tr data-kpi-kind="' + escapeHtml(r.kind) +
+                  '" data-kpi-id="' + r.record_id + '" style="cursor:pointer"><td>' +
+                  typeLabel + "</td><td>" + escapeHtml(r.label_ar) + "</td></tr>";
+              }).join("") + "</tbody></table>";
+            host.querySelectorAll("[data-kpi-kind]").forEach(function (el) {
+              el.addEventListener("click", function () {
+                var kind = el.getAttribute("data-kpi-kind");
+                var recId = parseInt(el.getAttribute("data-kpi-id"), 10);
+                closeModal();
+                if (kind === "company") openCompany(recId);
+                else if (kind === "support_request") navTo("support");
+                else if (kind === "monthly_report") openReport(recId);
+              });
+            });
+          })
+          .catch(function (err) {
+            var host = byId("modalBody");
+            if (host) host.innerHTML = errorHtml(errText(err));
+          });
+      },
+    });
+  }
+
+  var POLICY_KINDS = ["tax", "fiscal_year", "invoice", "asset", "currency"];
+  function policyKindLabel(k) {
+    var map = {
+      tax: ["الضريبة", "Tax"],
+      fiscal_year: ["السنة المالية", "Fiscal year"],
+      invoice: ["الفاتورة", "Invoice"],
+      asset: ["الأصول", "Asset"],
+      currency: ["العملة", "Currency"],
+    };
+    return dual.apply(null, map[k] || [k, k]);
+  }
+  function renderPolicies() {
+    var host = byId("acctContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/policies").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("accounting_policy.manage");
+      var canApprove = has("accounting_policy.approve");
+      var kindOptions = POLICY_KINDS.map(function (k) {
+        return { value: k, label: policyKindLabel(k) };
+      });
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="policyForm">' +
+          field("النوع", "Kind", selectInput("polKind", kindOptions, "tax")) +
+          field("الشركة", "Company", selectInput("polCompany", [{ value: "", label: dual("القابضة (افتراضي)", "Holding (default)") }].concat(companySelectOptions(true)), "")) +
+          field("القيمة", "Value", numInput("polValue", "")) +
+          field("قيمة نصية", "Text value", textInput("polText", "")) +
+          field("الوصف", "Description", textInput("polDesc", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("حفظ مسودة", "Save draft") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (p) {
+            var approved = p.status === "approved";
+            var badge = approved
+              ? '<span class="status ok"><i></i>' + dual("معتمدة", "Approved") + "</span>"
+              : '<span class="status warn"><i></i>' + dual("مسودة", "Draft") + "</span>";
+            var approveBtn = (!approved && canApprove)
+              ? '<button class="btn-ghost" data-act="policy-approve" data-id="' + p.id + '">' + dual("اعتماد", "Approve") + "</button>"
+              : "";
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(policyKindLabel(p.kind)) + " · " + dual("نسخة", "v") + " " + p.version +
+              (p.company_id ? " · " + dual("شركة #", "company #") + p.company_id : " · " + dual("افتراضي القابضة", "holding default")) +
+              "</div>" +
+              '<div class="s">' + escapeHtml(p.value != null ? String(p.value) : (p.value_text || "")) +
+              (p.description ? " · " + escapeHtml(p.description) : "") + "</div></div>" +
+              badge + approveBtn + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد سياسات محاسبية معتمدة بعد.", "No accounting policies yet.");
+      host.innerHTML = panel(
+        "السياسات المحاسبية (D01: مسودة لا تسري، والاعتماد هو ما يسري)",
+        "Accounting policies (D01: a draft is inert; approval makes it effective)",
+        create + list
+      );
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // S28 Table 57: the accountant draws the accounts for a month, adds the
+  // analysis, then finalises; the BD and owner read the archive.
+  var FIN_REPORT_STATUS = {
+    draft: ["مسودة", "Draft", "warn"],
+    finalised: ["معتمد", "Finalised", "ok"],
+    archived: ["مؤرشف", "Archived", "rev"],
+  };
+  function renderFinancialReports() {
+    var host = byId("acctContent");
+    return Promise.all([
+      ensureCompanies(),
+      get("/api/v1/accounting/financial-reports").catch(function () { return []; }),
+    ]).then(function (res) {
+      var rows = res[1] || [];
+      var canManage = has("financial_report.manage");
+      var canFinalise = has("financial_report.finalise");
+      var create = canManage
+        ? '<form class="av-form av-form-inline" id="finReportForm">' +
+          field("الشركة", "Company", selectInput("frCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
+          field("السنة", "Year", numInput("frYear", STATE.year || "")) +
+          field("الشهر", "Month", numInput("frMonth", STATE.month || "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("سحب الحسابات وإعداد التقرير", "Draw accounts & prepare report") + "</button></div></form>"
+        : "";
+      var list = rows.length
+        ? '<div class="av-list">' + rows.map(function (r) {
+            var summary = (r.figures && r.figures.summary) || [];
+            var money = summary.map(function (s) {
+              return escapeHtml(s.currency) + " " + dec(s.net);
+            }).join(" · ") || dual("لا حركة", "No movement");
+            var actions = "";
+            if (r.status === "draft" && canManage) {
+              actions += '<input class="inp" data-field="analysis" data-id="' + r.id + '" style="min-width:220px" placeholder="' + dual("التحليل", "Analysis") + '" value="' + escAttr(r.analysis || "") + '">';
+              actions += actBtn("financial_report.manage", "fr-analysis", r.id, "حفظ التحليل", "Save analysis");
+            }
+            if (r.status === "draft" && canFinalise) {
+              actions += actBtn("financial_report.finalise", "fr-finalise", r.id, "اعتماد", "Finalise");
+            }
+            if (r.status === "finalised" && canFinalise) {
+              actions += actBtn("financial_report.finalise", "fr-archive", r.id, "أرشفة", "Archive");
+            }
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+              '<div class="s">' + money + "</div></div>" +
+              statusBadgeFromMap(r.status, FIN_REPORT_STATUS) +
+              "</div>" + (actions ? '<div class="av-user-controls" data-stop="1">' + actions + "</div>" : "") + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
+      host.innerHTML = panel(
+        "التقرير المالي الشهري (S28: يسحب الحسابات ويضيف التحليل، والمعتمد لا يُعدّل)",
+        "Monthly financial report (S28: draws the accounts and adds the analysis; a finalised report is immutable)",
+        create + (has("dashboard.holding") ? groupReportPanel() : "") + list
+      );
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // S28: the group view keeps the holding and the subsidiaries distinct and
+  // never claims consolidation ("لا يدعي إلغاء التعاملات للتوحيد").
+  function groupReportPanel() {
+    var g = STATE.groupReport;
+    if (!g) {
+      return '<div class="av-row" style="cursor:default"><div class="grow">' +
+        '<div class="t">' + dual("تقرير المجموعة", "Group report") + "</div>" +
+        '<div class="s">' + dual("يميّز القابضة عن ملخصات التابعة دون ادعاء التوحيد",
+          "Distinguishes the holding from subsidiary summaries without claiming consolidation") + "</div></div>" +
+        '<button class="btn-ghost" data-act="fr-group">' + dual("عرض المجموعة", "View group") + "</button></div>";
+    }
+    var hold = g.holding.length
+      ? g.holding.map(function (h) {
+          var money = (h.summary || []).map(function (s) {
+            return escapeHtml(s.currency) + " " + dec(s.net);
+          }).join(" · ") || dual("لا حركة", "No movement");
+          return '<div class="s">' + escapeHtml(h.name_ar) + ": " + money + "</div>";
+        }).join("")
+      : '<div class="s">' + dual("لا حسابات قابضة لهذه الفترة", "No holding accounts this period") + "</div>";
+    var subs = g.subsidiaries.length
+      ? g.subsidiaries.map(function (s) {
+          var val = s.approved
+            ? escapeHtml(s.currency || "") + " " + dec(s.result)
+            : dual("لا يوجد ملخص معتمد", "No approved summary");
+          return '<div class="s">' + escapeHtml(s.name_ar) + ": " + val + "</div>";
+        }).join("")
+      : "";
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+      '<div style="display:flex;align-items:center;gap:11px"><div class="grow">' +
+      '<div class="t">' + dual("تقرير المجموعة", "Group report") + " · " +
+      dec(g.period_month) + "/" + dec(g.period_year) + "</div>" +
+      '<div class="s"><b>' + dual("القابضة", "Holding") + "</b></div>" + hold +
+      (subs ? '<div class="s"><b>' + dual("التابعة", "Subsidiaries") + "</b></div>" + subs : "") +
+      '<div class="s">' + escapeHtml(g.consolidation_note_ar || g.consolidation_note_en || "") + "</div>" +
+      "</div>" +
+      '<button class="btn-ghost" data-act="fr-group-close">' + dual("إغلاق", "Close") + "</button>" +
+      "</div></div>";
+  }
+
   function onAcctAct(action, id, el) {
+    if (action === "kpi-activate" || action === "kpi-deactivate") {
+      busy(el, true);
+      return post("/api/v1/accounting/kpis/" + id + "/active", { active: action === "kpi-activate" })
+        .then(function () { toast(dual("تم تحديث اعتماد المؤشر.", "KPI approval updated."), "ok"); return renderKpis(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
     if (action === "jn-add-line") return addJournalLine();
+    if (action === "policy-approve") {
+      busy(el, true);
+      return post("/api/v1/accounting/policies/" + id + "/approve", {})
+        .then(function () { toast(dual("تم اعتماد السياسة.", "Policy approved."), "ok"); return renderPolicies(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
     if (action === "ob-submit") {
       busy(el, true);
       return post("/api/v1/accounting/opening-balances/" + id + "/submit", {})
@@ -6547,6 +7764,50 @@
       busy(el, true);
       return post("/api/v1/accounting/budgets/" + id + "/approve", {})
         .then(function () { toast(dual("تم اعتماد الموازنة.", "Budget approved."), "ok"); return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "bg-util") {
+      busy(el, true);
+      var budget = (STATE.budgetRows || []).filter(function (b) { return b.id === id; })[0];
+      if (!budget) { busy(el, false); return; }
+      return get("/api/v1/accounting/budgets/utilisation?company_id=" + budget.company_id +
+                 "&fiscal_year=" + budget.fiscal_year)
+        .then(function (u) { STATE.budgetUtil = u; return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "bg-util-close") { STATE.budgetUtil = null; return renderBudgets(); }
+    if (action === "fr-group") {
+      busy(el, true);
+      return get("/api/v1/accounting/financial-reports/group?period_year=" +
+                 (STATE.year || "") + "&period_month=" + (STATE.month || ""))
+        .then(function (g) { STATE.groupReport = g; return renderFinancialReports(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "fr-group-close") { STATE.groupReport = null; return renderFinancialReports(); }
+    if (action === "fr-analysis") {
+      busy(el, true);
+      var input = document.querySelector('[data-field="analysis"][data-id="' + id + '"]');
+      return patch("/api/v1/accounting/financial-reports/" + id + "/analysis",
+                   { analysis: input ? input.value : null })
+        .then(function () { toast(dual("تم حفظ التحليل.", "Analysis saved."), "ok"); return renderFinancialReports(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "fr-finalise") {
+      return confirmDialog({
+        title: dual("اعتماد التقرير المالي", "Finalise the financial report"),
+        message: dual("بعد الاعتماد لا يمكن تعديل التقرير. متابعة؟", "A finalised report cannot be edited. Continue?"),
+      }).then(function (ok) {
+        if (!ok) return;
+        busy(el, true);
+        return post("/api/v1/accounting/financial-reports/" + id + "/finalise", {})
+          .then(function () { toast(dual("تم اعتماد التقرير المالي.", "Financial report finalised."), "ok"); return renderFinancialReports(); })
+          .catch(function (err) { domainError(err); busy(el, false); });
+      });
+    }
+    if (action === "fr-archive") {
+      busy(el, true);
+      return post("/api/v1/accounting/financial-reports/" + id + "/archive", {})
+        .then(function () { toast(dual("تمت أرشفة التقرير.", "Report archived."), "ok"); return renderFinancialReports(); })
         .catch(function (err) { domainError(err); busy(el, false); });
     }
     if (action === "conf-grant-create") return createConfGrant(el);
@@ -6598,6 +7859,7 @@
         company_id: parseInt(valOf("ivCompany"), 10),
         number: valOf("ivNumber"),
         party_name: valOf("ivParty"),
+        direction: valOf("ivDirection") || "issued",
         issue_date: valOf("ivIssue") || null,
         due_date: valOf("ivDue") || null,
         tax_rate: numVal("ivTax") || 0,
@@ -6607,6 +7869,28 @@
           unit_price: numVal("ivPrice") || 0,
         }],
       }).then(function () { toast(dual("تم إنشاء الفاتورة.", "Invoice created."), "ok"); return renderInvoices(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "partyForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/parties", {
+        company_id: parseInt(valOf("ptCompany"), 10),
+        name: valOf("ptName"),
+        party_type: valOf("ptType") || "customer",
+        currency: valOf("ptCurrency") || "SAR",
+        contact: valOf("ptContact") || null,
+      }).then(function () { toast(dual("تمت إضافة الطرف.", "Party added."), "ok"); return renderParties(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "interbalanceForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/interbalances", {
+        company_id: parseInt(valOf("ibCompany"), 10),
+        counterparty_company_id: valOf("ibCounterparty") ? parseInt(valOf("ibCounterparty"), 10) : null,
+        currency: valOf("ibCurrency") || "SAR",
+        amount: numVal("ibAmount") || 0,
+        reason: valOf("ibReason") || null,
+      }).then(function () { toast(dual("تم تسجيل الرصيد.", "Balance recorded."), "ok"); return renderInterbalances(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "assetForm") {
@@ -6641,6 +7925,26 @@
         period_label: valOf("kpPeriod"),
         target_value: numVal("kpTarget"),
       }).then(function () { toast(dual("تمت إضافة المؤشر.", "KPI added."), "ok"); return renderKpis(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "policyForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/policies", {
+        kind: valOf("polKind"),
+        company_id: valOf("polCompany") ? parseInt(valOf("polCompany"), 10) : null,
+        value: numVal("polValue"),
+        value_text: valOf("polText") || null,
+        description: valOf("polDesc") || null,
+      }).then(function () { toast(dual("تم حفظ المسودة.", "Draft saved."), "ok"); return renderPolicies(); })
+        .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
+    }
+    if (id === "finReportForm") {
+      busy(el.querySelector("button"), true);
+      return post("/api/v1/accounting/financial-reports", {
+        company_id: parseInt(valOf("frCompany"), 10),
+        period_year: parseInt(valOf("frYear"), 10),
+        period_month: numVal("frMonth"),
+      }).then(function () { toast(dual("تم إعداد التقرير.", "Report prepared."), "ok"); return renderFinancialReports(); })
         .catch(function (err) { domainError(err); busy(el.querySelector("button"), false); });
     }
     if (id === "complaintForm") {
@@ -7091,6 +8395,8 @@
             field("الاسم (عربي)", "Name (AR)", textInput("ccNameAr", "")) +
             field("الاسم (إنجليزي)", "Name (EN)", textInput("ccNameEn", "")) +
             field("القطاع", "Sector", textInput("ccSector", "")) +
+            field("تاريخ التأسيس", "Founded on", dateInput("ccFounded", "")) +
+            field("بداية المتابعة", "Monitoring start", dateInput("ccTracking", "")) +
             field("العملة", "Currency", textInput("ccCurrency", "SAR")) +
             field("الدولة", "Country", textInput("ccCountry", "")) +
             '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
@@ -7109,8 +8415,10 @@
           post("/api/v1/companies", {
             code: valOf("ccCode"),
             name_ar: valOf("ccNameAr"),
-            name_en: valOf("ccNameEn"),
-            sector: valOf("ccSector") || null,
+            name_en: valOf("ccNameEn") || null,
+            sector: valOf("ccSector"),
+            founded_on: valOf("ccFounded") || null,
+            tracking_start_date: valOf("ccTracking") || null,
             currency: valOf("ccCurrency") || "SAR",
             country: valOf("ccCountry") || null,
           }).then(function () {
@@ -8466,6 +9774,12 @@
         { value: "0", label: STATE.lang === "ar" ? "لا" : "No" },
         { value: "1", label: STATE.lang === "ar" ? "نعم" : "Yes" },
       ], "0")) +
+      field("نطاق الظهور", "Visibility scope", selectInput("afScope", [
+        { value: "all", label: dual("الكل", "All") },
+        { value: "sector", label: dual("قطاع", "Sector") },
+        { value: "company", label: dual("شركة", "Company") },
+      ], "all")) +
+      field("القطاع", "Sector", textInput("afScopeSector", "", "ph.scopeSector")) +
       '<div class="av-form-actions"><button class="btn-outline" id="afAdd">' +
       dual("إضافة حقل", "Add field") + "</button></div></div>"
     );
@@ -8475,13 +9789,21 @@
     var btn = root.querySelector("#afAdd");
     if (!btn) return;
     btn.addEventListener("click", function () {
+      var scope = root.querySelector("#afScope").value;
       var payload = {
         key: root.querySelector("#afKey").value.trim(),
         field_type: root.querySelector("#afType").value,
         label_ar: root.querySelector("#afLabelAr").value.trim() || root.querySelector("#afKey").value.trim(),
         label_en: root.querySelector("#afLabelEn").value.trim() || root.querySelector("#afKey").value.trim(),
         is_required: root.querySelector("#afRequired").value === "1",
+        scope: scope,
       };
+      // S07 ``نطاق الظهور``: only send the qualifier the chosen scope needs.
+      if (scope === "sector") {
+        payload.scope_sector = root.querySelector("#afScopeSector").value.trim();
+      } else if (scope === "company") {
+        payload.scope_company_id = primaryCompanyId() || null;
+      }
       busy(btn, true);
       post("/api/v1/forms/" + formId + "/fields", payload)
         .then(function () {
@@ -9561,6 +10883,8 @@
     if (overview) overview.innerHTML = loadingHtml();
     var list = document.getElementById("insightsList");
     if (list) list.innerHTML = loadingHtml();
+    var prio = document.getElementById("prioritiesList");
+    if (prio) prio.innerHTML = loadingHtml();
     var aiBody = document.getElementById("aiAnswerBody");
     if (aiBody) aiBody.innerHTML = loadingHtml();
     var sbody = document.getElementById("supportBody");
@@ -9578,6 +10902,7 @@
       STATE.dashboard = data;
       hydrateKpis(data);
       hydrateCompanies(data);
+      hydratePriorities(data);
       setPeriodLabels();
       return data;
     });
@@ -9738,6 +11063,7 @@
         bindLogout();
         bindHeaderActions();
         bindNav();
+        bindIndicatorDrills();
         showLoadingStates();
         return resolvePeriod();
       })

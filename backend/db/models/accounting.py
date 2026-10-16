@@ -43,8 +43,11 @@ from backend.db.base import Base, TimestampMixin
 from backend.db.models.enums import (
     AccountType,
     BudgetStatus,
+    InvoiceDirection,
     InvoiceStatus,
     JournalStatus,
+    KpiDirection,
+    MonthlyFinancialReportStatus,
     OpeningBalanceKind,
     OpeningBalanceStatus,
 )
@@ -94,6 +97,17 @@ class OpeningBalance(Base, TimestampMixin):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company"] = relationship()
+
+    @property
+    def total_cash(self) -> Decimal | None:
+        """Bank + cash (AC-04). Computed, never accepted from the client.
+
+        Returns ``None`` only when both components are absent, so a genuine zero
+        balance is still distinguishable from "not entered".
+        """
+        if self.bank is None and self.cash is None:
+            return None
+        return (self.bank or Decimal("0")) + (self.cash or Decimal("0"))
 
 
 class Account(Base, TimestampMixin):
@@ -223,6 +237,14 @@ class Invoice(Base, TimestampMixin):
     )
     number: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     party_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # S27: issued (receivable "مستحق لنا") or received (payable "مستحق علينا").
+    direction: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=InvoiceDirection.ISSUED.value,
+        server_default=InvoiceDirection.ISSUED.value, index=True,
+    )
+    party_id: Mapped[int | None] = mapped_column(
+        ForeignKey("parties.id", ondelete="SET NULL"), nullable=True
+    )
     issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
@@ -236,11 +258,19 @@ class Invoice(Base, TimestampMixin):
         String(20), nullable=False, default=InvoiceStatus.DRAFT.value, index=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # S27/AC-27: the invoice and its ledger entry keep *one* reference. The
+    # link is set once, explicitly, by the accountant (invoice-posting timing is
+    # D01-gated); it is unique, so a second invoice cannot point at the same
+    # entry and re-linking the same pair is refused rather than duplicated.
+    journal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journals.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
     company: Mapped["Company"] = relationship()
+    journal: Mapped["Journal | None"] = relationship(foreign_keys=[journal_id])
     lines: Mapped[list["InvoiceLine"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan"
     )
@@ -306,7 +336,65 @@ class Asset(Base, TimestampMixin):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    company: Mapped["Company"] = relationship()
+
+
+
+class AccountingPolicy(Base, TimestampMixin):
+    """An accountant-approved accounting policy (D01).
+
+    Tax, fiscal-year, invoice and asset policy are *configuration*, never
+    hard-coded assumptions. A policy is inert until an accountant approves it:
+    ``approved_at``/``approved_by_id`` are the only way a value becomes
+    effective, and the effective-date pair distinguishes *when a rule starts*
+    from *when it was approved*. A newer approved version supersedes the
+    previous one; the previous row is retained, never edited, so history is
+    preserved (D01).
+    """
+
+    __tablename__ = "accounting_policies"
+    __table_args__ = (
+        # One approved version per (company, kind) at a time; historical rows
+        # keep their own number.
+        UniqueConstraint(
+            "company_id", "kind", "version", name="uq_accounting_policy_version"
+        ),
+        Index("ix_accounting_policies_company_kind", "company_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # NULL company_id means a holding-wide default; a company row overrides it.
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # A PolicyKind value (tax, fiscal_year, invoice, asset, currency).
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    # Policy payload is data so a new rule needs no migration.
+    value: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    value_text: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Draft until approved; approval is an explicit accountant act (D01).
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", server_default="draft", index=True
+    )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    supersedes_id: Mapped[int | None] = mapped_column(
+        ForeignKey("accounting_policies.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company | None"] = relationship(foreign_keys=[company_id])
 
 
 class Budget(Base, TimestampMixin):
@@ -364,9 +452,163 @@ class KpiDefinition(Base, TimestampMixin):
     period_label: Mapped[str] = mapped_column(String(60), nullable=False)
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     target_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 3), nullable=True)
+    # ---- D02 target-vs-actual (configurable, inactive until approved) ----
+    # ``metric_key`` names the dashboard metric that supplies the actual value
+    # (see ``METRIC_RESOLVERS``). NULL means "definition only, no live actual",
+    # so an unconfigured KPI never invents a number.
+    metric_key: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # ``up`` = a larger actual is better; ``down`` = smaller is better. Drives
+    # the variance sign so "positive" always means "favourable".
+    direction: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=KpiDirection.UP.value, server_default="up"
+    )
+    # A definition is never *active* until an authorised approval flips this.
+    # ``target_value``/``metric_key`` may be configured while still inert, so
+    # the whole workflow can be prepared without inventing a business approval.
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True, server_default="1"
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class Party(Base, TimestampMixin):
+    """A customer or supplier the holding deals with (S27).
+
+    One party directory backs both issued and received invoices, so a receivable
+    and a payable for the same counterparty stay on one record instead of being
+    duplicated (spec §15, D01).
+    """
+
+    __tablename__ = "parties"
+    __table_args__ = (
+        UniqueConstraint("company_id", "name", name="uq_party_company_name"),
+        Index("ix_parties_company_type", "company_id", "party_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    party_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="customer", server_default="customer"
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()
+
+
+class CompanyInterbalance(Base, TimestampMixin):
+    """A recorded inter-company balance (S27, spec §15, D01).
+
+    Records the *reason* and the *currency* of a balance between the holding and
+    a company. It never imposes a service fee and never treats a transfer as
+    revenue -- the balance is a balance, and the currency is preserved so two
+    currencies are never silently combined.
+    """
+
+    __tablename__ = "company_interbalances"
+    __table_args__ = (
+        Index("ix_interbalances_company", "company_id", "counterparty_company_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    counterparty_company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    counterparty_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    amount: Mapped[Decimal] = mapped_column(MONEY, nullable=False, default=Decimal("0"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    journal_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    recorded_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship(foreign_keys=[company_id])
+
+
+class MonthlyFinancialReport(Base, TimestampMixin):
+    """The monthly financial report (S28 ``التقرير المالي الشهري``).
+
+    Table 57 defines the action as "يسحب الحسابات ويضيف التحليل" -- *draws the
+    accounts and adds the analysis*. The report is therefore a real record that
+    is **generated from the posted ledger** (income statement + balance sheet +
+    trial-balance reconciliation for one company and month), carrying the
+    accountant's analysis on top. It is the "internal statements / financial
+    performance analysis / report archive" the spec lists under S28.
+
+    Boundaries honoured:
+
+    * Figures are drawn from *posted* journals and stored per currency, so two
+      currencies are never added together (T10) and the summary reconciles with
+      the trial balance (AC-28).
+    * ``source_version_id`` records which approved financial summary was current
+      when the report was generated, so the group report distinguishes the
+      holding's own accounts from the subsidiary summaries (S28 scope).
+    * A finalised report is immutable; a new month is a new report.
+    """
+
+    __tablename__ = "monthly_financial_reports"
+    __table_args__ = (
+        # One report per company, year and month (regenerate updates the draft).
+        UniqueConstraint(
+            "company_id", "period_year", "period_month", name="uq_monthly_fin_report"
+        ),
+        Index("ix_monthly_fin_reports_company_period", "company_id", "period_year"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=MonthlyFinancialReportStatus.DRAFT.value,
+        index=True,
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    # Drawn figures (per currency, stored as strings to preserve exact decimals
+    # in the same shape the statements service returns).
+    figures: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    # The accountant's added analysis (Table 57: "adds the analysis").
+    analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Which approved financial summary version was current when generated.
+    source_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_summary_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    generated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    finalised_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finalised_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()

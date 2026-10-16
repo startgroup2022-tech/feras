@@ -223,6 +223,20 @@ class FormScope(str, enum.Enum):
     COMPANY = "company"
 
 
+class FormFieldScope(str, enum.Enum):
+    """How widely a single configurable field is shown (S07, Table 18).
+
+    ``نطاق الظهور`` is one of ``الكل`` (all companies), ``قطاع`` (only the
+    companies of one sector) or ``شركة`` (one company). AC-07 requires that a
+    sector-scoped field appears *only* for the companies of that sector, so the
+    scope is enforced server-side, not merely hidden in the UI.
+    """
+
+    ALL = "all"
+    SECTOR = "sector"
+    COMPANY = "company"
+
+
 class FieldType(str, enum.Enum):
     """Supported configurable field types.
 
@@ -355,7 +369,12 @@ class NotificationType(str, enum.Enum):
     FINANCIAL_SUMMARY_RESUBMITTED = "financial_summary.resubmitted"
     FINANCIAL_SUMMARY_APPROVED = "financial_summary.approved"
     SUPPORT_ASSIGNED = "support.assigned"
+    SUPPORT_CREATED = "support.created"
     SUPPORT_STATUS_CHANGED = "support.status_changed"
+    TASK_ASSIGNED = "task.assigned"
+    TASK_STATUS_CHANGED = "task.status_changed"
+    # S28: the monthly financial report was finalised by the accountant.
+    FINANCIAL_REPORT_FINALISED = "financial_report.finalised"
     SYSTEM = "system"
 
 
@@ -363,6 +382,24 @@ class NotificationPriority(str, enum.Enum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
+
+
+class PolicyKind(str, enum.Enum):
+    """The accounting policy areas D01 says must come from approved settings."""
+
+    TAX = "tax"
+    FISCAL_YEAR = "fiscal_year"
+    INVOICE = "invoice"
+    ASSET = "asset"
+    CURRENCY = "currency"
+
+
+class PolicyStatus(str, enum.Enum):
+    """A policy is a draft until an accountant approves it (D01)."""
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    SUPERSEDED = "superseded"
 
 
 # --------------------------------------------------------------------------
@@ -758,11 +795,48 @@ class InvoiceStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class InvoiceDirection(str, enum.Enum):
+    """S27: whether the holding issued the invoice or received it.
+
+    Kept as data, not a hard-coded rule, so receivables ("مستحق لنا") and
+    payables ("مستحق علينا") are two views of the same source rather than two
+    places that could record the same operation twice (D01).
+    """
+
+    ISSUED = "issued"
+    RECEIVED = "received"
+
+
 class BudgetStatus(str, enum.Enum):
     """D07: approved by the owner or delegate; source and version preserved."""
 
     DRAFT = "draft"
     APPROVED = "approved"
     SUPERSEDED = "superseded"
+
+
+class MonthlyFinancialReportStatus(str, enum.Enum):
+    """S28 ``التقرير المالي الشهري``: generated from the ledger, then finalised.
+
+    A report is prepared from the *posted* journals (the accounts) plus the
+    approved effective figures; ``FINALISED`` is an explicit accountant act and
+    an archived report is read-only.
+    """
+
+    DRAFT = "draft"
+    FINALISED = "finalised"
+    ARCHIVED = "archived"
+
+
+class KpiDirection(str, enum.Enum):
+    """D02: which way is "better" for a KPI.
+
+    Stored as data so a favourable variance always has the same sign, whether
+    the metric is revenue (higher is better) or cost/response-time (lower is
+    better). The comparison rule is therefore configuration, not code.
+    """
+
+    UP = "up"
+    DOWN = "down"
 
 

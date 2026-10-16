@@ -233,6 +233,16 @@ def create_company(
         name_en=payload.name_en,
         sector=payload.sector,
         contact_email=str(payload.contact_email) if payload.contact_email else None,
+        legal_name_ar=payload.legal_name_ar,
+        legal_name_en=payload.legal_name_en,
+        company_type=payload.company_type,
+        country=payload.country,
+        commercial_registration=payload.commercial_registration,
+        currency=payload.currency,
+        address=payload.address,
+        phone=payload.phone,
+        founded_on=payload.founded_on,
+        tracking_start_date=payload.tracking_start_date,
     )
     db.add(company)
     db.commit()

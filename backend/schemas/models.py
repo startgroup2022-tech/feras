@@ -144,7 +144,7 @@ class CompanyOut(BaseModel):
     id: int
     code: str
     name_ar: str
-    name_en: str
+    name_en: str | None = None
     sector: str | None
     status: str
     health: str
@@ -157,13 +157,17 @@ class CompanyOut(BaseModel):
     currency: str = "SAR"
     address: str | None = None
     phone: str | None = None
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
 
 class CompanyCreateRequest(BaseModel):
     code: str = Field(min_length=2, max_length=40)
     name_ar: str = Field(min_length=1, max_length=180)
-    name_en: str = Field(min_length=1, max_length=180)
-    sector: str | None = Field(default=None, max_length=120)
+    name_en: str | None = Field(default=None, max_length=180)
+    # F-01 / AC-03: the sector is mandatory; a company may not be registered
+    # without one.
+    sector: str = Field(min_length=1, max_length=120)
     contact_email: InternalEmail | None = None
     legal_name_ar: str | None = Field(default=None, max_length=200)
     legal_name_en: str | None = Field(default=None, max_length=200)
@@ -173,6 +177,9 @@ class CompanyCreateRequest(BaseModel):
     currency: str = Field(default="SAR", min_length=3, max_length=8)
     address: str | None = Field(default=None, max_length=1000)
     phone: str | None = Field(default=None, max_length=40)
+    # AC-03: the founding date and the monitoring-start date are distinct.
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
     @field_validator("company_type")
     @classmethod
@@ -188,7 +195,7 @@ class CompanyUpdateRequest(BaseModel):
 
     name_ar: str | None = Field(default=None, min_length=1, max_length=180)
     name_en: str | None = Field(default=None, min_length=1, max_length=180)
-    sector: str | None = Field(default=None, max_length=120)
+    sector: str | None = Field(default=None, min_length=1, max_length=120)
     health: str | None = Field(default=None, max_length=20)
     status: str | None = Field(default=None, max_length=20)
     contact_email: InternalEmail | None = None
@@ -200,6 +207,8 @@ class CompanyUpdateRequest(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=8)
     address: str | None = Field(default=None, max_length=1000)
     phone: str | None = Field(default=None, max_length=40)
+    founded_on: date | None = None
+    tracking_start_date: date | None = None
 
     @field_validator("health")
     @classmethod
@@ -299,6 +308,24 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
 
+class FinancialPartVersionOut(BaseModel):
+    id: int
+    version_number: int
+    status: str
+
+
+class FinancialPartOut(BaseModel):
+    """The linked F-03 financial part of a monthly report (spec Table 42).
+
+    ``status`` is ``no_data`` when the company has not started a financial
+    summary for the period, so the report shows the absence honestly.
+    """
+
+    status: str
+    effective_version: FinancialPartVersionOut | None = None
+    current_version: FinancialPartVersionOut | None = None
+
+
 class MonthlyReportOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -326,6 +353,7 @@ class MonthlyReportOut(BaseModel):
     updated_at: datetime
     financial_review: FinancialReviewOut | None = None
     attachments: list[AttachmentOut] = []
+    financial_part: FinancialPartOut | None = None
 
 
 class FinancialReviewRequest(BaseModel):
@@ -454,6 +482,65 @@ class AttentionCompanyOut(BaseModel):
     support_required: str | None = None
 
 
+class PriorityOut(BaseModel):
+    """S01 ``الأولويات``: a link to a record that needs the caller's action.
+
+    ``kind`` names the record type so the UI can route to the right view; only
+    sources the caller may read are emitted.
+    """
+
+    kind: str  # "owner_decision" | "support_request" | "company"
+    record_id: int
+    label_ar: str
+    label_en: str | None = None
+    status: str | None = None
+    due_date: date | None = None
+    overdue: bool = False
+    reason: str | None = None
+
+
+class IndicatorSourceOut(BaseModel):
+    """A record that produced an indicator's number (S01 AC-01 drill-down)."""
+
+    kind: str  # "monthly_report" | "company" | "support_request"
+    record_id: int
+    company_id: int | None = None
+    label_ar: str
+
+
+class IndicatorSourcesOut(BaseModel):
+    """The source records behind one dashboard indicator."""
+
+    indicator: str
+    period_year: int
+    period_month: int
+    records: list[IndicatorSourceOut] = []
+
+
+class GoalOut(BaseModel):
+    """A company goal: an approved, company-scoped KPI with a target (S02/S10)."""
+
+    id: int
+    company_id: int | None = None
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    unit: str | None = None
+    period_label: str | None = None
+    period_year: int
+    period_month: int
+    metric_key: str | None = None
+    direction: str
+    target_value: Decimal | None = None
+    actual_value: Decimal | None = None
+    variance: Decimal | None = None
+    variance_pct: float | None = None
+    favourable: bool | None = None
+    is_active: bool
+    approved_at: datetime | None = None
+    status: str
+
+
 class CompanyPerformanceOut(BaseModel):
     """Per-company figures for the dashboard report/overview cards."""
 
@@ -471,6 +558,23 @@ class CompanyPerformanceOut(BaseModel):
     outstanding_receivables: Decimal | None = None
     revenue_pct: float | None = None
     last_update: datetime | None = None
+    goals: list[GoalOut] = []
+    # S10 Table 44 ``اكتمال البيانات``: no_data / under_review / complete.
+    data_completeness: str = "no_data"
+
+
+class DataCompletenessCompanyOut(BaseModel):
+    id: int
+    code: str
+    status: str
+
+
+class DataCompletenessOut(BaseModel):
+    """S10 ``اكتمال البيانات`` -- lets the UI say "no data" instead of zero."""
+
+    overall: str
+    has_data: bool
+    companies: list[DataCompletenessCompanyOut] = []
 
 
 class PeriodChangeOut(BaseModel):
@@ -494,9 +598,11 @@ class DashboardResponse(BaseModel):
     kpis: DashboardKpis
     companies: list[CompanyOut] = []
     companies_performance: list[CompanyPerformanceOut] = []
+    data_completeness: DataCompletenessOut | None = None
     change_vs_previous: PeriodChangeOut | None = None
     companies_missing_report: list[CompanyOut] = []
     companies_requiring_attention: list[AttentionCompanyOut] = []
+    priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
 
 
@@ -548,6 +654,23 @@ class AIInsightOut(BaseModel):
     detail_en: str
     tone: str
     metric: str | None = None
+
+
+class AIOrganizeFieldOut(BaseModel):
+    """One narrative field's organization suggestion (S09)."""
+
+    field: str
+    original: str
+    organized: str
+    provider: str
+    grounded: bool = True
+    ungrounded_numbers: list[str] = []
+    changed: bool = False
+
+
+class AIOrganizeResponse(BaseModel):
+    proposals: list[AIOrganizeFieldOut]
+    fields_considered: int
 
 
 # --------------------------------------------------------------------------

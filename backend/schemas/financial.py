@@ -70,6 +70,19 @@ class FinancialItemCreateRequest(BaseModel):
             raise ValueError("An ad-hoc item needs at least a name.")
         return self
 
+    @model_validator(mode="after")
+    def _adhoc_needs_a_calculation_rule(self) -> "FinancialItemCreateRequest":
+        # AC-07: a financial item without a calculation rule is rejected. A
+        # definition always carries one; an ad-hoc item must state its inclusion
+        # rule explicitly rather than being silently defaulted to "included",
+        # which would change the period result without an approved rule.
+        if self.definition_id is None and self.inclusion_rule is None:
+            raise ValueError(
+                "A financial item requires a calculation rule "
+                "(inclusion_rule): included or added."
+            )
+        return self
+
 
 class FinancialItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
