@@ -45,7 +45,7 @@ class ConflictError(AppError):
 
 
 class ValidationError(AppError):
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "validation_error"
 
 
@@ -85,7 +85,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             loc = ".".join(str(p) for p in err.get("loc", ()) if p != "body")
             fields.append({"field": loc or "body", "message": err.get("msg", "invalid")})
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={
                 "error": {
                     "code": "validation_error",

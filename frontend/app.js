@@ -6662,10 +6662,32 @@
       bindHost(host, onAcctAct);
     }
     if (!STATE.acctTab || !canAcctTab(STATE.acctTab)) STATE.acctTab = firstAcctTab();
+    STATE.acctSection = ACCT_TAB_SECTION[STATE.acctTab] || ACCT_SECTIONS[0];
+    syncAcctSections();
     return renderAcctTab(STATE.acctTab);
   }
 
-  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "assets", "budgets", "kpis", "policies", "reports"];
+  // Approved accountant sections (spec Table 81 / AC-28). The accountant's area
+  // is grouped into exactly these five; the fine-grained chips are the buttons
+  // *within* the active section, so selecting a section shows only its buttons.
+  var ACCT_SECTIONS = ["holding_accounts", "invoices_dues", "subsidiary_finance", "financial_reports", "tasks_requests"];
+  var ACCT_SECTION_PERM = {
+    holding_accounts: ["account.read", "journal.read", "opening_balance.read"],
+    invoices_dues: ["invoice.read", "party.read", "interbalance.read"],
+    subsidiary_finance: ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+    financial_reports: ["financial_report.read", "asset.read", "budget.read", "kpi.read", "accounting_policy.read"],
+    tasks_requests: ["task.read_own", "task.read_all", "support_request.read_own", "support_request.read_all"],
+  };
+  var ACCT_TABS = ["balances", "accounts", "journals", "trial", "ledger", "statements", "invoices", "parties", "interbalances", "company_finance", "reports", "statements_internal", "assets", "budgets", "kpis", "policies", "tasks"];
+  var ACCT_TAB_SECTION = {
+    balances: "holding_accounts", accounts: "holding_accounts", journals: "holding_accounts",
+    trial: "holding_accounts", ledger: "holding_accounts", statements: "holding_accounts",
+    invoices: "invoices_dues", parties: "invoices_dues", interbalances: "invoices_dues",
+    company_finance: "subsidiary_finance",
+    reports: "financial_reports", statements_internal: "financial_reports", assets: "financial_reports",
+    budgets: "financial_reports", kpis: "financial_reports", policies: "financial_reports",
+    tasks: "tasks_requests",
+  };
   var ACCT_TAB_PERM = {
     balances: ["opening_balance.read"],
     accounts: ["account.read"],
@@ -6676,24 +6698,64 @@
     invoices: ["invoice.read"],
     parties: ["party.read"],
     interbalances: ["interbalance.read"],
+    company_finance: ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+    reports: ["financial_report.read"],
+    statements_internal: ["journal.read"],
     assets: ["asset.read"],
     budgets: ["budget.read"],
     kpis: ["kpi.read"],
     policies: ["accounting_policy.read"],
-    reports: ["financial_report.read"],
+    tasks: ["task.read_own", "task.read_all", "support_request.read_own", "support_request.read_all"],
   };
   function canAcctTab(t) { return (ACCT_TAB_PERM[t] || []).some(has); }
+  function canAcctSection(s) { return (ACCT_SECTION_PERM[s] || []).some(has); }
+  function visibleAcctSections() { return ACCT_SECTIONS.filter(canAcctSection); }
+  function firstAcctSection() {
+    var ok = visibleAcctSections();
+    return ok.length ? ok[0] : ACCT_SECTIONS[0];
+  }
   function firstAcctTab() {
     for (var i = 0; i < ACCT_TABS.length; i++) if (canAcctTab(ACCT_TABS[i])) return ACCT_TABS[i];
     return "balances";
   }
+  function firstTabInSection(section) {
+    for (var i = 0; i < ACCT_TABS.length; i++) {
+      if (ACCT_TAB_SECTION[ACCT_TABS[i]] === section && canAcctTab(ACCT_TABS[i])) return ACCT_TABS[i];
+    }
+    return firstAcctTab();
+  }
+  function syncAcctSections() {
+    if (ACCT_SECTIONS.indexOf(STATE.acctSection) < 0) STATE.acctSection = firstAcctSection();
+    document.querySelectorAll("[data-acct-section-btn]").forEach(function (b) {
+      var s = b.getAttribute("data-acct-section-btn");
+      var allowed = canAcctSection(s);
+      b.style.display = allowed ? "" : "none";
+      b.classList.toggle("on", s === STATE.acctSection);
+    });
+    document.querySelectorAll("[data-acct-tab]").forEach(function (b) {
+      var t = b.getAttribute("data-acct-tab");
+      var inSection = ACCT_TAB_SECTION[t] === STATE.acctSection;
+      b.style.display = (inSection && canAcctTab(t)) ? "" : "none";
+    });
+  }
   function bindAcctTabs() {
+    document.querySelectorAll("[data-acct-section-btn]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var s = btn.getAttribute("data-acct-section-btn");
+        if (!canAcctSection(s)) return;
+        STATE.acctSection = s;
+        STATE.acctTab = firstTabInSection(s);
+        syncAcctSections();
+        renderAcctTab(STATE.acctTab);
+      });
+    });
     document.querySelectorAll("[data-acct-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var t = btn.getAttribute("data-acct-tab");
         if (!canAcctTab(t)) return;
         STATE.acctTab = t;
-        document.querySelectorAll("[data-acct-tab]").forEach(function (b) { b.classList.toggle("on", b === btn); });
+        STATE.acctSection = ACCT_TAB_SECTION[t] || STATE.acctSection;
+        syncAcctSections();
         renderAcctTab(t);
       });
     });
@@ -6713,12 +6775,71 @@
     if (tab === "invoices") return renderInvoices();
     if (tab === "parties") return renderParties();
     if (tab === "interbalances") return renderInterbalances();
+    if (tab === "company_finance") return renderCompanyFinanceComparison();
+    if (tab === "reports") return renderFinancialReports();
+    if (tab === "statements_internal") return renderStatements();
     if (tab === "assets") return renderAssets();
     if (tab === "budgets") return renderBudgets();
     if (tab === "kpis") return renderKpis();
     if (tab === "policies") return renderPolicies();
-    if (tab === "reports") return renderFinancialReports();
+    if (tab === "tasks") return renderTasksRegistry();
     return Promise.resolve();
+  }
+
+  // AC-28 "ماليات الشركات": company financial reports, performance comparison
+  // and the group financial summary, all read-only for the accountant.
+  function renderCompanyFinanceComparison() {
+    var host = byId("acctContent");
+    var FIN_MAP = {
+      draft: ["مسودة", "Draft", "warn"],
+      finalised: ["معتمد", "Finalised", "ok"],
+      archived: ["مؤرشف", "Archived", "rev"],
+    };
+    return get("/api/v1/accounting/financial-reports").catch(function () { return []; }).then(function (reports) {
+      var list = reports.length
+        ? '<div class="av-list">' + reports.map(function (r) {
+            return '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+              '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
+              statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
+      var group = has("dashboard.holding") ? groupReportPanel() : "";
+      host.innerHTML = panel(
+        "ماليات الشركات (المقارنة والملخص المالي للمجموعة)",
+        "Subsidiary finance (comparison and group financial summary)",
+        group + list
+      );
+      if (has("dashboard.holding")) bindHost(host, onAcctAct);
+      return null;
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // AC-28 "المهام والطلبات": the accountant's tasks and service requests.
+  function renderTasksRegistry() {
+    var host = byId("acctContent");
+    return Promise.all([
+      get("/api/v1/operations/tasks").catch(function () { return []; }),
+      get("/api/v1/support-requests").catch(function () { return []; }),
+    ]).then(function (res) {
+      var tasks = res[0] || [];
+      var tlist = tasks.length
+        ? '<div class="av-list">' + tasks.map(taskRow).join("") + "</div>"
+        : noticeHtml("لا توجد مهام.", "No tasks.");
+      var reqs = res[1] || [];
+      var rlist = reqs.length
+        ? '<div class="av-list">' + reqs.map(function (r) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              escapeHtml(r.subject || r.title || "") + "</div></div>" +
+              statusBadgeFromMap(r.status, {}) + "</div>";
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد طلبات.", "No requests.");
+      host.innerHTML =
+        panel("الطلبات الجديدة", "New tasks & requests", tlist) +
+        panel("سجل الطلبات", "Requests registry", rlist);
+      return null;
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderOpeningBalances() {

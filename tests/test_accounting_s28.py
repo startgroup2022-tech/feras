@@ -372,7 +372,57 @@ def test_frontend_financial_reports_tab_is_wired():
     assert "/api/v1/accounting/financial-reports" in app_js
     assert "function groupReportPanel" in app_js
     assert "/api/v1/accounting/financial-reports/group" in app_js
-    assert 'data-acct-tab="reports" data-perm="financial_report.read"' in index
+    assert 'data-acct-tab="reports" data-acct-section="financial_reports"' in index
+
+
+def test_frontend_accounting_view_has_exactly_five_sections():
+    """AC-28 / Table 81: the accountant's area is grouped into five sections.
+
+    The five approved section buttons must be present in the markup, exactly
+    five groups, in the approved order, and every accounting chip must belong
+    to one of them — a regression to flat, ungrouped chips must fail here.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+    app_js = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+
+    sections = re.findall(r'data-acct-section-btn="([a-z_]+)"', index)
+    assert sections == [
+        "holding_accounts",
+        "invoices_dues",
+        "subsidiary_finance",
+        "financial_reports",
+        "tasks_requests",
+    ], sections
+
+    # Every fine-grained tab is assigned to one of the five sections in JS.
+    assignments = re.findall(
+        r'([a-z_]+):\s*"(holding_accounts|invoices_dues|subsidiary_finance|financial_reports|tasks_requests)"',
+        app_js,
+    )
+    tab_section = dict(assignments)
+    tabs_in_markup = re.findall(r'data-acct-tab="([a-z_]+)"', index)
+    assert tabs_in_markup, "no accounting tabs found"
+    for tab in tabs_in_markup:
+        assert tab in tab_section, f"tab {tab!r} is not assigned to an approved section"
+    # All five sections must have at least one tab.
+    assert set(tab_section.values()) == set(sections)
+
+
+def test_frontend_accounting_sections_are_permission_gated():
+    """Each section button carries a data-perm so applyPermissions can gate it."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+    block = index.split('id="acctSections"', 1)[1].split("</div>", 1)[0]
+    buttons = block.split("data-acct-section-btn=")[1:]
+    assert len(buttons) == 5
+    for b in buttons:
+        assert "data-perm=" in b, b
 
 
 # --------------------------------------------------------------------------

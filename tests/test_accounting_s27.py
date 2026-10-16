@@ -433,7 +433,7 @@ def test_frontend_exposes_the_statements_tab():
     index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "function renderStatements" in app_js
     assert "financial-statements" in app_js
-    assert 'data-acct-tab="statements" data-perm="journal.read"' in index
+    assert 'data-acct-tab="statements" data-acct-section="holding_accounts" data-perm="journal.read"' in index
 
 
 def test_frontend_exposes_the_new_s27_tabs_and_renderers():
@@ -450,8 +450,8 @@ def test_frontend_exposes_the_new_s27_tabs_and_renderers():
     assert "moneyBlock(" in app_js  # receivables/payables totals
 
     # The tab buttons are permission-gated and bilingual.
-    assert 'data-acct-tab="parties" data-perm="party.read"' in index
-    assert 'data-acct-tab="interbalances" data-perm="interbalance.read"' in index
+    assert 'data-acct-tab="parties" data-acct-section="invoices_dues" data-perm="party.read"' in index
+    assert 'data-acct-tab="interbalances" data-acct-section="invoices_dues" data-perm="interbalance.read"' in index
 
 
 # --------------------------------------------------------------------------
@@ -551,7 +551,7 @@ def test_frontend_exposes_the_ledger_activity_tab():
     index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "function renderLedgerActivity" in app_js
     assert "ledger-activity" in app_js
-    assert 'data-acct-tab="ledger" data-perm="journal.read"' in index
+    assert 'data-acct-tab="ledger" data-acct-section="holding_accounts" data-perm="journal.read"' in index
 
 
 # --------------------------------------------------------------------------

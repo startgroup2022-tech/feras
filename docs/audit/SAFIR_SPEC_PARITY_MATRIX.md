@@ -88,7 +88,7 @@ Verbatim criteria (Arabic, from the Word file) with the proving artifact.
 | AC-25 | even a custom role with every button cannot reach leadership assessments; deactivation blocks later requests; company A's scope disallows B's data | ✅ | `test_custom_roles.py`; `test_leadership_assessments.py` |
 | AC-26 | debit 100 / credit 90 posting rejected; re-posting does not duplicate; revenue list shows the same operation without a second entry | ✅ | `test_holding_domain.py::test_journal_must_balance_before_posting`, `..._posted_journal_is_immutable_and_reversible`; ledger-activity test |
 | AC-27 | invoice and entry keep one reference; settlement runs no bank; partial receivable not counted twice | ✅ | `test_accounting_s27.py` (AC-27 reference tests); receivables test |
-| AC-28 | accountant has five sections; asset under holding accounts; summary matches trial balance; over-budget creates no automatic payment approval | ✅ | `nav` sections (§B of gap matrix); `test_accounting_s28.py::test_generate_draws_posted_accounts_and_reconciles_with_trial_balance`, `..._budget_utilisation_reports_variance_without_payment_approval` |
+| AC-28 | accountant has five sections; asset under holding accounts; summary matches trial balance; over-budget creates no automatic payment approval | ✅ | `#acctSections` (5 grouped, permission-gated section buttons) + `ACCT_TAB_SECTION` mapping in `frontend/app.js`; `test_accounting_s28.py::test_frontend_accounting_view_has_exactly_five_sections`, `..._sections_are_permission_gated`, `..._generate_draws_posted_accounts_and_reconciles_with_trial_balance`, `..._budget_utilisation_reports_variance_without_payment_approval` |
 
 ---
 
