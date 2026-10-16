@@ -7545,9 +7545,48 @@
       host.innerHTML = panel(
         "التقرير المالي الشهري (S28: يسحب الحسابات ويضيف التحليل، والمعتمد لا يُعدّل)",
         "Monthly financial report (S28: draws the accounts and adds the analysis; a finalised report is immutable)",
-        create + list
+        create + (has("dashboard.holding") ? groupReportPanel() : "") + list
       );
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // S28: the group view keeps the holding and the subsidiaries distinct and
+  // never claims consolidation ("لا يدعي إلغاء التعاملات للتوحيد").
+  function groupReportPanel() {
+    var g = STATE.groupReport;
+    if (!g) {
+      return '<div class="av-row" style="cursor:default"><div class="grow">' +
+        '<div class="t">' + dual("تقرير المجموعة", "Group report") + "</div>" +
+        '<div class="s">' + dual("يميّز القابضة عن ملخصات التابعة دون ادعاء التوحيد",
+          "Distinguishes the holding from subsidiary summaries without claiming consolidation") + "</div></div>" +
+        '<button class="btn-ghost" data-act="fr-group">' + dual("عرض المجموعة", "View group") + "</button></div>";
+    }
+    var hold = g.holding.length
+      ? g.holding.map(function (h) {
+          var money = (h.summary || []).map(function (s) {
+            return escapeHtml(s.currency) + " " + dec(s.net);
+          }).join(" · ") || dual("لا حركة", "No movement");
+          return '<div class="s">' + escapeHtml(h.name_ar) + ": " + money + "</div>";
+        }).join("")
+      : '<div class="s">' + dual("لا حسابات قابضة لهذه الفترة", "No holding accounts this period") + "</div>";
+    var subs = g.subsidiaries.length
+      ? g.subsidiaries.map(function (s) {
+          var val = s.approved
+            ? escapeHtml(s.currency || "") + " " + dec(s.result)
+            : dual("لا يوجد ملخص معتمد", "No approved summary");
+          return '<div class="s">' + escapeHtml(s.name_ar) + ": " + val + "</div>";
+        }).join("")
+      : "";
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+      '<div style="display:flex;align-items:center;gap:11px"><div class="grow">' +
+      '<div class="t">' + dual("تقرير المجموعة", "Group report") + " · " +
+      dec(g.period_month) + "/" + dec(g.period_year) + "</div>" +
+      '<div class="s"><b>' + dual("القابضة", "Holding") + "</b></div>" + hold +
+      (subs ? '<div class="s"><b>' + dual("التابعة", "Subsidiaries") + "</b></div>" + subs : "") +
+      '<div class="s">' + escapeHtml(g.consolidation_note_ar || g.consolidation_note_en || "") + "</div>" +
+      "</div>" +
+      '<button class="btn-ghost" data-act="fr-group-close">' + dual("إغلاق", "Close") + "</button>" +
+      "</div></div>";
   }
 
   function onAcctAct(action, id, el) {
@@ -7616,6 +7655,14 @@
         .catch(function (err) { domainError(err); busy(el, false); });
     }
     if (action === "bg-util-close") { STATE.budgetUtil = null; return renderBudgets(); }
+    if (action === "fr-group") {
+      busy(el, true);
+      return get("/api/v1/accounting/financial-reports/group?period_year=" +
+                 (STATE.year || "") + "&period_month=" + (STATE.month || ""))
+        .then(function (g) { STATE.groupReport = g; return renderFinancialReports(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "fr-group-close") { STATE.groupReport = null; return renderFinancialReports(); }
     if (action === "fr-analysis") {
       busy(el, true);
       var input = document.querySelector('[data-field="analysis"][data-id="' + id + '"]');

@@ -21,7 +21,12 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.core.errors import ConflictError, NotFoundError, ValidationError
+from backend.core.errors import (
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
 from backend.db.models.accounting import (
@@ -44,6 +49,7 @@ from backend.db.models.accounting import (
 from backend.db.models.enums import (
     AccountType,
     BudgetStatus,
+    CompanyType,
     PolicyKind,
     PolicyStatus,
     InvoiceDirection,
@@ -55,7 +61,7 @@ from backend.db.models.enums import (
     OpeningBalanceStatus,
 )
 from backend.db.models.financial import FinancialPeriod, FinancialSummaryVersion
-from backend.db.models.identity import User
+from backend.db.models.identity import Company, User
 from backend.rbac.authorization import (
     accessible_company_ids,
     require_company_access,
@@ -1673,6 +1679,87 @@ def list_monthly_financial_reports(
     if period_month is not None:
         stmt = stmt.where(MonthlyFinancialReport.period_month == period_month)
     return list(db.execute(stmt).scalars())
+
+
+def group_financial_report(
+    db: Session, *, user: User, period_year: int, period_month: int,
+) -> dict:
+    """The group view: holding's own accounts vs the subsidiary summaries (S28).
+
+    S28 scope: "تقرير المجموعة يميز القابضة عن الملخصات التابعة ولا يدعي إلغاء
+    التعاملات للتوحيد" -- the group report distinguishes the holding from the
+    subsidiary summaries and does **not** claim to eliminate inter-company
+    transactions for consolidation. It therefore reports the holding line and the
+    subsidiary lines separately, per currency, and never adds two currencies
+    (T10). It is a holding-wide, read-only view; a company-scoped caller is
+    refused. Only approved (effective) subsidiary summaries and the holding's own
+    posted accounts feed it.
+    """
+    require_permission(user, Perm.FINANCIAL_REPORT_READ)
+    if accessible_company_ids(user) is not None:
+        raise PermissionDeniedError("The group report is a holding-wide view.")
+
+    companies = list(db.execute(select(Company)).scalars())
+
+    holding_lines: list[dict] = []
+    subsidiary_lines: list[dict] = []
+    for company in companies:
+        period = db.execute(
+            select(FinancialPeriod).where(
+                FinancialPeriod.company_id == company.id,
+                FinancialPeriod.period_year == period_year,
+                FinancialPeriod.period_month == period_month,
+            )
+        ).scalars().first()
+        version = None
+        if period is not None and period.effective_version_id is not None:
+            candidate = db.get(FinancialSummaryVersion, period.effective_version_id)
+            if candidate is not None and candidate.company_id == company.id:
+                version = candidate
+
+        if company.company_type == CompanyType.HOLDING.value:
+            figures = _report_figures(
+                db, company_id=company.id, year=period_year, month=period_month
+            )
+            holding_lines.append({
+                "company_id": company.id,
+                "name_ar": company.name_ar,
+                "name_en": getattr(company, "name_en", None),
+                "currency": figures["summary"][0]["currency"] if figures["summary"] else None,
+                "summary": figures["summary"],
+            })
+        else:
+            subsidiary_lines.append({
+                "company_id": company.id,
+                "name_ar": company.name_ar,
+                "name_en": getattr(company, "name_en", None),
+                "approved": version is not None,
+                "currency": version.currency if version is not None else None,
+                "revenue": (str(version.effective_revenue)
+                            if version is not None and version.effective_revenue is not None
+                            else None),
+                "expenses": (str(version.effective_expenses)
+                             if version is not None and version.effective_expenses is not None
+                             else None),
+                "result": (str(version.calculated_result)
+                           if version is not None and version.calculated_result is not None
+                           else None),
+                "summary_version_id": version.id if version is not None else None,
+            })
+
+    return {
+        "period_year": period_year,
+        "period_month": period_month,
+        "holding": holding_lines,
+        "subsidiaries": subsidiary_lines,
+        # S28: this view distinguishes entities; it does not claim consolidation.
+        "is_consolidated": False,
+        "consolidation_note_ar": "عرض تمييزي: لا يدعي إلغاء التعاملات بين الشركات للتوحيد.",
+        "consolidation_note_en": (
+            "A distinguishing view: it does not claim to eliminate inter-company "
+            "transactions for consolidation."
+        ),
+    }
 
 
 def get_monthly_financial_report(db: Session, *, user: User, report_id: int) -> MonthlyFinancialReport:

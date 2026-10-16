@@ -370,6 +370,8 @@ def test_frontend_financial_reports_tab_is_wired():
     index = (root / "frontend" / "index.html").read_text(encoding="utf-8")
     assert "function renderFinancialReports" in app_js
     assert "/api/v1/accounting/financial-reports" in app_js
+    assert "function groupReportPanel" in app_js
+    assert "/api/v1/accounting/financial-reports/group" in app_js
     assert 'data-acct-tab="reports" data-perm="financial_report.read"' in index
 
 
@@ -443,3 +445,41 @@ def test_budget_utilisation_is_company_scoped(client, s28_world, auth):
         headers=auth(s28_world["beta_mgr"]),
     )
     assert denied.status_code in (403, 404), denied.text
+
+
+# --------------------------------------------------------------------------
+# group report: distinguishes the holding from subsidiary summaries (S28)
+# --------------------------------------------------------------------------
+def test_group_report_separates_holding_from_subsidiaries(client, s28_world, auth, db):
+    """S28: the group view distinguishes entities and never claims consolidation."""
+    owner = s28_world["owner_all"]
+    alpha = s28_world["alpha"].id
+    _posted_journal(client, auth, s28_world["accountant_all"], alpha, db, amount="1000.00")
+
+    group = client.get(
+        "/api/v1/accounting/financial-reports/group"
+        "?period_year=2027&period_month=10",
+        headers=auth(owner),
+    )
+    assert group.status_code == 200, group.text
+    body = group.json()
+    # The representative summary belongs to a subsidiary; the holding line is
+    # separate and there is no merged/consolidated figure.
+    assert body["is_consolidated"] is False
+    # alpha is a subsidiary, so it appears in the subsidiary list with an
+    # approval flag; a company without an approved summary is flagged not approved.
+    subs = {s["company_id"]: s for s in body["subsidiaries"]}
+    assert alpha in subs
+    assert subs[alpha]["approved"] is False
+    # Every subsidiary row exposes its own currency/result, not a combined total.
+    assert all("currency" in s for s in body["subsidiaries"])
+
+
+def test_group_report_is_holding_wide_only(client, s28_world, auth):
+    """A company-scoped caller (company manager) cannot read the group report."""
+    denied = client.get(
+        "/api/v1/accounting/financial-reports/group"
+        "?period_year=2027&period_month=10",
+        headers=auth(s28_world["beta_mgr"]),
+    )
+    assert denied.status_code == 403, denied.text

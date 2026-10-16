@@ -485,6 +485,15 @@ def list_financial_reports(
     ]
 
 
+@router.get("/financial-reports/group")
+def group_financial_report(
+    user: CurrentUser, db: DbSession, period_year: int, period_month: int,
+) -> dict:
+    return accounting_service.group_financial_report(
+        db, user=user, period_year=period_year, period_month=period_month
+    )
+
+
 @router.get("/financial-reports/{report_id}")
 def get_financial_report(
     report_id: int, user: CurrentUser, db: DbSession
