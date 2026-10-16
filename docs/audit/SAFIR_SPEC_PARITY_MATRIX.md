@@ -32,7 +32,7 @@ The spec numbers screens S01–S28. The full evidence per row is in
 | S06 | الحركات الخاصة | ✅ | `FinancialItemDefinition`; 1000/600/50/20/200 → 380 test |
 | S07 | إدارة القطاعات والحقول والبنود | ✅ | dynamic forms + item definitions (versioned) |
 | S08 | مراجعة المحاسب والتصحيح | ✅ | return-with-note / approve; correction chain |
-| S09 | التقرير الإداري الشهري للشركة | ✅ | `MonthlyReport` + financial link; `test_reports.py` |
+| S09 | التقرير الإداري الشهري للشركة | 🟡 | `MonthlyReport` + financial link; `test_reports.py`. **Linked non-financial correction version (D03) is MISSING** — recorded open; see `SAFIR_SPECIFICATION_GAP_MATRIX.md` S09 |
 | S10 | الأداء والمقارنات | ✅ | `companies_performance` + goals (D02 data) |
 | S11 | الموظفون والملف الوظيفي | ✅ | `Employee`/`EmployeeMovement`; salary hidden |
 | S12 | تقييم الموظفين والتطوير | ✅ | `Assessment`/`AssessmentItem`; evidence rule |
