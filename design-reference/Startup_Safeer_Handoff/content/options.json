@@ -1,0 +1,14 @@
+{
+"services":[
+{"id":"formation","ar":"تأسيس الشركات وخدمات المستثمرين","en":"Company Formation and Investor Services"},
+{"id":"government","ar":"المعاملات الحكومية وخدمات الأعمال","en":"Government Transactions and Business Services"},
+{"id":"legal","ar":"استشارة قانونية","en":"Legal Consultation"},
+{"id":"feasibility","ar":"دراسة جدوى وخطة عمل","en":"Feasibility Study and Business Plan"},
+{"id":"management","ar":"استشارات إدارية وتطوير أعمال","en":"Management Consultancy and Business Development"},
+{"id":"marketing","ar":"دعاية وإعلان وتسويق","en":"Advertising and Marketing"}],
+"countries":[{"id":"BH","ar":"البحرين","en":"Bahrain"},{"id":"SA","ar":"السعودية","en":"Saudi Arabia"},{"id":"AE","ar":"الإمارات","en":"United Arab Emirates"},{"id":"KW","ar":"الكويت","en":"Kuwait"},{"id":"QA","ar":"قطر","en":"Qatar"},{"id":"OM","ar":"عُمان","en":"Oman"},{"id":"JO","ar":"الأردن","en":"Jordan"}],
+"service_country_ids":["BH","SA","AE","KW","QA","OM","JO"],
+"opportunity_country_ids":["BH","SA","AE","KW","QA","OM"],
+"career_countries":"All countries; do not reuse restricted service-country list.",
+"sector_options":null
+}
