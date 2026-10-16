@@ -1,6 +1,6 @@
 """Schemas for the Execution 30 owner-decision governance surface.
 
-Kept in its own module so the D01/D03/D04/D09/D11 request shapes are reviewable
+Kept in its own module so the D01/D04/D09/D11 request shapes are reviewable
 together. All enums are closed-set strings validated with a pattern, so a payload
 cannot smuggle in an unknown status or kind.
 """
@@ -62,7 +62,7 @@ class PolicyProposalOut(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# D03/D04: lead assignment events and history
+# D04: lead assignment events and history
 # --------------------------------------------------------------------------
 class LeadAssignRequest(BaseModel):
     """Assign or reassign a lead. A reason is required on reassignment."""

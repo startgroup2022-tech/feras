@@ -141,7 +141,7 @@ class Perm:
     # ---- Phase 10: public website leads and opportunities ----
     LEAD_READ = "website_lead.read"  # view website leads
     LEAD_MANAGE = "website_lead.manage"  # assign, re-route and update a lead
-    LEAD_ASSIGN = "website_lead.assign"  # assign or reassign a lead (D03)
+    LEAD_ASSIGN = "website_lead.assign"  # assign or reassign a lead (D04)
     LEAD_STATUS_CHANGE = "website_lead.status_change"  # move a lead through its pipeline
     LEAD_MANAGER_NOTE = "website_lead.manager_note"  # write the independent manager note (S13)
     OPPORTUNITY_REVIEW = "website_opportunity.review"  # review submitted listings

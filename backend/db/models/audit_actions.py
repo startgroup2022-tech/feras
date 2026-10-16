@@ -258,7 +258,7 @@ class AuditAction:
     FINANCIAL_REPORT_FINALISED = "monthly_financial_report.finalised"
     FINANCIAL_REPORT_ARCHIVED = "monthly_financial_report.archived"
 
-    # Execution 30: owner-decision governance (D01/D02/D03/D09/D11).
+    # Execution 30: owner-decision governance (D01/D02/D04/D09/D11).
     POLICY_PROPOSED = "accounting_policy.proposed"
     POLICY_PROPOSAL_APPROVED = "accounting_policy.proposal_approved"
     POLICY_PROPOSAL_REJECTED = "accounting_policy.proposal_rejected"

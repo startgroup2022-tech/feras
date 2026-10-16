@@ -1,4 +1,4 @@
-"""D03: lead assignment and reassignment with a mandatory, audited reason.
+"""D04: lead assignment and reassignment with a mandatory, audited reason.
 
 Only the Holding Owner and the Business Development Manager may assign or
 reassign a lead (``website_lead.assign``). Every change writes an append-only
@@ -113,7 +113,7 @@ def assign_lead(
 def list_assignments(
     db: Session, *, user: User, lead_id: int
 ) -> list[LeadAssignment]:
-    """The assignment history of a lead (D03/D04), newest first."""
+    """The assignment history of a lead (D04), newest first."""
     require_permission(user, Perm.LEAD_READ)
     # Reuse the lead loader so an out-of-scope lead is a 404, not a leak.
     website_lead_service.get_lead(db, user=user, lead_id=lead_id)

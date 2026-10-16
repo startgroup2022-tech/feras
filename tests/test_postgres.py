@@ -135,7 +135,7 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     assert len(heads) == 1
     head = heads.pop()
     # A single linear chain: the Execution 30 owner-decision governance tables
-    # (D01/D03/D04/D09/D11) build on the lead-to-campaign link (S13/S14), which
+    # (D01/D04/D09/D11) build on the lead-to-campaign link (S13/S14), which
     # builds on the owner secret note (S23), which builds on the management
     # reports & clarifications (S21/S02/S09), which build on the advisor monthly
     # reports (S19), which build on the support design metadata and external

@@ -118,7 +118,7 @@ def assign_lead(
     db: DbSession,
     user=Depends(require(Perm.LEAD_ASSIGN)),
 ) -> LeadOut:
-    """Assign or reassign a lead (D03), recording an audited history row."""
+    """Assign or reassign a lead (D04), recording an audited history row."""
     ctx = audit_service.request_context(request)
     lead = lead_assignment_service.assign_lead(
         db,
@@ -137,7 +137,7 @@ def assign_lead(
 def list_lead_assignments(
     lead_id: int, db: DbSession, user=Depends(require(Perm.LEAD_READ))
 ) -> list[LeadAssignmentOut]:
-    """The append-only assignment history of a lead (D03/D04), newest first."""
+    """The append-only assignment history of a lead (D04), newest first."""
     rows = lead_assignment_service.list_assignments(db, user=user, lead_id=lead_id)
     return [LeadAssignmentOut(**lead_assignment_service.serialise_assignment(r)) for r in rows]
 

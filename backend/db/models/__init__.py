@@ -226,7 +226,7 @@ __all__ = [
     "KpiDefinition",
     "MonthlyFinancialReport",
     "AccountingPolicy",
-    # Execution 30: owner-decision governance (D01/D03/D04/D09/D11)
+    # Execution 30: owner-decision governance (D01/D04/D09/D11)
     "PolicyProposal",
     "LeadAssignment",
     "CurrencyChangeRequest",

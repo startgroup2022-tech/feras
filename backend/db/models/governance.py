@@ -1,4 +1,4 @@
-"""Execution 30 owner-decision models (D01, D03, D04, D09, D11).
+"""Execution 30 owner-decision models (D01, D04, D09, D11).
 
 These tables carry the *governance* around decisions whose business values are
 still the owner's to set. Nothing here activates a financial value: a proposal,
@@ -11,10 +11,11 @@ Design rules carried from the decisions:
 * **D01** -- an accountant *proposes*; only the owner approves. The proposal is
   a separate row from the policy version, so no code path can conflate the two.
   A rejected proposal never changes the effective policy.
-* **D03** -- every lead assignment and reassignment is an append-only event with
-  its reason, previous assignee and actor. History is never rewritten.
-* **D04** -- history reads are scoped server-side: the owner sees everything in
-  scope, BD sees lead history, a company manager sees only their own company.
+* **D04** -- lead redistribution and its history are D04's subject (spec §21 D04:
+  "إعادة توزيع العميل"). Every assignment/reassignment is an append-only event
+  with its reason, previous assignee and actor, and history reads are scoped
+  server-side: the owner sees everything in scope, BD sees lead history, a
+  company manager sees only their own company. History is never rewritten.
 * **D09** -- a base-currency change is a request that must be reviewed and
   approved and only takes effect from a new financial period. Historical rows
   keep their original currency; no retrospective conversion exists.
@@ -96,7 +97,7 @@ class PolicyProposal(Base, TimestampMixin):
 
 
 class LeadAssignment(Base, TimestampMixin):
-    """D03: one assignment or reassignment of a lead (append-only).
+    """D04: one assignment or reassignment of a lead (append-only).
 
     A row records who did it, from whom to whom, why, and when. The lead's
     current ``assigned_to_id``/``routed_company_id`` are the fast read; this

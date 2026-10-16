@@ -1,4 +1,4 @@
-"""Execution 30: owner-approved decisions D01, D03, D04, D09, D11.
+"""Execution 30: owner-approved decisions D01, D04, D09, D11.
 
 Exercised end-to-end against the real service + API + persistence path (no
 mocks), including RBAC denials and the append-only / no-retroactive-change
@@ -8,10 +8,10 @@ safety properties that make these decisions safe to deploy.
   the previous value shown), and only a decision by a role holding
   ``accounting_policy.approve`` activates the version. A rejected proposal
   changes nothing; a draft never influences a calculation.
-* **D03** -- lead assignment/reassignment records an immutable history row and a
-  reassignment requires a reason.
-* **D04** -- history reads are scoped: a company manager never sees another
-  company's history.
+* **D04** -- lead redistribution and its history (spec 21 D04): every
+  assignment/reassignment records an immutable history row, a reassignment
+  requires a reason, and history reads are scoped so a company manager never
+  sees another company's history.
 * **D09** -- a base-currency change is request -> review -> owner approval ->
   scheduled -> applied, and can never be applied before its effective period.
 * **D11** -- TOTP enrolment, single-use codes, recovery codes and login
@@ -207,7 +207,7 @@ def test_proposal_requires_a_reason(client, gov_world, auth):
 
 
 # ==========================================================================
-# D03: lead assignment history
+# D04: lead assignment history
 # ==========================================================================
 def test_lead_assignment_is_recorded_with_history(client, gov_world, auth, db):
     owner = gov_world["owner_all"]
