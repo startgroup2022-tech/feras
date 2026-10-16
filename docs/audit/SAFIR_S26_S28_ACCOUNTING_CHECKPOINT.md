@@ -133,3 +133,81 @@ If work resumes: check out `feature/safir-s26-s28-accounting-completion`, run
 `SAFIR_SPECIFICATION_GAP_MATRIX.md`. The next incomplete requirement is the
 D02-dependent goals-vs-results view (S02/S10); it cannot be finished without the
 owner's D02 decision.
+
+---
+
+## 2026-10-14 final parity batch — S28 monthly & group financial reports
+
+Re-verified against the *original* Word specification
+(`docs/reference/Platform_Executive_Specifications_v1.docx`, now present and
+read directly: 28 screens S01–S28 and all 28 acceptance criteria AC-01…AC-28).
+The S28 gaps below were genuinely missing and are now closed.
+
+### S28 Table 57 — monthly financial report (``التقرير المالي الشهري``)
+
+"إعداد التقرير المالي الشهري | يسحب الحسابات ويضيف التحليل" — draws the accounts
+and adds the analysis, notifying the business-development manager and the owner.
+
+* Model `MonthlyFinancialReport` + migration `d6e7f8a9b0c1` (additive; unique
+  company+year+month; provenance to `FinancialSummaryVersion`).
+* `accounting_service.generate_monthly_financial_report` draws the **posted**
+  journals only (a draft journal is not drawn), keeps figures **per currency**,
+  and reconciles with the trial balance (AC-28). Regeneration updates the draft
+  in place (one row per period), never a second report.
+* `update_report_analysis` (accountant's added analysis), `finalise` (immutable;
+  notifies BD + owner; audited), `archive` (read-only history).
+* `_scoped_report` returns **404** for an out-of-scope report — "not yours" and
+  "does not exist" are indistinguishable.
+* API: `GET/POST /accounting/financial-reports`, `PATCH .../{id}/analysis`,
+  `POST .../{id}/finalise`, `POST .../{id}/archive`.
+* RBAC: `financial_report.read/manage/finalise`, bilingual metadata; the
+  company manager reads its own company's report; BD/owner/finance read.
+
+### S28 Table 56 / AC-28 — budget versus actual, no automatic payment approval
+
+"عرض ملخص أو ميزانية | يفتح المصدر والفروق دون اعتماد صرف" and AC-28
+"ميزانية متجاوزة لا تنشئ موافقة صرف تلقائية".
+
+* `accounting_service.budget_utilisation` compares the **approved** budget with
+  the **posted** expenses for the year, per currency; reports the variance and an
+  `over_budget` flag, and always returns `auto_payment_approval: false`.
+* API: `GET /accounting/budgets/utilisation` (company-scoped).
+
+### S28 scope — group report (holding vs subsidiary summaries)
+
+"تقرير المجموعة يميز القابضة عن الملخصات التابعة ولا يدعي إلغاء التعاملات للتوحيد".
+
+* `accounting_service.group_financial_report` lists the holding's own posted
+  accounts and each subsidiary's **approved** summary separately, per currency,
+  and never merges them; `is_consolidated` is `false` with a bilingual
+  distinguishing note.
+* Holding-wide only: a company-scoped caller is refused (403).
+* API: `GET /accounting/financial-reports/group`.
+
+### Frontend
+
+The accounting `reports` tab (`renderFinancialReports`) gained the group-report
+panel (gated on `dashboard.holding`); the `budgets` tab gained a "view variances"
+action and the variance panel. `node --check frontend/app.js` passes.
+
+### Test evidence
+
+* `python -m pytest tests/test_accounting_s28.py` — 17 cases (generation from
+  posted journals, per-currency figures, regeneration, analysis/finalise/archive,
+  immutability, company scoping, budget utilisation without approval, group
+  separation, holding-wide-only, frontend wiring).
+* `python -m pytest tests/ -q` — **926 passed** (2026-10-14).
+* `alembic check` — "No new upgrade operations detected." Migration head
+  `d6e7f8a9b0c1`.
+
+### Remaining owner-dependent (do not invent)
+
+* **D01** depreciation method/rate, tax/fiscal-year/invoice values are stored as
+  neutral data; the accountant supplies and approves the values through the
+  policy registry. No assumption is coded.
+* **D09** base-currency-change *procedure* (documented rate + date + source and a
+  history-preserving switch) is not built; the guard that blocks mixing
+  currencies without an approved rule is live.
+* **D02** goals-vs-results for S02/S10 and the weekly-template wording are owner
+  data.
+
