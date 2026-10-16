@@ -10,12 +10,17 @@ verification evidence gathered at the final release gate.
 
 ## 1. Authorisation
 
-The owner explicitly authorised implementation of **D01, D03, D04, D09, D11**.
-Not authorised: inventing unspecified financial values, destructive production
-operations, or deployment. Every value that a decision leaves to the owner
-(depreciation rates, fiscal-year dates, invoice/asset policy, the base currency
-of a company, KPI targets) is supplied through an **approved record**, never
-hard-coded.
+The owner explicitly authorised implementation of **D01, D02, D03, D04, D09,
+D10, D11**. Not authorised: inventing unspecified financial values, destructive
+production operations, or deployment. Every value that a decision leaves to the
+owner (depreciation rates, fiscal-year dates, invoice/asset policy, the base
+currency of a company, KPI targets) is supplied through an **approved record**,
+never hard-coded.
+
+D02 (KPI target-versus-actual) and D10 (backup integrity + restore drill) were
+completed in Execution 29 and are covered by `tests/test_kpi_targets.py` and
+`tests/test_backup_restore.py`. This execution completes the remaining
+authorised decisions: D01, D03, D04, D09, D11.
 
 ## 2. What was built
 
@@ -101,32 +106,45 @@ so an approved policy leaked across test modules and made
 The model is now cleared per test (as its children already were); the test
 passes in isolation and in the full suite.
 
-## 5. Remaining owner-dependent decisions (NOT implemented, NOT invented)
+## 5. Decisions already implemented (D02, D10) — verified, not rebuilt
 
-These are outside the authorised set and remain recorded open per spec §20:
+These were part of the authorised set and were completed in Execution 29; they
+are re-verified here, not rebuilt:
 
-| ID | Open item |
+| ID | Implemented | Test |
+|---|---|---|
+| D02 | KPI registry + target-versus-actual; a KPI is inert until an authorised approval activates it | `tests/test_kpi_targets.py` |
+| D10 | `backend/core/backup.py`: integrity manifest, corruption detection, isolated restore drill | `tests/test_backup_restore.py` |
+
+## 6. Remaining owner-dependent items (NOT implemented, NOT invented)
+
+These are not part of the authorised decision set and remain recorded open per
+spec §20. Each is a *value/word* the owner must supply; the mechanism that will
+consume it is already live:
+
+| Item | Open item |
 |---|---|
-| D02 | goals/KPI target values and weekly-template wording (the *mechanism* is live: KPI registry + target-vs-actual; only the owner's numbers are open) |
-| D05 | employee/leadership assessment weights (mechanism exists; weights are owner-set) |
-| D06 | payroll-link policy (manual balances only until approved) |
-| D07 | owner-topic/decision numbering conventions and budget values |
-| D08 | opening-balance figures for the new period |
-| D10 | production restore drill on the production target (tooling exists and is isolated; the drill itself is not run from this workspace) |
+| D02 values | goals/KPI target numbers and weekly-template wording (mechanism live) |
+| D05 weights | employee/leadership assessment criterion weights (mechanism live) |
+| D06 policy | payroll-link policy (manual balances only until approved) |
+| D07 values | owner-topic/decision numbering conventions and budget values |
+| D08 figures | opening-balance figures for the new period |
+| D10 drill | the production restore drill on the production target (tooling exists and is isolated; the drill itself is not run from this workspace) |
 
-## 6. Release readiness — NOT READY
+## 7. Release readiness — NOT READY
 
 Reasons:
 
-1. The owner-dependent decisions above are unresolved; their parts are recorded
-   open and must not be marked complete.
+1. The owner-dependent values/words above are unresolved; their parts are
+   recorded open and must not be marked complete.
 2. The production load test and production backup/restore drill have not been
    executed on the production target (by design — no production access).
 
 Everything audited on this branch — the authorised decisions, migrations,
-RBAC, isolation, and the full automated suite — passes. On owner approval of the
-remaining decisions plus the production drills, this branch is ready to merge
-into `frontend-app-conversion`.
+RBAC, isolation, and the full automated suite — passes. On owner supply of the
+remaining values plus the production drills, this branch is ready to merge into
+`frontend-app-conversion`.
 
-**Next incomplete requirement:** obtain owner values/approval for D02/D05/D06/
-D07/D08 and run the production load test + backup/restore drill.
+**Next incomplete requirement:** obtain the owner's values/approval for the D02/
+D05/D06/D07/D08 items above and run the production load test + backup/restore
+drill.
