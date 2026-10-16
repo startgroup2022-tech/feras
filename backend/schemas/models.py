@@ -75,6 +75,9 @@ InternalEmail = Annotated[str, AfterValidator(_validate_internal_email)]
 class LoginRequest(BaseModel):
     email: InternalEmail
     password: str = Field(min_length=1, max_length=72)
+    # D11: the second factor, required when the account has 2FA enabled. Kept
+    # optional so the schema is backwards compatible; the service enforces it.
+    code: str | None = Field(default=None, min_length=6, max_length=20)
 
 
 class RefreshRequest(BaseModel):

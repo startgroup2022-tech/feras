@@ -59,6 +59,13 @@ from backend.db.models.forms import (
     FormRequirement,
     FormVersion,
 )
+from backend.db.models.governance import (
+    CurrencyChangeRequest,
+    LeadAssignment,
+    PolicyProposal,
+    TwoFactorRecoveryCode,
+    UserTwoFactor,
+)
 from backend.db.models.group import Department, Holding, Ownership, Position, Sector
 from backend.db.models.identity import (
     Company,
@@ -219,4 +226,10 @@ __all__ = [
     "KpiDefinition",
     "MonthlyFinancialReport",
     "AccountingPolicy",
+    # Execution 30: owner-decision governance (D01/D03/D04/D09/D11)
+    "PolicyProposal",
+    "LeadAssignment",
+    "CurrencyChangeRequest",
+    "UserTwoFactor",
+    "TwoFactorRecoveryCode",
 ]

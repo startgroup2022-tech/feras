@@ -375,6 +375,12 @@ class NotificationType(str, enum.Enum):
     TASK_STATUS_CHANGED = "task.status_changed"
     # S28: the monthly financial report was finalised by the accountant.
     FINANCIAL_REPORT_FINALISED = "financial_report.finalised"
+    # Execution 30: owner-decision governance notifications.
+    POLICY_PROPOSAL_SUBMITTED = "policy.proposal_submitted"
+    POLICY_PROPOSAL_DECIDED = "policy.proposal_decided"
+    CURRENCY_CHANGE_SUBMITTED = "currency_change.submitted"
+    CURRENCY_CHANGE_DECIDED = "currency_change.decided"
+    LEAD_ASSIGNED = "lead.assigned"
     SYSTEM = "system"
 
 
@@ -838,5 +844,30 @@ class KpiDirection(str, enum.Enum):
 
     UP = "up"
     DOWN = "down"
+
+
+class PolicyProposalStatus(str, enum.Enum):
+    """D01 governance: a proposal is separate from the policy row it targets.
+
+    A proposal is the accountant's *request*; the owner's decision is the only
+    thing that may activate the underlying policy version. Keeping the two
+    apart means "proposed" and "approved" are never the same object, so no code
+    path can activate a value by accident.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class CurrencyChangeStatus(str, enum.Enum):
+    """D09: request -> accountant review -> owner approval -> scheduled."""
+
+    REQUESTED = "requested"
+    REVIEWED = "reviewed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SCHEDULED = "scheduled"
+    APPLIED = "applied"
 
 

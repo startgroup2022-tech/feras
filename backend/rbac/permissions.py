@@ -141,6 +141,7 @@ class Perm:
     # ---- Phase 10: public website leads and opportunities ----
     LEAD_READ = "website_lead.read"  # view website leads
     LEAD_MANAGE = "website_lead.manage"  # assign, re-route and update a lead
+    LEAD_ASSIGN = "website_lead.assign"  # assign or reassign a lead (D03)
     LEAD_STATUS_CHANGE = "website_lead.status_change"  # move a lead through its pipeline
     LEAD_MANAGER_NOTE = "website_lead.manager_note"  # write the independent manager note (S13)
     OPPORTUNITY_REVIEW = "website_opportunity.review"  # review submitted listings
@@ -232,6 +233,18 @@ class Perm:
     POLICY_READ = "accounting_policy.read"
     POLICY_MANAGE = "accounting_policy.manage"
     POLICY_APPROVE = "accounting_policy.approve"
+    # D01 governance: the accountant proposes, only the owner approves.
+    POLICY_PROPOSE = "accounting_policy.propose"
+    # D09: base-currency change request -> review -> owner approval.
+    CURRENCY_CHANGE_READ = "currency_change.read"
+    CURRENCY_CHANGE_REQUEST = "currency_change.request"
+    CURRENCY_CHANGE_REVIEW = "currency_change.review"
+    CURRENCY_CHANGE_APPROVE = "currency_change.approve"
+    # D04: change/distribution history access.
+    HISTORY_READ = "history.read"
+    # D11: second factor (2FA). Enrolment is self-service (any authenticated
+    # user); enforcement/reset of another user is owner-only.
+    TWO_FACTOR_ENFORCE = "auth.two_factor.enforce"
     # KPIs / management reports (S21 / D02)
     KPI_READ = "kpi.read"
     KPI_MANAGE = "kpi.manage"
@@ -339,6 +352,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.INTEGRATION_MANAGE: "Create, edit and disable integrations",
     Perm.LEAD_READ: "View website leads and submitted opportunities",
     Perm.LEAD_MANAGE: "Assign, re-route and edit website leads",
+    Perm.LEAD_ASSIGN: "Assign or reassign a website lead",
     Perm.LEAD_STATUS_CHANGE: "Move a website lead through its pipeline",
     Perm.LEAD_MANAGER_NOTE: "Write the independent manager note on a lead",
     Perm.OPPORTUNITY_REVIEW: "Review submitted business listings",
@@ -407,6 +421,13 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.POLICY_READ: "View approved accounting policies",
     Perm.POLICY_MANAGE: "Draft accounting policies",
     Perm.POLICY_APPROVE: "Approve an accounting policy",
+    Perm.POLICY_PROPOSE: "Propose a financial-policy change for owner approval",
+    Perm.CURRENCY_CHANGE_READ: "View base-currency change requests",
+    Perm.CURRENCY_CHANGE_REQUEST: "Request a base-currency change",
+    Perm.CURRENCY_CHANGE_REVIEW: "Review a base-currency change request",
+    Perm.CURRENCY_CHANGE_APPROVE: "Approve or reject a base-currency change",
+    Perm.HISTORY_READ: "View change and distribution history",
+    Perm.TWO_FACTOR_ENFORCE: "Reset another user's two-factor authentication",
     Perm.KPI_READ: "View KPI definitions and results",
     Perm.KPI_MANAGE: "Manage KPI definitions",
     Perm.NOTIFICATION_PREFERENCE_MANAGE: "Change your notification preferences",
@@ -701,6 +722,7 @@ BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
     # owns the full lead pipeline and the opportunity review queue.
     Perm.LEAD_READ,
     Perm.LEAD_MANAGE,
+    Perm.LEAD_ASSIGN,
     Perm.LEAD_STATUS_CHANGE,
     Perm.OPPORTUNITY_REVIEW,
 }
@@ -791,9 +813,12 @@ BUSINESS_DEVELOPMENT_EXT = {
     Perm.BUDGET_READ,
     Perm.PARTY_READ,
     Perm.INTERBALANCE_READ,
-    Perm.KPI_MANAGE,
+    # Execution 30 (D02): only the Holding Owner defines and modifies goals.
+    # BD keeps KPI_READ (view performance) but not KPI_MANAGE (define/edit).
     # S28 Table 80: BD reads the holding's financial reports (read-only).
     Perm.FINANCIAL_REPORT_READ,
+    # Execution 30 (D04): BD reads the lead change/distribution history it needs.
+    Perm.HISTORY_READ,
 }
 
 # Accountant: the holding accounts surface (D01) plus budget approval input.
@@ -830,6 +855,13 @@ ACCOUNTANT_EXT = {
     Perm.POLICY_READ,
     Perm.POLICY_MANAGE,
     Perm.POLICY_APPROVE,
+    # Execution 30 (D01/D09): the accountant proposes policy changes and
+    # reviews (but never approves) base-currency changes.
+    Perm.POLICY_PROPOSE,
+    Perm.CURRENCY_CHANGE_READ,
+    Perm.CURRENCY_CHANGE_REQUEST,
+    Perm.CURRENCY_CHANGE_REVIEW,
+    Perm.HISTORY_READ,
     Perm.TASK_READ_OWN,
     Perm.TASK_STATUS_CHANGE,
     Perm.WEEKLY_REPORT_READ_OWN,
@@ -878,6 +910,8 @@ COMPANY_MANAGER_EXT = {
     Perm.KPI_READ,
     # S28: a company-scoped manager reads its own company's financial report.
     Perm.FINANCIAL_REPORT_READ,
+    # Execution 30 (D04): a manager sees only its own company's history.
+    Perm.HISTORY_READ,
 }
 
 # External Consultant (S19 / D04): only explicitly granted data; no ledger, no

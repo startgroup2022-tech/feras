@@ -22,7 +22,8 @@ from backend.schemas import (
     OpportunityReviewRequest,
     PageOut,
 )
-from backend.services import audit_service, website_lead_service
+from backend.schemas.governance import LeadAssignRequest, LeadAssignmentOut
+from backend.services import audit_service, lead_assignment_service, website_lead_service
 
 router = APIRouter(prefix="/leads", tags=["website-leads"])
 
@@ -107,6 +108,38 @@ def list_lead_notes(
     """Independent manager notes (S13), newest first. Marketing may read them."""
     rows = website_lead_service.list_lead_notes(db, user=user, lead_id=lead_id)
     return [LeadNoteOut(**row) for row in rows]
+
+
+@router.post("/{lead_id}/assign", response_model=LeadOut)
+def assign_lead(
+    lead_id: int,
+    payload: LeadAssignRequest,
+    request: Request,
+    db: DbSession,
+    user=Depends(require(Perm.LEAD_ASSIGN)),
+) -> LeadOut:
+    """Assign or reassign a lead (D03), recording an audited history row."""
+    ctx = audit_service.request_context(request)
+    lead = lead_assignment_service.assign_lead(
+        db,
+        user=user,
+        lead_id=lead_id,
+        assignee_id=payload.assignee_id,
+        company_id=payload.company_id,
+        reason=payload.reason,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return LeadOut(**website_lead_service.serialise_lead(lead))
+
+
+@router.get("/{lead_id}/assignments", response_model=list[LeadAssignmentOut])
+def list_lead_assignments(
+    lead_id: int, db: DbSession, user=Depends(require(Perm.LEAD_READ))
+) -> list[LeadAssignmentOut]:
+    """The append-only assignment history of a lead (D03/D04), newest first."""
+    rows = lead_assignment_service.list_assignments(db, user=user, lead_id=lead_id)
+    return [LeadAssignmentOut(**lead_assignment_service.serialise_assignment(r)) for r in rows]
 
 
 @router.post("/{lead_id}/notes", response_model=LeadNoteOut, status_code=201)
