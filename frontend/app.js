@@ -7235,6 +7235,7 @@
     var host = byId("acctContent");
     return Promise.all([ensureCompanies(), get("/api/v1/accounting/budgets").catch(function () { return []; })]).then(function (res) {
       var rows = res[1] || [];
+      STATE.budgetRows = rows;
       var canManage = has("budget.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="budgetForm">' +
@@ -7250,17 +7251,40 @@
             var approve = b.status !== "approved" && has("budget.approve")
               ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
               : "";
+            var utilBtn = b.status === "approved" && has("budget.read")
+              ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
+              : "";
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
               " · v" + dec(b.version) + "</div>" +
               '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
               " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
               statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
-              "</div>" + (approve ? '<div class="av-user-controls" data-stop="1">' + approve + "</div>" : "") + "</div>";
+              "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
           }).join("") + "</div>"
         : noticeHtml("لا توجد موازنات.", "No budgets.");
-      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + list);
+      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + list);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // AC-28: an over-budget year reports the variance and never creates a payment
+  // approval (Table 56 "يفتح المصدر والفروق دون اعتماد صرف").
+  function budgetUtilPanel() {
+    var u = STATE.budgetUtil;
+    if (!u) return "";
+    var over = u.over_budget
+      ? '<span class="status warn"><i></i>' + dual("متجاوزة", "Over budget") + "</span>"
+      : '<span class="status ok"><i></i>' + dual("داخل الموازنة", "Within budget") + "</span>";
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default">' +
+      '<div style="display:flex;align-items:center;gap:11px"><div class="grow">' +
+      '<div class="t">' + dual("فروق الموازنة", "Budget variances") + " · " +
+      escapeHtml(companyNameById(u.company_id)) + " · " + dec(u.fiscal_year) + "</div>" +
+      '<div class="s">' + dual("الموازنة", "Budget") + " " + dec(u.budget_total) +
+      " · " + dual("الفعلي", "Actual") + " " + dec(u.actual_expenses) +
+      " · " + dual("الفرق", "Variance") + " " + dec(u.variance) + " " + escapeHtml(u.currency) +
+      "</div></div>" + over +
+      '<button class="btn-ghost" data-act="bg-util-close">' + dual("إغلاق", "Close") + "</button>" +
+      "</div></div>";
   }
 
   function kpiStatusBadge(ev) {
@@ -7582,6 +7606,16 @@
         .then(function () { toast(dual("تم اعتماد الموازنة.", "Budget approved."), "ok"); return renderBudgets(); })
         .catch(function (err) { domainError(err); busy(el, false); });
     }
+    if (action === "bg-util") {
+      busy(el, true);
+      var budget = (STATE.budgetRows || []).filter(function (b) { return b.id === id; })[0];
+      if (!budget) { busy(el, false); return; }
+      return get("/api/v1/accounting/budgets/utilisation?company_id=" + budget.company_id +
+                 "&fiscal_year=" + budget.fiscal_year)
+        .then(function (u) { STATE.budgetUtil = u; return renderBudgets(); })
+        .catch(function (err) { domainError(err); busy(el, false); });
+    }
+    if (action === "bg-util-close") { STATE.budgetUtil = null; return renderBudgets(); }
     if (action === "fr-analysis") {
       busy(el, true);
       var input = document.querySelector('[data-field="analysis"][data-id="' + id + '"]');

@@ -1103,6 +1103,63 @@ def serialise_budget(b: Budget) -> dict:
     }
 
 
+def budget_utilisation(
+    db: Session, *, user: User, company_id: int, fiscal_year: int,
+    fiscal_month: int | None = None,
+) -> dict:
+    """Budget-versus-actual for a year (Table 56 "يفتح المصدر والفروق").
+
+    The actual is the sum of *posted* expenses for the year (optionally up to a
+    month); the budget is the approved version for that year. The variance and an
+    ``over_budget`` flag are reported, but over-budget never creates a spending
+    approval -- the flag is informational and the caller must escalate
+    explicitly (AC-28: "ميزانية متجاوزة لا تنشئ موافقة صرف تلقائية").
+    """
+    require_permission(user, Perm.BUDGET_READ)
+    require_company_access(user, company_id)
+
+    budget = db.execute(
+        select(Budget)
+        .where(
+            Budget.company_id == company_id,
+            Budget.fiscal_year == fiscal_year,
+            Budget.status == BudgetStatus.APPROVED.value,
+        )
+        .order_by(Budget.version.desc())
+    ).scalars().first()
+
+    expense_rows = _statement_rows(
+        db, company_id=company_id, account_type=AccountType.EXPENSE.value,
+        fiscal_year=fiscal_year, fiscal_month=fiscal_month,
+    )
+    actual_by_currency: dict[str, Decimal] = {}
+    for row in expense_rows:
+        actual_by_currency[row["currency"]] = (
+            actual_by_currency.get(row["currency"], ZERO) + row["amount"]
+        )
+
+    currency = budget.currency if budget is not None else "SAR"
+    budget_amount = Decimal(budget.total_amount) if budget is not None else ZERO
+    actual = actual_by_currency.get(currency, ZERO)
+    variance = budget_amount - actual
+    over_budget = budget is not None and actual > budget_amount
+    return {
+        "company_id": company_id,
+        "fiscal_year": fiscal_year,
+        "fiscal_month": fiscal_month,
+        "currency": currency,
+        "budget_id": budget.id if budget is not None else None,
+        "budget_version": budget.version if budget is not None else None,
+        "budget_source": budget.source if budget is not None else None,
+        "budget_total": str(budget_amount),
+        "actual_expenses": str(actual),
+        "variance": str(variance),
+        "over_budget": over_budget,
+        # AC-28: an over-budget flag is never an automatic payment approval.
+        "auto_payment_approval": False,
+    }
+
+
 # --------------------------------------------------------------------------
 # KPIs (D02)
 # --------------------------------------------------------------------------

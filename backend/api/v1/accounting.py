@@ -339,6 +339,17 @@ def approve_budget(
     return accounting_service.serialise_budget(budget)
 
 
+@router.get("/budgets/utilisation")
+def budget_utilisation(
+    user: CurrentUser, db: DbSession, company_id: int, fiscal_year: int,
+    fiscal_month: int | None = None,
+) -> dict:
+    return accounting_service.budget_utilisation(
+        db, user=user, company_id=company_id, fiscal_year=fiscal_year,
+        fiscal_month=fiscal_month,
+    )
+
+
 # ---- KPIs (D02) ----
 @router.get("/kpis")
 def list_kpis(

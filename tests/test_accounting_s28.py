@@ -371,3 +371,75 @@ def test_frontend_financial_reports_tab_is_wired():
     assert "function renderFinancialReports" in app_js
     assert "/api/v1/accounting/financial-reports" in app_js
     assert 'data-acct-tab="reports" data-perm="financial_report.read"' in index
+
+
+# --------------------------------------------------------------------------
+# budget vs actual (Table 56 / AC-28)
+# --------------------------------------------------------------------------
+def _expense_journal(client, auth, user, company_id, db, *, amount="500.00",
+                     entry_date="2027-10-02"):
+    debit = _account(db, company_id, "5100", "expense")
+    credit = _account(db, company_id, "1100", "asset")
+    created = client.post(
+        "/api/v1/accounting/journals",
+        json={
+            "company_id": company_id,
+            "entry_date": entry_date,
+            "currency": "SAR",
+            "lines": [
+                {"account_id": debit.id, "debit": amount, "credit": "0"},
+                {"account_id": credit.id, "debit": "0", "credit": amount},
+            ],
+        },
+        headers=auth(user),
+    )
+    assert created.status_code == 201, created.text
+    journal_id = created.json()["id"]
+    posted = client.post(
+        f"/api/v1/accounting/journals/{journal_id}/post", headers=auth(user)
+    )
+    assert posted.status_code == 200, posted.text
+
+
+def test_budget_utilisation_reports_variance_without_payment_approval(
+    client, s28_world, auth, db
+):
+    """AC-28: an over-budget year reports a variance but creates no approval."""
+    accountant = s28_world["accountant_all"]
+    alpha = s28_world["alpha"].id
+    budget = client.post(
+        "/api/v1/accounting/budgets",
+        json={"company_id": alpha, "fiscal_year": 2027, "total_amount": "400.00"},
+        headers=auth(accountant),
+    )
+    assert budget.status_code == 201, budget.text
+    approved = client.post(
+        f"/api/v1/accounting/budgets/{budget.json()['id']}/approve",
+        json={}, headers=auth(s28_world["owner_all"]),
+    )
+    assert approved.status_code == 200, approved.text
+
+    _expense_journal(client, auth, accountant, alpha, db, amount="500.00")
+
+    util = client.get(
+        f"/api/v1/accounting/budgets/utilisation?company_id={alpha}&fiscal_year=2027",
+        headers=auth(accountant),
+    )
+    assert util.status_code == 200, util.text
+    body = util.json()
+    assert body["budget_total"] == "400.00"
+    assert body["actual_expenses"] == "500.00"
+    assert body["variance"] == "-100.00"
+    assert body["over_budget"] is True
+    # AC-28: exceeding a budget never issues an automatic payment approval.
+    assert body["auto_payment_approval"] is False
+
+
+def test_budget_utilisation_is_company_scoped(client, s28_world, auth):
+    """A manager confined to beta cannot read alpha's budget utilisation."""
+    alpha = s28_world["alpha"].id
+    denied = client.get(
+        f"/api/v1/accounting/budgets/utilisation?company_id={alpha}&fiscal_year=2027",
+        headers=auth(s28_world["beta_mgr"]),
+    )
+    assert denied.status_code in (403, 404), denied.text
