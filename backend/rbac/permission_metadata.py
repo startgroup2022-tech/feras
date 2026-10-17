@@ -231,6 +231,14 @@ PERMISSION_METADATA: list[dict] = [
        "حذف مسودة التقرير", "Delete a report draft",
        "حذف مسودة تقرير شهري.",
        "Delete a monthly report draft.", danger=True),
+    _p(Perm.REPORT_REVIEW, "reports", "approve",
+       "مراجعة التقرير الشهري وإعادته", "Review and return a monthly report",
+       "مراجعة تقرير مُرسَل وإعادته للتصحيح بسبب إلزامي.",
+       "Review a submitted report and return it for correction with a mandatory reason."),
+    _p(Perm.REPORT_APPROVE, "reports", "approve",
+       "الاعتماد النهائي للتقرير الشهري", "Final approval of a monthly report",
+       "الاعتماد النهائي للتقرير الإداري أو إلغاؤه (المالك فقط).",
+       "Final approval or cancellation of a management report (owner only).", danger=True),
 
     # ---- financial reviews ----
     _p(Perm.FINANCIAL_REVIEW_READ, "financial", "view",

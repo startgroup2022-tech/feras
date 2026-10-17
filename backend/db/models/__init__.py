@@ -86,6 +86,7 @@ from backend.db.models.report import (
     MonthlyReportAttachment,
     MonthlyReportFinancialReview,
     ReportClarification,
+    ReportLifecycleEvent,
 )
 from backend.db.models.submissions import FormSubmission, SubmissionRequirement
 from backend.db.models.support import (
@@ -137,6 +138,7 @@ __all__ = [
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",
     "ReportClarification",
+    "ReportLifecycleEvent",
     # Execution 02: subsidiary financial summary workflow
     "FinancialPeriod",
     "FinancialSummaryVersion",

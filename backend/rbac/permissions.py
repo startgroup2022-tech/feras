@@ -53,6 +53,12 @@ class Perm:
     REPORT_UPDATE = "monthly_report.update"
     REPORT_SUBMIT = "monthly_report.submit"
     REPORT_DELETE = "monthly_report.delete"
+    # D03: the versioned management-report workflow. ``review`` lets Business
+    # Development return a submitted report for correction; ``approve`` is the
+    # owner-only final approval/cancellation authority (spec D03: "the Holding
+    # Owner is the sole authority for final approval and final cancellation").
+    REPORT_REVIEW = "monthly_report.review"
+    REPORT_APPROVE = "monthly_report.approve"
 
     # ---- accountant review ----
     FINANCIAL_REVIEW_READ = "financial_review.read"
@@ -294,6 +300,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.REPORT_UPDATE: "Update a monthly report draft",
     Perm.REPORT_SUBMIT: "Submit a monthly report to the Holding",
     Perm.REPORT_DELETE: "Delete a monthly report draft",
+    Perm.REPORT_REVIEW: "Review a submitted monthly report and return it for correction",
+    Perm.REPORT_APPROVE: "Give final approval or cancellation of a monthly report (owner only)",
     Perm.FINANCIAL_REVIEW_READ: "Read financial reviews",
     Perm.FINANCIAL_REVIEW_WRITE: "Verify and flag financial data",
     Perm.FINANCIAL_SUMMARY_READ_OWN: "Read financial summaries for accessible companies",
@@ -708,6 +716,9 @@ ACCOUNTANT = _OPERATOR_READ | {
 BUSINESS_DEVELOPMENT = _OPERATOR_READ | {
     Perm.COMPANY_READ,
     Perm.REPORT_READ_ALL,
+    # D03: Business Development reviews submitted management reports and may
+    # return one for correction (never the final approval -- that is owner-only).
+    Perm.REPORT_REVIEW,
     # Read-only financial view (spec: BD may read, never approve or edit, and
     # the private bank statement is not part of their view).
     Perm.FINANCIAL_SUMMARY_READ_ALL,

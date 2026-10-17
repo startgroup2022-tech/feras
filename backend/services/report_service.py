@@ -23,7 +23,9 @@ from backend.db.models.audit_actions import AuditAction
 from backend.db.models.enums import (
     FinancialReviewStatus,
     NotificationType,
+    ReportApprovalStatus,
     ReportClarificationKind,
+    ReportLifecycleAction,
     ReportStatus,
 )
 from backend.db.models.identity import User
@@ -31,6 +33,7 @@ from backend.db.models.report import (
     MonthlyReport,
     MonthlyReportFinancialReview,
     ReportClarification,
+    ReportLifecycleEvent,
 )
 from backend.rbac.authorization import (
     has_permission,
@@ -164,6 +167,33 @@ def organize_report_narrative(
     return proposal
 
 
+def _record_lifecycle(
+    db: Session,
+    *,
+    report: MonthlyReport,
+    action: str,
+    from_status: str | None,
+    to_status: str,
+    actor: User | None,
+    note: str | None = None,
+) -> None:
+    """Append one transition to the report version's workflow trail (D03).
+
+    The trail is append-only: rows are added here and never updated. It is
+    committed together with the status change so the two cannot drift.
+    """
+    db.add(
+        ReportLifecycleEvent(
+            report_id=report.id,
+            action=action,
+            from_status=from_status,
+            to_status=to_status,
+            actor_id=actor.id if actor is not None else None,
+            note=note,
+        )
+    )
+
+
 def submit_report(
     db: Session,
     *,
@@ -181,27 +211,384 @@ def submit_report(
     if report.revenue is None or report.expenses is None:
         raise ValidationError("Revenue and expenses are required before submitting.")
 
+    previous_status = report.status
     report.status = ReportStatus.SUBMITTED.value
     report.submitted_at = utcnow()
     report.submitted_by_id = user.id
+    # A correction version (version_number > 1) is a *resubmission*: the trail
+    # keeps the two distinguishable while the status is the same.
+    action = (
+        ReportLifecycleAction.RESUBMITTED.value
+        if report.version_number > 1
+        else ReportLifecycleAction.SUBMITTED.value
+    )
+    _record_lifecycle(
+        db,
+        report=report,
+        action=action,
+        from_status=previous_status,
+        to_status=report.status,
+        actor=user,
+        note=report.return_reason if report.version_number > 1 else None,
+    )
     db.add(report)
     db.commit()
     db.refresh(report)
 
     audit_service.record(
         db,
-        action=AuditAction.REPORT_SUBMITTED,
+        action=(
+            AuditAction.REPORT_RESUBMITTED
+            if report.version_number > 1
+            else AuditAction.REPORT_SUBMITTED
+        ),
         actor_user_id=user.id,
         entity_type="monthly_report",
         entity_id=report.id,
         company_id=report.company_id,
         ip_address=ip_address,
         user_agent=user_agent,
-        metadata={"period": f"{report.period_year}-{report.period_month:02d}"},
+        metadata={
+            "period": f"{report.period_year}-{report.period_month:02d}",
+            "version_number": report.version_number,
+        },
     )
 
     _notify_report_submitted(db, report=report, actor=user)
     return report
+
+
+def return_report(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    reason: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReport:
+    """D03: a Holding reviewer returns a submitted report for correction (S09).
+
+    The reason is mandatory. The report's status becomes ``returned`` and the
+    *original submission is preserved*: the company manager fixes it by creating
+    a linked correction version, never by editing this row.
+    """
+    require_permission(user, Perm.REPORT_REVIEW)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id)
+
+    if not report.is_live:
+        raise ConflictError("Only the current report version can be returned.")
+    if report.status not in {
+        ReportStatus.SUBMITTED.value,
+        ReportStatus.UNDER_REVIEW.value,
+        ReportStatus.REVIEWED.value,
+    }:
+        raise ConflictError("Only a submitted or reviewed report can be returned.")
+    text = (reason or "").strip()
+    if not text:
+        raise ValidationError("A return reason is required.")
+
+    previous_status = report.status
+    report.status = ReportStatus.RETURNED.value
+    report.return_reason = text
+    report.returned_by_id = user.id
+    report.returned_at = utcnow()
+    _record_lifecycle(
+        db,
+        report=report,
+        action=ReportLifecycleAction.RETURNED.value,
+        from_status=previous_status,
+        to_status=report.status,
+        actor=user,
+        note=text,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_RETURNED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"version_number": report.version_number, "reason": text},
+    )
+    _notify_report_lifecycle(
+        db,
+        report=report,
+        actor=user,
+        type=NotificationType.REPORT_RETURNED,
+        title_ar="أُعيد تقرير شهري للتصحيح",
+        title_en="A monthly report was returned for correction",
+        message_ar=(
+            f"أُعيد تقرير {report.period_month}/{report.period_year} للتصحيح: {text}"
+        ),
+        message_en=(
+            f"The {report.period_month}/{report.period_year} report was returned "
+            f"for correction: {text}"
+        ),
+    )
+    return report
+
+
+def create_correction(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    payload: dict,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReport:
+    """D03: create a *linked* correction version of a returned report (S09).
+
+    The correction is a brand-new row with ``version_number`` incremented and
+    ``corrects_report_id`` pointing at the returned version. The returned version
+    is marked ``is_live = 0`` (superseded) but kept intact, so the full history
+    survives. Only narrative fields are re-entered; the financial figures are
+    carried over from the corrected version (the financial side is corrected
+    through F-03, not here).
+    """
+    require_permission(user, Perm.REPORT_CREATE)
+    require_permission(user, Perm.REPORT_UPDATE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id, write=True)
+
+    if not report.is_live:
+        raise ConflictError("Only the current report version can be corrected.")
+    if report.status != ReportStatus.RETURNED.value:
+        raise ConflictError("Only a report returned for correction can be corrected.")
+
+    repo = MonthlyReportRepository(db)
+    version_number = repo.next_version_number(
+        report.company_id, report.period_year, report.period_month
+    )
+
+    # Supersede the returned version; the unique live index guarantees only one
+    # live version per company/period.
+    report.is_live = False
+    db.add(report)
+
+    def _narrative(field: str):
+        value = payload.get(field)
+        return value if value is not None else getattr(report, field)
+
+    correction = MonthlyReport(
+        company_id=report.company_id,
+        period_year=report.period_year,
+        period_month=report.period_month,
+        status=ReportStatus.DRAFT.value,
+        version_number=version_number,
+        corrects_report_id=report.id,
+        is_live=True,
+        approval_status=ReportApprovalStatus.PENDING.value,
+        revenue=report.revenue,
+        expenses=report.expenses,
+        net_result=report.net_result,
+        outstanding_receivables=report.outstanding_receivables,
+        important_developments=_narrative("important_developments"),
+        new_customers=_narrative("new_customers"),
+        new_opportunities=_narrative("new_opportunities"),
+        major_problems=_narrative("major_problems"),
+        support_required=_narrative("support_required"),
+        marketing_status=_narrative("marketing_status"),
+        business_development_status=_narrative("business_development_status"),
+        management_notes=_narrative("management_notes"),
+    )
+    db.add(correction)
+    db.commit()
+    db.refresh(correction)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_CORRECTION_CREATED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=correction.id,
+        company_id=correction.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={
+            "corrects_report_id": report.id,
+            "version_number": version_number,
+        },
+    )
+    return correction
+
+
+def approve_report(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    note: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReport:
+    """D03: the Holding Owner gives the management report its final approval.
+
+    Kept separate from the accountant's *financial* review: this closes the
+    non-financial (management) side of the report. Owner-only by permission.
+    """
+    require_permission(user, Perm.REPORT_APPROVE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id)
+
+    if not report.is_live:
+        raise ConflictError("Only the current report version can be approved.")
+    if report.status not in {
+        ReportStatus.SUBMITTED.value,
+        ReportStatus.UNDER_REVIEW.value,
+        ReportStatus.REVIEWED.value,
+    }:
+        raise ConflictError("Only a submitted or reviewed report can be approved.")
+
+    previous_status = report.status
+    report.status = ReportStatus.REVIEWED.value
+    report.approval_status = ReportApprovalStatus.APPROVED.value
+    report.approved_by_id = user.id
+    report.approved_at = utcnow()
+    _record_lifecycle(
+        db,
+        report=report,
+        action=ReportLifecycleAction.APPROVED.value,
+        from_status=previous_status,
+        to_status=report.status,
+        actor=user,
+        note=note,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_APPROVED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"version_number": report.version_number},
+    )
+    _notify_report_lifecycle(
+        db,
+        report=report,
+        actor=user,
+        type=NotificationType.REPORT_APPROVED,
+        title_ar="اعتُمد تقرير شهري",
+        title_en="A monthly report was approved",
+        message_ar=f"اعتُمد تقرير {report.period_month}/{report.period_year} نهائياً.",
+        message_en=f"The {report.period_month}/{report.period_year} report was approved.",
+    )
+    return report
+
+
+def cancel_report(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    reason: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReport:
+    """D03: owner-only cancellation of a report version (S09)."""
+    require_permission(user, Perm.REPORT_APPROVE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id)
+
+    if report.status == ReportStatus.CANCELLED.value:
+        raise ConflictError("The report is already cancelled.")
+    text = (reason or "").strip()
+    if not text:
+        raise ValidationError("A cancellation reason is required.")
+
+    previous_status = report.status
+    report.status = ReportStatus.CANCELLED.value
+    report.approval_status = ReportApprovalStatus.CANCELLED.value
+    report.cancelled_by_id = user.id
+    report.cancelled_at = utcnow()
+    report.cancel_reason = text
+    _record_lifecycle(
+        db,
+        report=report,
+        action=ReportLifecycleAction.CANCELLED.value,
+        from_status=previous_status,
+        to_status=report.status,
+        actor=user,
+        note=text,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_CANCELLED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"version_number": report.version_number, "reason": text},
+    )
+    _notify_report_lifecycle(
+        db,
+        report=report,
+        actor=user,
+        type=NotificationType.REPORT_CANCELLED,
+        title_ar="أُلغي تقرير شهري",
+        title_en="A monthly report was cancelled",
+        message_ar=f"أُلغي تقرير {report.period_month}/{report.period_year}: {text}",
+        message_en=f"The {report.period_month}/{report.period_year} report was cancelled: {text}",
+    )
+    return report
+
+
+def _notify_report_lifecycle(
+    db: Session,
+    *,
+    report: MonthlyReport,
+    actor: User,
+    type: str,
+    title_ar: str,
+    title_en: str,
+    message_ar: str,
+    message_en: str,
+) -> None:
+    """Notify the company's report author of a workflow transition (best-effort)."""
+    from backend.services import notification_service
+
+    recipients = [report.submitted_by_id] if report.submitted_by_id else []
+    recipients = [uid for uid in recipients if uid != actor.id]
+    if not recipients:
+        return
+    try:
+        notification_service.notify(
+            db,
+            recipient_ids=recipients,
+            type=type,
+            title_ar=title_ar,
+            title_en=title_en,
+            message_ar=message_ar,
+            message_en=message_en,
+            company_id=report.company_id,
+            entity_type="monthly_report",
+            entity_id=report.id,
+            actor_user_id=actor.id,
+        )
+    except Exception:  # noqa: BLE001 - best-effort
+        import logging
+
+        logging.getLogger("safir.reports").exception("report lifecycle notification failed")
 
 
 def _notify_report_submitted(db: Session, *, report, actor: User) -> None:
@@ -538,8 +925,65 @@ def _get_scoped_or_404(db: Session, user: User, report_id: int) -> MonthlyReport
     return report
 
 
+def serialise_lifecycle_event(event: ReportLifecycleEvent) -> dict:
+    return {
+        "id": event.id,
+        "action": event.action,
+        "from_status": event.from_status,
+        "to_status": event.to_status,
+        "actor_id": event.actor_id,
+        "actor_name_ar": event.actor.full_name_ar if event.actor else None,
+        "note": event.note,
+        "created_at": event.created_at,
+    }
+
+
+def serialise_version(report: MonthlyReport) -> dict:
+    """One row of the D03 version chain (summary, no narrative)."""
+    return {
+        "id": report.id,
+        "version_number": report.version_number,
+        "status": report.status,
+        "approval_status": report.approval_status,
+        "is_live": report.is_live,
+        "corrects_report_id": report.corrects_report_id,
+        "submitted_at": report.submitted_at,
+        "returned_at": report.returned_at,
+        "return_reason": report.return_reason,
+        "approved_at": report.approved_at,
+        "cancelled_at": report.cancelled_at,
+        "created_at": report.created_at,
+    }
+
+
+def list_versions(db: Session, *, user: User, report_id: int) -> list[dict]:
+    """The full correction chain for a report the caller may read (D03/S09).
+
+    Every version is returned oldest-first, so the S09 screen can render the
+    original alongside each correction. The read is scoped through the same
+    404-not-403 rule as the report itself.
+    """
+    report = _get_scoped_or_404(db, user, report_id)
+    rows = MonthlyReportRepository(db).versions_for(
+        report.company_id, report.period_year, report.period_month
+    )
+    return [serialise_version(r) for r in rows]
+
+
+def list_lifecycle(db: Session, *, user: User, report_id: int) -> list[dict]:
+    """The ordered workflow trail for a report version the caller may read."""
+    report = _get_scoped_or_404(db, user, report_id)
+    events = (
+        db.query(ReportLifecycleEvent)
+        .filter(ReportLifecycleEvent.report_id == report.id)
+        .order_by(ReportLifecycleEvent.id)
+        .all()
+    )
+    return [serialise_lifecycle_event(e) for e in events]
+
+
 def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> dict:
-    """Attach company display names for the API response."""
+    """Attach company display names and the D03 version context to the response."""
     data = {
         "id": report.id,
         "company_id": report.company_id,
@@ -548,6 +992,15 @@ def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> d
         "period_year": report.period_year,
         "period_month": report.period_month,
         "status": report.status,
+        "version_number": report.version_number,
+        "corrects_report_id": report.corrects_report_id,
+        "is_live": report.is_live,
+        "approval_status": report.approval_status,
+        "return_reason": report.return_reason,
+        "returned_at": report.returned_at,
+        "approved_at": report.approved_at,
+        "cancelled_at": report.cancelled_at,
+        "cancel_reason": report.cancel_reason,
         "revenue": report.revenue,
         "expenses": report.expenses,
         "net_result": report.net_result,
@@ -576,10 +1029,18 @@ __all__ = [
     "submit_report",
     "organize_report_narrative",
     "review_financially",
+    "return_report",
+    "create_correction",
+    "approve_report",
+    "cancel_report",
+    "list_versions",
+    "list_lifecycle",
     "add_attachment",
     "remove_attachment",
     "financial_part_status",
     "serialise",
+    "serialise_version",
+    "serialise_lifecycle_event",
     "MonthlyReport",
     "Decimal",
 ]

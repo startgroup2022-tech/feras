@@ -17,7 +17,10 @@ from backend.schemas import (
     MonthlyReportCreateRequest,
     MonthlyReportOut,
     MonthlyReportUpdateRequest,
+    ReportCancelRequest,
     ReportClarificationRequest,
+    ReportCorrectionCreateRequest,
+    ReportReturnRequest,
 )
 from backend.services import audit_service, report_service
 
@@ -26,9 +29,16 @@ router = APIRouter(prefix="/monthly-reports", tags=["monthly-reports"])
 
 def _to_out(report, db=None, user=None) -> MonthlyReportOut:
     financial_part = None
+    lifecycle: list[dict] = []
+    versions: list[dict] = []
     if db is not None and user is not None:
         financial_part = report_service.financial_part_status(db, report=report, user=user)
-    return MonthlyReportOut(**report_service.serialise(report, financial_part=financial_part))
+        lifecycle = report_service.list_lifecycle(db, user=user, report_id=report.id)
+        versions = report_service.list_versions(db, user=user, report_id=report.id)
+    data = report_service.serialise(report, financial_part=financial_part)
+    data["lifecycle"] = lifecycle
+    data["versions"] = versions
+    return MonthlyReportOut(**data)
 
 
 @router.get("", response_model=list[MonthlyReportOut])
@@ -136,6 +146,109 @@ def submit_report(
         user_agent=ctx["user_agent"],
     )
     return _to_out(report, db, user)
+
+
+# --------------------------------------------------------------------------
+# D03: the versioned management-report workflow (S09)
+# --------------------------------------------------------------------------
+@router.post("/{report_id}/return", response_model=MonthlyReportOut)
+def return_report(
+    report_id: int,
+    payload: ReportReturnRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> MonthlyReportOut:
+    """Business Development returns a submitted report for correction (D03)."""
+    ctx = audit_service.request_context(request)
+    report = report_service.return_report(
+        db,
+        user=user,
+        report_id=report_id,
+        reason=payload.reason,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _to_out(report, db, user)
+
+
+@router.post(
+    "/{report_id}/correction",
+    response_model=MonthlyReportOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_correction(
+    report_id: int,
+    payload: ReportCorrectionCreateRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> MonthlyReportOut:
+    """Create a *linked* correction version of a returned report (D03/S09)."""
+    ctx = audit_service.request_context(request)
+    correction = report_service.create_correction(
+        db,
+        user=user,
+        report_id=report_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _to_out(correction, db, user)
+
+
+@router.post("/{report_id}/approve", response_model=MonthlyReportOut)
+def approve_report(
+    report_id: int,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> MonthlyReportOut:
+    """The Holding Owner gives the management report its final approval (D03)."""
+    ctx = audit_service.request_context(request)
+    report = report_service.approve_report(
+        db,
+        user=user,
+        report_id=report_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _to_out(report, db, user)
+
+
+@router.post("/{report_id}/cancel", response_model=MonthlyReportOut)
+def cancel_report(
+    report_id: int,
+    payload: ReportCancelRequest,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> MonthlyReportOut:
+    """Owner-only cancellation of a report version (D03)."""
+    ctx = audit_service.request_context(request)
+    report = report_service.cancel_report(
+        db,
+        user=user,
+        report_id=report_id,
+        reason=payload.reason,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _to_out(report, db, user)
+
+
+@router.get("/{report_id}/versions")
+def list_versions(report_id: int, user: CurrentUser, db: DbSession) -> list[dict]:
+    """The full correction chain for a report (D03/S09)."""
+    require_any_permission(user, Perm.REPORT_READ_OWN, Perm.REPORT_READ_ALL)
+    return report_service.list_versions(db, user=user, report_id=report_id)
+
+
+@router.get("/{report_id}/lifecycle")
+def list_lifecycle(report_id: int, user: CurrentUser, db: DbSession) -> list[dict]:
+    """The ordered workflow trail for a report version (D03)."""
+    require_any_permission(user, Perm.REPORT_READ_OWN, Perm.REPORT_READ_ALL)
+    return report_service.list_lifecycle(db, user=user, report_id=report_id)
 
 
 @router.post(

@@ -50,6 +50,13 @@ class AuditAction:
     REPORT_ATTACHMENT_REMOVED = "monthly_report.attachment_removed"
     # S02/S09: a clarification request/reply linked to a report's original.
     REPORT_CLARIFICATION_ADDED = "monthly_report.clarification_added"
+    # D03: the versioned management-report workflow (return / resubmit /
+    # owner approval / owner cancellation).
+    REPORT_RETURNED = "monthly_report.returned"
+    REPORT_RESUBMITTED = "monthly_report.resubmitted"
+    REPORT_CORRECTION_CREATED = "monthly_report.correction_created"
+    REPORT_APPROVED = "monthly_report.approved"
+    REPORT_CANCELLED = "monthly_report.cancelled"
 
     # Execution 02: subsidiary financial summary workflow
     FINANCIAL_PERIOD_CREATED = "financial_period.created"

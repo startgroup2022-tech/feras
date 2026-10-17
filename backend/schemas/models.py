@@ -284,6 +284,70 @@ class MonthlyReportUpdateRequest(BaseModel):
     management_notes: str | None = Field(default=None, max_length=5000)
 
 
+class ReportReturnRequest(BaseModel):
+    """D03: Business Development returns a submitted report for correction.
+
+    The reason is mandatory -- a return with no explanation would leave the
+    company manager with nothing to act on.
+    """
+
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReportCorrectionCreateRequest(BaseModel):
+    """D03: create a *linked* correction version of a submitted report (S09).
+
+    Only the narrative fields are re-entered; the correction is a new version
+    (``version_number`` increments) that points at the version it corrects. The
+    original is preserved, never overwritten.
+    """
+
+    important_developments: str | None = Field(default=None, max_length=5000)
+    new_customers: str | None = Field(default=None, max_length=5000)
+    new_opportunities: str | None = Field(default=None, max_length=5000)
+    major_problems: str | None = Field(default=None, max_length=5000)
+    support_required: str | None = Field(default=None, max_length=5000)
+    marketing_status: str | None = Field(default=None, max_length=5000)
+    business_development_status: str | None = Field(default=None, max_length=5000)
+    management_notes: str | None = Field(default=None, max_length=5000)
+
+
+class ReportCancelRequest(BaseModel):
+    """D03: owner-only cancellation of a report version."""
+
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReportLifecycleEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    from_status: str | None
+    to_status: str
+    actor_id: int | None
+    actor_name_ar: str | None = None
+    note: str | None
+    created_at: datetime
+
+
+class ReportVersionOut(BaseModel):
+    """One version in a management report's correction chain (D03/S09)."""
+
+    id: int
+    version_number: int
+    status: str
+    approval_status: str
+    is_live: bool
+    corrects_report_id: int | None
+    submitted_at: datetime | None
+    returned_at: datetime | None
+    return_reason: str | None
+    approved_at: datetime | None
+    cancelled_at: datetime | None
+    created_at: datetime
+
+
 class FinancialReviewOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -339,6 +403,15 @@ class MonthlyReportOut(BaseModel):
     period_year: int
     period_month: int
     status: str
+    version_number: int = 1
+    corrects_report_id: int | None = None
+    is_live: bool = True
+    approval_status: str = "pending"
+    return_reason: str | None = None
+    returned_at: datetime | None = None
+    approved_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    cancel_reason: str | None = None
     revenue: Decimal | None
     expenses: Decimal | None
     net_result: Decimal | None
@@ -357,6 +430,9 @@ class MonthlyReportOut(BaseModel):
     financial_review: FinancialReviewOut | None = None
     attachments: list[AttachmentOut] = []
     financial_part: FinancialPartOut | None = None
+    # D03: the ordered workflow trail and the full version chain (S09 history).
+    lifecycle: list[ReportLifecycleEventOut] = []
+    versions: list[ReportVersionOut] = []
 
 
 class FinancialReviewRequest(BaseModel):

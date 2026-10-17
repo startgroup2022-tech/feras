@@ -22,11 +22,17 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
-from backend.db.models.enums import FinancialReviewStatus, ReportClarificationKind, ReportStatus
+from backend.db.models.enums import (
+    FinancialReviewStatus,
+    ReportApprovalStatus,
+    ReportClarificationKind,
+    ReportStatus,
+)
 
 if TYPE_CHECKING:
     from backend.db.models.identity import Company, User
@@ -39,9 +45,28 @@ MONEY = Numeric(18, 2)
 class MonthlyReport(Base, TimestampMixin):
     __tablename__ = "monthly_reports"
     __table_args__ = (
-        # One report per company per month.
-        UniqueConstraint("company_id", "period_year", "period_month", name="uq_report_company_period"),
+        # One report per company per month *per version* (D03). The original is
+        # version 1; a post-submission correction is version 2, 3, ... so the
+        # original narrative is never overwritten (spec S09: the correction is a
+        # *linked* version, not an edit).
+        UniqueConstraint(
+            "company_id",
+            "period_year",
+            "period_month",
+            "version_number",
+            name="uq_report_company_period_version",
+        ),
         Index("ix_monthly_reports_company_period", "company_id", "period_year", "period_month"),
+        # Only one *live* (non-superseded) version may exist per company/period.
+        Index(
+            "uq_report_company_period_live",
+            "company_id",
+            "period_year",
+            "period_month",
+            unique=True,
+            sqlite_where=text("is_live = 1"),
+            postgresql_where=text("is_live"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -53,6 +78,47 @@ class MonthlyReport(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=ReportStatus.DRAFT.value, index=True
     )
+
+    # ---- D03: management-report versioning -------------------------------
+    # ``version_number`` is 1 for the original; a correction is 2, 3, ...
+    version_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    # The version this one corrects (NULL for the original). The corrected
+    # version is never modified -- it is superseded, exactly like a financial
+    # summary version.
+    corrects_report_id: Mapped[int | None] = mapped_column(
+        ForeignKey("monthly_reports.id", ondelete="SET NULL"), nullable=True
+    )
+    # ``is_live`` marks the current version of the report. Superseded versions
+    # keep ``is_live = 0`` and stay fully readable for the history trail.
+    is_live: Mapped[bool] = mapped_column(
+        nullable=False, default=True, server_default="1"
+    )
+    # Owner decision on the *management* side (independent of the financial
+    # review). See ``ReportApprovalStatus``.
+    approval_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=ReportApprovalStatus.PENDING.value,
+        server_default=ReportApprovalStatus.PENDING.value,
+    )
+    # Business-Development return for correction (mandatory reason).
+    return_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    returned_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Owner approval / cancellation identity and timestamp.
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ---- financial fields (submitted by the company) ----
     revenue: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
@@ -77,6 +143,12 @@ class MonthlyReport(Base, TimestampMixin):
 
     company: Mapped["Company"] = relationship(back_populates="monthly_reports")
     submitted_by: Mapped["User | None"] = relationship(foreign_keys=[submitted_by_id])
+    returned_by: Mapped["User | None"] = relationship(foreign_keys=[returned_by_id])
+    approved_by: Mapped["User | None"] = relationship(foreign_keys=[approved_by_id])
+    cancelled_by: Mapped["User | None"] = relationship(foreign_keys=[cancelled_by_id])
+    corrects_report: Mapped["MonthlyReport | None"] = relationship(
+        remote_side=[id], foreign_keys=[corrects_report_id]
+    )
     financial_review: Mapped["MonthlyReportFinancialReview | None"] = relationship(
         back_populates="report", uselist=False, cascade="all, delete-orphan"
     )
@@ -86,6 +158,42 @@ class MonthlyReport(Base, TimestampMixin):
     clarifications: Mapped[list["ReportClarification"]] = relationship(
         back_populates="report", cascade="all, delete-orphan"
     )
+    lifecycle_events: Mapped[list["ReportLifecycleEvent"]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        order_by="ReportLifecycleEvent.id",
+    )
+
+
+class ReportLifecycleEvent(Base, TimestampMixin):
+    """One append-only transition in a report version's D03 workflow.
+
+    The event trail is the *workflow* audit (submit, review, return, resubmit,
+    approve, cancel). It is deliberately separate from the generic audit log so
+    the S09 screen can render a compact, ordered version history. Rows are never
+    updated or deleted.
+    """
+
+    __tablename__ = "report_lifecycle_events"
+    __table_args__ = (
+        Index("ix_report_lifecycle_report", "report_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[int] = mapped_column(
+        ForeignKey("monthly_reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    # The status the report moved to (and, for clarity, from).
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    report: Mapped[MonthlyReport] = relationship(back_populates="lifecycle_events")
+    actor: Mapped["User | None"] = relationship(foreign_keys=[actor_id])
 
 
 class ReportClarification(Base, TimestampMixin):
