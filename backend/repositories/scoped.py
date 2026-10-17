@@ -71,6 +71,9 @@ class MonthlyReportRepository:
         stmt = (
             select(MonthlyReport)
             .options(selectinload(MonthlyReport.financial_review))
+            # D03: the listing shows the *live* version only, so a corrected
+            # report appears once. The full chain is read via ``versions_for``.
+            .where(MonthlyReport.is_live.is_(True))
             .order_by(
                 MonthlyReport.period_year.desc(),
                 MonthlyReport.period_month.desc(),
@@ -86,6 +89,7 @@ class MonthlyReportRepository:
         return list(self.db.execute(stmt).scalars())
 
     def get_for_user(self, user: User, report_id: int) -> MonthlyReport | None:
+        """Fetch any version by id (an old version stays viewable for history)."""
         stmt = (
             select(MonthlyReport)
             .options(selectinload(MonthlyReport.financial_review))
@@ -94,16 +98,55 @@ class MonthlyReportRepository:
         stmt = _apply_company_scope(stmt, MonthlyReport.company_id, user)
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def get_live_for_user(
+        self, user: User, company_id: int, year: int, month: int
+    ) -> MonthlyReport | None:
+        """The live version of a company's report for a period, within scope."""
+        stmt = select(MonthlyReport).where(
+            MonthlyReport.company_id == company_id,
+            MonthlyReport.period_year == year,
+            MonthlyReport.period_month == month,
+            MonthlyReport.is_live.is_(True),
+        )
+        stmt = _apply_company_scope(stmt, MonthlyReport.company_id, user)
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def versions_for(self, company_id: int, year: int, month: int) -> list[MonthlyReport]:
+        """Every version of a company's report for a period, oldest first."""
+        return list(
+            self.db.execute(
+                select(MonthlyReport)
+                .where(
+                    MonthlyReport.company_id == company_id,
+                    MonthlyReport.period_year == year,
+                    MonthlyReport.period_month == month,
+                )
+                .order_by(MonthlyReport.version_number)
+            ).scalars()
+        )
+
     def get_by_company_period(
         self, company_id: int, year: int, month: int
     ) -> MonthlyReport | None:
+        """The live version for a company/period (used for duplicate checks)."""
         return self.db.execute(
             select(MonthlyReport).where(
                 MonthlyReport.company_id == company_id,
                 MonthlyReport.period_year == year,
                 MonthlyReport.period_month == month,
+                MonthlyReport.is_live.is_(True),
             )
         ).scalar_one_or_none()
+
+    def next_version_number(self, company_id: int, year: int, month: int) -> int:
+        latest = self.db.execute(
+            select(func.max(MonthlyReport.version_number)).where(
+                MonthlyReport.company_id == company_id,
+                MonthlyReport.period_year == year,
+                MonthlyReport.period_month == month,
+            )
+        ).scalar_one()
+        return int(latest or 0) + 1
 
     def status_counts(self, user: User, year: int, month: int) -> dict[str, int]:
         stmt = (
@@ -111,6 +154,7 @@ class MonthlyReportRepository:
             .where(
                 MonthlyReport.period_year == year,
                 MonthlyReport.period_month == month,
+                MonthlyReport.is_live.is_(True),
             )
             .group_by(MonthlyReport.status)
         )
@@ -122,6 +166,7 @@ class MonthlyReportRepository:
         submitted = select(MonthlyReport.company_id).where(
             MonthlyReport.period_year == year,
             MonthlyReport.period_month == month,
+            MonthlyReport.is_live.is_(True),
             MonthlyReport.status.in_(
                 [
                     ReportStatus.SUBMITTED.value,

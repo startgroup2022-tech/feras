@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 
 from backend.api.deps import CurrentUser, DbSession
 from backend.schemas.domain import (
@@ -28,7 +28,20 @@ from backend.schemas.domain import (
     PolicyCreateRequest,
     SettlementCreateRequest,
 )
-from backend.services import accounting_service, audit_service, kpi_service
+from backend.schemas.governance import (
+    CurrencyChangeDecisionRequest,
+    CurrencyChangeRequestCreate,
+    CurrencyChangeReviewRequest,
+    PolicyProposalCreateRequest,
+    PolicyProposalDecisionRequest,
+)
+from backend.services import (
+    accounting_service,
+    audit_service,
+    currency_change_service,
+    kpi_service,
+    policy_governance_service,
+)
 
 router = APIRouter(prefix="/accounting", tags=["accounting"])
 
@@ -467,6 +480,106 @@ def effective_policy(
         db, company_id=company_id, kind=kind, on_date=parsed
     )
     return accounting_service.serialise_policy(policy) if policy else None
+
+
+# ---- D01 governance: policy proposals (accountant proposes, owner approves) ----
+@router.get("/policies/proposals")
+def list_policy_proposals(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> list[dict]:
+    rows = policy_governance_service.list_proposals(
+        db, user=user, company_id=company_id, status=status_filter
+    )
+    return [policy_governance_service.serialise_proposal(p) for p in rows]
+
+
+@router.post("/policies/proposals", status_code=status.HTTP_201_CREATED)
+def propose_policy_change(
+    payload: PolicyProposalCreateRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """The accountant proposes a financial-policy change (D01). Stays inert."""
+    ctx = audit_service.request_context(request)
+    proposal = policy_governance_service.propose_policy_change(
+        db, user=user, **payload.model_dump(), **ctx
+    )
+    return policy_governance_service.serialise_proposal(proposal)
+
+
+@router.post("/policies/proposals/{proposal_id}/decide")
+def decide_policy_proposal(
+    proposal_id: int, payload: PolicyProposalDecisionRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Owner approves/rejects a proposal (D01). Approval activates the version."""
+    ctx = audit_service.request_context(request)
+    proposal = policy_governance_service.decide_proposal(
+        db, user=user, proposal_id=proposal_id, approve=payload.approve,
+        note=payload.note, **ctx,
+    )
+    return policy_governance_service.serialise_proposal(proposal)
+
+
+# ---- D09: base-currency change workflow ----
+@router.get("/currency-changes")
+def list_currency_changes(
+    user: CurrentUser, db: DbSession, company_id: int | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> list[dict]:
+    rows = currency_change_service.list_requests(
+        db, user=user, company_id=company_id, status=status_filter
+    )
+    return [currency_change_service.serialise_request(r) for r in rows]
+
+
+@router.post("/currency-changes", status_code=status.HTTP_201_CREATED)
+def request_currency_change(
+    payload: CurrencyChangeRequestCreate, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    row = currency_change_service.request_change(
+        db, user=user, company_id=payload.company_id,
+        requested_currency=payload.requested_currency,
+        justification=payload.justification, **ctx,
+    )
+    return currency_change_service.serialise_request(row)
+
+
+@router.post("/currency-changes/{request_id}/review")
+def review_currency_change(
+    request_id: int, payload: CurrencyChangeReviewRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    row = currency_change_service.review_change(
+        db, user=user, request_id=request_id, note=payload.note, **ctx
+    )
+    return currency_change_service.serialise_request(row)
+
+
+@router.post("/currency-changes/{request_id}/decide")
+def decide_currency_change(
+    request_id: int, payload: CurrencyChangeDecisionRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    ctx = audit_service.request_context(request)
+    row = currency_change_service.decide_change(
+        db, user=user, request_id=request_id, approve=payload.approve,
+        effective_year=payload.effective_year, effective_month=payload.effective_month,
+        note=payload.note, **ctx,
+    )
+    return currency_change_service.serialise_request(row)
+
+
+@router.post("/currency-changes/{request_id}/apply")
+def apply_currency_change(
+    request_id: int, request: Request, user: CurrentUser, db: DbSession
+) -> dict:
+    ctx = audit_service.request_context(request)
+    row = currency_change_service.apply_change(db, user=user, request_id=request_id, **ctx)
+    return currency_change_service.serialise_request(row)
 
 
 # ---- monthly financial report (S28 Table 57) ----

@@ -59,6 +59,13 @@ from backend.db.models.forms import (
     FormRequirement,
     FormVersion,
 )
+from backend.db.models.governance import (
+    CurrencyChangeRequest,
+    LeadAssignment,
+    PolicyProposal,
+    TwoFactorRecoveryCode,
+    UserTwoFactor,
+)
 from backend.db.models.group import Department, Holding, Ownership, Position, Sector
 from backend.db.models.identity import (
     Company,
@@ -79,6 +86,7 @@ from backend.db.models.report import (
     MonthlyReportAttachment,
     MonthlyReportFinancialReview,
     ReportClarification,
+    ReportLifecycleEvent,
 )
 from backend.db.models.submissions import FormSubmission, SubmissionRequirement
 from backend.db.models.support import (
@@ -130,6 +138,7 @@ __all__ = [
     "MonthlyReportFinancialReview",
     "MonthlyReportAttachment",
     "ReportClarification",
+    "ReportLifecycleEvent",
     # Execution 02: subsidiary financial summary workflow
     "FinancialPeriod",
     "FinancialSummaryVersion",
@@ -219,4 +228,10 @@ __all__ = [
     "KpiDefinition",
     "MonthlyFinancialReport",
     "AccountingPolicy",
+    # Execution 30: owner-decision governance (D01/D04/D09/D11)
+    "PolicyProposal",
+    "LeadAssignment",
+    "CurrencyChangeRequest",
+    "UserTwoFactor",
+    "TwoFactorRecoveryCode",
 ]

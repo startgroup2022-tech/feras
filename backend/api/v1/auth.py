@@ -10,7 +10,14 @@ from backend.core.errors import RateLimitError
 from backend.core.rate_limit import RateLimiter
 from backend.rbac.authorization import role_permissions
 from backend.schemas import LoginRequest, RefreshRequest, TokenResponse, UserOut
-from backend.services import audit_service, auth_service
+from backend.schemas.governance import (
+    TwoFactorConfirmOut,
+    TwoFactorConfirmRequest,
+    TwoFactorDisableRequest,
+    TwoFactorEnrolOut,
+    TwoFactorStatusOut,
+)
+from backend.services import audit_service, auth_service, two_factor_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,6 +68,7 @@ def login(payload: LoginRequest, request: Request, db: DbSession) -> TokenRespon
         db,
         email=payload.email,
         password=payload.password,
+        code=payload.code,
         ip_address=ctx["ip_address"],
         user_agent=ctx["user_agent"],
     )
@@ -104,3 +112,37 @@ def logout(request: Request, user: CurrentUser, db: DbSession) -> Response:
 def me(user: CurrentUser) -> UserOut:
     """Current identity, effective permissions and permitted company ids."""
     return UserOut(**_user_payload(user))
+
+
+# ---- D11: two-factor authentication (self-service, any authenticated user) ----
+@router.get("/2fa", response_model=TwoFactorStatusOut)
+def two_factor_status(user: CurrentUser, db: DbSession) -> TwoFactorStatusOut:
+    return TwoFactorStatusOut(enabled=two_factor_service.is_enabled(db, user_id=user.id))
+
+
+@router.post("/2fa/enrol", response_model=TwoFactorEnrolOut)
+def two_factor_enrol(user: CurrentUser, db: DbSession) -> TwoFactorEnrolOut:
+    """Begin 2FA enrolment. The secret is returned exactly once."""
+    return TwoFactorEnrolOut(**two_factor_service.enrol(db, user=user))
+
+
+@router.post("/2fa/confirm", response_model=TwoFactorConfirmOut)
+def two_factor_confirm(
+    payload: TwoFactorConfirmRequest, user: CurrentUser, db: DbSession
+) -> TwoFactorConfirmOut:
+    """Confirm enrolment and receive one-time recovery codes (shown once)."""
+    result = two_factor_service.confirm(db, user=user, code=payload.code)
+    return TwoFactorConfirmOut(**result)
+
+
+@router.post("/2fa/disable", status_code=204, response_class=Response)
+def two_factor_disable(
+    payload: TwoFactorDisableRequest, request: Request, user: CurrentUser, db: DbSession
+) -> Response:
+    """Disable 2FA. Requires a current code or a recovery code."""
+    ctx = audit_service.request_context(request)
+    two_factor_service.disable(
+        db, user=user, code=payload.code, ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return Response(status_code=204)

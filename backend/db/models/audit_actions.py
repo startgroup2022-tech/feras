@@ -50,6 +50,13 @@ class AuditAction:
     REPORT_ATTACHMENT_REMOVED = "monthly_report.attachment_removed"
     # S02/S09: a clarification request/reply linked to a report's original.
     REPORT_CLARIFICATION_ADDED = "monthly_report.clarification_added"
+    # D03: the versioned management-report workflow (return / resubmit /
+    # owner approval / owner cancellation).
+    REPORT_RETURNED = "monthly_report.returned"
+    REPORT_RESUBMITTED = "monthly_report.resubmitted"
+    REPORT_CORRECTION_CREATED = "monthly_report.correction_created"
+    REPORT_APPROVED = "monthly_report.approved"
+    REPORT_CANCELLED = "monthly_report.cancelled"
 
     # Execution 02: subsidiary financial summary workflow
     FINANCIAL_PERIOD_CREATED = "financial_period.created"
@@ -257,3 +264,21 @@ class AuditAction:
     FINANCIAL_REPORT_ANALYSIS_UPDATED = "monthly_financial_report.analysis_updated"
     FINANCIAL_REPORT_FINALISED = "monthly_financial_report.finalised"
     FINANCIAL_REPORT_ARCHIVED = "monthly_financial_report.archived"
+
+    # Execution 30: owner-decision governance (D01/D02/D04/D09/D11).
+    POLICY_PROPOSED = "accounting_policy.proposed"
+    POLICY_PROPOSAL_APPROVED = "accounting_policy.proposal_approved"
+    POLICY_PROPOSAL_REJECTED = "accounting_policy.proposal_rejected"
+    LEAD_ASSIGNED = "website_lead.assigned_event"
+    LEAD_REASSIGNED = "website_lead.reassigned"
+    CURRENCY_CHANGE_REQUESTED = "currency_change.requested"
+    CURRENCY_CHANGE_REVIEWED = "currency_change.reviewed"
+    CURRENCY_CHANGE_APPROVED = "currency_change.approved"
+    CURRENCY_CHANGE_REJECTED = "currency_change.rejected"
+    CURRENCY_CHANGE_APPLIED = "currency_change.applied"
+    TWO_FACTOR_ENROLLED = "auth.two_factor_enrolled"
+    TWO_FACTOR_VERIFIED = "auth.two_factor_verified"
+    TWO_FACTOR_FAILED = "auth.two_factor_failed"
+    TWO_FACTOR_DISABLED = "auth.two_factor_disabled"
+    TWO_FACTOR_RESET = "auth.two_factor_reset"
+    RECOVERY_CODE_USED = "auth.recovery_code_used"

@@ -51,7 +51,11 @@ def test_new_permissions_are_catalogued_with_metadata():
     from backend.rbac.permissions import ALL_PERMISSIONS
 
     assert permission_metadata.unknown_codes() == []
-    assert len(ALL_PERMISSIONS) == 169
+    # Execution 30 added 8 permissions (D01/D04/D09/D11): lead assign,
+    # policy propose, the four currency-change codes, history read and 2FA
+    # enforcement. Execution 31 added 2 more for the D03 management-report
+    # workflow (report.review and report.approve).
+    assert len(ALL_PERMISSIONS) == 179
 
 
 def test_external_consultant_role_is_not_holding_wide():

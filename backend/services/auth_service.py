@@ -33,7 +33,7 @@ from backend.core.security import (
 from backend.db.base import utcnow
 from backend.db.models.audit_actions import AuditAction
 from backend.db.models.identity import Role, User
-from backend.services import audit_service
+from backend.services import audit_service, two_factor_service
 
 logger = logging.getLogger("safir.auth")
 
@@ -64,10 +64,16 @@ def login(
     *,
     email: str,
     password: str,
+    code: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> tuple[User, str, str]:
-    """Authenticate and mint a token pair. Raises on failure."""
+    """Authenticate and mint a token pair. Raises on failure.
+
+    When the account has 2FA enabled (D11) a valid ``code`` (or a one-time
+    recovery code) is mandatory; a missing or wrong code fails the login
+    *before* any token is minted, so 2FA cannot be bypassed by omitting it.
+    """
     user = authenticate(db, email, password)
 
     if user is None:
@@ -81,6 +87,22 @@ def login(
             metadata={"email": email},
         )
         raise AuthenticationError("Incorrect email or password.")
+
+    if two_factor_service.is_enabled(db, user_id=user.id):
+        if not code or not two_factor_service.verify_login(
+            db, user=user, code=code, ip_address=ip_address, user_agent=user_agent
+        ):
+            audit_service.record(
+                db,
+                action=AuditAction.LOGIN_FAILED,
+                actor_user_id=user.id,
+                entity_type="user",
+                entity_id=user.id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                metadata={"email": email, "reason": "two_factor"},
+            )
+            raise AuthenticationError("A valid two-factor code is required.")
 
     user.last_login_at = utcnow()
     db.add(user)

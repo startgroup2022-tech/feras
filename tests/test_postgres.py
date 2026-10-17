@@ -134,20 +134,25 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the lead-to-campaign link (S13/S14) builds on the
-    # owner secret note (S23), which builds on the management reports &
-    # clarifications (S21/S02/S09), which build on the advisor monthly reports
-    # (S19), which build on the support design metadata and external delivery
-    # (S16), which builds on the projects & opportunities register (S20), which
-    # builds on the motivational sentence library (S01), which builds on the
-    # organisational positions (S24), which build on the managed sector
-    # catalogue, which builds on the Executions 04-14 holding-business domain,
-    # which builds on the Execution 02 financial workflow, which builds on the
-    # listing-photo visibility, which builds on the website CMS, which builds on
-    # the bilingual role description, which builds on branding, which builds on
-    # phase 10, which builds on phase 6-9, which builds on phase 3, which builds
-    # on phase 2, which builds on the initial schema -- no branches.
-    assert head == "d6e7f8a9b0c1"
+    # A single linear chain: the Execution 31 D03 versioned management-report
+    # workflow builds on the Execution 30 owner-decision governance tables
+    # (D01/D04/D09/D11), which build on the lead-to-campaign link (S13/S14),
+    # which builds on the owner secret note (S23), which builds on the
+    # management reports & clarifications (S21/S02/S09), which build on the
+    # advisor monthly reports (S19), which build on the support design metadata
+    # and external delivery (S16), which builds on the projects & opportunities
+    # register (S20), which builds on the motivational sentence library (S01),
+    # which builds on the organisational positions (S24), which build on the
+    # managed sector catalogue, which builds on the Executions 04-14
+    # holding-business domain, which builds on the Execution 02 financial
+    # workflow, which builds on the listing-photo visibility, which builds on
+    # the website CMS, which builds on the bilingual role description, which
+    # builds on branding, which builds on phase 10, which builds on phase 6-9,
+    # which builds on phase 3, which builds on phase 2, which builds on the
+    # initial schema -- no branches.
+    assert head == "3473d285d919"
+    assert revisions["3473d285d919"] == "62040b21dfa2"
+    assert revisions["62040b21dfa2"] == "d6e7f8a9b0c1"
     assert revisions["d6e7f8a9b0c1"] == "c5d6e7f8a9b0"
     assert revisions["c5d6e7f8a9b0"] == "b4c5d6e7f8a9"
     assert revisions["b4c5d6e7f8a9"] == "a3b4c5d6e7f8"

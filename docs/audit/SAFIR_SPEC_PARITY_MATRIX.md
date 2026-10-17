@@ -32,7 +32,7 @@ The spec numbers screens S01–S28. The full evidence per row is in
 | S06 | الحركات الخاصة | ✅ | `FinancialItemDefinition`; 1000/600/50/20/200 → 380 test |
 | S07 | إدارة القطاعات والحقول والبنود | ✅ | dynamic forms + item definitions (versioned) |
 | S08 | مراجعة المحاسب والتصحيح | ✅ | return-with-note / approve; correction chain |
-| S09 | التقرير الإداري الشهري للشركة | ✅ | `MonthlyReport` + financial link; `test_reports.py` |
+| S09 | التقرير الإداري الشهري للشركة | ✅ | `MonthlyReport` + financial link; `test_reports.py`. **Linked non-financial correction version (D03) implemented (Execution 31)** — return / linked correction version / resubmit / owner approve / cancel, original preserved; `test_execution31_d03_report_correction.py` |
 | S10 | الأداء والمقارنات | ✅ | `companies_performance` + goals (D02 data) |
 | S11 | الموظفون والملف الوظيفي | ✅ | `Employee`/`EmployeeMovement`; salary hidden |
 | S12 | تقييم الموظفين والتطوير | ✅ | `Assessment`/`AssessmentItem`; evidence rule |
@@ -101,7 +101,7 @@ never marked complete"):
 |---|---|---|
 | D01 | depreciation method/rate, tax/fiscal-year/invoice values (values supplied + approved through the policy registry) | S05/S06/S08, S26–S28 |
 | D02 | goals definition for S02/S10 and weekly-template wording (KPI registry exists; values are owner data) | S02, S09, S10, S14, S18, S21 |
-| D03 | lead redistribution / pipeline-state visibility | S13, S16, S17, S20 |
+| D03 | pipeline-state visibility wording (the non-financial report correction workflow is now implemented, Execution 31) | S13, S16, S17, S20 |
 | D04 | redistribution-history visibility for leads | S12, S13, S15, S19, S23 |
 | D09 | base-currency-change *procedure* (the mixing guard is live) | S03, S06, S10 |
 | D10 | production restore policy (backup/restore tooling is live and isolated) | T17 |
@@ -109,7 +109,7 @@ never marked complete"):
 
 ## D. Test evidence
 
-* `python -m pytest tests/ -q` — **926 passed** (2026-10-14), exit 0.
+* `python -m pytest tests/ -q` — **967 passed** (Execution 31), exit 0.
 * `alembic check` — "No new upgrade operations detected." Single linear head
-  `d6e7f8a9b0c1`.
+  `3473d285d919`.
 * `node --check frontend/app.js` — passes.
