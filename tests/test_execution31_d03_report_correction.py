@@ -367,3 +367,38 @@ def test_report_detail_embeds_lifecycle_and_versions(client, d03_world, auth):
     assert len(body["versions"]) == 1
     assert len(body["lifecycle"]) == 1
     assert body["lifecycle"][0]["action"] == "returned"
+
+
+# --------------------------------------------------------------------------
+# frontend contract (vanilla JS, asserted statically like the other views)
+# --------------------------------------------------------------------------
+def test_frontend_exposes_the_d03_workflow():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    app_js = (root / "frontend" / "app.js").read_text(encoding="utf-8")
+
+    # The four transition calls the workflow needs (versions/lifecycle are
+    # embedded in the report detail, so they are read, not fetched separately).
+    for endpoint in (
+        "/return",
+        "/correction",
+        "/approve",
+        "/cancel",
+    ):
+        assert '"/api/v1/monthly-reports/" + id + "' + endpoint in app_js, (
+            f"app.js never calls the {endpoint} endpoint"
+        )
+    for fn in (
+        "returnReportForm",
+        "correctReportForm",
+        "approveReport",
+        "cancelReportForm",
+        "reportVersionsBlock",
+        "reportLifecycleBlock",
+    ):
+        assert f"function {fn}(" in app_js, f"{fn} is not defined"
+    # The buttons are permission-gated, not role-name gated.
+    assert 'has("monthly_report.review")' in app_js
+    assert 'has("monthly_report.approve")' in app_js
+

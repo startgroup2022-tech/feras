@@ -211,13 +211,15 @@
       under_review: { ar: "قيد المراجعة", en: "Under review" },
       reviewed: { ar: "تمت المراجعة", en: "Reviewed" },
       draft: { ar: "مسودة", en: "Draft" },
+      returned: { ar: "أُعيد للتصحيح", en: "Returned for correction" },
+      cancelled: { ar: "ملغى", en: "Cancelled" },
     };
     return map[status] || { ar: "بانتظار التقرير", en: "Awaiting report" };
   }
 
   function statusClass(status) {
     if (status === "reviewed" || status === "submitted") return "ok";
-    if (status === "under_review") return "late";
+    if (status === "under_review" || status === "returned") return "late";
     return "miss";
   }
 
@@ -1902,6 +1904,174 @@
     );
   }
 
+  // ---- D03: versioned management-report workflow (S09) -----------------
+  // The correction of a submitted management report is a *linked* new version,
+  // never an edit of the original. These helpers render the chain + trail and
+  // drive the return / correct / approve / cancel transitions.
+  function promptDialog(opts) {
+    return new Promise(function (resolve) {
+      openModal({
+        title: opts.title || dual("\u0645\u0637\u0644\u0648\u0628", "Required"),
+        body:
+          '<p class="note-block">' + escapeHtml(opts.message || "") + "</p>" +
+          '<div class="av-field"><label>' +
+          escapeHtml(opts.label || dual("\u0627\u0644\u0633\u0628\u0628", "Reason")) +
+          '</label><textarea class="av-textarea" id="pdValue" rows="3"></textarea></div>',
+        footer:
+          '<button class="btn-outline" id="pdCancel">' + dual("\u0625\u0644\u063a\u0627\u0621", "Cancel") + "</button>" +
+          '<button class="btn-solid" id="pdOk">' +
+          (opts.confirmLabel || dual("\u062a\u0623\u0643\u064a\u062f", "Confirm")) +
+          "</button>",
+        onMount: function (root) {
+          root.querySelector("#pdCancel").addEventListener("click", function () {
+            closeModal();
+            resolve(null);
+          });
+          root.querySelector("#pdOk").addEventListener("click", function () {
+            var v = (root.querySelector("#pdValue").value || "").trim();
+            if (!v) {
+              toast(STATE.lang === "ar" ? "\u0627\u0644\u062d\u0642\u0644 \u0645\u0637\u0644\u0648\u0628." : "This field is required.", "warn");
+              return;
+            }
+            closeModal();
+            resolve(v);
+          });
+        },
+      });
+    });
+  }
+
+  var LIFECYCLE_LABEL = {
+    submitted: ["\u0625\u0631\u0633\u0627\u0644", "Submitted"],
+    resubmitted: ["\u0625\u0639\u0627\u062f\u0629 \u0625\u0631\u0633\u0627\u0644", "Resubmitted"],
+    returned: ["\u0625\u0639\u0627\u062f\u0629 \u0644\u0644\u062a\u0635\u062d\u064a\u062d", "Returned"],
+    approved: ["\u0627\u0639\u062a\u0645\u0627\u062f", "Approved"],
+    cancelled: ["\u0625\u0644\u063a\u0627\u0621", "Cancelled"],
+  };
+
+  function reportVersionsBlock(r) {
+    var versions = r.versions || [];
+    if (versions.length < 2) return "";
+    var rows = versions
+      .map(function (v) {
+        var live = v.is_live
+          ? ' <span class="status ok"><i></i>' + dual("\u0633\u0627\u0631\u064a\u0629", "Live") + "</span>"
+          : "";
+        return (
+          '<div class="note-block"><span class="lbl">' +
+          dual("\u0646\u0633\u062e\u0629 " + toArabicDigits(String(v.version_number)), "v" + v.version_number) +
+          (v.corrects_report_id
+            ? " \u00b7 " + dual("\u062a\u0635\u062d\u064a\u062d \u0644\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0633\u0627\u0628\u0642\u0629", "corrects the previous version")
+            : "") +
+          "</span>" + statusBadge(v.status) + live +
+          (v.return_reason ? '<div class="s">' + escapeHtml(v.return_reason) + "</div>" : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    return '<div class="sec-title">' + dual("\u0633\u0644\u0633\u0644\u0629 \u0627\u0644\u0646\u0633\u062e", "Version history") + "</div>" + rows;
+  }
+
+  function reportLifecycleBlock(r) {
+    var events = r.lifecycle || [];
+    if (!events.length) return "";
+    var rows = events
+      .map(function (e) {
+        var lbl = LIFECYCLE_LABEL[e.action] || [e.action, e.action];
+        return (
+          '<div class="note-block"><span class="lbl">' + dual(lbl[0], lbl[1]) +
+          " \u00b7 " + fmtDateTime(e.created_at) +
+          (e.actor_name_ar ? " \u00b7 " + escapeHtml(e.actor_name_ar) : "") +
+          "</span>" + (e.note ? escapeHtml(e.note) : "") + "</div>"
+        );
+      })
+      .join("");
+    return '<div class="sec-title">' + dual("\u0633\u062c\u0644 \u0633\u064a\u0631 \u0627\u0644\u0639\u0645\u0644", "Workflow trail") + "</div>" + rows;
+  }
+
+  function returnReportForm(id, btn) {
+    promptDialog({
+      title: dual("\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0644\u0644\u062a\u0635\u062d\u064a\u062d", "Return report for correction"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u064a\u064f\u0639\u0627\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0644\u0644\u0634\u0631\u0643\u0629 \u0644\u0644\u062a\u0635\u062d\u064a\u062d\u060c \u0648\u062a\u0628\u0642\u0649 \u0627\u0644\u0646\u0633\u062e\u0629 \u0627\u0644\u0623\u0635\u0644\u064a\u0629 \u0645\u062d\u0641\u0648\u0638\u0629."
+          : "The report goes back to the company for correction; the original is preserved.",
+      label: dual("\u0633\u0628\u0628 \u0627\u0644\u0625\u0639\u0627\u062f\u0629 (\u0645\u0637\u0644\u0648\u0628)", "Return reason (required)"),
+      confirmLabel: dual("\u0625\u0639\u0627\u062f\u0629", "Return"),
+    }).then(function (reason) {
+      if (!reason) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/return", { reason: reason })
+        .then(function () {
+          toast(dual("\u0623\u064f\u0639\u064a\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0644\u0644\u062a\u0635\u062d\u064a\u062d.", "Report returned for correction."), "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function correctReportForm(id, btn) {
+    promptDialog({
+      title: dual("\u0625\u0646\u0634\u0627\u0621 \u0646\u0633\u062e\u0629 \u062a\u0635\u062d\u064a\u062d", "Create correction version"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u062a\u064f\u0646\u0634\u0623 \u0646\u0633\u062e\u0629 \u062c\u062f\u064a\u062f\u0629 \u0645\u0631\u062a\u0628\u0637\u0629 \u0628\u0627\u0644\u0623\u0635\u0644\u060c \u0645\u0639 \u0627\u0644\u0627\u062d\u062a\u0641\u0627\u0638 \u0628\u0627\u0644\u0623\u0635\u0644."
+          : "A new version linked to the original is created; the original is kept.",
+      label: dual("\u0645\u0634\u0627\u0643\u0644 \u0631\u0626\u064a\u0633\u064a\u0629 / \u0645\u0644\u0627\u062d\u0638\u0629 \u0627\u0644\u062a\u0635\u062d\u064a\u062d", "Major problems / correction note"),
+      confirmLabel: dual("\u0625\u0646\u0634\u0627\u0621 \u0646\u0633\u062e\u0629", "Create version"),
+    }).then(function (note) {
+      if (!note) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/correction", { major_problems: note })
+        .then(function (created) {
+          toast(dual("\u0623\u064f\u0646\u0634\u0626\u062a \u0646\u0633\u062e\u0629 \u0627\u0644\u062a\u0635\u062d\u064a\u062d.", "Correction version created."), "ok");
+          refreshAll().then(function () { openReport(created.id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function approveReport(id, btn) {
+    confirmDialog({
+      title: dual("\u0627\u0639\u062a\u0645\u0627\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Approve report"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u064a\u0639\u062a\u0645\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0646\u0647\u0627\u0626\u064a\u064b\u0627 \u0645\u0646 \u0627\u0644\u0645\u0627\u0644\u0643."
+          : "The owner gives the report final approval.",
+      confirmLabel: dual("\u0627\u0639\u062a\u0645\u0627\u062f", "Approve"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/approve")
+        .then(function () {
+          toast(dual("\u0627\u0639\u062a\u0645\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631.", "Report approved."), "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function cancelReportForm(id, btn) {
+    promptDialog({
+      title: dual("\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Cancel report"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u064a\u064f\u0644\u063a\u0649 \u0647\u0630\u0627 \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0645\u0639 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u0633\u0628\u0628."
+          : "This report is cancelled with a recorded reason.",
+      label: dual("\u0633\u0628\u0628 \u0627\u0644\u0625\u0644\u063a\u0627\u0621 (\u0645\u0637\u0644\u0648\u0628)", "Cancellation reason (required)"),
+      confirmLabel: dual("\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Cancel report"),
+    }).then(function (reason) {
+      if (!reason) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/cancel", { reason: reason })
+        .then(function () {
+          toast(dual("\u0623\u064f\u0644\u063a\u064a \u0627\u0644\u062a\u0642\u0631\u064a\u0631.", "Report cancelled."), "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
   function openReport(id) {
     openModal({
       title: dual("تفاصيل التقرير الشهري", "Monthly report"),
@@ -2009,6 +2179,11 @@
         var canSubmit = has("monthly_report.submit") && (r.status === "draft" || r.status === "under_review");
         var canReview = has("financial_review.write") && r.status !== "draft";
         var canDelete = has("monthly_report.delete") && r.status === "draft";
+        var reviewable = ["submitted", "under_review", "reviewed"].indexOf(r.status) >= 0;
+        var canReturn = has("monthly_report.review") && r.is_live && reviewable;
+        var canCorrect = has("monthly_report.update") && r.is_live && r.status === "returned";
+        var canApprove = has("monthly_report.approve") && r.is_live && reviewable;
+        var canCancel = has("monthly_report.approve") && r.status !== "cancelled";
 
         body.innerHTML =
           '<div class="kv">' +
@@ -2071,6 +2246,8 @@
               '<div class="s">' + dual("الأرقام مسحوبة من الملخص المالي المعتمد، لا تُنسخ في التقرير.",
                 "Figures are read from the approved financial summary, never copied into the report.") + "</div>"
             : "") +
+          reportVersionsBlock(r) +
+          reportLifecycleBlock(r) +
           '<div id="repOrganize"></div>' +
           '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
@@ -2103,6 +2280,18 @@
         if (canDelete) {
           btns.push('<button class="btn-solid danger" id="repDelete">' + dual("حذف المسودة", "Delete draft") + "</button>");
         }
+        if (canReturn) {
+          btns.push('<button class="btn-solid gold" id="repReturn">' + dual("إعادة للتصحيح", "Return for correction") + "</button>");
+        }
+        if (canCorrect) {
+          btns.push('<button class="btn-solid" id="repCorrect">' + dual("إنشاء نسخة تصحيح", "Create correction") + "</button>");
+        }
+        if (canApprove) {
+          btns.push('<button class="btn-solid gold" id="repApprove">' + dual("اعتماد", "Approve") + "</button>");
+        }
+        if (canCancel) {
+          btns.push('<button class="btn-solid danger" id="repCancel">' + dual("إلغاء التقرير", "Cancel report") + "</button>");
+        }
         btns.push('<button class="btn-outline" id="repClose">' + dual("إغلاق", "Close") + "</button>");
         if (actions) actions.innerHTML = btns.join("");
 
@@ -2110,6 +2299,10 @@
         if (byId("repSubmit")) byId("repSubmit").addEventListener("click", function () { submitReport(id, this); });
         if (byId("repReview")) byId("repReview").addEventListener("click", function () { financialReviewForm(id); });
         if (byId("repDelete")) byId("repDelete").addEventListener("click", function () { deleteReport(id, this); });
+        if (byId("repReturn")) byId("repReturn").addEventListener("click", function () { returnReportForm(id, this); });
+        if (byId("repCorrect")) byId("repCorrect").addEventListener("click", function () { correctReportForm(id, this); });
+        if (byId("repApprove")) byId("repApprove").addEventListener("click", function () { approveReport(id, this); });
+        if (byId("repCancel")) byId("repCancel").addEventListener("click", function () { cancelReportForm(id, this); });
       })
       .catch(function (err) {
         if (body) body.innerHTML = errorHtml(errText(err));
