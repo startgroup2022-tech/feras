@@ -278,3 +278,48 @@ assessment module already existed; the note itself was the missing piece.
 * `python -m pytest tests/ -q` — full suite green (exit 0); **875 tests collected**.
 * `alembic check` — "No new upgrade operations detected." Single linear head
   `a3b4c5d6e7f8` (`tests/test_postgres.py` head assertion updated).
+
+
+## Execution 31 — D03: the versioned non-financial management report (S09) (2026-10-17)
+
+Execution 30 closed every authorised owner decision except **D03**, whose
+remaining gap was recorded rather than papered over: the spec says the
+correction of the *non-financial* (management) monthly report after submission
+"needs D03" and must be a correction version *linked to the original*, but
+`MonthlyReport` was one-per-company-per-period with no correction link and edits
+blocked once submitted. That gap is now closed.
+
+* `MonthlyReport` gains `version_number`, `corrects_report_id`, `is_live`, an
+  owner `approval_status`, and return/approve/cancel metadata
+  (`return_reason`, `returned_by_id/at`, `approved_by_id/at`,
+  `cancelled_by_id/at`, `cancel_reason`).
+* The per-period uniqueness `uq_report_company_period` becomes
+  `uq_report_company_period_version` (company, period, version) plus a **partial
+  unique index** `uq_report_company_period_live` that allows exactly one live
+  version per company/period. A correction therefore never overwrites the
+  original.
+* New append-only `ReportLifecycleEvent` trail
+  (`submitted`/`resubmitted`/`returned`/`approved`/`cancelled`).
+* `report_service`: `return_report` (BD, mandatory reason), `create_correction`
+  (linked new version, original superseded and preserved), `approve_report` and
+  `cancel_report` (owner-only), plus `list_versions` / `list_lifecycle`.
+* New permissions `monthly_report.review` (BD) and `monthly_report.approve`
+  (owner), with bilingual metadata; the accountant's *financial* review stays a
+  separate, unchanged concern (F-03).
+* Endpoints: `POST /monthly-reports/{id}/return|correction|approve|cancel`,
+  `GET /monthly-reports/{id}/versions|lifecycle`. The report detail embeds the
+  chain and trail.
+* Frontend: the report modal renders the version chain + workflow trail and
+  offers permission-gated Return / Create-correction / Approve / Cancel actions.
+* Migration `3473d285d919` (revises `62040b21dfa2`), reversible and drift-free.
+
+### Verification
+
+* `python -m pytest tests/ -q` — full suite green (exit 0); **967 tests**
+  (946 baseline + 21 new in `test_execution31_d03_report_correction.py`).
+* `alembic check` — "No new upgrade operations detected." Single linear head
+  `3473d285d919` (`tests/test_postgres.py` head assertion updated).
+* `alembic downgrade -1` → `upgrade head` — reversible, re-applies cleanly.
+* RBAC sync — 15 roles, **179** permissions, all catalogued with bilingual
+  metadata (`test_holding_domain.py` count updated).
+* `node --check frontend/app.js` — passes.

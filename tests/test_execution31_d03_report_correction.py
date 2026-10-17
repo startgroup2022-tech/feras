@@ -117,6 +117,28 @@ def test_company_manager_cannot_return_a_report(client, d03_world, auth):
     assert response.status_code == 403
 
 
+def test_return_notifies_the_report_author(client, d03_world, auth, db):
+    """The company manager who submitted the report is told it was returned."""
+    from backend.db.models.notifications import Notification
+    from backend.db.models.report import MonthlyReport
+
+    # The report author is the submitter, so record the manager as the author.
+    report = db.get(MonthlyReport, d03_world["alpha_report"].id)
+    report.submitted_by_id = d03_world["alpha_mgr"].id
+    db.add(report)
+    db.commit()
+
+    resp = _return(client, d03_world, auth)
+    assert resp.status_code == 200, resp.text
+
+    rows = (
+        db.query(Notification)
+        .filter(Notification.recipient_id == d03_world["alpha_mgr"].id)
+        .all()
+    )
+    assert any(n.type == "report.returned" for n in rows)
+
+
 def test_return_is_audited(client, d03_world, auth, db):
     from backend.db.models import AuditLog
 

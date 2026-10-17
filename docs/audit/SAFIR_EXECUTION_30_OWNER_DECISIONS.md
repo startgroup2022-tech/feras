@@ -33,7 +33,7 @@ audit/append-only safety properties, not any financial value.
 |---|---|---|---|
 | D01 | Holding accounting setup: currency, fiscal year, chart of accounts, invoice timing, settlements, tax, assets | S26–S28 (+ S05/S06/S08) | **Mechanism built**: `PolicyProposal` governance (accountant proposes, owner decides, inert until decided); chart of accounts / journals / fiscal periods exist. **Values open.** |
 | D02 | Report forms & indicators: the 5 questions, indicator definitions, goals, campaign lead count | S09–S10, S14, S18, S21 | **Mechanism built** (Execution 29): KPI registry + target-vs-actual, inert until an authorised approval. **Values/wording open.** |
-| D03 | **Non-financial work states**: authority to close/return/cancel a request, customer/project states, **correction of the non-financial (management) report** | S13, S16–S22 | **PARTIAL.** Task and support lifecycles (New→In-Progress→Awaiting Review→Complete + Return/Cancel/Reopen) and project/opportunity states exist. **The post-submission management-report correction (S09: "تصحيح التقرير الإداري بعد الإرسال يحتاج D03") is NOT implemented** — see §6. |
+| D03 | **Non-financial work states**: authority to close/return/cancel a request, customer/project states, **correction of the non-financial (management) report** | S13, S16–S22 | **COMPLETE (Execution 31).** Task and support lifecycles (New→In-Progress→Awaiting Review→Complete + Return/Cancel/Reopen), project/opportunity states, **and the post-submission management-report correction (S09) now exist** as a linked, versioned workflow. See `SAFIR_EXECUTION_31_D03_REPORT_CORRECTION.md`. |
 | D04 | **Employee & advisor visibility**, including **lead redistribution** and who sees the distribution history | S12, S13, S19, S23 | **Mechanism built**: append-only `LeadAssignment` history + `website_lead.assign` + scoped history reads (`history.read`); `ConfidentialAccessGrant` for delegated confidential access. |
 | D05 | Assessment grades & AI data: 1–5 scale, evidence-gap handling | S12, S23 | Mechanism exists (Execution 29): `Assessment`/`AssessmentItem`, evidence-gap rule. Weights/scales are owner data. |
 | D06 | Employee balances & actions: manual vs computed, payroll link | S11 | Manual admin records only; no automatic payroll link (as recommended). |
@@ -123,6 +123,11 @@ The model is now cleared per test (as its children already were); the test
 passes in isolation and in the full suite.
 
 ## 6. Functional gap found (correction of an earlier claim)
+
+> **Resolved in Execution 31** — the missing D03 linked correction version of the
+> non-financial management report (S09) is now implemented. See
+> `SAFIR_EXECUTION_31_D03_REPORT_CORRECTION.md`. The paragraph below is kept for
+> the record.
 
 An earlier version of this checkpoint labelled lead assignment as "D03". Per the
 authoritative spec §21, lead redistribution belongs to **D04**, and **D03 is the
