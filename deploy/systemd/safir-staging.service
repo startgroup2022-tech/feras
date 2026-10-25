@@ -1,0 +1,58 @@
+# Safir Holding 2027 — staging API service.
+#
+# Install to /etc/systemd/system/safir-staging.service
+#
+#   sudo install -m 644 deploy/systemd/safir-staging.service \
+#       /etc/systemd/system/safir-staging.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now safir-staging
+#
+# Exactly ONE uvicorn worker is used. The login rate limiter is in-process
+# (backend/core/rate_limit.py); multiple workers would fractionate it. Do not
+# add gunicorn or --workers here until a shared store (e.g. Redis) is adopted.
+
+[Unit]
+Description=Safir Holding 2027 API (staging)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=safir
+Group=safir
+WorkingDirectory=/opt/safir/app
+EnvironmentFile=/etc/safir/staging.env
+
+# --proxy-headers trusts X-Forwarded-* only from the loopback nginx proxy.
+# uvicorn is bound to 127.0.0.1 so it is unreachable except through nginx.
+# --forwarded-allow-ips defaults to 127.0.0.1, which is what we want.
+ExecStart=/opt/safir/venv/bin/uvicorn backend.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1 \
+    --no-server-header
+
+# Migrations are a deliberate, reviewed step (see docs/DEPLOYMENT.md); they are
+# NOT run automatically on start. Uncomment only after approval.
+# ExecStartPre=/opt/safir/venv/bin/python -m alembic upgrade head
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+# Hardening: the service only needs its own tree and the upload volume.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/safir/uploads
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

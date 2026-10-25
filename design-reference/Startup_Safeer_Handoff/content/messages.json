@@ -1,0 +1,16 @@
+{
+"service_success":{"ar":"تم استلام طلبك بنجاح، وسنراجعه لتوجيهه إلى الجهة المختصة ضمن شركات المجموعة.","en":"Your enquiry has been received. We will review it and direct it to the appropriate group company."},
+"project_success":{"ar":"تم استلام مشروعك للمراجعة. استلام الطلب لا يعني قبول الإعلان أو نشره.","en":"Your business has been submitted for review. Receipt does not mean the listing has been accepted or published."},
+"career_success":{"ar":"تم استلام طلبك بنجاح. سنتواصل معك إذا توفرت فرصة مناسبة لمؤهلاتك.","en":"Your application has been received. We will contact you if a suitable opportunity matching your qualifications becomes available."},
+"required":{"ar":"يرجى إكمال هذا الحقل.","en":"Please complete this field."},
+"email_invalid":{"ar":"يرجى إدخال بريد إلكتروني صحيح.","en":"Please enter a valid email address."},
+"phone_invalid":{"ar":"يرجى التحقق من رقم الهاتف ومفتاح الدولة.","en":"Please check the phone number and country code."},
+"file_required":{"ar":"يرجى إرفاق الملف المطلوب.","en":"Please attach the required file."},
+"sending":{"ar":"جارٍ الإرسال…","en":"Submitting…"},
+"send_failed":{"ar":"تعذّر إرسال الطلب. يرجى المحاولة مرة أخرى.","en":"Your request could not be submitted. Please try again."},
+"link_copied":{"ar":"تم نسخ الرابط.","en":"Link copied."},
+"opportunity_notice":{"ar":"المعلومات مقدمة من صاحب المشروع، ونشرها لا يمثل ضمانًا أو توصية استثمارية من الإدارة.","en":"The information is provided by the business owner. Publication does not constitute a guarantee or an investment recommendation by the management."},
+"opportunity_unavailable":{"ar":"هذه الفرصة لم تعد متاحة.\nيمكنك الاطلاع على الفرص التجارية المتاحة حاليًا.","en":"This opportunity is no longer available.\nYou can explore the business opportunities currently available."},
+"no_matches":{"ar":"لا توجد فرص مطابقة لاختياراتك حاليًا. جرّب تغيير خيارات البحث أو استعرض جميع الفرص.","en":"There are currently no opportunities matching your selection. Try changing your filters or view all opportunities."},
+"_status":"Arabic approved in conversation; English review draft. Additional proposed error/empty messages are in SPECIFICATION.md."
+}
