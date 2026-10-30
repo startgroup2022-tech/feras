@@ -183,6 +183,53 @@ def test_reset_purges_only_demo_leads(db):
     assert all(lead.email.endswith(seed_demo.DEMO_LEAD_DOMAIN) for lead in rebuilt)
 
 
+def _make_real_company(db, code: str = "REALCO"):
+    """A company that is not part of the demo set and carries no demo marker."""
+    company = Company(
+        code=code,
+        name_ar="شركة حقيقية",
+        name_en="Real Co",
+        sector="other",
+        status="active",
+        health="good",
+        contact_email="ops@realcorp.sa",
+    )
+    db.add(company)
+    db.flush()
+    return company
+
+
+def test_reset_preserves_a_real_company_and_its_documents(db):
+    """``_reset`` promises to delete *demo* rows only. A company created by a
+    real user, and the documents filed under it, must survive a reseed --
+    otherwise running the demo seed against a database that already holds
+    production content silently destroys it."""
+    from backend.db.models.documents import Document
+
+    seed_demo.seed(reset=False)
+    db.expire_all()
+
+    real = _make_real_company(db)
+    real_doc = Document(
+        company_id=real.id,
+        title_ar="عقد حقيقي",
+        original_filename="contract.pdf",
+        content_type="application/pdf",
+        storage_key="real/contract.pdf",
+        size_bytes=42,
+        uploaded_by_id=db.query(User).first().id,
+    )
+    db.add(real_doc)
+    db.commit()
+    real_id, real_doc_id = real.id, real_doc.id
+
+    seed_demo.seed(reset=True)
+    db.expire_all()
+
+    assert db.get(Company, real_id) is not None, "reset deleted a real company"
+    assert db.get(Document, real_doc_id) is not None, "reset deleted a real document"
+
+
 def test_seed_creates_a_demo_user_for_every_spec_role(db):
     """The 21-view audit needs a sign-in for each role the spec defines.
 

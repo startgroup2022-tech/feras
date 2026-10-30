@@ -146,11 +146,43 @@ def _seed_weekly_questions(db) -> None:
     db.commit()
 
 
+def _demo_scope(db):
+    """Return (company_ids, user_ids) for rows the demo seed owns.
+
+    "Demo" means a company whose code is in ``COMPANIES`` or a user whose email
+    is on the demo domain. Everything the seed creates hangs off one of those
+    two, so scoping every delete to this set is what keeps a real holding --
+    its companies, users, documents and filings -- out of harm's way.
+    """
+    codes = [c[0] for c in COMPANIES]
+    company_ids = [
+        cid for (cid,) in db.execute(select(Company.id).where(Company.code.in_(codes)))
+    ]
+    user_ids = [
+        uid
+        for (uid,) in db.execute(
+            select(User.id).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))
+        )
+    ]
+    return company_ids, user_ids
+
+
 def _reset(db) -> None:
-    """Delete demo rows only -- identified by the demo email domain."""
+    """Delete demo rows only -- identified by demo company codes and the demo
+    email domain.
+
+    Real companies, real users and the rows they own are never touched. Rows
+    the seed created are found by their owning company (a demo code) or their
+    owning user (a demo address); the company/user delete at the end then
+    cascades to anything still attached.
+    """
+    from sqlalchemy import or_
+
     from backend.db.models.documents import Document
     from backend.db.models.forms import DynamicForm
     from backend.db.models.governance import LeadAssignment
+    from backend.db.models.group import Ownership
+    from backend.db.models.report import MonthlyReportFinancialReview
     from backend.db.models.submissions import FormSubmission
     from backend.db.models.website import (
         WebsiteLead,
@@ -159,15 +191,38 @@ def _reset(db) -> None:
     )
     from backend.db.models.workflows import WorkflowDefinition
 
-    demo_users = list(
-        db.execute(select(User).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))).scalars()
-    )
+    demo_company_ids, demo_user_ids = _demo_scope(db)
+    if not demo_company_ids and not demo_user_ids:
+        print("  no demo rows to remove")
+        return
+
+    def _scoped(query, model, by=("company_id",)):
+        """Delete rows of ``model`` owned by a demo company or demo user.
+
+        ``by`` names the ownership columns to match on. Company-owned rows are
+        scoped to the demo *companies* only, never to a demo uploader: a real
+        company's document must survive even if a demo account happened to
+        upload it.
+        """
+        cols = {c.name for c in model.__table__.columns}
+        clauses = []
+        if "company_id" in by and "company_id" in cols and demo_company_ids:
+            clauses.append(model.company_id.in_(demo_company_ids))
+        for col in by:
+            if col in cols and col != "company_id" and demo_user_ids:
+                clauses.append(getattr(model, col).in_(demo_user_ids))
+        if not clauses:
+            return 0
+        return query.filter(or_(*clauses)).delete(synchronize_session=False)
+
     # Operations rows are holding-scoped and not company-cascaded, so purge
     # them explicitly before the users/companies they reference disappear.
-    db.query(Document).delete()
-    db.query(FormSubmission).delete()
-    db.query(WorkflowDefinition).delete()
-    db.query(DynamicForm).delete()
+    # Order matters: submissions cascade into instances, events and tasks, and
+    # the forms/workflows they point at are RESTRICT on delete.
+    _scoped(db.query(FormSubmission), FormSubmission)
+    _scoped(db.query(Document), Document)
+    _scoped(db.query(DynamicForm), DynamicForm, by=("created_by_id",))
+    _scoped(db.query(WorkflowDefinition), WorkflowDefinition, by=("created_by_id",))
     # Seeded website leads are identified by their demo-domain visitor email
     # (the visitor is external, so there is no demo user row to match on).
     # Delete the dependents first so nothing is left orphaned, and never touch
@@ -183,12 +238,30 @@ def _reset(db) -> None:
         db.query(WebsiteLead).filter(WebsiteLead.id.in_(demo_lead_ids)).delete(
             synchronize_session=False
         )
-    for user in demo_users:
+    # Two FKs to the rows we are about to remove are RESTRICT, so clear them
+    # first or the delete below would fail instead of quietly succeeding.
+    if demo_user_ids:
+        db.query(MonthlyReportFinancialReview).filter(
+            MonthlyReportFinancialReview.reviewer_id.in_(demo_user_ids)
+        ).delete(synchronize_session=False)
+    if demo_company_ids:
+        db.query(Ownership).filter(
+            or_(
+                Ownership.owner_company_id.in_(demo_company_ids),
+                Ownership.owned_company_id.in_(demo_company_ids),
+            )
+        ).delete(synchronize_session=False)
+
+    users = list(db.execute(select(User).where(User.id.in_(demo_user_ids))).scalars())
+    for user in users:
         db.delete(user)
-    for company in db.execute(select(Company)).scalars():
+    companies = list(
+        db.execute(select(Company).where(Company.id.in_(demo_company_ids))).scalars()
+    )
+    for company in companies:
         db.delete(company)
     db.commit()
-    print(f"  removed {len(demo_users)} demo users and all companies")
+    print(f"  removed {len(users)} demo users and {len(companies)} demo companies")
 
 
 def seed(reset: bool) -> None:
