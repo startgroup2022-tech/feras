@@ -580,3 +580,36 @@ ready for the deck). The six-section nav above implements the module list the
 brief names; it does **not** assert a visual match to unseen slides. Word-spec
 business rules and security controls are unchanged.
 
+## Phase 3 — lead pipeline seed and D04 assignment UI
+
+- **Demo lead pipeline** — `_seed_leads` in `scripts/seed_demo.py` creates five
+  website leads through `website_lead_service.create_lead` (never raw inserts),
+  so the demo carries the service's own routing, reference format and
+  validation. It walks two of them along the pipeline (`in_progress`,
+  `qualified`, `converted`), assigns the first and adds a manager note, then
+  reviews and publishes the business-listing opportunity. Idempotent: it skips
+  when a `WebsiteLead` already exists. `_reset` purges `LeadAssignment`,
+  `WebsiteOpportunity` and `WebsiteLead` explicitly — leads have no demo email
+  on the record (visitors are external), so the demo-domain sweep cannot find
+  them, and the dependent rows must go first.
+- **D04 assignment UI** — `assignmentBlock` / `outcomeBlock` in `frontend/app.js`
+  render the current assignee, routed company, the append-only history and the
+  closed-out fields inside the lead modal. `openLead` loads the history from
+  `GET /leads/{id}/assignments` (only when `website_lead.read`) and the user
+  directory from `/users` (only when `website_lead.assign` and `user.read`).
+  The save action posts to `POST /leads/{id}/assign` and sends **only** fields
+  that actually changed, because the API treats an omitted field as "unchanged"
+  and re-saving the same company would re-notify its manager. There is no
+  unassign operation, so an empty picker option reads "no change", never
+  "unassigned". Regression: `tests/test_lead_assignment_ui.py`.
+- **Error envelope** — the API reports expected failures as
+  `{"error": {"code", "message"}}` and schema failures as
+  `{"error": {"message", "fields": [{"message"}]}}` (`backend/core/errors.py`).
+  `messageFor` in `frontend/auth.js` reads that envelope first, so a service's
+  own wording reaches the user instead of a bare "Request failed (422)".
+- **Plain date-time helper** — `stampText` returns a plain string in the active
+  language. `fmtDateTime` returns `dual()` markup, so escaping it inside an
+  `escapeHtml` context leaks `<span>` tags. Use `stampText` wherever a timestamp
+  will be escaped.
+- **Calendar parts are not quantities** — `periodPart` (not `plainNum`) renders
+  a year/month/week, otherwise `NUM.format` turns 2027 into "2,027".

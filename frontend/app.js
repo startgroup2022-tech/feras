@@ -1174,6 +1174,14 @@
     return isNaN(n) ? String(value) : NUM.format(n);
   }
 
+  // A calendar year, a month or a week is an identifier, not a quantity: it is
+  // never thousands-separated (NUM.format would render 2027 as "2,027").
+  function periodPart(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    var n = Number(value);
+    return isNaN(n) ? String(value) : String(n);
+  }
+
   function fmtDate(iso) {
     var d = dateLabel(iso);
     return dual(d.ar, d.en);
@@ -1190,6 +1198,20 @@
       base.ar + " · " + toArabicDigits(hh + ":" + mm),
       base.en + " · " + hh + ":" + mm,
     );
+  }
+
+  // Plain-text date-time in the active language, for contexts that will be
+  // HTML-escaped (fmtDateTime returns dual() markup, which would leak tags).
+  function stampText(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+    var base = dateLabel(iso);
+    var hh = String(d.getHours()).padStart(2, "0");
+    var mm = String(d.getMinutes()).padStart(2, "0");
+    return STATE.lang === "ar"
+      ? base.ar + " · " + toArabicDigits(hh + ":" + mm)
+      : base.en + " · " + hh + ":" + mm;
   }
 
   function periodLabel() {
@@ -5268,14 +5290,138 @@
     var campaignPromise = has("campaign.read")
       ? get("/api/v1/operations/campaigns").catch(function () { return []; })
       : Promise.resolve([]);
-    return campaignPromise.then(function (campaigns) {
+    // D04: the append-only assignment history (read requires website_lead.read).
+    var assignmentsPromise = has("website_lead.read")
+      ? get("/api/v1/leads/" + id + "/assignments").catch(function () { return []; })
+      : Promise.resolve([]);
+    // The assignee picker needs the real user directory (holding_owner/admin).
+    var usersPromise = has("website_lead.assign") && has("user.read")
+      ? get("/api/v1/users").then(function (rows) {
+          STATE.users = rows || [];
+          return STATE.users;
+        }).catch(function () { return []; })
+      : Promise.resolve([]);
+    return Promise.all([
+      campaignPromise,
+      assignmentsPromise,
+      usersPromise,
+      ensureCompanies(),
+    ]).then(function (res) {
       return get("/api/v1/leads/" + id).then(function (lead) {
-        return paintLeadModal(lead, campaigns || []);
+        return paintLeadModal(lead, res[0] || [], res[1] || []);
       });
     });
   }
 
-  function paintLeadModal(lead, campaigns) {
+  // D04 assignment: who owns the lead and which company it is routed to, plus
+  // the append-only history. Only users holding website_lead.assign can change
+  // it; everyone who can read the lead sees the current owner and history.
+  function assignmentBlock(lead, assignments) {
+    var canAssign = has("website_lead.assign");
+    var canRoute = has("company.read");
+    if (!lead.assigned_to_id && !lead.routed_company_id && !canAssign && !(assignments || []).length) {
+      return "";
+    }
+    var current =
+      '<div class="kv">' +
+      kv(dual("المسؤول الحالي", "Current assignee"),
+         escapeHtml(
+           (STATE.lang === "ar"
+             ? lead.assigned_to_name_ar
+             : lead.assigned_to_name_en || lead.assigned_to_name_ar) ||
+           (lead.assigned_to_id ? "#" + lead.assigned_to_id : "—"),
+         )) +
+      kv(dual("الشركة الموجَّه إليها", "Routed company"),
+         escapeHtml(
+           lead.routed_company_id
+             ? companyName(companyById(lead.routed_company_id)) || "#" + lead.routed_company_id
+             : "—",
+         )) +
+      "</div>";
+
+    var controls = "";
+    if (canAssign) {
+      var userOptions = (STATE.users || []).map(function (u) {
+        var label = (STATE.lang === "ar" ? u.full_name_ar : u.full_name_en || u.full_name_ar) +
+          " · " + (u.role_name_ar || u.role_code);
+        return '<option value="' + u.id + '"' +
+          (u.id === lead.assigned_to_id ? " selected" : "") + ">" + escapeHtml(label) + "</option>";
+      }).join("");
+      controls =
+        '<div class="av-field" style="margin-top:10px"><label>' + dual("إسناد إلى", "Assign to") + "</label>" +
+        '<select class="av-select" id="leadAssignee" style="width:100%">' +
+        (userOptions
+          ? '<option value="">' + dual("— بدون تغيير —", "— No change —") + "</option>" + userOptions
+          : '<option value="">' + dual("لا يوجد مستخدمون متاحون", "No users available") + "</option>") +
+        "</select></div>" +
+        (canRoute
+          ? '<div class="av-field" style="margin-top:8px"><label>' + dual("توجيه إلى شركة", "Route to company") + "</label>" +
+            '<select class="av-select" id="leadCompany" style="width:100%">' +
+            '<option value="">' + dual("— بدون تغيير —", "— No change —") + "</option>" +
+            (STATE.companies || []).map(function (c) {
+              return '<option value="' + c.id + '"' +
+                (c.id === lead.routed_company_id ? " selected" : "") + ">" +
+                escapeHtml(companyName(c)) + "</option>";
+            }).join("") +
+            "</select></div>"
+          : "") +
+        '<div class="av-field" style="margin-top:8px"><label>' +
+        dual("سبب الإسناد / إعادة الإسناد", "Assignment / reassignment reason") + "</label>" +
+        '<input class="av-input" id="leadAssignReason" style="width:100%" placeholder="' +
+        escAttr(STATE.lang === "ar" ? "مطلوب عند إعادة الإسناد" : "Required when reassigning") + '"></div>' +
+        '<div class="av-form-actions"><button class="btn-solid" id="leadAssignSave">' +
+        dual("حفظ الإسناد", "Save assignment") + "</button></div>";
+    }
+
+    // Newest first, as the API returns them.
+    var history = (assignments || []).map(function (a) {
+      var what = a.action === "reassign"
+        ? opt("إعادة إسناد", "Reassigned")
+        : opt("إسناد", "Assigned");
+      var to = [];
+      if (a.new_assignee_name_ar) to.push(a.new_assignee_name_ar);
+      if (a.new_company_id) to.push("#" + a.new_company_id);
+      return (
+        '<div class="av-row"><div class="grow"><div class="t">' +
+        escapeHtml(what) + (to.length ? " · " + escapeHtml(to.join(" / ")) : "") +
+        "</div><div class=\"s\">" +
+        (a.actor_name_ar ? escapeHtml(a.actor_name_ar) + " · " : "") +
+        escapeHtml(stampText(a.created_at)) +
+        (a.reason ? " · " + escapeHtml(a.reason) : "") +
+        "</div></div></div>"
+      );
+    }).join("");
+
+    return (
+      '<h3 style="margin-top:16px">' + dual("الإسناد والتوجيه", "Assignment & routing") + "</h3>" +
+      current +
+      controls +
+      (history
+        ? '<h4 style="margin-top:12px;font-size:12px;color:var(--ink-400)">' +
+          dual("سجل الإسناد", "Assignment history") + "</h4>" +
+          '<div class="av-list">' + history + "</div>"
+        : "")
+    );
+  }
+
+  // The closed-out fields of a lead (S13): the recorded result and internal
+  // notes. Kept read-only here; the "Update lead" block below edits the live
+  // fields, and website_lead.manage gates the write.
+  function outcomeBlock(lead) {
+    if (!lead.final_result && !lead.internal_notes && !lead.closed_at) return "";
+    return (
+      '<h3 style="margin-top:16px">' + dual("نتيجة الطلب", "Outcome") + "</h3>" +
+      '<div class="kv">' +
+      kv(dual("النتيجة النهائية", "Final result"),
+         lead.final_result ? escapeHtml(lead.final_result) : "—") +
+      kv(dual("ملاحظات داخلية", "Internal notes"),
+         lead.internal_notes ? escapeHtml(lead.internal_notes) : "—") +
+      kv(dual("أُغلق في", "Closed at"), lead.closed_at ? escapeHtml(stampText(lead.closed_at)) : "—") +
+      "</div>"
+    );
+  }
+
+  function paintLeadModal(lead, campaigns, assignments) {
       var id = lead.id;
       var payload = lead.payload || {};
       var detailRows = Object.keys(payload)
@@ -5342,6 +5488,8 @@
         (lead.message
           ? '<h3 style="margin-top:16px">' + dual("رسالة", "Message") + "</h3><p>" + escapeHtml(lead.message) + "</p>"
           : "") +
+        assignmentBlock(lead, assignments) +
+        outcomeBlock(lead) +
         notesBlock +
         (has("website_lead.manage")
           ? '<h3 style="margin-top:16px">' + dual("تحديث الطلب", "Update lead") + "</h3>" +
@@ -5420,8 +5568,55 @@
               loadLeadList();
               loadLeadStats();
             })
-            .catch(function () {
-              toast(STATE.lang === "ar" ? "تعذّر التحديث." : "Update failed.", "err");
+            .catch(function (err) {
+              toast(
+                err && err.message
+                  ? err.message
+                  : STATE.lang === "ar" ? "تعذّر التحديث." : "Update failed.",
+                "err",
+              );
+            });
+        });
+      }
+
+      // D04: assign/reassign. Sends only the fields the user actually changed,
+      // so an unchanged company does not re-notify its manager and an unchanged
+      // lead does not record a no-op history row.
+      var assignBtn = byId("leadAssignSave");
+      if (assignBtn) {
+        assignBtn.addEventListener("click", function () {
+          var aSel = byId("leadAssignee");
+          var cSel = byId("leadCompany");
+          var rInp = byId("leadAssignReason");
+          var out = {};
+          if (aSel && aSel.value && parseInt(aSel.value, 10) !== lead.assigned_to_id) {
+            out.assignee_id = parseInt(aSel.value, 10);
+          }
+          if (cSel && cSel.value && parseInt(cSel.value, 10) !== lead.routed_company_id) {
+            out.company_id = parseInt(cSel.value, 10);
+          }
+          if (out.assignee_id === undefined && out.company_id === undefined) {
+            toast(
+              STATE.lang === "ar" ? "لا يوجد تغيير في الإسناد." : "Nothing to change.",
+              "err",
+            );
+            return;
+          }
+          if (rInp && rInp.value.trim()) out.reason = rInp.value.trim();
+          busy(assignBtn, true);
+          post("/api/v1/leads/" + id + "/assign", out)
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم حفظ الإسناد." : "Assignment saved.", "ok");
+              return openLead(id);
+            })
+            .catch(function (err) {
+              busy(assignBtn, false);
+              toast(
+                err && err.message
+                  ? err.message
+                  : STATE.lang === "ar" ? "تعذّر حفظ الإسناد." : "Could not save the assignment.",
+                "err",
+              );
             });
         });
       }
@@ -6892,9 +7087,9 @@
       var rows = [];
       (res[1] || []).forEach(function (r) {
         rows.push(fbRow("weekly_report", r, {
-          title: r.summary || dual("تقرير أسبوعي", "Weekly report"),
-          sub: dual("الأسبوع", "Week") + " " + plainNum(r.week_number || "") +
-               " · " + plainNum(r.period_year || ""),
+          title: r.summary || opt("تقرير أسبوعي", "Weekly report"),
+          sub: opt("الأسبوع", "Week") + " " + periodPart(r.period_week) +
+               " · " + periodPart(r.period_year),
           status: r.status,
           date: r.created_at,
           id: r.id,
@@ -6902,9 +7097,9 @@
       });
       (res[2] || []).forEach(function (r) {
         rows.push(fbRow("management_brief", r, {
-          title: r.executive_summary || dual("تقرير إداري", "Management brief"),
-          sub: dual("الفترة", "Period") + " " +
-               plainNum(r.period_month || "") + "/" + plainNum(r.period_year || ""),
+          title: r.executive_summary || opt("تقرير إداري", "Management brief"),
+          sub: opt("الفترة", "Period") + " " +
+               periodPart(r.period_month) + "/" + periodPart(r.period_year),
           status: r.status,
           date: r.created_at,
           id: r.id,
@@ -6913,9 +7108,9 @@
       (res[3] || []).forEach(function (r) {
         rows.push(fbRow("monthly_report", r, {
           title: (STATE.lang === "ar" ? r.company_name_ar : r.company_name_en) ||
-                 dual("تقرير شهري", "Monthly report"),
-          sub: dual("الفترة", "Period") + " " +
-               plainNum(r.period_month || "") + "/" + plainNum(r.period_year || ""),
+                 opt("تقرير شهري", "Monthly report"),
+          sub: opt("الفترة", "Period") + " " +
+               periodPart(r.period_month) + "/" + periodPart(r.period_year),
           status: r.status,
           date: r.updated_at || r.created_at,
           id: r.id,

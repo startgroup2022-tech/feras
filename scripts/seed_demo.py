@@ -130,7 +130,9 @@ def _reset(db) -> None:
     """Delete demo rows only -- identified by the demo email domain."""
     from backend.db.models.documents import Document
     from backend.db.models.forms import DynamicForm
+    from backend.db.models.governance import LeadAssignment
     from backend.db.models.submissions import FormSubmission
+    from backend.db.models.website import WebsiteLead, WebsiteOpportunity
     from backend.db.models.workflows import WorkflowDefinition
 
     demo_users = list(
@@ -142,6 +144,12 @@ def _reset(db) -> None:
     db.query(FormSubmission).delete()
     db.query(WorkflowDefinition).delete()
     db.query(DynamicForm).delete()
+    # Website leads carry no demo email on the record itself (visitors are
+    # external), so they are not matched by domain. Purge the dependent rows
+    # first, then the leads, so a reset leaves no orphaned lead behind.
+    db.query(LeadAssignment).delete()
+    db.query(WebsiteOpportunity).delete()
+    db.query(WebsiteLead).delete()
     for user in demo_users:
         db.delete(user)
     for company in db.execute(select(Company)).scalars():
@@ -402,6 +410,9 @@ def seed(reset: bool) -> None:
 
         # ---- S20 projects & opportunities demo ----
         _seed_projects(db, companies=companies, owner=owner, bd=bd)
+
+        # ---- S13/S14 website lead pipeline demo ----
+        _seed_leads(db, companies=companies, owner=owner, bd=bd)
 
         print(
             "\nDemo seed complete.\n"
@@ -794,6 +805,182 @@ def _seed_projects(db, *, companies, owner, bd) -> None:
         db.add(ProjectRecord(**row, created_by_id=bd.id))
     db.commit()
     print(f"  {len(records)} projects/opportunities")
+
+
+def _seed_leads(db, *, companies, owner, bd) -> None:
+    """Seed the public-website lead pipeline (S13/S14, spec §18).
+
+    Leads are created through the real ``website_lead_service`` so the demo
+    matches what the public site actually produces: the same field validation,
+    routing table and reference format. Without this the primary ``leads`` view
+    renders empty.
+    """
+    from backend.db.models.website import WebsiteLead
+    from backend.schemas.website import (
+        BusinessListingSubmission,
+        CompanyFormationSubmission,
+        ContactSubmission,
+        FeasibilitySubmission,
+        InvestmentSubmission,
+    )
+    from backend.services import website_lead_service
+
+    if db.execute(select(WebsiteLead)).scalars().first() is not None:
+        print("  leads demo already present (skipped)")
+        return
+
+    # A current, in-flight mix: one brand-new, one being worked, one qualified
+    # and one already converted. Priorities are set by the service (urgent for
+    # investment, high for feasibility), so the pipeline shows a realistic spread.
+    rows = [
+        (
+            "company_formation",
+            CompanyFormationSubmission(
+                market="bahrain",
+                locale="ar",
+                full_name="شركة الوفاء القابضة",
+                email="contact@alwafa.example",
+                phone="+97317000001",
+                company_name="الوفاء القابضة",
+                message="نرغب في تأسيس شركة تقنية في البحرين بثلاثة شركاء.",
+                consent=True,
+                desired_activity="تقنية المعلومات والاستشارات",
+                number_of_partners=3,
+                investor_type="company",
+                needs_office=True,
+            ),
+        ),
+        (
+            "feasibility_study",
+            FeasibilitySubmission(
+                market="saudi",
+                locale="ar",
+                full_name="مجموعة الصفوة",
+                email="info@alsafwa.example",
+                phone="+96650000002",
+                company_name="الصفوة للتجزئة",
+                message="دراسة جدوى لافتتاح فروع تجزئة في الرياض.",
+                consent=True,
+                project_idea="سلسلة متاجر تجزئة متخصصة",
+                sector="التجزئة",
+                target_city="الرياض",
+                project_stage="new",
+                study_type="market",
+            ),
+        ),
+        (
+            "investment",
+            InvestmentSubmission(
+                market="gulf",
+                locale="en",
+                full_name="Gulf Ventures FZE",
+                email="deals@gulfventures.example",
+                phone="+97150000003",
+                company_name="Gulf Ventures",
+                message="Interested in co-investing in the logistics vertical.",
+                consent=True,
+                investor_profile="institutional investor, logistics focus",
+            ),
+        ),
+        (
+            "general_contact",
+            ContactSubmission(
+                market="bahrain",
+                locale="en",
+                full_name="Noor Consultants",
+                email="hello@noor.example",
+                phone="+97317000004",
+                company_name="Noor Consultants",
+                message="We would like to discuss a partnership for advisory services.",
+                consent=True,
+                inquiry_type="partnership",
+                subject="Partnership inquiry",
+            ),
+        ),
+        (
+            "business_listing",
+            BusinessListingSubmission(
+                market="saudi",
+                locale="ar",
+                full_name="مؤسسة الأمانة للتجزئة",
+                email="owner@alamanah.example",
+                phone="+96650000005",
+                company_name="الأمانة للتجزئة",
+                message="راغبون في شريك استراتيجي لتوسيع سلسلة المتاجر.",
+                consent=True,
+                applicant_capacity="owner",
+                opportunity_type="strategic_partner",
+                sector="التجزئة",
+                business_age_years=6,
+                description="سلسلة متاجر تجزئة عاملة في الرياض بستة فروع.",
+                value_min=500000,
+                value_max=1500000,
+                currency="SAR",
+                reason_for_listing="التوسع في مدن إضافية.",
+                desired_outcome="شريك استراتيجي برأس مال وخبرة تشغيلية.",
+            ),
+        ),
+    ]
+
+    created = []
+    for service_type, payload in rows:
+        lead = website_lead_service.create_lead(db, service_type=service_type, payload=payload)
+        created.append(lead)
+
+    # Move two of them along the pipeline so the status badges are not all "new".
+    # The service records the status change and emits an integration event.
+    if len(created) >= 2:
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[1].id, changes={"status": "in_progress"}
+        )
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[2].id, changes={"status": "qualified"}
+        )
+    if len(created) >= 4:
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[3].id, changes={"status": "converted"}
+        )
+
+    # An assignment (D04) and the independent manager note (S13) on the first
+    # lead, so the lead detail modal shows both histories on first open.
+    if created:
+        from backend.services import lead_assignment_service
+
+        lead_assignment_service.assign_lead(
+            db,
+            user=bd,
+            lead_id=created[0].id,
+            company_id=companies["SAF-TECH"].id,
+            assignee_id=bd.id,
+            reason="First triage — routed to the Technology manager.",
+        )
+        website_lead_service.add_lead_note(
+            db,
+            user=owner,
+            lead_id=created[0].id,
+            body="متابعة مع فريق التأسيس وإبلاغ العميل خلال ٤٨ ساعة.",
+        )
+
+    # The business listing produced a private opportunity; review and publish it
+    # so the opportunity queue is not empty and the public site has one live
+    # listing. Public copy is written by the Holding, never echoed from the
+    # confidential description.
+    from backend.db.models.website import WebsiteOpportunity
+
+    opportunity = db.execute(select(WebsiteOpportunity)).scalars().first()
+    if opportunity is not None:
+        website_lead_service.review_opportunity(
+            db,
+            user=owner,
+            opportunity_id=opportunity.id,
+            status="published",
+            publish=True,
+            public_title_ar="فرصة شراكة استراتيجية — قطاع التجزئة",
+            public_title_en="Strategic partnership — retail sector",
+            public_summary_ar="سلسلة تجزئة عاملة تبحث عن شريك استراتيجي للتوسع.",
+            public_summary_en="An operating retail chain seeking a strategic expansion partner.",
+        )
+    print(f"  {len(created)} website leads (mixed statuses, one assigned+noted, 1 published opportunity)")
 
 
 def first_of(items, predicate):

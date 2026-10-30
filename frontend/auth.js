@@ -71,7 +71,20 @@
     });
   }
 
+  // The API reports expected failures as {"error": {"code", "message"}}, and
+  // schema failures as {"error": {"message", "fields": [{"message"}]}}. Read
+  // those first so a service's own wording reaches the user; FastAPI's default
+  // {"detail": ...} shape is still handled for any route that bypasses the
+  // handlers.
   function messageFor(status, data) {
+    if (data && typeof data === "object" && data.error) {
+      var e = data.error;
+      if (typeof e === "string") return e;
+      if (e.fields && e.fields.length && e.fields[0].message) {
+        return String(e.fields[0].message).replace(/^Value error,\s*/, "");
+      }
+      if (e.message) return e.message;
+    }
     if (data && typeof data === "object" && data.detail) {
       if (typeof data.detail === "string") return data.detail;
       if (Array.isArray(data.detail) && data.detail.length) {
