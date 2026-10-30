@@ -545,3 +545,38 @@ slice has been implemented; the full matrix and the conflict analysis live in
   Still gated: the original spec has not arrived; D01-D11 stay drafts.
   No deployment was performed.
 
+## Executive UX redesign (Phase 2, `feature/executive-ux-redesign`)
+
+The 20-item horizontal top nav (the "complicated ERP" look) is replaced by a
+dark-navy RTL **sidebar** over the white content area.
+
+- Shell: `<aside class="sidebar">` inside `.stage-body.with-sidebar`, beside
+  `#board`. `.sidebar{order:-1}` puts the rail on the **right in RTL** and
+  mirrors it to the left in LTR (the flex main axis reverses with `dir`).
+- Nav: six primary sections (`dashboard · leads · requests · feedback ·
+  projects · decisions`); the other 14 views live in a collapsible `#sbMore`
+  group (`#sbMoreToggle`, `aria-expanded`). `syncMoreGroup(view)` auto-opens
+  the group when the active view is inside it. Header keeps a breadcrumb
+  (`#crumb`) synced by `navTo`/`applyDocTitle`.
+- Dashboard: the small priorities card became a prominent `section.attention`
+  ("ماذا يحتاج اهتمامك اليوم؟", `#prioritiesList`, `#attnCount`) with a direct
+  action per row via `PRIORITY_ACTION`/`priorityAction()`.
+- `feedback` view aggregates existing endpoints only (weekly reports,
+  management briefs, monthly reports). Its `data-perm` is exactly the union of
+  those endpoints' read permissions — never a superset, or a role sees the
+  section and then gets a 403.
+- Responsive: at ≤1180px the rail becomes a wrapping horizontal bar;
+  `.sidebar .nav-item{width:auto}` is required there, otherwise each rail item
+  (full-width in the rail) claims a row of its own. ≤560px hides the crumb.
+- Contract tests in `tests/test_frontend_domain_views.py` pin all of the above
+  (sidebar shell, six primary sections, every item still `data-perm`-gated,
+  More-group behaviour, attention panel, feedback gate = endpoint perms).
+
+**PPTX parity is still not claimed.** `Platform Interface Design v3.pptx` has
+never reached the environment (verified repeatedly — see
+`docs/POWERPOINT-SCREEN-MATRIX.md` on branch `docs/powerpoint-parity-v3`, which
+also carries `scripts/extract_pptx.py` / `render_pptx.sh` / `compare_screens.py`
+ready for the deck). The six-section nav above implements the module list the
+brief names; it does **not** assert a visual match to unseen slides. Word-spec
+business rules and security controls are unchanged.
+
