@@ -356,14 +356,20 @@ def _mount_platform(app: FastAPI) -> None:
 
         The platform references its assets relatively (``styles.css``,
         ``app.js``), so under ``/platform/`` those resolve to
-        ``/platform/styles.css`` and friends. An existing file is served as-is;
-        anything else is a hash route inside the app, so the shell is returned
-        and the app's own router takes over.
+        ``/platform/styles.css`` and friends. An existing file is served as-is.
+
+        A *missing* path is only treated as an in-app route when it has no file
+        extension: the SPA routes on the hash (``#leads``), but a stray
+        ``/platform/foo.js`` is an asset request, and answering it with the HTML
+        shell would hand a script tag a ``200 text/html`` body instead of a
+        clean 404.
         """
         candidate = (FRONTEND_DIR / rest).resolve()
         # Guard against traversal: only serve files inside the frontend dir.
         if FRONTEND_DIR.resolve() in candidate.parents and candidate.is_file():
             return _serve_platform_asset("/" + rest)
+        if Path(rest).suffix:
+            return Response(status_code=404)
         return FileResponse(str(FRONTEND_DIR / "index.html"))
 
     # In development (site not split) the platform keeps the root too.

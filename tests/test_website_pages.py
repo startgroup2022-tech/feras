@@ -349,6 +349,31 @@ def test_platform_header_keeps_every_control_reachable_on_phones(client):
         assert control in html
 
 
+def test_missing_platform_asset_is_404_not_the_html_shell(client):
+    """A stray asset path must 404; only extensionless paths are SPA routes.
+
+    Regression: the ``/platform/{rest:path}`` catch-all returned the HTML shell
+    for *any* unknown path, so ``/platform/typo.js`` answered ``200
+    text/html``. A browser then tried to execute the document as a script
+    (MIME/parse error), and the miss was invisible to monitoring because it
+    looked like a successful request.
+    """
+    for path in ("/platform/typo.js", "/platform/typo.css",
+                 "/platform/missing.png"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert "text/html" not in response.headers.get("content-type", "")
+
+    # A hash route has no extension and must still hand back the shell so a
+    # deep link keeps working.
+    shell = client.get("/platform/leads")
+    assert shell.status_code == 200
+    assert "text/html" in shell.headers.get("content-type", "")
+
+    # And a real asset is still served.
+    assert client.get("/platform/app.js").status_code == 200
+
+
 # --------------------------------------------------------------------------
 # content integrity
 # --------------------------------------------------------------------------
