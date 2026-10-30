@@ -32,6 +32,24 @@ def test_development_may_use_the_insecure_default():
     assert settings.is_production is False
 
 
+def test_production_rejects_a_short_secret():
+    """A 5-character secret is not a secret; length is the enforceable floor."""
+    with pytest.raises(ValidationError, match="at least 32"):
+        Settings(APP_ENV="production", SECRET_KEY="abc12")
+
+
+def test_production_rejects_a_reused_fixture_secret():
+    with pytest.raises(ValidationError, match="SECRET_KEY must be set"):
+        Settings(APP_ENV="production",
+                 SECRET_KEY="test-secret-key-not-used-in-production")
+
+
+def test_production_rejects_common_placeholder_words():
+    for weak in ("changeme", "secret", "password"):
+        with pytest.raises(ValidationError):
+            Settings(APP_ENV="production", SECRET_KEY=weak)
+
+
 # --------------------------------------------------------------------------
 # debug + docs defaults
 # --------------------------------------------------------------------------

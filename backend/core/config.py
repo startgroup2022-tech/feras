@@ -8,6 +8,7 @@ no usable default in production and are validated at startup.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -108,13 +109,29 @@ class Settings(BaseSettings):
     WEBHOOK_TIMEOUT_SECONDS: float = 10.0
     WEBHOOK_MAX_ATTEMPTS: int = 3
 
+    # A production secret must be long enough that it is not guessable and must
+    # not be any of the values that ship in the repo (the dev default, the test
+    # fixture, or a short placeholder). Length alone is the checkable property;
+    # a real deployment generates this with ``secrets.token_urlsafe(64)``.
+    MIN_PRODUCTION_SECRET_LEN: ClassVar[int] = 32
+    _REJECTED_SECRETS: ClassVar[frozenset[str]] = frozenset({
+        "dev-only-insecure-change-me",
+        "test-secret-key-not-used-in-production",
+        "changeme", "change-me", "secret", "password", "safir",
+    })
+
     @field_validator("SECRET_KEY")
     @classmethod
     def _guard_secret(cls, v: str, info) -> str:
         env = info.data.get("APP_ENV", "development")
-        if env == "production" and v == "dev-only-insecure-change-me":
+        if env != "production":
+            return v
+        if v in cls._REJECTED_SECRETS or len(v) < cls.MIN_PRODUCTION_SECRET_LEN:
             raise ValueError(
-                "SECRET_KEY must be set to a strong unique value in production."
+                "SECRET_KEY must be set to a strong unique value in production "
+                f"(at least {cls.MIN_PRODUCTION_SECRET_LEN} characters, and not "
+                "a placeholder). Generate one with "
+                "`python -c \"import secrets; print(secrets.token_urlsafe(64))\"`."
             )
         return v
 
