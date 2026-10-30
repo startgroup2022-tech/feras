@@ -163,6 +163,9 @@ until the in-process rate limiter is replaced with a shared store.
 ## 10. Reverse proxy and HTTPS
 
 ```bash
+sudo mkdir -p /etc/nginx/snippets
+sudo cp deploy/nginx/safir-security-headers.conf \
+    /etc/nginx/snippets/safir-security-headers.conf
 sudo cp deploy/nginx/safir-staging.conf /etc/nginx/sites-available/safir-staging
 sudo ln -s /etc/nginx/sites-available/safir-staging /etc/nginx/sites-enabled/safir-staging
 # edit server_name and certificate paths, then obtain a certificate:
@@ -170,9 +173,17 @@ sudo certbot --nginx -d staging.example.com
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The proxy adds HSTS and CSP, forwards client IP (`X-Forwarded-For`), and
-**denies `/api/docs` and `/api/openapi.json` by default**. To allow authorized
-users, enable the basic-auth or IP-allow block in the config.
+The shared headers live in `safir-security-headers.conf` and are included at
+server level **and** inside any location that sets its own `add_header`. nginx
+replaces rather than merges `add_header` across levels, so a location that
+declares one would otherwise drop the security headers for its responses.
+
+The proxy adds HSTS and CSP, compresses `app.js`/`styles.css`/JSON with `gzip`,
+short-caches the platform assets (they have no content hash, so they must not be
+`immutable`), long-caches `/website/assets/`, forwards client IP
+(`X-Forwarded-For`), and **denies `/api/docs` and `/api/openapi.json` by
+default**. To allow authorized users, enable the basic-auth or IP-allow block in
+the config.
 
 ---
 

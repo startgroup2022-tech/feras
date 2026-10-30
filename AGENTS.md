@@ -651,3 +651,46 @@ screenshots; both are generated and git-ignored. Report:
   some task views have no seeded rows; verify by rendering the same panel as a
   role that holds the read permission (the owner) before treating emptiness as
   a defect.
+
+## Phase 4 — verification and acceptance
+
+Phase 4 changes no feature behaviour; it verifies Phase 3 and fixes what the
+verification surfaced. Report: `docs/audit/PHASE4_VERIFICATION_AUDIT.md`.
+
+```bash
+# all three need a running instance
+APP_ENV=development DATABASE_URL="sqlite:///./acc.db" \
+  python -m uvicorn backend.main:app --host 127.0.0.1 --port 12099
+
+python -m scripts.acceptance.security_sweep   --base http://127.0.0.1:12099
+python -m scripts.acceptance.perf_reliability --base http://127.0.0.1:12099
+python -m scripts.acceptance.ui_responsive    --base http://127.0.0.1:12099
+```
+
+Each writes JSON to `artifacts/phase4/` (git-ignored).
+
+- **`security_sweep.py`** — sweeps every parameterless `GET` with no token, then
+  probes cross-company isolation and the privilege boundary of each of the seven
+  roles. `/api/v1/public/*` is public **by design** and is allow-listed; any
+  *other* endpoint answering `200` without a token is a failure.
+- **`perf_reliability.py`** — latency budget and `5xx` check over every
+  parameterless `GET`, plus frontend shell timing. Each endpoint is run twice;
+  the second run is reported so a cold-cache cost is not read as a slow endpoint.
+- **`ui_responsive.py`** — all 21 views × `ar`/`en` × 4 viewports. Per cell it
+  asserts the view rendered, `dir` matches the language, the document does not
+  overflow horizontally, navigation is present and no console error fired.
+- **`scripts/backup.py`** is a three-step CLI: `create --dest`, `verify
+  --source`, `drill --source --scratch`. `drill` always restores into a fresh
+  scratch directory and never over a live database.
+- **`/platform/{rest:path}` serves the shell only for extensionless paths.** A
+  path with a file extension is an asset request and must `404` when absent —
+  answering with the shell handed a `<script>` a `200 text/html` body and hid
+  the miss from monitoring. Keep the distinction when editing `_mount_platform`.
+- **Production `SECRET_KEY` must be ≥ 32 characters** and not a placeholder that
+  ships in the repo (`backend/core/config.py`). Development and test are
+  unaffected. Generate one with `secrets.token_urlsafe(64)`.
+- **`deploy/nginx/safir-security-headers.conf` is included, not duplicated.**
+  nginx *replaces* rather than merges `add_header` across levels, so any
+  `location` that sets its own `add_header` must re-`include` that snippet or it
+  silently drops HSTS/CSP/nosniff/frame/referrer for its responses.
+  `tests/test_staging_security.py` asserts this invariant.

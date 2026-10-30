@@ -7,6 +7,9 @@ parsing, and the in-process login rate limiter.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -200,3 +203,54 @@ def test_disallowed_type_is_rejected():
         storage.validate_upload(
             filename="x.exe", content_type="application/x-msdownload", size=10
         )
+
+
+# --------------------------------------------------------------------------
+# reverse-proxy profile
+# --------------------------------------------------------------------------
+NGINX_DIR = Path(__file__).resolve().parents[1] / "deploy" / "nginx"
+SITE = NGINX_DIR / "safir-staging.conf"
+HEADERS = NGINX_DIR / "safir-security-headers.conf"
+
+SECURITY_HEADERS = (
+    "Strict-Transport-Security",
+    "Content-Security-Policy",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+    "Referrer-Policy",
+)
+
+
+def test_security_header_snippet_defines_every_header():
+    text = HEADERS.read_text()
+    for header in SECURITY_HEADERS:
+        assert header in text, header
+
+
+def test_every_add_header_location_reincludes_the_security_headers():
+    """nginx replaces, never merges, ``add_header`` across levels.
+
+    A ``location`` that declares its own ``add_header`` (e.g. a Cache-Control
+    for static assets) therefore *drops* the server-level security headers for
+    its responses unless it re-includes them. This guards against that silent
+    regression, which is invisible in a browser and only shows up in a header
+    scan of those specific URLs.
+    """
+    site = SITE.read_text()
+    blocks = re.findall(r"location[^{]*\{[^}]*\}", site)
+    assert blocks, "no location blocks found"
+    for block in blocks:
+        if "add_header" in block:
+            assert "safir-security-headers.conf" in block, (
+                "a location with add_header must re-include the security "
+                f"headers: {block.splitlines()[0].strip()}"
+            )
+
+
+def test_nginx_profile_compresses_and_caches_the_platform_assets():
+    site = SITE.read_text()
+    assert "gzip on;" in site
+    # app.js has no content hash, so a long immutable cache would pin a stale
+    # shell across deploys.
+    assert "immutable" not in site.split("location ~ ^/platform/")[1]
+    assert "expires 5m;" in site
