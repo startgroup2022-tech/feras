@@ -617,3 +617,37 @@ business rules and security controls are unchanged.
   will be escaped.
 - **Calendar parts are not quantities** — `periodPart` (not `plainNum`) renders
   a year/month/week, otherwise `NUM.format` turns 2027 into "2,027".
+
+## Phase 3 — full functional audit (21 views × 7 roles)
+
+`scripts/audit/view_audit.py` drives the real SPA in headless Chromium, signs in
+as each specification role, walks every navigation entry and opens every tab
+(including the two-level accounting section → sub-tab nesting), recording HTTP
+status, console errors and rendered text per panel. Options: `--roles`,
+`--lang ar|en`, `--viewport WxH`. Output is `artifacts/view_audit.json` plus
+screenshots; both are generated and git-ignored. Report:
+`docs/audit/PHASE3_FUNCTIONAL_AUDIT.md`.
+
+- **Optional panel fetches go through `softGet`** (`frontend/app.js`). It stays
+  quiet only for the expected `401`/`403`/`404` — where the caller simply has no
+  access to that slice — and toasts anything else. Do **not** write
+  `get(...).catch(function () { return []; })`: that turns a 500 or a dropped
+  connection into "no data", indistinguishable from a legitimate empty state.
+- **A tab's fetch must be gated on the permission its endpoint enforces**, not
+  on the permission that made the tab reachable. Two bugs came from this gap:
+  `marketing` opens accounting › subsidiary finance via `dashboard.holding` but
+  the archive needs `financial_report.read`; `business_development` opens
+  accounting › tasks via `support_request.read_all` but the registry needs
+  `task.read_*`. `tests/test_frontend_domain_views.py` checks this data-driven
+  over `ROLE_PERMISSIONS`.
+- **The seven specification roles are** `holding_owner`, `business_development`,
+  `company_manager`, `accountant`, `marketing`, `designer`,
+  `external_consultant` (see `docs/audit/SAFIR_ROLE_PERMISSION_MATRIX.md` §1).
+  The other `RoleCode` values are Phase-2 administration roles. The seed
+  creates a demo user for each specification role;
+  `external_consultant` is deliberately **not** holding-wide and sees only
+  granted data (D04), so its eight nav entries are grant-scoped.
+- **Demo empty panels are not bugs.** `assets`, `employees`, `complaints` and
+  some task views have no seeded rows; verify by rendering the same panel as a
+  role that holds the read permission (the owner) before treating emptiness as
+  a defect.
