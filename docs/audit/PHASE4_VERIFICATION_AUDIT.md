@@ -6,7 +6,9 @@ Phase 4 changes no feature behaviour; it **verifies** the platform and fixes the
 handful of defects the verification surfaced.
 
 Branch `feature/phase3-functional`. Worktree `/workspace/project/wt-impl`.
-Baseline for comparison: Phase 3 closed at **994 passing tests**.
+Baseline for comparison: Phase 3 closed at **994 passing tests**;
+Phase 4 closes at **1002** (three reverse-proxy guards plus the earlier
+regression tests).
 
 ## Method
 
@@ -21,6 +23,41 @@ Baseline for comparison: Phase 3 closed at **994 passing tests**.
 
 Everything ran against `http://127.0.0.1:12099` with the demo seed loaded, and
 against isolated scratch databases for the destructive checks.
+
+## Mandate status — the two binding references
+
+Two mandates govern this work. One is fully verifiable here; the other is not.
+
+| Mandate | Source | Status |
+|---|---|---|
+| Business rules and security controls | `Platform_Executive_Specifications_v1.docx` | **Verified.** All 28 screens (S01–S28) and all 28 acceptance criteria (AC-01…AC-28) are ✅ in `docs/audit/SAFIR_SPEC_PARITY_MATRIX.md`, each with a proving test. |
+| Interface, navigation, layout, role UX | `Platform Interface Design v3.pptx` | **Unverifiable — the deck is not present.** No `.pptx` exists anywhere on this machine, in the repository, or in any of the 11 remote refs. No slide has been seen. |
+
+The Word mandate is met: the specification matrix has no 🟡/❌/🔒 rows, and the
+security controls it names (isolation, role boundaries, immutability,
+auditability) are re-proved independently in P4-C below rather than taken on
+trust from the matrix.
+
+The PPTX mandate **cannot be discharged in this environment**, and no visual
+parity is claimed. What has been done instead is to make the comparison
+mechanical the moment the deck arrives:
+
+* `scripts/extract_pptx.py` reads the OOXML directly (a `.pptx` is a zip of XML
+  parts) with no third-party dependency, emitting per-slide text in z-order,
+  tables cell-by-cell, embedded images and speaker notes. **Exercised** against
+  a synthetic deck built for the purpose: it recovered the Arabic RTL runs, the
+  two-row table, the embedded image and the note correctly.
+* `scripts/compare_screens.py` builds side-by-side reference/implementation
+  images from a slide→screen mapping. **Exercised** end-to-end (deck → PNG →
+  comparison image) and it wrote `compare-S01.png` as documented.
+* `docs/POWERPOINT-SCREEN-MATRIX.md` on branch `docs/powerpoint-parity-v3`
+  holds the owner decisions and an intentionally **empty** slide→screen table,
+  to be filled only from slides actually seen.
+
+The deck must be supplied as a file in the repository (or its contents pasted)
+before any parity claim can be made or refuted. Until then the six-section
+navigation implements the module list the brief names; it does **not** assert a
+visual match to unseen slides.
 
 ## P4-A — API surface and workflow map
 
@@ -209,7 +246,7 @@ location forgets the include.
 
 | Suite | Result |
 |---|---|
-| Full pytest suite | **999 passed, 0 failed, 0 errors, 0 skipped** (862 s) |
+| Full pytest suite | **1002 passed, 0 failed, 0 errors, 0 skipped** (861 s) |
 | Security sweep | 23/23 |
 | UI/responsive matrix | 168/168 |
 | Performance sweep | 97 endpoints, p95 20.6 ms, 0 5xx |
