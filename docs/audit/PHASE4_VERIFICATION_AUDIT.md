@@ -48,8 +48,13 @@ mechanical the moment the deck arrives:
   a synthetic deck built for the purpose: it recovered the Arabic RTL runs, the
   two-row table, the embedded image and the note correctly.
 * `scripts/compare_screens.py` builds side-by-side reference/implementation
-  images from a slide→screen mapping. **Exercised** end-to-end (deck → PNG →
-  comparison image) and it wrote `compare-S01.png` as documented.
+  images from a slide→screen mapping. **Exercised** end-to-end with a synthetic
+  slide/implementation pair; it wrote `compare-S01.png` as documented.
+* `scripts/render_pptx.sh` (deck → one PNG per slide via LibreOffice + poppler)
+  is present on that branch with dependency and input guards. It was **not**
+  exercised here: LibreOffice and poppler are not installed in this
+  environment, and the script fails cleanly with a clear message when they are
+  absent (`apt-get install -y libreoffice-impress poppler-utils`).
 * `docs/POWERPOINT-SCREEN-MATRIX.md` on branch `docs/powerpoint-parity-v3`
   holds the owner decisions and an intentionally **empty** slide→screen table,
   to be filled only from slides actually seen.
