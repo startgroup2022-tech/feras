@@ -181,3 +181,35 @@ def test_reset_purges_only_demo_leads(db):
     rebuilt = [lead for lead in remaining if lead.id != visitor_id]
     assert len(rebuilt) == 5
     assert all(lead.email.endswith(seed_demo.DEMO_LEAD_DOMAIN) for lead in rebuilt)
+
+
+def test_seed_creates_a_demo_user_for_every_spec_role(db):
+    """The 21-view audit needs a sign-in for each role the spec defines.
+
+    Regression: ``external_consultant`` existed in the RBAC catalogue but had
+    no demo user, so its advisor-scoped views could not be exercised.
+
+    The seven spec operational roles are listed in
+    ``docs/audit/SAFIR_ROLE_PERMISSION_MATRIX.md`` §1; the remaining
+    ``RoleCode`` values are Phase-2 administration roles.
+    """
+    seed_demo.seed(reset=False)
+    db.expire_all()
+
+    demo_roles = {
+        user.role_code
+        for user in db.query(User)
+        .filter(User.email.like(f"%@{seed_demo.DEMO_EMAIL_DOMAIN}"))
+        .all()
+    }
+    spec_roles = {
+        "holding_owner",
+        "business_development",
+        "company_manager",
+        "accountant",
+        "marketing",
+        "designer",
+        "external_consultant",
+    }
+    missing = spec_roles - demo_roles
+    assert not missing, f"no demo user for role(s): {sorted(missing)}"

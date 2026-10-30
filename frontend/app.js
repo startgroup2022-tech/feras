@@ -97,6 +97,19 @@
     return api.get(path);
   }
 
+  // An optional panel fetch. A 401/403/404 means the caller simply has no
+  // access to this slice, so the section renders empty. Anything else (5xx,
+  // network) is a real fault and must not masquerade as "no data".
+  function softGet(path) {
+    return api.get(path).catch(function (err) {
+      var s = err && err.status;
+      if (s !== 401 && s !== 403 && s !== 404) {
+        toast(errText(err), "err");
+      }
+      return [];
+    });
+  }
+
   function post(path, payload) {
     return api.post(path, payload);
   }
@@ -2633,7 +2646,7 @@
       return Promise.all([
         get("/api/v1/financial/report?" + finPeriodQuery()),
         has("financial_item.manage")
-          ? get("/api/v1/financial/item-definitions").catch(function () { return []; })
+          ? softGet("/api/v1/financial/item-definitions")
           : Promise.resolve([]),
       ]);
     }).then(function (res) {
@@ -4090,7 +4103,7 @@
     host.innerHTML = loadingHtml();
     bindDocumentsControls();
     return Promise.all([
-      get("/api/v1/documents/categories").catch(function () { return []; }),
+      softGet("/api/v1/documents/categories"),
       get("/api/v1/documents/expiry-summary").catch(function () { return null; }),
     ]).then(function (meta) {
       fillDocCategoryFilter(meta[0]);
@@ -5288,18 +5301,18 @@
 
   function openLead(id) {
     var campaignPromise = has("campaign.read")
-      ? get("/api/v1/operations/campaigns").catch(function () { return []; })
+      ? softGet("/api/v1/operations/campaigns")
       : Promise.resolve([]);
     // D04: the append-only assignment history (read requires website_lead.read).
     var assignmentsPromise = has("website_lead.read")
-      ? get("/api/v1/leads/" + id + "/assignments").catch(function () { return []; })
+      ? softGet("/api/v1/leads/" + id + "/assignments")
       : Promise.resolve([]);
     // The assignee picker needs the real user directory (holding_owner/admin).
     var usersPromise = has("website_lead.assign") && has("user.read")
-      ? get("/api/v1/users").then(function (rows) {
+      ? softGet("/api/v1/users").then(function (rows) {
           STATE.users = rows || [];
           return STATE.users;
-        }).catch(function () { return []; })
+        })
       : Promise.resolve([]);
     return Promise.all([
       campaignPromise,
@@ -5645,16 +5658,15 @@
   function refreshNotifications() {
     if (!has("notification.read_own")) return Promise.resolve();
     return Promise.all([
-      get("/api/v1/notifications?limit=50"),
-      get("/api/v1/notifications/summary"),
+      softGet("/api/v1/notifications?limit=50"),
+      softGet("/api/v1/notifications/summary"),
     ])
       .then(function (res) {
         STATE.notifications = (res[0] && res[0].items) || [];
         STATE.notificationsUnread = (res[1] && res[1].unread) || 0;
         paintNotifBadge();
         return STATE.notifications;
-      })
-      .catch(function () { return []; });
+      });
   }
 
   function paintNotifBadge() {
@@ -5908,7 +5920,7 @@
       wide: true,
       body: loadingHtml(),
       onMount: function (root, body) {
-        get("/api/v1/employees/" + e.id + "/movements").catch(function () { return []; }).then(function (movements) {
+        softGet("/api/v1/employees/" + e.id + "/movements").then(function (movements) {
           body.innerHTML = employeeDetail(e, movements || []);
           bindEmployeeDetail(body, e);
         });
@@ -6012,7 +6024,7 @@
       : "";
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/employees/assessments/list?assessment_type=" + STATE.assessType).catch(function () { return []; }),
+      softGet("/api/v1/employees/assessments/list?assessment_type=" + STATE.assessType),
     ]).then(function (res) {
       var rows = res[1] || [];
       var typeOptions = [{ value: "employee", label: opt("موظف", "Employee") }];
@@ -6211,12 +6223,12 @@
     var host = byId("empContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/advisory-sessions").catch(function () { return []; }),
+      softGet("/api/v1/operations/advisory-sessions"),
       has("advisor.read")
-        ? get("/api/v1/operations/advisors").catch(function () { return []; })
+        ? softGet("/api/v1/operations/advisors")
         : Promise.resolve([]),
       (has("advisor.read") || has("advisor.session.read_own"))
-        ? get("/api/v1/operations/advisor-reports").catch(function () { return []; })
+        ? softGet("/api/v1/operations/advisor-reports")
         : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -6454,7 +6466,7 @@
     var host = byId("opsContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/tasks").catch(function () { return []; }),
+      softGet("/api/v1/operations/tasks"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("task.create");
@@ -6592,10 +6604,10 @@
     return Promise.all([
       ensureCompanies(),
       canRead
-        ? get("/api/v1/operations/weekly-reports").catch(function () { return []; })
+        ? softGet("/api/v1/operations/weekly-reports")
         : Promise.resolve([]),
       canRead
-        ? get("/api/v1/operations/weekly-reports/questions").catch(function () { return []; })
+        ? softGet("/api/v1/operations/weekly-reports/questions")
         : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -6692,7 +6704,7 @@
     var host = byId("opsContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/campaigns").catch(function () { return []; }),
+      softGet("/api/v1/operations/campaigns"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("campaign.manage");
@@ -6815,7 +6827,7 @@
   function renderManagementBriefs() {
     var host = byId("opsContent");
     host.innerHTML = loadingHtml();
-    return get("/api/v1/operations/management-briefs").catch(function () { return []; })
+    return softGet("/api/v1/operations/management-briefs")
       .then(function (rows) {
         rows = rows || [];
         var canAuthor = has("management_brief.submit");
@@ -6941,7 +6953,7 @@
     host.innerHTML = loadingHtml();
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/owner-decisions").catch(function () { return []; }),
+      softGet("/api/v1/operations/owner-decisions"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("owner_decision.manage");
@@ -7095,13 +7107,13 @@
     return Promise.all([
       ensureCompanies(),
       fbAllowed("weekly_report")
-        ? get("/api/v1/operations/weekly-reports").catch(function () { return []; })
+        ? softGet("/api/v1/operations/weekly-reports")
         : Promise.resolve([]),
       fbAllowed("management_brief")
-        ? get("/api/v1/operations/management-briefs").catch(function () { return []; })
+        ? softGet("/api/v1/operations/management-briefs")
         : Promise.resolve([]),
       canMonthly
-        ? get("/api/v1/monthly-reports").catch(function () { return []; })
+        ? softGet("/api/v1/monthly-reports")
         : Promise.resolve([]),
     ]).then(function (res) {
       var rows = [];
@@ -7241,7 +7253,7 @@
     host.innerHTML = loadingHtml();
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/projects").catch(function () { return []; }),
+      softGet("/api/v1/operations/projects"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("project.manage");
@@ -7474,7 +7486,13 @@
       finalised: ["معتمد", "Finalised", "ok"],
       archived: ["مؤرشف", "Archived", "rev"],
     };
-    return get("/api/v1/accounting/financial-reports").catch(function () { return []; }).then(function (reports) {
+    // A user may reach this section through `dashboard.holding` alone, which
+    // the group-summary panel needs but the report archive does not.
+    var canReadReports = has("financial_report.read");
+    return (canReadReports
+      ? softGet("/api/v1/accounting/financial-reports")
+      : Promise.resolve([])
+    ).then(function (reports) {
       var list = reports.length
         ? '<div class="av-list">' + reports.map(function (r) {
             return '<div class="av-row" style="cursor:default"><div class="grow">' +
@@ -7498,9 +7516,14 @@
   // AC-28 "المهام والطلبات": the accountant's tasks and service requests.
   function renderTasksRegistry() {
     var host = byId("acctContent");
+    // The tab is reachable through `support_request.read_*` as well as
+    // `task.read_*`, so only ask for tasks when the caller may read them.
+    var canReadTasks = has("task.read_own") || has("task.read_all");
     return Promise.all([
-      get("/api/v1/operations/tasks").catch(function () { return []; }),
-      get("/api/v1/support-requests").catch(function () { return []; }),
+      canReadTasks
+        ? softGet("/api/v1/operations/tasks")
+        : Promise.resolve([]),
+      softGet("/api/v1/support-requests"),
     ]).then(function (res) {
       var tasks = res[0] || [];
       var tlist = tasks.length
@@ -7515,7 +7538,9 @@
           }).join("") + "</div>"
         : noticeHtml("لا توجد طلبات.", "No requests.");
       host.innerHTML =
-        panel("الطلبات الجديدة", "New tasks & requests", tlist) +
+        (canReadTasks
+          ? panel("الطلبات الجديدة", "New tasks & requests", tlist)
+          : "") +
         panel("سجل الطلبات", "Requests registry", rlist);
       return null;
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
@@ -7523,7 +7548,7 @@
 
   function renderOpeningBalances() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/opening-balances").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/opening-balances")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("opening_balance.manage");
       var create = canManage
@@ -7566,7 +7591,7 @@
 
   function renderAccounts() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/accounts").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/accounts")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("account.manage");
       var create = canManage
@@ -7598,7 +7623,7 @@
 
   function renderJournals() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/journals").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/journals")]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("journal.create");
       var create = canCreate
@@ -7881,7 +7906,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/invoices").catch(function () { return []; }),
+      softGet("/api/v1/accounting/invoices"),
       get("/api/v1/accounting/receivables").catch(function () { return null; }),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -7950,7 +7975,7 @@
 
   function renderParties() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/parties").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/parties")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("party.manage");
       var create = canManage
@@ -7978,7 +8003,7 @@
 
   function renderInterbalances() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/interbalances").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/interbalances")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("interbalance.manage");
       var create = canManage
@@ -8006,7 +8031,7 @@
 
   function renderAssets() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/assets").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/assets")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("asset.manage");
       var create = canManage
@@ -8033,7 +8058,7 @@
 
   function renderBudgets() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/budgets").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/budgets")]).then(function (res) {
       var rows = res[1] || [];
       STATE.budgetRows = rows;
       var canManage = has("budget.manage");
@@ -8111,8 +8136,8 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/kpis").catch(function () { return []; }),
-      get("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()).catch(function () { return []; }),
+      softGet("/api/v1/accounting/kpis"),
+      softGet("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()),
     ]).then(function (res) {
       var rows = res[1] || [];
       var evals = res[2] || [];
@@ -8249,7 +8274,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/policies").catch(function () { return []; }),
+      softGet("/api/v1/accounting/policies"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("accounting_policy.manage");
@@ -8304,7 +8329,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/financial-reports").catch(function () { return []; }),
+      softGet("/api/v1/accounting/financial-reports"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("financial_report.manage");
@@ -8687,7 +8712,7 @@
 
   function renderComplaints() {
     var host = byId("confContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/operations/complaints").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/operations/complaints")]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("complaint.create");
       var create = canCreate
@@ -8905,10 +8930,10 @@
     return Promise.all([ensureCompanies(), get("/api/v1/admin/holding").catch(function () { return null; })]).then(function (res) {
       var holding = res[1];
       var structureP = has("ownership.read")
-        ? get("/api/v1/admin/holding/structure").catch(function () { return []; })
+        ? softGet("/api/v1/admin/holding/structure")
         : Promise.resolve([]);
       var ownershipP = has("ownership.read")
-        ? get("/api/v1/admin/ownerships").catch(function () { return []; })
+        ? softGet("/api/v1/admin/ownerships")
         : Promise.resolve([]);
       return Promise.all([structureP, ownershipP]).then(function (r2) {
         host.innerHTML =
@@ -9135,7 +9160,7 @@
   // ---- tab: departments ----
   function renderAdminDepartments() {
     var host = byId("adminContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/admin/departments").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/admin/departments")]).then(function (res) {
       var companies = res[0];
       var departments = res[1];
       var createForm = has("department.manage")
@@ -9176,7 +9201,7 @@
   // of the admin UI.
   function renderAdminSectors() {
     var host = byId("adminContent");
-    return get("/api/v1/admin/sectors").catch(function () { return []; }).then(function (sectors) {
+    return softGet("/api/v1/admin/sectors").then(function (sectors) {
       var create = has("sector.manage")
         ? adminPanel("إضافة قطاع", "Add sector",
             '<form class="av-form av-form-inline" id="sectorForm">' +
@@ -9238,8 +9263,8 @@
     var host = byId("adminContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/admin/positions").catch(function () { return []; }),
-      get("/api/v1/admin/departments").catch(function () { return []; }),
+      softGet("/api/v1/admin/positions"),
+      softGet("/api/v1/admin/departments"),
     ]).then(function (res) {
       var companies = res[0];
       var positions = res[1];
@@ -9329,9 +9354,9 @@
     var page = STATE.adminUsers || (STATE.adminUsers = { limit: 25, offset: 0, total: 0 });
     return Promise.all([
       get("/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset),
-      get("/api/v1/admin/roles").catch(function () { return []; }),
+      softGet("/api/v1/admin/roles"),
       ensureCompanies(),
-      get("/api/v1/admin/departments").catch(function () { return []; }),
+      softGet("/api/v1/admin/departments"),
     ]).then(function (res) {
       var data = res[0];
       var roles = res[1];
@@ -9807,8 +9832,7 @@
   // row). Reads need motivation.read, writes need motivation.manage.
   function renderAdminMotivation() {
     var host = byId("adminContent");
-    return get("/api/v1/admin/motivation-texts?include_inactive=true")
-      .catch(function () { return []; })
+    return softGet("/api/v1/admin/motivation-texts?include_inactive=true")
       .then(function (items) {
         var editable = has("motivation.manage");
         var createForm = editable
@@ -9889,10 +9913,10 @@
     return Promise.all([
       get("/api/v1/website/overview").catch(function () { return null; }),
       get("/api/v1/website/settings").catch(function () { return null; }),
-      get("/api/v1/website/pages").catch(function () { return []; }),
-      get("/api/v1/website/slides").catch(function () { return []; }),
-      get("/api/v1/website/companies").catch(function () { return []; }),
-      get("/api/v1/website/media").catch(function () { return []; }),
+      softGet("/api/v1/website/pages"),
+      softGet("/api/v1/website/slides"),
+      softGet("/api/v1/website/companies"),
+      softGet("/api/v1/website/media"),
     ]).then(function (res) {
       st.data = {
         overview: res[0],
@@ -10519,7 +10543,7 @@
   function renderAdminWorkflows() {
     var host = byId("adminContent");
     return Promise.all([
-      get("/api/v1/workflows").catch(function () { return []; }),
+      softGet("/api/v1/workflows"),
       ensureForms(),
     ]).then(function (res) {
       var workflows = res[0];
@@ -10559,7 +10583,7 @@
     Promise.all([
       get("/api/v1/workflows/" + workflowId),
       get("/api/v1/workflows/" + workflowId + "/current").catch(function () { return null; }),
-      get("/api/v1/admin/roles").catch(function () { return []; }),
+      softGet("/api/v1/admin/roles"),
     ]).then(function (res) {
       var workflow = res[0];
       var version = res[1];

@@ -637,3 +637,88 @@ def test_header_no_longer_carries_the_full_top_nav():
     assert 'class="nav"' not in header.group(0)
     assert 'id="crumb"' in header.group(0)
 
+
+
+# --- Phase 3 functional audit regressions ---------------------------------
+#
+# An all-role crawl of the 21 views found two panels that fetched an endpoint
+# the caller's role could not read, so a legitimate 403 rendered as an empty
+# section. Both are now gated on the permission the endpoint enforces.
+
+
+def _fn_body(name: str) -> str:
+    """Return the source of a top-level ``function name(...)`` in app.js."""
+    start = APP_JS.index("function " + name + "(")
+    nxt = APP_JS.find("\n  function ", start + 1)
+    return APP_JS[start : nxt if nxt != -1 else len(APP_JS)]
+
+
+def test_company_finance_panel_gates_the_report_archive_on_its_permission():
+    # marketing holds `dashboard.holding` (group summary) but not
+    # `financial_report.read` (report archive); the archive call must be gated.
+    body = _fn_body("renderCompanyFinanceComparison")
+    assert 'has("financial_report.read")' in body
+    assert "softGet(\"/api/v1/accounting/financial-reports\")" in body
+    # The unguarded fetch must be gone: every occurrence sits inside the gate.
+    assert body.count("/api/v1/accounting/financial-reports") == 1
+
+
+def test_tasks_registry_gates_the_task_fetch_on_task_read():
+    # business_development reaches this tab through `support_request.read_all`
+    # but has no `task.read_*`, so the task call must be gated.
+    body = _fn_body("renderTasksRegistry")
+    assert 'has("task.read_own") || has("task.read_all")' in body
+    assert 'softGet("/api/v1/operations/tasks")' in body
+
+
+def test_optional_panel_fetches_do_not_swallow_server_errors():
+    # 52 call sites used to be `get(...).catch(function () { return []; })`,
+    # which turned a 500 or a network drop into "no data". softGet must
+    # re-surface anything that is not an expected 401/403/404.
+    assert "function softGet(" in APP_JS
+    body = _fn_body("softGet")
+    assert "toast(errText(err), \"err\")" in body
+    for expected in ("401", "403", "404"):
+        assert expected in body
+    assert APP_JS.count(".catch(function () { return []; })") == 0
+
+
+def test_every_role_that_can_open_a_view_can_read_its_primary_endpoint():
+    # Guard against the class of bug fixed above: if a view's navigation gate
+    # admits a role that cannot read the endpoint the panel fetches, the fetch
+    # must be gated behind the permission the endpoint enforces.
+    from backend.rbac.permissions import ROLE_PERMISSIONS
+
+    # section -> (nav gate, renderer, endpoint, endpoint permission)
+    sections = {
+        "subsidiary_finance": (
+            ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+            "renderCompanyFinanceComparison",
+            "/api/v1/accounting/financial-reports",
+            "financial_report.read",
+        ),
+        "tasks_requests": (
+            [
+                "task.read_own",
+                "task.read_all",
+                "support_request.read_own",
+                "support_request.read_all",
+            ],
+            "renderTasksRegistry",
+            "/api/v1/operations/tasks",
+            "task.read_own",
+        ),
+    }
+    for role, perms in ROLE_PERMISSIONS.items():
+        for section, (gate, renderer, endpoint, perm) in sections.items():
+            if not any(p in perms for p in gate):
+                continue  # role cannot open the section at all
+            if perm in perms:
+                continue  # role may read the endpoint directly
+            # Otherwise the renderer must not fetch it unconditionally.
+            body = _fn_body(renderer)
+            guard = 'has("%s")' % perm
+            assert guard in body, (
+                f"{role} can open {section} but lacks {perm}; {renderer} "
+                f"fetches {endpoint} unguarded and would 403"
+            )

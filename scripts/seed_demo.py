@@ -311,7 +311,13 @@ def seed(reset: bool) -> None:
             f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer",
             all_company_codes,
         )
-        print("  8 demo users (one per role, plus two company managers)")
+        # The seventh spec role (SAFIR_ROLE_PERMISSION_MATRIX.md §1). Without a
+        # demo user the advisor-scoped views cannot be exercised end to end.
+        ensure_user(
+            f"consultant@{DEMO_EMAIL_DOMAIN}", "مستشار خارجي", "External Consultant",
+            "external_consultant", ("SAF-TECH",),
+        )
+        print("  9 demo users (one per role, plus two company managers)")
 
         # ---- monthly reports for October 2027 ----
         created_reports = 0
