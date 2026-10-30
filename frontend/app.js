@@ -655,14 +655,33 @@
     });
   }
 
-  // S01 "الأولويات": record links the caller may act on, restricted per access
-  // by the backend, so every entry is openable.
+  // S01 "ماذا يحتاج اهتمامك اليوم؟": record links the caller may act on,
+  // restricted per access by the backend, so every entry is openable. Each
+  // row carries a direct action so the owner can act without navigating away
+  // and hunting for the record.
+  var PRIORITY_ACTION = {
+    company: { view: "subsidiaries", ar: "مراجعة الشركة", en: "Review company" },
+    support_request: { view: "support", ar: "فتح الطلب", en: "Open request" },
+    owner_decision: { view: "decisions", ar: "اتخاذ قرار", en: "Take decision" },
+    monthly_report: { view: "reports", ar: "مراجعة التقرير", en: "Review report" },
+    task: { view: "operations", ar: "متابعة المهمة", en: "Follow up" },
+  };
+
+  function priorityAction(kind) {
+    return PRIORITY_ACTION[kind] || { view: "dashboard", ar: "عرض", en: "View" };
+  }
+
   function hydratePriorities(data) {
     var host = byId("prioritiesList");
     if (!host) return;
     var rows = data.priorities || [];
+    var count = byId("attnCount");
+    if (count) count.textContent = plainNum(rows.length);
     if (!rows.length) {
-      host.innerHTML = emptyHtml("لا توجد أولويات حالية.", "No current priorities.");
+      host.innerHTML = emptyHtml(
+        "لا توجد بنود تتطلب اهتمامك الآن.",
+        "Nothing needs your attention right now."
+      );
       return;
     }
     host.innerHTML = rows.map(function (p) {
@@ -670,15 +689,25 @@
         ? (p.label_ar || p.label_en || "")
         : (p.label_en || p.label_ar || "");
       var sub = p.overdue
-        ? dual("متأخر", "Overdue")
+        ? dual("متأخر عن الاستحقاق", "Overdue")
         : (p.reason ? escapeHtml(p.reason) : "");
+      var urgent = p.overdue || p.kind === "support_request";
       var icon = p.kind === "company" ? "🏢"
-        : p.kind === "support_request" ? "💬" : "📌";
-      return '<div class="av-row" data-priority-kind="' + escapeHtml(p.kind) +
+        : p.kind === "support_request" ? "💬"
+        : p.kind === "owner_decision" ? "✔" : "📌";
+      var act = priorityAction(p.kind);
+      var badge = p.overdue
+        ? '<span class="attn-badge urgent">' + dual("متأخر", "Overdue") + "</span>"
+        : "";
+      return '<div class="attn-card' + (urgent ? " urgent" : "") +
+        '" data-priority-kind="' + escapeHtml(p.kind) +
         '" data-priority-id="' + p.record_id + '">' +
-        '<div class="grow"><div class="t">' + icon + " " + escapeHtml(label) +
-        '</div>' + (sub ? '<div class="s">' + sub + "</div>" : "") +
-        "</div></div>";
+        '<div class="a-ico">' + icon + "</div>" +
+        '<div class="attn-main"><div class="attn-title">' + escapeHtml(label) +
+        '</div>' + (sub ? '<div class="attn-sub">' + sub + "</div>" : "") + "</div>" +
+        badge +
+        '<button type="button" class="attn-act gold">' + dual(act.ar, act.en) +
+        "</button></div>";
     }).join("");
     host.querySelectorAll("[data-priority-kind]").forEach(function (el) {
       el.addEventListener("click", function () {
@@ -686,10 +715,8 @@
         var id = parseInt(el.getAttribute("data-priority-id"), 10);
         if (kind === "company") {
           openCompany(id);
-        } else if (kind === "owner_decision") {
-          navTo("decisions");
-        } else if (kind === "support_request") {
-          navTo("support");
+        } else {
+          navTo(priorityAction(kind).view);
         }
       });
     });
@@ -1383,6 +1410,7 @@
   // current view) instead of leaving the server-rendered Arabic title forever.
   var VIEW_TITLES = {
     dashboard: { ar: "لوحة القيادة التنفيذية", en: "Executive Dashboard" },
+    feedback: { ar: "التغذية الراجعة", en: "Feedback" },
     subsidiaries: { ar: "الشركات التابعة", en: "Subsidiaries" },
     reports: { ar: "التقارير الشهرية", en: "Monthly Reports" },
     financial: { ar: "المراجعة المالية", en: "Financial Review" },
@@ -1412,6 +1440,12 @@
     var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
     var t = VIEW_TITLES[view];
     document.title = brand + (t ? (STATE.lang === "ar" ? t.ar : t.en) : "");
+    var crumb = byId("crumb");
+    if (crumb) {
+      var label = t ? (STATE.lang === "ar" ? t.ar : t.en) : "";
+      var brandLabel = STATE.lang === "ar" ? "منصة القيادة التنفيذية" : "Executive Platform";
+      crumb.textContent = brandLabel + (label ? "  ·  " + label : "");
+    }
   }
 
   // Re-render the current view when the language changes, so any Arabic-only
@@ -1514,28 +1548,39 @@
   // ---- routing ---------------------------------------------------------
   var VIEWS = [
     "dashboard",
+    "leads",
+    "requests",
+    "feedback",
+    "projects",
+    "decisions",
     "subsidiaries",
     "reports",
     "financial",
     "investments",
     "support",
-    "requests",
     "approvals",
     "documents",
     "bi",
     "analytics",
     "inbox",
-    "leads",
     "employees",
     "operations",
-    "decisions",
-    "projects",
     "accounting",
     "confidential",
     "admin",
   ];
   var NAV_PERM = {
     dashboard: ["dashboard.holding", "dashboard.company"],
+    // The Feedback view aggregates weekly reports, management briefs and
+    // monthly reports the caller may already read; it introduces no new data
+    // access, so it is gated by exactly those read permissions.
+    feedback: [
+      "weekly_report.read_own",
+      "weekly_report.read_all",
+      "management_brief.read",
+      "monthly_report.read_own",
+      "monthly_report.read_all",
+    ],
     subsidiaries: ["company.read"],
     reports: ["monthly_report.read_own", "monthly_report.read_all"],
     financial: ["financial_summary.read_own", "financial_summary.read_all"],
@@ -1622,6 +1667,7 @@
       if (on) n.setAttribute("aria-current", "page");
       else n.removeAttribute("aria-current");
     });
+    syncMoreGroup(view);
     applyDocTitle();
     var board = byId("board");
     if (board) board.classList.toggle("view-hidden", view !== "dashboard");
@@ -1659,6 +1705,32 @@
       var h = (location.hash || "").replace("#", "");
       navTo(h || "dashboard", false);
     });
+    bindMoreGroup();
+  }
+
+  // The sidebar collapses the operational views behind one "Additional tools"
+  // toggle so the owner sees six primary sections. The group auto-opens when
+  // the active view lives inside it, so a deep link never hides the current
+  // screen.
+  function bindMoreGroup() {
+    var group = byId("sbMore");
+    var toggle = byId("sbMoreToggle");
+    if (!group || !toggle) return;
+    toggle.addEventListener("click", function () {
+      var open = group.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  function syncMoreGroup(view) {
+    var group = byId("sbMore");
+    var toggle = byId("sbMoreToggle");
+    if (!group || !toggle) return;
+    var inside = !!group.querySelector('.nav-item[data-view="' + view + '"]');
+    if (inside) {
+      group.classList.add("open");
+      toggle.setAttribute("aria-expanded", "true");
+    }
   }
 
   function loadView(view) {
@@ -1667,6 +1739,7 @@
     if (view === "financial") return renderFinancial();
     if (view === "support") return renderSupportView();
     if (view === "requests") return renderRequestsView();
+    if (view === "feedback") return renderFeedbackView();
     if (view === "approvals") return renderApprovalsView();
     if (view === "documents") return renderDocumentsView();
     if (view === "investments") return renderInvestments();
@@ -6749,6 +6822,204 @@
     return '<span class="badge rev">' + escapeHtml(STATE.lang === "ar" ? m[0] : m[1]) + "</span>";
   }
 
+  // ---- Feedback (التغذية الراجعة) -------------------------------------
+  //
+  // The brief's "Feedback & Reporting" section. It aggregates the feedback
+  // channels the platform already stores -- weekly reports, management briefs
+  // and monthly reports -- into one review queue with classification and
+  // follow-up. It is deliberately read-first: every row opens the record that
+  // owns it, and all writes still go through the existing endpoints and their
+  // permissions. No new table and no new business rule.
+  var FB_SOURCES = {
+    weekly_report: {
+      ar: "تقرير أسبوعي",
+      en: "Weekly report",
+      perm: ["weekly_report.read_own", "weekly_report.read_all"],
+      view: "operations",
+    },
+    management_brief: {
+      ar: "تقرير إداري",
+      en: "Management brief",
+      perm: ["management_brief.read"],
+      view: "operations",
+    },
+    monthly_report: {
+      ar: "تقرير شهري",
+      en: "Monthly report",
+      perm: ["monthly_report.read_own", "monthly_report.read_all"],
+      view: "reports",
+    },
+  };
+
+  function fbAllowed(source) {
+    return (FB_SOURCES[source].perm || []).some(has);
+  }
+
+  function fbStatusClass(status) {
+    var s = String(status || "").toLowerCase();
+    if (s.indexOf("approv") >= 0 || s === "done" || s === "complete") return "ok";
+    if (s.indexOf("reject") >= 0 || s.indexOf("cancel") >= 0 || s.indexOf("return") >= 0) return "miss";
+    if (s.indexOf("review") >= 0 || s.indexOf("progress") >= 0 || s.indexOf("submit") >= 0) return "warn";
+    return "";
+  }
+
+  function fbStatusLabel(status) {
+    var s = String(status || "");
+    if (!s) return dual("—", "—");
+    return escapeHtml(s.replace(/_/g, " "));
+  }
+
+  function renderFeedbackView() {
+    var host = byId("feedbackList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    bindFeedbackControls();
+
+    var canMonthly =
+      has("monthly_report.read_own") || has("monthly_report.read_all");
+    return Promise.all([
+      ensureCompanies(),
+      fbAllowed("weekly_report")
+        ? get("/api/v1/operations/weekly-reports").catch(function () { return []; })
+        : Promise.resolve([]),
+      fbAllowed("management_brief")
+        ? get("/api/v1/operations/management-briefs").catch(function () { return []; })
+        : Promise.resolve([]),
+      canMonthly
+        ? get("/api/v1/monthly-reports").catch(function () { return []; })
+        : Promise.resolve([]),
+    ]).then(function (res) {
+      var rows = [];
+      (res[1] || []).forEach(function (r) {
+        rows.push(fbRow("weekly_report", r, {
+          title: r.summary || dual("تقرير أسبوعي", "Weekly report"),
+          sub: dual("الأسبوع", "Week") + " " + plainNum(r.week_number || "") +
+               " · " + plainNum(r.period_year || ""),
+          status: r.status,
+          date: r.created_at,
+          id: r.id,
+        }));
+      });
+      (res[2] || []).forEach(function (r) {
+        rows.push(fbRow("management_brief", r, {
+          title: r.executive_summary || dual("تقرير إداري", "Management brief"),
+          sub: dual("الفترة", "Period") + " " +
+               plainNum(r.period_month || "") + "/" + plainNum(r.period_year || ""),
+          status: r.status,
+          date: r.created_at,
+          id: r.id,
+        }));
+      });
+      (res[3] || []).forEach(function (r) {
+        rows.push(fbRow("monthly_report", r, {
+          title: (STATE.lang === "ar" ? r.company_name_ar : r.company_name_en) ||
+                 dual("تقرير شهري", "Monthly report"),
+          sub: dual("الفترة", "Period") + " " +
+               plainNum(r.period_month || "") + "/" + plainNum(r.period_year || ""),
+          status: r.status,
+          date: r.updated_at || r.created_at,
+          id: r.id,
+        }));
+      });
+
+      // Newest first; rows with no date sort last.
+      rows.sort(function (a, b) {
+        return String(b.sort_date || "").localeCompare(String(a.sort_date || ""));
+      });
+
+      renderFeedbackSummary(rows);
+      var filter = (byId("fbSourceFilter") || {}).value || "";
+      var shown = filter
+        ? rows.filter(function (r) { return r.source === filter; })
+        : rows;
+      if (!shown.length) {
+        host.innerHTML = emptyHtml(
+          "لا توجد تغذية راجعة مطابقة.",
+          "No matching feedback."
+        );
+        return;
+      }
+      host.innerHTML = shown.map(fbRowHtml).join("");
+      host.querySelectorAll("[data-fb-source]").forEach(function (el) {
+        el.addEventListener("click", function () {
+          var src = el.getAttribute("data-fb-source");
+          navTo((FB_SOURCES[src] || {}).view || "operations");
+        });
+      });
+    });
+  }
+
+  function fbRow(source, raw, meta) {
+    return {
+      source: source,
+      raw: raw,
+      title: meta.title,
+      sub: meta.sub,
+      status: meta.status,
+      id: meta.id,
+      sort_date: meta.date,
+    };
+  }
+
+  function fbRowHtml(r) {
+    var src = FB_SOURCES[r.source];
+    var cls = fbStatusClass(r.status);
+    var badge = src
+      ? '<span class="attn-badge' + (cls ? " " + cls : "") + '">' +
+        escapeHtml(STATE.lang === "ar" ? src.ar : src.en) + "</span>"
+      : "";
+    return (
+      '<div class="av-row" data-fb-source="' + escapeHtml(r.source) + '" style="align-items:flex-start">' +
+      '<div class="grow">' +
+      '<div class="t">' + escapeHtml(r.title || "") + "</div>" +
+      '<div class="s">' + escapeHtml(r.sub || "") + " · " + fbStatusLabel(r.status) + "</div>" +
+      "</div>" + badge + "</div>"
+    );
+  }
+
+  function renderFeedbackSummary(rows) {
+    var host = byId("fbSummary");
+    if (!host) return;
+    var bySource = {};
+    rows.forEach(function (r) {
+      bySource[r.source] = (bySource[r.source] || 0) + 1;
+    });
+    var openish = rows.filter(function (r) {
+      var s = String(r.status || "").toLowerCase();
+      return s.indexOf("approv") < 0 && s !== "done" && s !== "complete";
+    }).length;
+    var cards = [
+      { ar: "إجمالي المدخلات", en: "Total entries", v: rows.length },
+      { ar: "قيد المعالجة", en: "Open", v: openish },
+      { ar: "تقارير أسبوعية", en: "Weekly reports", v: bySource.weekly_report || 0 },
+      { ar: "تقارير إدارية", en: "Management briefs", v: bySource.management_brief || 0 },
+      { ar: "تقارير شهرية", en: "Monthly reports", v: bySource.monthly_report || 0 },
+    ];
+    host.innerHTML = cards.map(function (c) {
+      return (
+        '<div class="av-panel"><h3>' + dual(c.ar, c.en) + "</h3>" +
+        '<div class="kpi-val num" style="font-size:22px">' + plainNum(c.v) + "</div></div>"
+      );
+    }).join("");
+  }
+
+  function bindFeedbackControls() {
+    var refresh = byId("fbRefresh");
+    if (refresh && !refresh.getAttribute("data-bound")) {
+      refresh.setAttribute("data-bound", "1");
+      refresh.addEventListener("click", function () {
+        renderFeedbackView();
+      });
+    }
+    var filter = byId("fbSourceFilter");
+    if (filter && !filter.getAttribute("data-bound")) {
+      filter.setAttribute("data-bound", "1");
+      filter.addEventListener("change", function () {
+        renderFeedbackView();
+      });
+    }
+  }
+
   function renderProjectsView() {
     var host = byId("projContent");
     if (!host) return Promise.resolve();
@@ -10956,6 +11227,24 @@
     });
     var avatar = document.querySelector(".profile .avatar");
     if (avatar) avatar.textContent = (name || "؟").trim().charAt(0);
+
+    // Mirror the identity into the sidebar user block.
+    var sbName = byId("sbUserName");
+    if (sbName) {
+      sbName.querySelectorAll(".ar").forEach(function (el) { el.textContent = name; });
+      sbName.querySelectorAll(".en").forEach(function (el) {
+        el.textContent = USER.full_name_en || name;
+      });
+    }
+    var sbRole = byId("sbUserRole");
+    if (sbRole) {
+      sbRole.querySelectorAll(".ar").forEach(function (el) { el.textContent = role; });
+      sbRole.querySelectorAll(".en").forEach(function (el) {
+        el.textContent = USER.role_name_en || role;
+      });
+    }
+    var sbAvatar = byId("sbAvatar");
+    if (sbAvatar) sbAvatar.textContent = (name || "؟").trim().charAt(0);
   }
 
   function isHolding() {

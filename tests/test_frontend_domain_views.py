@@ -486,3 +486,154 @@ def test_s23_owner_secret_note_is_wired_to_the_owner_note_endpoint():
     assert 'post("/api/v1/employees/assessments/" + a.id + "/owner-note"' in APP_JS
     # The panel is gated on the confidential owner and a leadership assessment.
     assert 'a.assessment_type === "leadership" && isConfidentialOwner()' in APP_JS
+
+
+# --------------------------------------------------------------------------
+# Executive UX redesign: sidebar shell, simplified nav, attention panel,
+# Feedback view.
+# --------------------------------------------------------------------------
+
+
+def test_executive_shell_uses_a_sidebar_with_the_content_area():
+    # The brief asks for a dark navy sidebar beside a white content area. The
+    # shell must carry the sidebar and keep the board as the content region.
+    assert 'class="stage-body with-sidebar"' in INDEX
+    assert 'class="sidebar"' in INDEX
+    assert '<nav class="sb-nav" id="mainNav">' in INDEX
+    assert 'id="board"' in INDEX
+
+
+def test_sidebar_shows_the_six_primary_sections():
+    # The brief names six core sections. They are the sidebar's top level; the
+    # operational views live behind the "More" group so the owner sees a short,
+    # calm list rather than the full catalogue.
+    primary = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S)
+    assert primary, "sidebar primary nav not found"
+    for view in ("dashboard", "leads", "requests", "feedback", "projects", "decisions"):
+        assert f'data-view="{view}"' in primary.group(1), f"{view} is not a primary section"
+    # And the operational views are grouped, still present and still gated.
+    more = re.search(r'id="sbMoreItems">(.*?)</div>\s*</div>', INDEX, re.S)
+    assert more, "More group not found"
+    for view in ("subsidiaries", "reports", "financial", "support", "approvals",
+                 "documents", "bi", "analytics", "inbox", "employees",
+                 "operations", "accounting", "confidential", "admin"):
+        assert f'data-view="{view}"' in more.group(1), f"{view} missing from More group"
+
+
+def test_every_sidebar_nav_item_keeps_its_permission_gate():
+    # Restructuring the nav must never drop a data-perm token: that token is
+    # what hides an unusable section from the client.
+    sidebar = re.search(r'<aside class="sidebar".*?</aside>', INDEX, re.S)
+    assert sidebar, "sidebar not found"
+    items = re.findall(r'<div class="nav-item[^"]*"[^>]*data-view="([^"]+)"[^>]*>', sidebar.group(0))
+    assert set(items) == set(re.findall(r'"([a-z]+)"', re.search(r"var VIEWS = \[(.*?)\];", APP_JS, re.S).group(1)))
+    for item in re.finditer(r'<div class="nav-item[^"]*"[^>]*>', sidebar.group(0)):
+        assert "data-perm=" in item.group(0), f"ungated nav item: {item.group(0)[:80]}"
+
+
+def test_more_group_is_collapsible_and_auto_opens_for_its_views():
+    # The group is a real disclosure control (aria-expanded) and opens itself
+    # when the active view lives inside it, so a deep link is never hidden.
+    assert 'id="sbMoreToggle"' in INDEX
+    assert 'aria-expanded="false"' in INDEX
+    assert "function bindMoreGroup(" in APP_JS
+    assert "function syncMoreGroup(" in APP_JS
+    assert "syncMoreGroup(view)" in APP_JS
+    assert 'classList.toggle("open")' in APP_JS
+
+
+def test_attention_panel_uses_the_brief_title_and_direct_actions():
+    # Brief §4: a prominent "ماذا يحتاج اهتمامك اليوم؟" with a direct action on
+    # every row. The panel must be a real, hydrated section, not a static card.
+    assert 'class="attention' in INDEX
+    assert "ماذا يحتاج اهتمامك اليوم؟" in INDEX
+    assert 'id="attnCount"' in INDEX
+    assert "attn-card" in APP_JS
+    assert "attn-act" in APP_JS
+    # Each priority kind resolves to a concrete destination.
+    assert "PRIORITY_ACTION" in APP_JS
+    assert "function priorityAction(" in APP_JS
+
+
+def test_feedback_view_is_gated_rendered_and_wired():
+    # Brief §8. The view aggregates existing feedback channels; it must exist as
+    # a gated section, have a renderer, be dispatched by loadView, and be listed
+    # in VIEWS/NAV_PERM.
+    section = re.search(r'<section[^>]*data-view="feedback"[^>]*>', INDEX)
+    assert section, "feedback section missing"
+    assert 'data-perm="' in section.group(0)
+    assert "function renderFeedbackView(" in APP_JS
+    assert 'view === "feedback"' in APP_JS
+    assert '"feedback"' in APP_JS
+    # It reads only endpoints that already exist, each behind its own read perm.
+    for endpoint in (
+        "/api/v1/operations/weekly-reports",
+        "/api/v1/operations/management-briefs",
+        "/api/v1/monthly-reports",
+    ):
+        assert endpoint in APP_JS, f"feedback never reads {endpoint}"
+    assert "FB_SOURCES" in APP_JS
+    assert 'id="feedbackList"' in INDEX
+
+
+def test_feedback_nav_gate_matches_the_permissions_its_endpoints_enforce():
+    # The view calls weekly-report, management-brief and monthly-report reads;
+    # its gate must be exactly those read permissions, or a role could see the
+    # section and then get a 403 from one of the calls.
+    nav = re.search(
+        r'class="nav-item[^"]*"[^>]*data-view="feedback"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert nav, "feedback nav item not found"
+    expected = {
+        "weekly_report.read_own", "weekly_report.read_all",
+        "management_brief.read",
+        "monthly_report.read_own", "monthly_report.read_all",
+    }
+    assert set(nav.group(1).split()) == expected
+    nav_perm = re.search(r'feedback: \[(.*?)\]', APP_JS, re.S)
+    assert nav_perm, "NAV_PERM.feedback not found"
+    assert set(re.findall(r'"([^"]+)"', nav_perm.group(1))) == expected
+    section = re.search(r'<section[^>]*data-view="feedback"[^>]*data-perm="([^"]+)"', INDEX)
+    assert set(section.group(1).split()) == expected
+
+
+def test_feedback_renderer_escapes_server_strings():
+    # The list mixes server text (summaries, company names) into innerHTML; it
+    # must be escaped like every other live renderer.
+    body = re.search(r"function fbRowHtml\(r\) \{(.*?)\n  \}", APP_JS, re.S)
+    assert body, "fbRowHtml not found"
+    assert "escapeHtml(r.title" in body.group(1)
+    assert "escapeHtml(r.sub" in body.group(1)
+
+
+def test_sidebar_sits_on_the_right_in_rtl():
+    # The brief puts the rail on the right. RTL flows right-to-left, so the
+    # rail needs the lowest order to land there; LTR then mirrors it left.
+    rule = re.search(r"\.sidebar\{(.*?)\}", CSS, re.S)
+    assert rule, ".sidebar rule not found"
+    assert "order:-1" in rule.group(1)
+    body = re.search(r"\.stage-body\.with-sidebar\{(.*?)\}", CSS, re.S)
+    assert body and "flex-direction:row" in body.group(1)
+
+
+def test_sidebar_collapses_to_a_content_sized_bar_on_narrow_screens():
+    # On narrow screens the rail becomes a horizontal bar. Full-width items
+    # would then each claim a row, so the mobile rule must reset the width.
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?\.sidebar \.nav-item\{width:auto",
+        CSS, re.S,
+    ), "sidebar mobile rule must reset nav-item width"
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?\.stage-body\.with-sidebar\{flex-direction:column;\}",
+        CSS, re.S,
+    ), "sidebar must stack above the content on narrow screens"
+
+
+def test_header_no_longer_carries_the_full_top_nav():
+    # The 20-item top nav was the core "complicated ERP" problem; it moved into
+    # the sidebar. The header keeps a breadcrumb instead.
+    header = re.search(r"<header class=\"header\".*?</header>", INDEX, re.S)
+    assert header, "header not found"
+    assert 'class="nav"' not in header.group(0)
+    assert 'id="crumb"' in header.group(0)
+
