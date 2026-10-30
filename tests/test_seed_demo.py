@@ -112,3 +112,72 @@ def test_seed_installs_the_weekly_report_question_template(db):
     seed_demo.seed(reset=False)
     db.expire_all()
     assert db.query(WeeklyReportQuestion).count() == len(questions)
+
+
+def _make_lead(db, email: str):
+    from backend.schemas.website import ContactSubmission
+    from backend.services import website_lead_service
+
+    return website_lead_service.create_lead(
+        db,
+        service_type="general_contact",
+        payload=ContactSubmission(
+            market="bahrain",
+            locale="en",
+            full_name="Visitor",
+            email=email,
+            phone="+97317000000",
+            message="Inquiry.",
+            consent=True,
+            inquiry_type="general",
+            subject="Inquiry",
+        ),
+    )
+
+
+def test_seed_creates_the_lead_pipeline_and_is_idempotent(db):
+    from backend.db.models.governance import LeadAssignment
+    from backend.db.models.website import WebsiteLead, WebsiteOpportunity
+
+    seed_demo.seed(reset=False)
+    db.expire_all()
+
+    leads = db.query(WebsiteLead).all()
+    assert len(leads) == 5, "the demo pipeline must populate the primary leads view"
+    # A realistic spread, not five identical "new" rows.
+    assert len({lead.status for lead in leads}) >= 3
+    assert db.query(LeadAssignment).count() == 1, "one assignment history row"
+    assert db.query(WebsiteOpportunity).filter(WebsiteOpportunity.is_public.is_(True)).count() == 1
+
+    seed_demo.seed(reset=False)
+    db.expire_all()
+    assert db.query(WebsiteLead).count() == len(leads), "seed duplicated the pipeline"
+
+
+def test_reset_purges_only_demo_leads(db):
+    """``_reset`` promises to delete demo rows only, so a lead submitted
+    through the real public site must survive it."""
+    from backend.db.models.website import WebsiteLead
+
+    seed_demo.seed(reset=False)
+    db.expire_all()
+    demo_ids = {lead.id for lead in db.query(WebsiteLead).all()}
+
+    visitor = _make_lead(db, "real@visitor.example")
+    visitor_id = visitor.id
+    db.commit()
+
+    seed_demo.seed(reset=True)
+    db.expire_all()
+
+    remaining = db.query(WebsiteLead).all()
+    by_id = {lead.id: lead for lead in remaining}
+
+    # The visitor's lead is untouched...
+    assert visitor_id in by_id, "reset deleted a real lead"
+    assert by_id[visitor_id].email == "real@visitor.example"
+    # ...while every demo lead was purged and rebuilt (fresh ids).
+    assert demo_ids.isdisjoint(by_id), "reset left a demo lead behind"
+    rebuilt = [lead for lead in remaining if lead.id != visitor_id]
+    assert len(rebuilt) == 5
+    assert all(lead.email.endswith(seed_demo.DEMO_LEAD_DOMAIN) for lead in rebuilt)

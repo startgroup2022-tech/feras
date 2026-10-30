@@ -84,3 +84,24 @@ def test_api_error_envelope_is_read_by_the_request_helper():
     assert "data.error" in body.group(1)
     assert "e.message" in body.group(1)
     assert "e.fields" in body.group(1)
+
+
+def test_outcome_block_reads_the_closed_out_fields():
+    body = re.search(r"function outcomeBlock\(lead\) \{(.*?)\n  \}", APP_JS, re.S)
+    assert body, "outcomeBlock not found"
+    for field in ("lead.final_result", "lead.internal_notes", "lead.closed_at"):
+        assert field in body.group(1), field
+    # closed_at is escaped, so it must not carry dual() markup.
+    assert "escapeHtml(stampText(lead.closed_at))" in body.group(1)
+
+
+def test_update_form_exposes_the_outcome_fields_and_posts_changes():
+    save = re.search(r'var saveBtn = byId\("leadSave"\);(.*?)\n  \}', APP_JS, re.S)
+    assert save, "leadSave handler not found"
+    body = save.group(1)
+    assert 'byId("leadFinalResult")' in body
+    assert 'byId("leadInternalNotes")' in body
+    # Only a changed value is sent; the API reads null as "unchanged".
+    assert "payloadOut.final_result" in body
+    assert "payloadOut.internal_notes" in body
+    assert 'id="leadFinalResult"' in APP_JS and 'id="leadInternalNotes"' in APP_JS

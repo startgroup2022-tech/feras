@@ -5520,6 +5520,16 @@
                 }).join("") +
                 "</select>"
               : "") +
+            // S13: the closed-out fields are written here, alongside the status
+            // that closes the lead; outcomeBlock above only reads them back.
+            '<div class="av-field" style="margin-top:8px"><label>' +
+            dual("النتيجة النهائية", "Final result") + "</label>" +
+            '<input class="av-input" id="leadFinalResult" style="width:100%" value="' +
+            escAttr(lead.final_result || "") + '"></div>' +
+            '<div class="av-field" style="margin-top:8px"><label>' +
+            dual("ملاحظات داخلية", "Internal notes") + "</label>" +
+            '<input class="av-input" id="leadInternalNotes" style="width:100%" value="' +
+            escAttr(lead.internal_notes || "") + '"></div>' +
             '<button class="btn-solid" id="leadSave">' + dual("حفظ", "Save") + "</button>" +
             "</div>"
           : "");
@@ -5557,10 +5567,20 @@
           var statusSel = byId("leadStatusSel");
           var priSel = byId("leadPriSel");
           var campSel = byId("leadCampSel");
+          var resultInp = byId("leadFinalResult");
+          var notesInp = byId("leadInternalNotes");
           var payloadOut = {};
           if (statusSel) payloadOut.status = statusSel.value;
           if (priSel) payloadOut.priority = priSel.value;
           if (campSel && campSel.value) payloadOut.campaign_id = parseInt(campSel.value, 10);
+          // Only send the outcome fields when they changed: the API treats a
+          // null as "unchanged", and the record should not gain empty text.
+          if (resultInp && resultInp.value.trim() !== (lead.final_result || "")) {
+            payloadOut.final_result = resultInp.value.trim();
+          }
+          if (notesInp && notesInp.value.trim() !== (lead.internal_notes || "")) {
+            payloadOut.internal_notes = notesInp.value.trim();
+          }
           patch("/api/v1/leads/" + id, payloadOut)
             .then(function () {
               toast(STATE.lang === "ar" ? "تم تحديث الطلب." : "Lead updated.", "ok");

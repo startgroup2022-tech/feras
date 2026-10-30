@@ -588,10 +588,14 @@ business rules and security controls are unchanged.
   validation. It walks two of them along the pipeline (`in_progress`,
   `qualified`, `converted`), assigns the first and adds a manager note, then
   reviews and publishes the business-listing opportunity. Idempotent: it skips
-  when a `WebsiteLead` already exists. `_reset` purges `LeadAssignment`,
-  `WebsiteOpportunity` and `WebsiteLead` explicitly — leads have no demo email
-  on the record (visitors are external), so the demo-domain sweep cannot find
-  them, and the dependent rows must go first.
+  when a demo lead already exists. Seeded visitor emails use
+  `DEMO_LEAD_DOMAIN` (`demo.safir.example`), not `DEMO_EMAIL_DOMAIN`: the
+  address is validated as a real one and the validator rejects the reserved
+  `.local` TLD, and a lead has no demo *user* row to match on (the visitor is
+  external). `_demo_lead_clause()` is the single matcher both the seed guard
+  and `_reset` use, so a lead submitted through the real public site is never
+  mistaken for a demo row. `_reset` deletes the dependents (`LeadAssignment`,
+  `WebsiteOpportunity`, `WebsiteLeadAttachment`) before the leads.
 - **D04 assignment UI** — `assignmentBlock` / `outcomeBlock` in `frontend/app.js`
   render the current assignee, routed company, the append-only history and the
   closed-out fields inside the lead modal. `openLead` loads the history from

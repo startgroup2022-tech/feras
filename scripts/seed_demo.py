@@ -41,6 +41,26 @@ from backend.services.rbac_service import bootstrap_rbac  # noqa: E402
 
 DEMO_PASSWORD = "SafirDemo!2027"
 DEMO_EMAIL_DOMAIN = "demo.safir.local"
+# Website-lead visitor emails are validated as real addresses, and the email
+# validator rejects the reserved ``.local`` TLD, so seeded leads use this
+# marker domain instead. Seeded visitor addresses take the shape
+# ``<local>@<brand>.demo.safir.example``; this helper is what both the seed
+# guard and ``_reset`` match on, so a lead from the real public site is never
+# mistaken for a demo row.
+DEMO_LEAD_DOMAIN = "demo.safir.example"
+
+
+def _demo_lead_clause():
+    """SQLAlchemy criterion matching a seeded (demo) website lead's email."""
+    from sqlalchemy import or_
+
+    from backend.db.models.website import WebsiteLead
+
+    return or_(
+        WebsiteLead.email.like(f"%@{DEMO_LEAD_DOMAIN}"),
+        WebsiteLead.email.like(f"%.{DEMO_LEAD_DOMAIN}"),
+    )
+
 
 # Roles used when building the Phase-3 operations demo (forms, workflows,
 # approvals, documents). Kept as codes so they match the RBAC catalogue.
@@ -132,7 +152,11 @@ def _reset(db) -> None:
     from backend.db.models.forms import DynamicForm
     from backend.db.models.governance import LeadAssignment
     from backend.db.models.submissions import FormSubmission
-    from backend.db.models.website import WebsiteLead, WebsiteOpportunity
+    from backend.db.models.website import (
+        WebsiteLead,
+        WebsiteLeadAttachment,
+        WebsiteOpportunity,
+    )
     from backend.db.models.workflows import WorkflowDefinition
 
     demo_users = list(
@@ -144,12 +168,21 @@ def _reset(db) -> None:
     db.query(FormSubmission).delete()
     db.query(WorkflowDefinition).delete()
     db.query(DynamicForm).delete()
-    # Website leads carry no demo email on the record itself (visitors are
-    # external), so they are not matched by domain. Purge the dependent rows
-    # first, then the leads, so a reset leaves no orphaned lead behind.
-    db.query(LeadAssignment).delete()
-    db.query(WebsiteOpportunity).delete()
-    db.query(WebsiteLead).delete()
+    # Seeded website leads are identified by their demo-domain visitor email
+    # (the visitor is external, so there is no demo user row to match on).
+    # Delete the dependents first so nothing is left orphaned, and never touch
+    # a lead submitted through the real public site.
+    demo_lead_ids = list(
+        db.execute(select(WebsiteLead.id).where(_demo_lead_clause())).scalars()
+    )
+    if demo_lead_ids:
+        for model in (LeadAssignment, WebsiteOpportunity, WebsiteLeadAttachment):
+            db.query(model).filter(model.lead_id.in_(demo_lead_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(WebsiteLead).filter(WebsiteLead.id.in_(demo_lead_ids)).delete(
+            synchronize_session=False
+        )
     for user in demo_users:
         db.delete(user)
     for company in db.execute(select(Company)).scalars():
@@ -814,6 +847,11 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
     matches what the public site actually produces: the same field validation,
     routing table and reference format. Without this the primary ``leads`` view
     renders empty.
+
+    Visitor emails use a dedicated demo domain (``DEMO_LEAD_DOMAIN``) so
+    ``_reset`` can find these rows again -- the visitor is external, so there is
+    no demo user to match on -- without ever touching a lead submitted through
+    the real site.
     """
     from backend.db.models.website import WebsiteLead
     from backend.schemas.website import (
@@ -825,7 +863,10 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
     )
     from backend.services import website_lead_service
 
-    if db.execute(select(WebsiteLead)).scalars().first() is not None:
+    existing = db.execute(
+        select(WebsiteLead.id).where(_demo_lead_clause())
+    ).scalars().first()
+    if existing is not None:
         print("  leads demo already present (skipped)")
         return
 
@@ -839,7 +880,7 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
                 market="bahrain",
                 locale="ar",
                 full_name="شركة الوفاء القابضة",
-                email="contact@alwafa.example",
+                email="contact@alwafa.demo.safir.example",
                 phone="+97317000001",
                 company_name="الوفاء القابضة",
                 message="نرغب في تأسيس شركة تقنية في البحرين بثلاثة شركاء.",
@@ -856,7 +897,7 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
                 market="saudi",
                 locale="ar",
                 full_name="مجموعة الصفوة",
-                email="info@alsafwa.example",
+                email="info@alsafwa.demo.safir.example",
                 phone="+96650000002",
                 company_name="الصفوة للتجزئة",
                 message="دراسة جدوى لافتتاح فروع تجزئة في الرياض.",
@@ -874,7 +915,7 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
                 market="gulf",
                 locale="en",
                 full_name="Gulf Ventures FZE",
-                email="deals@gulfventures.example",
+                email="deals@gulfventures.demo.safir.example",
                 phone="+97150000003",
                 company_name="Gulf Ventures",
                 message="Interested in co-investing in the logistics vertical.",
@@ -888,7 +929,7 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
                 market="bahrain",
                 locale="en",
                 full_name="Noor Consultants",
-                email="hello@noor.example",
+                email="hello@noor.demo.safir.example",
                 phone="+97317000004",
                 company_name="Noor Consultants",
                 message="We would like to discuss a partnership for advisory services.",
@@ -903,7 +944,7 @@ def _seed_leads(db, *, companies, owner, bd) -> None:
                 market="saudi",
                 locale="ar",
                 full_name="مؤسسة الأمانة للتجزئة",
-                email="owner@alamanah.example",
+                email="owner@alamanah.demo.safir.example",
                 phone="+96650000005",
                 company_name="الأمانة للتجزئة",
                 message="راغبون في شريك استراتيجي لتوسيع سلسلة المتاجر.",
