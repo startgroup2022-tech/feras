@@ -42,9 +42,9 @@ jobs:
       SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
       RATE_LIMIT_ENABLED: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -90,9 +90,9 @@ jobs:
       DATABASE_URL: postgresql+psycopg://safir:safir_ci@localhost:5432/safir_ci
       SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -133,9 +133,9 @@ jobs:
       DATABASE_URL: sqlite:///./ci-security.db
       SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -181,7 +181,7 @@ jobs:
 
       - name: Upload security evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: security-sweep-evidence
           path: artifacts/phase4/
@@ -202,9 +202,9 @@ jobs:
       SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
       RATE_LIMIT_ENABLED: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
@@ -212,7 +212,7 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
 
@@ -244,9 +244,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
