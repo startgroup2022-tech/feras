@@ -1,2 +1,5 @@
-pytest==8.3.4
+# pytest 8.3.4 carried PYSEC-2026-1845 / CVE-2025-71176 (predictable
+# ``/tmp/pytest-of-{user}`` directories allow local DoS or privilege gain);
+# 9.0.3 is the first patched release. The full suite passes on it.
+pytest==9.0.3
 httpx==0.28.1

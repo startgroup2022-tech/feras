@@ -1,0 +1,262 @@
+name: CI
+
+# The integration branch is ``frontend-app-conversion``. A pull request opened
+# against it must be gated here before it can reach ``master``.
+on:
+  pull_request:
+    branches: [frontend-app-conversion]
+  push:
+    branches: [frontend-app-conversion]
+  workflow_dispatch:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Full suite on every Python version the project supports
+  # (docs/DEPLOYMENT.md: "Python 3.11-3.13, verified on 3.13").
+  # ---------------------------------------------------------------------------
+  tests:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    env:
+      # tests/conftest.py also sets these before importing the app; declaring
+      # them here keeps the contract explicit and fails fast if it ever drifts.
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./ci-test.db
+      SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
+      RATE_LIMIT_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Show resolved versions
+        run: python -m pip list
+
+      - name: Run full test suite
+        run: python -m pytest tests/ -q -p no:cacheprovider
+
+  # ---------------------------------------------------------------------------
+  # Migrations against a real PostgreSQL service, not just SQLite. Production
+  # runs Postgres, so the upgrade path is verified where it actually matters.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: migrations (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: safir
+          POSTGRES_PASSWORD: safir_ci
+          POSTGRES_DB: safir_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U safir -d safir_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://safir:safir_ci@localhost:5432/safir_ci
+      SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Upgrade to head
+        run: python -m alembic upgrade head
+
+      - name: Schema drift check
+        run: python -m alembic check
+
+      - name: Downgrade to base
+        run: python -m alembic downgrade base
+
+      - name: Upgrade to head again (reversibility)
+        run: python -m alembic upgrade head
+
+      - name: Seed demo data
+        run: python -m scripts.seed_demo
+
+  # ---------------------------------------------------------------------------
+  # API-level security acceptance: isolation, privilege boundaries and an
+  # unauthenticated sweep of every parameterless GET.
+  # ---------------------------------------------------------------------------
+  security:
+    name: security acceptance sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: development
+      DATABASE_URL: sqlite:///./ci-security.db
+      SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Migrate and seed
+        run: |
+          python -m alembic upgrade head
+          python -m alembic check
+          python -m scripts.seed_demo
+
+      - name: Start server
+        run: |
+          python -m uvicorn backend.main:app --host 127.0.0.1 --port 12099 \
+            > uvicorn.log 2>&1 &
+
+      - name: Wait for readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:12099/ready >/dev/null; then
+              echo "server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::server did not become ready in 60s"
+          cat uvicorn.log
+          exit 1
+
+      - name: Run security sweep
+        run: python -m scripts.acceptance.security_sweep --base http://127.0.0.1:12099
+
+      - name: Server log
+        if: always()
+        run: tail -n 200 uvicorn.log
+
+      - name: Upload security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-sweep-evidence
+          path: artifacts/phase4/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Frontend contract tests plus a JS syntax check. The platform frontend is
+  # dependency-free vanilla JS, so the contract is asserted from Python and the
+  # files are only parsed, never bundled.
+  # ---------------------------------------------------------------------------
+  frontend-contract:
+    name: frontend contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:///./ci-frontend.db
+      SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
+      RATE_LIMIT_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Frontend contract tests
+        run: |
+          python -m pytest \
+            tests/test_frontend_domain_views.py \
+            tests/test_lead_assignment_ui.py \
+            tests/test_website_pages.py \
+            tests/test_seed_demo.py \
+            -q -p no:cacheprovider
+
+      - name: JavaScript syntax check
+        run: |
+          node --check frontend/app.js
+          node --check frontend/auth.js
+
+  # ---------------------------------------------------------------------------
+  # Dependency vulnerability audit. Fails the build on any known advisory, so a
+  # vulnerable pin cannot be merged.
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+
+      - name: Audit runtime dependencies
+        run: pip-audit -r requirements.txt
+
+      - name: Audit development dependencies
+        run: pip-audit -r requirements-dev.txt
