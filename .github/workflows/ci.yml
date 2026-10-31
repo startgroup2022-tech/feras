@@ -1,12 +1,12 @@
 name: CI
 
-# The integration branch is ``frontend-app-conversion``. A pull request opened
-# against it must be gated here before it can reach ``master``.
+# ``frontend-app-conversion`` is the integration branch that PR #7 targets;
+# ``master`` is the release branch. Pull requests are gated whatever their
+# target, so a promotion PR into ``master`` cannot slip through unverified.
 on:
   pull_request:
-    branches: [frontend-app-conversion]
   push:
-    branches: [frontend-app-conversion]
+    branches: [frontend-app-conversion, master]
   workflow_dispatch:
 
 # A newer push supersedes an in-flight run on the same ref.

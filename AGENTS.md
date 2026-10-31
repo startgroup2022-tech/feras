@@ -34,9 +34,8 @@ reads `DATABASE_URL` from the environment. Always pass it explicitly.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pull requests and pushes to
-`frontend-app-conversion` (the integration branch; `master` is not gated). Seven
-jobs:
+`.github/workflows/ci.yml` runs on every pull request (whatever the target
+branch) and on pushes to `frontend-app-conversion` and `master`. Seven jobs:
 
 - `pytest` on **3.11, 3.12 and 3.13** — the supported range. Keep new code
   working on all three; a 3.13-only idiom will break the build.
