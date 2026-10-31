@@ -32,6 +32,29 @@ APP_ENV=development DATABASE_URL="sqlite:///./safir_dev.db" python -m alembic ch
 `alembic.ini` deliberately does not hardcode `sqlalchemy.url`; `alembic/env.py`
 reads `DATABASE_URL` from the environment. Always pass it explicitly.
 
+## CI
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to
+`frontend-app-conversion` (the integration branch; `master` is not gated). Seven
+jobs:
+
+- `pytest` on **3.11, 3.12 and 3.13** — the supported range. Keep new code
+  working on all three; a 3.13-only idiom will break the build.
+- `migrations` — `alembic upgrade head` → `check` → `downgrade base` →
+  `upgrade head` against a **PostgreSQL 16 service**, then the demo seed. A
+  migration that only works on SQLite fails here, so keep using
+  `batch_alter_table` and avoid raw SQL.
+- `security acceptance sweep` — boots a seeded server on port 12099, waits on
+  `/ready`, then runs `scripts/acceptance/security_sweep.py`.
+- `frontend contract` — the frontend contract tests plus `node --check` on
+  `frontend/app.js` and `frontend/auth.js`.
+- `dependency audit` — `pip-audit` on both requirement files; **any known
+  advisory fails the build**. Fix by bumping the pin, not by relaxing the check.
+
+Actions are pinned to Node 24-era majors (`checkout@v5`, `setup-python@v6`,
+`setup-node@v5`, `upload-artifact@v6`). Lint changes with `actionlint` before
+pushing.
+
 ## Architecture
 
 Request flow: `api/v1/*` (thin routers) → `services/*` (all business rules) →
