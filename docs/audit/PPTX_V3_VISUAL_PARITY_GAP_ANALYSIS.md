@@ -8,6 +8,19 @@ Word specification still wins for business rules and security controls. This
 pass changes presentation only — no business rule, permission or scope check was
 altered, and every security control the Word spec names is re-verified below.
 
+## Deck provenance
+
+`Platform Interface Design v3.pptx` is present in this repository: commit
+`8f7dc23` ("تصميم المنصة"), 929 928 bytes, **138 slides**, on branch
+`phase2-functional-v1`. The blob was read straight out of git
+(`git show 8f7dc23:"Platform Interface Design v3.pptx"`) and its text layer
+extracted from `ppt/slides/slideN.xml`, so the Arabic filter/sort wording quoted
+below is the deck's own, not a paraphrase.
+
+The deck is **not** carried on `feature/phase3-functional` or
+`frontend-app-conversion`; it lives only on `phase2-functional-v1`. Parity was
+therefore scored against the blob in history, not against a working-tree copy.
+
 ## Method
 
 | Step | How | Result |
@@ -164,7 +177,12 @@ the deck's list families, using the deck's own filter columns and default sorts.
 
 * **الطلبات / المهام** — أولوية and فترة (due month) added beside the existing
   company / assignee / status selects.
-* **الفرص / القرارات** — فترة (decision due month) added.
+* **الفرص / القرارات** — شركة added (the decision carries an optional
+  `company_id`) and فترة (decision due month).
+* **الموظفون / التوطين** — فترة (hire month) added; احتساب has no row column,
+  so it is omitted rather than shown as a dead control.
+* **العملاء / الحملات** — فترة (capture month) added to the lead half; the
+  campaign half reads its own start date.
 * **التغذية / التقارير** — weekly-report and management-brief lists gained
   search + period + status filters and the deck's cluster; the financial-report
   archive gained company / period / status / currency.

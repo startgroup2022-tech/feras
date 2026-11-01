@@ -2148,6 +2148,14 @@
       { key: "service", ar: "الخدمة", en: "Service", field: "service_type",
         options: distinctOptions(rows, function (r) { return r.service_type; },
           function (v) { return leadLabel(LEAD_SERVICE, v); }) },
+      // Slide 134 "العملاء / الحملات" fixes فترة on the combined customer /
+      // campaign family. A lead has no follow-up date column, so its period is
+      // the month it was captured (the campaign half reads its own start date).
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.created_at ? String(r.created_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.created_at ? String(r.created_at).slice(0, 7) : "";
+        }) },
     ];
   }
 
@@ -2205,6 +2213,15 @@
       { key: "status", ar: "الحالة", en: "Status", field: "status",
         options: distinctOptions(rows, function (r) { return r.status; },
           function (v) { return employeeStatusLabel(v); }) },
+      // Slide 135 "الموظفون / التوطين" also fixes فترة and احتساب. The employee
+      // carries a hire date, which is the period the record is filed under; the
+      // localisation basis (احتساب) has no column on the row, so that select is
+      // omitted rather than shown as a dead control.
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.hire_date ? String(r.hire_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.hire_date ? String(r.hire_date).slice(0, 7) : "";
+        }) },
     ];
   }
 
@@ -2312,6 +2329,10 @@
     var rows = STATE.decisions || [];
     return [
       { key: "q", type: "search", ar: "الرقم / العنوان", en: "Number / title", fields: ["number", "title"] },
+      // Slide 135 "الفرص / القرارات" opens the filter set with شركة; the
+      // decision carries an optional company_id and the view already loads the
+      // company directory, so the select is offered when a row names a company.
+      companyFilterOption(),
       { key: "executor", ar: "المسؤول", en: "Executor", field: "executor_user_id",
         options: distinctOptions(rows, function (r) { return r.executor_user_id; },
           function (v) {
