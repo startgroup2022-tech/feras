@@ -52,7 +52,11 @@
     acctLedgerYear: null,
     acctLedgerMonth: null,
     confTab: "complaints",
+    scopeCompany: null,
     loaded: {},
+    filters: {},
+    page: {},
+    pageSize: 25,
   };
 
   var period = "";
@@ -1438,6 +1442,7 @@
     if (typeof STATE !== "undefined") STATE.lang = lang;
     if (typeof applyI18n === "function") applyI18n();
     applyDocTitle();
+    if (typeof syncScopeSelects === "function") syncScopeSelects();
     if (typeof refreshActiveView === "function") refreshActiveView();
   }
 
@@ -1508,6 +1513,534 @@
       saved = null;
     }
     setLang(saved === "en" ? "en" : "ar");
+  }
+
+  // ---- header entity + period scope ------------------------------------
+  // The deck's header carries [الشركة / المجموعة ▾] and the reporting period
+  // on every screen (slides 4, 48). Selecting an entity narrows the *view*
+  // filter only: it never widens access, and the backend still enforces the
+  // row-level scope on every request, so an out-of-scope pick simply returns
+  // nothing rather than leaking another company's rows.
+
+  function currentScopeLabel() {
+    if (STATE.scopeCompany == null) return { ar: "كل المجموعة", en: "Whole group" };
+    var c = companyById(STATE.scopeCompany);
+    return c
+      ? { ar: c.name_ar || c.name_en || "", en: c.name_en || c.name_ar || "" }
+      : { ar: "كل المجموعة", en: "Whole group" };
+  }
+
+  function syncScopeSelects() {
+    var sel = byId("scopeCompany");
+    if (sel) {
+      var opts =
+        '<option value="">' +
+        escAttr(STATE.lang === "ar" ? "كل المجموعة" : "Whole group") +
+        "</option>";
+      STATE.companies.forEach(function (c) {
+        opts +=
+          '<option value="' +
+          c.id +
+          '">' +
+          escapeHtml(companyName(c)) +
+          "</option>";
+      });
+      sel.innerHTML = opts;
+      sel.value = STATE.scopeCompany == null ? "" : String(STATE.scopeCompany);
+    }
+    var per = byId("scopePeriod");
+    if (per) {
+      // Every period that appears in a report the user may already see, so a
+      // manager sees their own months and the owner sees the group's.
+      var seen = {};
+      var list = [];
+      (STATE.reports || []).forEach(function (r) {
+        var key = r.period_year * 12 + (r.period_month - 1);
+        if (!seen[key]) {
+          seen[key] = true;
+          list.push({ key: key, year: r.period_year, month: r.period_month });
+        }
+      });
+      if (STATE.year && STATE.month) {
+        var ck = STATE.year * 12 + (STATE.month - 1);
+        if (!seen[ck]) list.push({ key: ck, year: STATE.year, month: STATE.month });
+      }
+      list.sort(function (a, b) { return b.key - a.key; });
+      var html = "";
+      list.forEach(function (p) {
+        var ar = AR_MONTHS[p.month - 1] + " " + toArabicDigits(String(p.year));
+        var en = EN_MONTHS[p.month - 1] + " " + p.year;
+        html +=
+          '<option value="' +
+          p.year +
+          "-" +
+          p.month +
+          '">' +
+          escapeHtml(STATE.lang === "ar" ? ar : en) +
+          "</option>";
+      });
+      per.innerHTML = html;
+      if (STATE.year && STATE.month) {
+        per.value = STATE.year + "-" + STATE.month;
+      }
+    }
+  }
+
+  function bindScopeSelects() {
+    var sel = byId("scopeCompany");
+    if (sel && !sel.getAttribute("data-bound")) {
+      sel.setAttribute("data-bound", "1");
+      sel.addEventListener("change", function () {
+        var v = sel.value;
+        STATE.scopeCompany = v === "" ? null : parseInt(v, 10);
+        var host = byId("scopeCtl");
+        if (host) host.classList.toggle("scoped", STATE.scopeCompany != null);
+        syncScopeSelects();
+        loadView(STATE.view);
+      });
+    }
+    var per = byId("scopePeriod");
+    if (per && !per.getAttribute("data-bound")) {
+      per.setAttribute("data-bound", "1");
+      per.addEventListener("change", function () {
+        var parts = String(per.value).split("-");
+        if (parts.length !== 2) return;
+        STATE.year = parseInt(parts[0], 10);
+        STATE.month = parseInt(parts[1], 10);
+        period = "?year=" + STATE.year + "&month=" + STATE.month;
+        STATE.loaded = {};
+        syncScopeSelects();
+        // The period is part of almost every payload, so drop the caches the
+        // view renderers guard on and rebuild the current screen.
+        Promise.all([ensureReports(), loadDashboard().catch(function () {})])
+          .then(function () { return loadView(STATE.view); });
+      });
+    }
+  }
+
+  // Rows a list renderer may show, narrowed by the header entity picker. This
+  // filters only what the user was already served.
+  function scopeFilter(rows, key) {
+    if (STATE.scopeCompany == null) return rows || [];
+    var k = key || "company_id";
+    return (rows || []).filter(function (r) {
+      return r && r[k] === STATE.scopeCompany;
+    });
+  }
+
+  // ---- list pagination --------------------------------------------------
+  // The deck fixes one pager for every list: 25 rows a page with 10/25/50/100
+  // and the same [تطبيق] [حفظ المرشح باسمي] [مسح] [تصدير النتائج] cluster
+  // (slides 134-136). The pager is the only thing this adds: the rows still
+  // come from the same scoped fetch, and each list owns its own sort.
+
+  var PAGE_SIZES = [10, 25, 50, 100];
+
+  function pageSize() {
+    return STATE.pageSize || 25;
+  }
+
+  function pageFor(key) {
+    STATE.page = STATE.page || {};
+    return STATE.page[key] || 1;
+  }
+
+  // Filter values a list is currently narrowed by, kept per list so switching
+  // views never inherits another list's filters.
+  function listFilters(key) {
+    STATE.filters = STATE.filters || {};
+    if (!STATE.filters[key]) STATE.filters[key] = {};
+    return STATE.filters[key];
+  }
+
+  // Saved named filters, persisted per user in localStorage (the deck's
+  // [حفظ المرشح باسمي]). They are a convenience over the current period and
+  // never widen scope: applying one only restores the same filter values.
+  function savedFilters(key) {
+    try {
+      var raw = localStorage.getItem("safir.filters.v1." + key);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveFilter(key) {
+    var values = listFilters(key);
+    var hasAny = Object.keys(values).some(function (k) {
+      return values[k] !== "" && values[k] != null;
+    });
+    if (!hasAny) {
+      toast(STATE.lang === "ar" ? "لا يوجد مرشح لحفظه." : "Nothing to save yet.", "err");
+      return;
+    }
+    var name = window.prompt(
+      STATE.lang === "ar" ? "اسم المرشح:" : "Filter name:",
+      (STATE.lang === "ar" ? "مرشح " : "Filter ") + new Date().toLocaleDateString(),
+    );
+    if (!name) return;
+    var list = savedFilters(key).filter(function (s) { return s.name !== name; });
+    list.push({ name: name, values: JSON.parse(JSON.stringify(values)) });
+    try {
+      localStorage.setItem("safir.filters.v1." + key, JSON.stringify(list));
+    } catch (e) {
+      /* storage disabled */
+    }
+    toast(STATE.lang === "ar" ? "تم حفظ المرشح: " + name : "Filter saved: " + name, "ok");
+    if (typeof renderPaged === "function") refreshActiveView();
+  }
+
+  function applyFilter(key) {
+    var host = byId("listFilter-" + key);
+    if (!host) return;
+    var values = listFilters(key);
+    host.querySelectorAll("[data-filter]").forEach(function (el) {
+      values[el.getAttribute("data-filter")] = el.value;
+    });
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  function clearFilter(key) {
+    STATE.filters = STATE.filters || {};
+    STATE.filters[key] = {};
+    STATE.page = STATE.page || {};
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  function applySavedFilter(key, name) {
+    var found = savedFilters(key).filter(function (s) { return s.name === name; })[0];
+    if (!found) return;
+    STATE.filters[key] = JSON.parse(JSON.stringify(found.values));
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  // ``spec`` is a list of {key, ar, en, options:[{value,ar,en}]} or
+  // {key, ar, en, type:"search"} entries. The search field matches any of the
+  // row's text fields (slide 134 "حقول البحث"); the selects match equality.
+  function filterBarHtml(key, spec) {
+    var values = listFilters(key);
+    var html = '<div class="list-filters" id="listFilter-' + escAttr(key) + '">';
+    spec.forEach(function (f) {
+      var val = values[f.key] == null ? "" : values[f.key];
+      if (f.type === "search") {
+        html +=
+          '<label class="lf-field lf-search">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+          '<input class="av-input" data-filter="' + escAttr(f.key) + '" value="' + escAttr(val) + '" placeholder="' +
+          escAttr(STATE.lang === "ar" ? f.ar : f.en) + '" aria-label="' + escAttr(f.ar) + '"></label>';
+        return;
+      }
+      // A select with no choices is a dead control, so it is left out until the
+      // data carries a value to filter on (the deck's lists are per-role and
+      // data-driven).
+      if (!f.options.length) return;
+      var opts = '<option value="">' + escAttr(STATE.lang === "ar" ? f.ar : f.en) + "</option>";
+      f.options.forEach(function (o) {
+        opts +=
+          '<option value="' + escAttr(o.value) + '"' + (o.value === val ? " selected" : "") + ">" +
+          escapeHtml(STATE.lang === "ar" ? o.ar : o.en || o.ar) + "</option>";
+      });
+      html += '<select class="av-select lf-select" data-filter="' + escAttr(f.key) + '" aria-label="' + escAttr(f.ar) + '">' + opts + "</select>";
+    });
+    var saved = savedFilters(key);
+    if (saved.length) {
+      var sOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + "</option>";
+      saved.forEach(function (s) {
+        sOpts += '<option value="' + escAttr(s.name) + '">' + escapeHtml(s.name) + "</option>";
+      });
+      html += '<select class="av-select lf-select" data-saved-filter aria-label="' +
+        escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + '">' + sOpts + "</select>";
+    }
+    html += '<div class="lf-actions">';
+    html += '<button type="button" class="lf-btn primary" data-filter-apply>' + dual("تطبيق", "Apply") + "</button>";
+    html += '<button type="button" class="lf-btn" data-filter-save>' + dual("حفظ المرشح باسمي", "Save filter") + "</button>";
+    html += '<button type="button" class="lf-btn" data-filter-clear>' + dual("مسح", "Clear") + "</button>";
+    // "عند سماح التصدير" — the button only appears when the role may export.
+    if (has("analytics.export")) {
+      html += '<button type="button" class="lf-btn" data-filter-export>' + dual("تصدير النتائج", "Export results") + "</button>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+
+  function bindFilterBar(host, key, rows) {
+    var bar = host.querySelector("#listFilter-" + key);
+    if (!bar) return;
+    var apply = bar.querySelector("[data-filter-apply]");
+    var save = bar.querySelector("[data-filter-save]");
+    var clear = bar.querySelector("[data-filter-clear]");
+    var exp = bar.querySelector("[data-filter-export]");
+    var savedSel = bar.querySelector("[data-saved-filter]");
+    var search = bar.querySelector('input[data-filter]');
+    if (apply) apply.addEventListener("click", function () { applyFilter(key); });
+    if (save) save.addEventListener("click", function () { saveFilter(key); });
+    if (clear) clear.addEventListener("click", function () { clearFilter(key); });
+    if (exp) exp.addEventListener("click", function () { exportListCsv(key, rows); });
+    if (savedSel) {
+      savedSel.addEventListener("change", function () {
+        if (savedSel.value) applySavedFilter(key, savedSel.value);
+      });
+    }
+    if (search) {
+      // Enter applies, matching the deck's form-submit behaviour, and the
+      // value is only committed on apply so a half-typed term never re-filters.
+      search.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applyFilter(key);
+        }
+      });
+    }
+  }
+
+  function exportListCsv(key, rows) {
+    var lines = [];
+    if (!rows || !rows.length) {
+      toast(STATE.lang === "ar" ? "لا توجد نتائج للتصدير." : "No results to export.", "err");
+      return;
+    }
+    var cols = Object.keys(rows[0]).filter(function (c) {
+      return typeof rows[0][c] !== "object";
+    });
+    lines.push(cols.join(","));
+    rows.forEach(function (r) {
+      lines.push(
+        cols
+          .map(function (c) {
+            var v = r[c] == null ? "" : String(r[c]);
+            return '"' + v.replace(/"/g, '""') + '"';
+          })
+          .join(","),
+      );
+    });
+    var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "safir-" + key + "-" + STATE.year + "-" + STATE.month + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(STATE.lang === "ar" ? "تم تصدير النتائج." : "Results exported.", "ok");
+  }
+
+  function pagerHtml(key, page, pages, total, size) {
+    var num = function (v) {
+      return STATE.lang === "ar" ? toArabicDigits(String(v)) : String(v);
+    };
+    var opts = PAGE_SIZES.map(function (s) {
+      return '<option value="' + s + '"' + (s === size ? " selected" : "") + ">" + num(s) + "</option>";
+    }).join("");
+    return (
+      '<div class="pager" data-pager="' + escAttr(key) + '">' +
+      '<span class="pager-total">' +
+      dual(num(total) + " نتيجة", total + " results") +
+      "</span>" +
+      '<label class="pager-size">' +
+      dual("لكل صفحة", "Per page") +
+      '<select class="av-select" data-page-size>' + opts + "</select></label>" +
+      '<div class="pager-nav">' +
+      '<button type="button" class="pg-btn" data-page-prev' + (page <= 1 ? " disabled" : "") + ">" +
+      dual("السابق", "Prev") + "</button>" +
+      '<span class="pg-now">' + num(page) + " / " + num(pages) + "</span>" +
+      '<button type="button" class="pg-btn" data-page-next' + (page >= pages ? " disabled" : "") + ">" +
+      dual("التالي", "Next") + "</button>" +
+      "</div></div>"
+    );
+  }
+
+  // Render ``rows`` into ``host`` a page at a time, then wire the pager. The
+  // caller keeps ownership of the row markup and of the per-row click binding
+  // (``bindFn`` runs on each page so handlers follow the rows that are shown).
+  function renderPaged(host, key, rows, rowFn, bindFn, spec) {
+    var size = pageSize();
+    var pages = Math.max(1, Math.ceil(rows.length / size));
+    var page = Math.min(pageFor(key), pages);
+    STATE.page[key] = page;
+    var start = (page - 1) * size;
+    var slice = rows.slice(start, start + size);
+    host.innerHTML =
+      (spec ? filterBarHtml(key, spec) : "") +
+      (rows.length
+        ? slice.map(rowFn).join("") + pagerHtml(key, page, pages, rows.length, size)
+        : '<div class="lf-empty">' +
+          emptyHtml("لا توجد نتائج مطابقة للمرشحات.", "No rows match the filters.") +
+          "</div>");
+    if (bindFn) bindFn(host, slice);
+    if (spec) bindFilterBar(host, key, rows);
+    var pager = host.querySelector("[data-pager]");
+    if (!pager) return;
+    var prev = pager.querySelector("[data-page-prev]");
+    var next = pager.querySelector("[data-page-next]");
+    var sel = pager.querySelector("[data-page-size]");
+    var again = function () { renderPaged(host, key, rows, rowFn, bindFn, spec); };
+    if (prev) {
+      prev.addEventListener("click", function () {
+        STATE.page[key] = Math.max(1, pageFor(key) - 1);
+        again();
+      });
+    }
+    if (next) {
+      next.addEventListener("click", function () {
+        STATE.page[key] = Math.min(pages, pageFor(key) + 1);
+        again();
+      });
+    }
+    if (sel) {
+      sel.addEventListener("change", function () {
+        STATE.pageSize = parseInt(sel.value, 10) || 25;
+        STATE.page[key] = 1;
+        again();
+      });
+    }
+  }
+
+  // The deck fixes a secondary sort by ID so equal keys keep a stable, paged
+  // order (slides 134-136: "ترتيب ثانوي بالمعرف"). Without it, a tie could
+  // shuffle rows between page renders and hide a row from the reader.
+  // (Named to avoid shadowing the ``byId`` DOM lookup helper.)
+  function byIdAsc(a, b) {
+    return (a.id || 0) - (b.id || 0);
+  }
+
+  // Narrow ``rows`` by the list's own filters. A search entry matches if any of
+  // its ``fields`` contains the term; selects match equality on one field.
+  function applyListFilters(rows, key, spec) {
+    var values = listFilters(key);
+    return (rows || []).filter(function (r) {
+      for (var i = 0; i < spec.length; i++) {
+        var f = spec[i];
+        var v = values[f.key];
+        if (v == null || v === "") continue;
+        if (f.type === "search") {
+          var needle = String(v).toLowerCase();
+          var hit = (f.fields || []).some(function (field) {
+            var cell = r[field];
+            return cell != null && String(cell).toLowerCase().indexOf(needle) >= 0;
+          });
+          if (!hit) return false;
+        } else {
+          var actual = f.resolve ? f.resolve(r) : r[f.field || f.key];
+          if (String(actual == null ? "" : actual) !== String(v)) return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  // Distinct values for a select, in first-seen order, so a filter never
+  // offers a value no visible row carries (the deck's lists are per-role).
+  // ``label`` may return a string or a {ar, en} pair.
+  function distinctOptions(rows, get, label) {
+    var seen = {};
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var v = get(r);
+      if (v == null || v === "" || seen[v]) return;
+      seen[v] = true;
+      var l = label ? label(v) : v;
+      var ar = l && l.ar != null ? l.ar : l;
+      var en = l && l.en != null ? l.en : l;
+      out.push({ value: String(v), ar: String(ar), en: String(en) });
+    });
+    return out;
+  }
+
+  // Company lifecycle labels. The payload stores the bare code, so map it for
+  // display; an unknown code falls through unchanged rather than blanking.
+  function companyStatusLabel(status) {
+    var map = {
+      active: { ar: "نشطة", en: "Active" },
+      inactive: { ar: "موقوفة", en: "Inactive" },
+      suspended: { ar: "معلّقة", en: "Suspended" },
+      closed: { ar: "مغلقة", en: "Closed" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
+  function companyFilterOption() {
+    return {
+      key: "company",
+      ar: "الشركة",
+      en: "Company",
+      field: "company_id",
+      options: (STATE.companies || []).map(function (c) {
+        return { value: String(c.id), ar: c.name_ar || c.name_en || "", en: c.name_en || c.name_ar || "" };
+      }),
+    };
+  }
+
+  // Slide 134/135/136 fix the filter set per list family. Options that have no
+  // reliable label source (e.g. an assignee name the payload omits) are left
+  // out rather than shown as a bare id.
+  function reportsFilterSpec() {
+    var periods = distinctOptions(
+      STATE.reports || [],
+      function (r) { return r.period_year + "-" + r.period_month; },
+      function (v) {
+        var p = v.split("-");
+        var m = parseInt(p[1], 10);
+        return {
+          ar: AR_MONTHS[m - 1] + " " + toArabicDigits(p[0]),
+          en: EN_MONTHS[m - 1] + " " + p[0],
+        };
+      },
+    );
+    return [
+      { key: "q", type: "search", ar: "رقم / عنوان / فترة", en: "No. / title / period",
+        fields: ["id", "status", "company_name_ar", "company_name_en", "period_year", "period_month"] },
+      companyFilterOption(),
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "submitted", ar: "مُرسل", en: "Submitted" },
+          { value: "under_review", ar: "قيد المراجعة", en: "Under review" },
+          { value: "reviewed", ar: "تمت المراجعة", en: "Reviewed" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period", options: periods,
+        resolve: function (r) { return r.period_year + "-" + r.period_month; } },
+      { key: "version", ar: "الإصدار", en: "Version", field: "version_number",
+        options: distinctOptions(STATE.reports || [], function (r) { return r.version_number; }) },
+    ];
+  }
+
+  function supportFilterSpec() {
+    return [
+      { key: "q", type: "search", ar: "رقم / عنوان / نوع / شركة", en: "No. / title / type / company",
+        fields: ["id", "title", "category", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "category", ar: "النوع", en: "Type", field: "category",
+        options: distinctOptions(STATE.support || [], function (r) { return r.category; },
+          function (v) { return deptLabel(v); }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "new", ar: "جديد", en: "New" },
+          { value: "in_progress", ar: "قيد التنفيذ", en: "In progress" },
+          { value: "completed", ar: "مكتمل", en: "Completed" },
+          { value: "closed", ar: "مغلق", en: "Closed" },
+        ] },
+    ];
+  }
+
+  function subsidiariesFilterSpec() {
+    return [
+      { key: "q", type: "search", ar: "الاسم / رقم التسجيل", en: "Name / registration no.",
+        fields: ["legal_name_ar", "legal_name_en", "name_ar", "name_en", "commercial_registration"] },
+      { key: "country", ar: "الدولة", en: "Country", field: "country",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.country; }) },
+      { key: "sector", ar: "القطاع", en: "Sector", field: "sector",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.sector; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.status; },
+          function (v) { return companyStatusLabel(v); }) },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.currency; }) },
+    ];
   }
 
   // ---- state -----------------------------------------------------------
@@ -1849,16 +2382,16 @@
     return ensureReports().then(function () {
       return ensureCompanies();
     }).then(function (rows) {
-      if (!rows.length) {
-        host.innerHTML = emptyHtml("لا توجد شركات متاحة لك.", "No companies available to you.");
-        return;
-      }
-      host.innerHTML = rows.map(subsidiaryCard).join("");
-      host.querySelectorAll("[data-company]").forEach(function (card) {
-        card.addEventListener("click", function () {
-          openCompany(parseInt(card.getAttribute("data-company"), 10));
+      var spec = subsidiariesFilterSpec();
+      var list = applyListFilters(scopeFilter(rows, "id"), "subsidiaries", spec);
+      list.sort(byIdAsc);
+      renderPaged(host, "subsidiaries", list, subsidiaryCard, function (h) {
+        h.querySelectorAll("[data-company]").forEach(function (card) {
+          card.addEventListener("click", function () {
+            openCompany(parseInt(card.getAttribute("data-company"), 10));
+          });
         });
-      });
+      }, spec);
     });
   }
 
@@ -1955,24 +2488,29 @@
     return ensureReports().then(function (rows) {
       var year = STATE.year;
       var status = byId("repStatus") ? byId("repStatus").value : "";
+      var spec = reportsFilterSpec();
       var list = rows.filter(function (r) {
         if (year && r.period_year !== year) return false;
         if (status && r.status !== status) return false;
         return true;
       });
-      if (!list.length) {
-        host.innerHTML = emptyHtml("لا توجد تقارير مطابقة.", "No matching reports.");
-        return;
-      }
+      list = applyListFilters(scopeFilter(list), "reports", spec);
+      // Deck slide 134: التقارير sort "الفترة الأحدث ثم وقت الإرسال", with the
+      // mandatory secondary sort by ID so paging is stable.
       list.sort(function (a, b) {
-        return b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month);
+        return (
+          b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month) ||
+          String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")) ||
+          byIdAsc(a, b)
+        );
       });
-      host.innerHTML = list.map(reportRow).join("");
-      host.querySelectorAll("[data-report]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          openReport(parseInt(el.getAttribute("data-report"), 10));
+      renderPaged(host, "reports", list, reportRow, function (h) {
+        h.querySelectorAll("[data-report]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openReport(parseInt(el.getAttribute("data-report"), 10));
+          });
         });
-      });
+      }, spec);
     });
   }
 
@@ -3173,19 +3711,23 @@
     }
     return ensureSupport().then(function (rows) {
       var st = byId("supStatus") ? byId("supStatus").value : "";
+      var spec = supportFilterSpec();
       var list = rows.filter(function (r) {
         return !st || r.status === st;
       });
-      if (!list.length) {
-        host.innerHTML = emptyHtml("لا توجد طلبات مطابقة.", "No matching requests.");
-        return;
-      }
-      host.innerHTML = list.map(supportRowCard).join("");
-      host.querySelectorAll("[data-request]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          openSupport(parseInt(el.getAttribute("data-request"), 10));
-        });
+      list = applyListFilters(scopeFilter(list), "support", spec);
+      // The API already orders these newest-first; the deck's secondary sort by
+      // ID (slides 134-136) is layered on so paging stays deterministic.
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });
+      renderPaged(host, "support", list, supportRowCard, function (h) {
+        h.querySelectorAll("[data-request]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openSupport(parseInt(el.getAttribute("data-request"), 10));
+          });
+        });
+      }, spec);
     });
   }
 
@@ -11785,6 +12327,7 @@
         bindHeaderActions();
         bindNav();
         bindIndicatorDrills();
+        bindScopeSelects();
         showLoadingStates();
         return resolvePeriod();
       })
@@ -11832,6 +12375,7 @@
         return Promise.all(jobs);
       })
       .then(function () {
+        syncScopeSelects();
         navTo(STATE.view || "dashboard", false);
       })
       .catch(function (err) {

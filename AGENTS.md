@@ -716,3 +716,40 @@ Each writes JSON to `artifacts/phase4/` (git-ignored).
   `location` that sets its own `add_header` must re-`include` that snippet or it
   silently drops HSTS/CSP/nosniff/frame/referrer for its responses.
   `tests/test_staging_security.py` asserts this invariant.
+
+## PPTX v3 parity pass — header scope/period, list filters, pagination
+
+Closes the two interface gaps the deck (`Platform Interface Design v3.pptx`,
+138 slides) leaves open in the prototype. Presentation only — no business rule,
+permission or scope check changed. Report:
+`docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`.
+
+- **Header carries the entity + period selector on every screen** (deck slides
+  4/48). `#scopeCtl` → `#scopeCompany` (المجموعة + the entities the user may
+  already see) and `#scopePeriod` (periods present in the reports the user may
+  already see). Both option sets are built from already-scoped data, so the
+  control cannot offer an entity the user cannot reach. Choosing one narrows the
+  **view** via `scopeFilter(rows, key)`; the backend still enforces row-level
+  scope, so an out-of-scope pick returns nothing rather than leaking rows.
+  Retires below 980 px, matching the deck's mobile frame (slide 39).
+- **Lists carry the deck's filter cluster** (slides 134–136):
+  `[تطبيق] [حفظ المرشح باسمي] [مسح] [تصدير النتائج]` plus one search field and
+  the per-family selects. `[تصدير النتائج]` renders **only** when the role holds
+  `analytics.export` (the deck's "عند سماح التصدير"). Saved filters persist in
+  `localStorage` under `safir.filters.v1.<list>`.
+- **Every list pages at 25 with a 10/25/50/100 selector** and prev/next. The
+  deck mandates a secondary sort by ID, so ties keep a deterministic order
+  across page renders — `byIdAsc` exists for that. Note the name: a helper
+  called `byId` would shadow the DOM `byId()` lookup and break every view.
+- **Filters narrow only rows the user was already served**, so the deck's
+  "البحث لا يوسع نطاق المستخدم" holds by construction. Filtering is client-side
+  over the scoped payload; it is never a substitute for a server scope check.
+- **Wiring a new list:** `renderPaged(host, key, rows, rowFn, bindFn, spec)`
+  where `spec` is a list of `{key, ar, en, options}` / `{key, type:"search",
+  fields:[...]}` entries. Filter values are per-list state in `STATE.filters`.
+  An option's `label` callback must return the `{ar, en}` pair (not `.ar`) or the
+  English reader sees Arabic choices, and a select with no options is dropped
+  rather than shown empty.
+- **Extending:** the deck also specs filter sets for العملاء/الحملات,
+  المؤشرات/العملات, المستخدمون/النشاط and جلسات المستشار. The machinery is
+  generic, so each is a per-view spec entry once the view exists.
