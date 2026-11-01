@@ -2538,8 +2538,7 @@
   }
 
   // The deck's default sort for the accounting lists (slides 135-136) is by
-  // name / period rather than by id; a text comparison keeps a stable order and
-  // falls back to the mandatory secondary sort by ID so paging never shuffles.
+  // name / period rather than by id; a text comparison keeps a stable order.
   function byTextAsc(get) {
     return function (a, b) {
       return String(get(a) || "").localeCompare(String(get(b) || ""), "ar") || byIdAsc(a, b);
@@ -2910,8 +2909,7 @@
     }).then(function (rows) {
       var spec = subsidiariesFilterSpec();
       var list = applyListFilters(scopeFilter(rows, "id"), "subsidiaries", spec);
-      // Deck slide 134: الشركات/المحفظة sort "آخر تحديث تنازليًا", with the
-      // mandatory secondary sort by ID so paging is stable.
+      // Deck slide 134: الشركات/المحفظة sort "آخر تحديث تنازليًا".
       list.sort(function (a, b) {
         return String(b.updated_at || "").localeCompare(String(a.updated_at || "")) || byIdAsc(a, b);
       });
@@ -3025,8 +3023,7 @@
         return true;
       });
       list = applyListFilters(scopeFilter(list), "reports", spec);
-      // Deck slide 134: التقارير sort "الفترة الأحدث ثم وقت الإرسال", with the
-      // mandatory secondary sort by ID so paging is stable.
+      // Deck slide 134: التقارير sort "الفترة الأحدث ثم وقت الإرسال".
       list.sort(function (a, b) {
         return (
           b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month) ||
@@ -6118,7 +6115,7 @@
           return !STATE.oppStatus || o.status === STATE.oppStatus;
         });
         var list = applyListFilters(chipRows, "opportunities", spec);
-        // Deck slide 135: newest submission first, stable secondary sort by ID.
+        // Deck slide 135: newest submission first.
         list.sort(function (a, b) {
           return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
         });
@@ -7674,8 +7671,7 @@
       var spec = tasksFilterSpec();
       list = applyListFilters(scopeFilter(list), "tasks", spec);
       // Deck slide 134: الطلبات/المهام sort "الأقرب استحقاقًا ثم الأقدم" -- the
-      // nearest due date first, ties broken by the oldest task, then the
-      // mandatory secondary sort by ID so paging stays stable.
+      // nearest due date first, ties broken by the oldest task.
       list.sort(function (a, b) {
         return (
           String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")) ||
@@ -7838,7 +7834,7 @@
       if (weeklyHost) {
         // Slide 134 "التغذية / التقارير": the weekly report list carries the
         // deck's search / period / status filters and the apply / save / clear /
-        // export cluster, with a stable secondary sort by ID.
+        // export cluster.
         var weeklySpec = [
           { key: "q", type: "search", ar: "الملخص", en: "Summary",
             fields: ["summary", "status"] },
@@ -7971,8 +7967,7 @@
         : "";
       var spec = campaignsFilterSpec();
       var list = applyListFilters(rows, "campaigns", spec);
-      // Deck slide 134: العملاء/الحملات sort "موعد المتابعة تصاعديًا" then the
-      // mandatory secondary sort by ID so paging stays stable.
+      // Deck slide 134: العملاء/الحملات sort "موعد المتابعة تصاعديًا".
       list.sort(function (a, b) {
         return String(a.start_date || "9999").localeCompare(String(b.start_date || "9999")) || byIdAsc(a, b);
       });
@@ -8098,7 +8093,7 @@
         if (briefHost) {
           // Slide 134 "التغذية / التقارير": search plus period / status filters
           // and the deck's apply / save / clear / export cluster; newest period
-          // first with a stable secondary sort by ID.
+          // first.
           var briefSpec = [
             { key: "q", type: "search", ar: "الملخص التنفيذي", en: "Executive summary",
               fields: ["executive_summary", "status", "urgency"] },
@@ -8232,8 +8227,7 @@
       var spec = decisionsFilterSpec();
       list = applyListFilters(list, "decisions", spec);
       // Deck slide 135: الفرص/القرارات sort "آخر تحديث؛ القرار: تاريخ الرفع" --
-      // newest first, and the mandatory secondary sort by ID so paging stays
-      // stable.
+      // newest first.
       list.sort(function (a, b) {
         return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });

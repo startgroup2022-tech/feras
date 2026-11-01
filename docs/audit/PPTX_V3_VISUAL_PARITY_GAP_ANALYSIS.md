@@ -153,11 +153,12 @@ the deck's list families, using the deck's own filter columns and default sorts.
 | العملاء / الحملات | موعد المتابعة تصاعديًا | `created_at` desc, then id |
 | الطلبات / المهام | الأقرب استحقاقًا ثم الأقدم | `due_date` asc, then `created_at`, then id |
 | الفرص / القرارات | آخر تحديث؛ القرار: تاريخ الرفع | `created_at` desc, then id |
-| إيرادات / مصروفات / ذمم | الاستحقاق تصاعديًا للذمم | invoices `due_date` asc |
-| الحسابات / القيود | الكود | accounts `code` asc |
-| الموازنات | الفترة | fiscal period desc |
-| الأصول | الاسم | `name` asc |
-| المؤشرات / العملات | تاريخ النفاذ | period / effective date |
+| إيرادات / مصروفات / ذمم | الاستحقاق تصاعديًا للذمم | invoices `due_date` asc, then id |
+| حسابات / ميزانية / مراكز | الكود | accounts `code` asc, then id |
+| القيود | تاريخ القيد الأحدث | journal entry date desc, then id |
+| الموازنات | الفترة | `fiscal_year` desc, then id |
+| الأصول | الاسم | `name` asc, then id |
+| المؤشرات / العملات | تاريخ النفاذ | `approved_at` desc, then id |
 
 ### Filter columns added where the payload backs them
 
@@ -190,13 +191,14 @@ list already returns, and every list remains scoped exactly as before.
 
 These are recorded rather than silently passed over. None is a regression.
 
-1. **مدير / مسؤول / مراجع filter fields on every family.** The deck names an
-   assignee/reviewer filter on several lists; where the payload carries the
-   display name (tasks, decisions, leads, campaigns, budgets, advisory sessions)
-   the select is shown, and where it does not (e.g. monthly-report reviewer) the
-   select is omitted rather than showing a bare id. Closing the remainder needs
-   the payload to include the name (a backend change, out of scope for a visual
-   pass).
+1. **مدير / مسؤول / مراجع filter fields.** The deck names an
+   assignee/reviewer/responsible filter on several lists. Every family whose
+   payload carries a display name now shows the select (tasks, decisions,
+   support requests, leads, campaigns, budgets, advisory sessions, monthly
+   reports via the financial-review block, portfolio via the company manager);
+   the serializer enrichment that supplies those names is recorded above. A
+   family with no such column on the row omits the select rather than showing a
+   bare id.
 2. **`[بحث]` global overlay vs per-list search.** Both now exist, but the deck's
    single header search box is still the global overlay; the deck's per-list
    search is the filter field. Whether they should merge is a product call.
