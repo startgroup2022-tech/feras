@@ -195,8 +195,19 @@ def create_user(
 def list_companies(user: CurrentUser, db: DbSession) -> list[CompanyOut]:
     """Companies the caller may see. Scope is applied in the query itself."""
     require_permission(user, Perm.COMPANY_READ)
-    companies = CompanyRepository(db).list_for_user(user)
-    return [CompanyOut.model_validate(c) for c in companies]
+    repo = CompanyRepository(db)
+    companies = repo.list_for_user(user)
+    managers = repo.managers_for([c.id for c in companies])
+    out = []
+    for c in companies:
+        item = CompanyOut.model_validate(c)
+        manager = managers.get(c.id)
+        if manager is not None:
+            item.manager_user_id = manager.id
+            item.manager_name_ar = manager.full_name_ar
+            item.manager_name_en = manager.full_name_en
+        out.append(item)
+    return out
 
 
 @router.get("/companies/{company_id}", response_model=CompanyOut, tags=["companies"])

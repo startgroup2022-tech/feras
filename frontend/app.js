@@ -1962,6 +1962,26 @@
     return map[String(status || "").toLowerCase()] || { ar: status, en: status };
   }
 
+  // Employee lifecycle labels, mirroring the S11 badge map.
+  function employeeStatusLabel(status) {
+    var map = {
+      active: { ar: "نشط", en: "Active" },
+      on_leave: { ar: "في إجازة", en: "On leave" },
+      terminated: { ar: "منتهٍ", en: "Terminated" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
+  // Advisory-session lifecycle labels, mirroring the S19 badge map.
+  function advisorSessionStatusLabel(status) {
+    var map = {
+      scheduled: { ar: "مجدولة", en: "Scheduled" },
+      completed: { ar: "مكتملة", en: "Completed" },
+      cancelled: { ar: "ملغاة", en: "Cancelled" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
   function companyFilterOption() {
     return {
       key: "company",
@@ -1972,6 +1992,20 @@
         return { value: String(c.id), ar: c.name_ar || c.name_en || "", en: c.name_en || c.name_ar || "" };
       }),
     };
+  }
+
+  // Slide 134 fixes "قطاع" and "عملة" among the report filters. Both attributes
+  // live on the company, so a report row resolves them through its company id.
+  function sectorByCompany() {
+    var map = {};
+    (STATE.companies || []).forEach(function (c) { map[c.id] = c.sector; });
+    return map;
+  }
+
+  function currencyByCompany() {
+    var map = {};
+    (STATE.companies || []).forEach(function (c) { map[c.id] = c.currency; });
+    return map;
   }
 
   // Slide 134/135/136 fix the filter set per list family. Options that have no
@@ -1994,6 +2028,16 @@
       { key: "q", type: "search", ar: "رقم / عنوان / فترة", en: "No. / title / period",
         fields: ["id", "status", "company_name_ar", "company_name_en", "period_year", "period_month"] },
       companyFilterOption(),
+      // Slide 134 also fixes "قطاع" and "عملة" among the report filters; both
+      // live on the company, so they are derived from the visible reports'
+      // companies rather than a separate catalogue read.
+      { key: "sector", ar: "القطاع", en: "Sector",
+        resolve: function (r) { return sectorByCompany()[r.company_id]; },
+        options: distinctOptions(STATE.reports || [], function (r) { return sectorByCompany()[r.company_id]; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "currency", ar: "العملة", en: "Currency",
+        resolve: function (r) { return currencyByCompany()[r.company_id]; },
+        options: distinctOptions(STATE.reports || [], function (r) { return currencyByCompany()[r.company_id]; }) },
       { key: "status", ar: "الحالة", en: "Status", field: "status",
         options: [
           { value: "draft", ar: "مسودة", en: "Draft" },
@@ -2005,6 +2049,21 @@
         resolve: function (r) { return r.period_year + "-" + r.period_month; } },
       { key: "version", ar: "الإصدار", en: "Version", field: "version_number",
         options: distinctOptions(STATE.reports || [], function (r) { return r.version_number; }) },
+      // Slide 134 lists "مراجع" among the report filters; the serialiser now
+      // carries the financial reviewer's name on the report's review block.
+      { key: "reviewer", ar: "المراجع", en: "Reviewer",
+        resolve: function (r) { return (r.financial_review || {}).reviewer_id; },
+        options: distinctOptions(
+          (STATE.reports || []).filter(function (r) { return r.financial_review; }),
+          function (r) { return r.financial_review.reviewer_id; },
+          function (v) {
+            var r = (STATE.reports || []).filter(function (x) {
+              return x.financial_review && String(x.financial_review.reviewer_id) === String(v);
+            })[0] || {};
+            var fr = r.financial_review || {};
+            return { ar: fr.reviewer_name_ar || fr.reviewer_name_en || "#" + plainNum(v),
+                     en: fr.reviewer_name_en || fr.reviewer_name_ar || "#" + plainNum(v) };
+          }) },
     ];
   }
 
@@ -2016,6 +2075,15 @@
       { key: "category", ar: "النوع", en: "Type", field: "category",
         options: distinctOptions(STATE.support || [], function (r) { return r.category; },
           function (v) { return deptLabel(v); }) },
+      // Slide 134 lists "مسؤول" among the request filters; the serialiser now
+      // carries the assignee's name so the select reads as a person, not an id.
+      { key: "assignee", ar: "المسؤول", en: "Assignee", field: "assigned_to_id",
+        options: distinctOptions(STATE.support || [], function (r) { return r.assigned_to_id; },
+          function (v) {
+            var r = (STATE.support || []).filter(function (x) { return String(x.assigned_to_id) === String(v); })[0] || {};
+            return { ar: r.assigned_to_name_ar || r.assigned_to_name_en || "#" + plainNum(v),
+                     en: r.assigned_to_name_en || r.assigned_to_name_ar || "#" + plainNum(v) };
+          }) },
       { key: "status", ar: "الحالة", en: "Status", field: "status",
         options: [
           { value: "new", ar: "جديد", en: "New" },
@@ -2038,9 +2106,456 @@
       { key: "status", ar: "الحالة", en: "Status", field: "status",
         options: distinctOptions(STATE.companies || [], function (c) { return c.status; },
           function (v) { return companyStatusLabel(v); }) },
+      // Slide 134 fixes "مدير" among the company-list filters; the manager is
+      // derived on the backend (primary company grant, then lowest id) and
+      // arrives on each company row as manager_user_id / manager_name_*.
+      { key: "manager", ar: "المدير", en: "Manager", field: "manager_user_id",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.manager_user_id; },
+          function (v) {
+            var c = (STATE.companies || []).filter(function (x) { return String(x.manager_user_id) === String(v); })[0] || {};
+            return { ar: c.manager_name_ar || c.manager_name_en || "#" + plainNum(v),
+                     en: c.manager_name_en || c.manager_name_ar || "#" + plainNum(v) };
+          }) },
       { key: "currency", ar: "العملة", en: "Currency", field: "currency",
         options: distinctOptions(STATE.companies || [], function (c) { return c.currency; }) },
     ];
+  }
+
+  // The deck's remaining list families (slides 134-136). Each entry only offers
+  // a select when the payload actually carries a label for it; the assignee /
+  // reviewer / executor names come from the enriched serialisers, so those
+  // selects now show a person instead of a bare id.
+  function leadsFilterSpec() {
+    var rows = STATE.leads || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / المرجع / البريد", en: "Name / reference / email",
+        fields: ["full_name", "reference", "email", "phone", "company_name"] },
+      { key: "company", ar: "الشركة", en: "Company", field: "routed_company_id",
+        options: distinctOptions(rows, function (r) { return r.routed_company_id; },
+          function (v) { return { ar: companyNameById(v), en: companyNameById(v) }; }) },
+      { key: "manager", ar: "المسؤول", en: "Assignee", field: "assigned_to_id",
+        options: distinctOptions(rows, function (r) { return r.assigned_to_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.assigned_to_id) === String(v); })[0] || {};
+            return { ar: r.assigned_to_name_ar || r.assigned_to_name_en || "#" + plainNum(v),
+                     en: r.assigned_to_name_en || r.assigned_to_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return leadLabel(LEAD_STATUS, v); }) },
+      { key: "source", ar: "المصدر", en: "Source", field: "source",
+        options: distinctOptions(rows, function (r) { return r.source; }) },
+      { key: "service", ar: "الخدمة", en: "Service", field: "service_type",
+        options: distinctOptions(rows, function (r) { return r.service_type; },
+          function (v) { return leadLabel(LEAD_SERVICE, v); }) },
+    ];
+  }
+
+  // Slide 134 "العملاء / الحملات": the campaign list filters by company,
+  // platform, status and period, and searches the campaign name / source.
+  function campaignsFilterSpec() {
+    var rows = STATE.campaigns || [];
+    return [
+      { key: "q", type: "search", ar: "اسم الحملة / الهدف / المنصة", en: "Campaign name / goal / platform",
+        fields: ["name", "platform", "goal"] },
+      companyFilterOption(),
+      { key: "platform", ar: "المنصة", en: "Platform", field: "platform",
+        options: distinctOptions(rows, function (r) { return r.platform; }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "planned", ar: "مخططة", en: "Planned" },
+          { value: "active", ar: "نشطة", en: "Active" },
+          { value: "completed", ar: "مكتملة", en: "Completed" },
+          { value: "cancelled", ar: "ملغاة", en: "Cancelled" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.start_date ? String(r.start_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.start_date ? String(r.start_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function employeesFilterSpec() {
+    var rows = (STATE.hr && STATE.hr.employees) || [];
+    var depts = STATE.departments || [];
+    var deptById = {};
+    depts.forEach(function (d) { deptById[d.id] = d; });
+    var countryByCompany = {};
+    (STATE.companies || []).forEach(function (c) { countryByCompany[c.id] = c.country; });
+    return [
+      { key: "q", type: "search", ar: "الاسم / الرقم الوظيفي / المسمى", en: "Name / employee no. / title",
+        fields: ["full_name_ar", "full_name_en", "employee_code", "job_title"] },
+      companyFilterOption(),
+      // Slide 101/135 "جهة، دولة، جنسية، إدارة، حالة": the country is the
+      // company's country, the department resolves through the department
+      // directory (empty when the role cannot read departments, so the select
+      // is omitted rather than shown as a bare id).
+      { key: "country", ar: "الدولة", en: "Country",
+        resolve: function (r) { return countryByCompany[r.company_id]; },
+        options: distinctOptions(rows, function (r) { return countryByCompany[r.company_id]; }) },
+      { key: "nationality", ar: "الجنسية", en: "Nationality", field: "nationality",
+        options: distinctOptions(rows, function (r) { return r.nationality; }) },
+      { key: "department", ar: "الإدارة", en: "Department", field: "department_id",
+        options: distinctOptions(rows, function (r) { return r.department_id; },
+          function (v) {
+            var d = deptById[v];
+            return d ? { ar: d.name_ar, en: d.name_en || d.name_ar } : "#" + plainNum(v);
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return employeeStatusLabel(v); }) },
+    ];
+  }
+
+  function tasksFilterSpec() {
+    var rows = (STATE.ops && STATE.ops.tasks) || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان", en: "Title", fields: ["title", "description"] },
+      companyFilterOption(),
+      { key: "assignee", ar: "المكلف", en: "Assignee", field: "assignee_id",
+        options: distinctOptions(rows, function (r) { return r.assignee_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.assignee_id) === String(v); })[0] || {};
+            return { ar: r.assignee_name_ar || r.assignee_name_en || "#" + plainNum(v),
+                     en: r.assignee_name_en || r.assignee_name_ar || "#" + plainNum(v) };
+          }) },
+      // Slide 134 "الطلبات / المهام" fixes أولوية and فترة in addition to the
+      // assignee, type and status selects.
+      { key: "priority", ar: "الأولوية", en: "Priority", field: "priority",
+        options: [
+          { value: "low", ar: "منخفضة", en: "Low" },
+          { value: "normal", ar: "عادية", en: "Normal" },
+          { value: "high", ar: "عالية", en: "High" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.due_date ? String(r.due_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.due_date ? String(r.due_date).slice(0, 7) : "";
+        }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+    ];
+  }
+
+  function requestsFilterSpec() {
+    // The form and status selects already live in the requests toolbar and are
+    // applied server-side; the generic bar adds the deck's per-list search,
+    // company and period (slide 136) without duplicating those two controls.
+    var rows = (STATE.submissions && STATE.submissions.items) || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان / المرجع / الجهة", en: "Title / reference / company",
+        fields: ["title", "reference", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.submitted_at ? String(r.submitted_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.submitted_at ? String(r.submitted_at).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function feedbackFilterSpec() {
+    // The feedback list merges three sources; the native toolbar select already
+    // narrows by source, so the generic bar adds the deck's text search only.
+    return [
+      { key: "q", type: "search", ar: "العنوان / الحالة", en: "Title / status",
+        fields: ["title", "status", "sub"] },
+    ];
+  }
+
+  function kpisFilterSpec() {
+    var rows = STATE.kpis || [];
+    var sectorByCompanyId = {};
+    (STATE.companies || []).forEach(function (c) { sectorByCompanyId[c.id] = c.sector; });
+    return [
+      // Slide 136 "المؤشرات / العملات": search by name / definition / metric key
+      // and filter by sector, company, period, status and unit. The KPI record
+      // carries no currency of its own, so "العملة" is represented by its unit
+      // (the only comparable label the payload has) rather than invented.
+      { key: "q", type: "search", ar: "الاسم / التعريف / المعرّف", en: "Name / definition / key",
+        fields: ["code", "name_ar", "name_en", "calculation_method", "metric_key"] },
+      { key: "sector", ar: "القطاع", en: "Sector",
+        resolve: function (r) { return sectorByCompanyId[r.company_id]; },
+        options: distinctOptions(rows, function (r) { return sectorByCompanyId[r.company_id]; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "company", ar: "الشركة", en: "Company", field: "company_id",
+        options: distinctOptions(rows, function (r) { return r.company_id; },
+          function (v) { return { ar: companyNameById(v), en: companyNameById(v) }; }) },
+      { key: "period", ar: "الدورية", en: "Periodicity", field: "period_label",
+        options: distinctOptions(rows, function (r) { return r.period_label; }) },
+      { key: "active", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "معتمد", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+      { key: "unit", ar: "الوحدة", en: "Unit", field: "unit",
+        options: distinctOptions(rows, function (r) { return r.unit; }) },
+    ];
+  }
+
+  function projectsFilterSpec() {
+    var rows = STATE.projects || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / الوصف", en: "Name / description", fields: ["name", "description"] },
+      companyFilterOption(),
+      { key: "type", ar: "النوع", en: "Type", field: "record_type",
+        options: distinctOptions(rows, function (r) { return r.record_type; },
+          function (v) { var t = PROJECT_TYPE_LABEL[v]; return t ? { ar: t[0], en: t[1] } : v; }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+    ];
+  }
+
+  function decisionsFilterSpec() {
+    var rows = STATE.decisions || [];
+    return [
+      { key: "q", type: "search", ar: "الرقم / العنوان", en: "Number / title", fields: ["number", "title"] },
+      { key: "executor", ar: "المسؤول", en: "Executor", field: "executor_user_id",
+        options: distinctOptions(rows, function (r) { return r.executor_user_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.executor_user_id) === String(v); })[0] || {};
+            return { ar: r.executor_name_ar || r.executor_name_en || "#" + plainNum(v),
+                     en: r.executor_name_en || r.executor_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+      // Slide 135 "الفرص / القرارات" fixes فترة (and a type/impact dimension);
+      // the decision carries a due date, which is the period it is followed up.
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.due_date ? String(r.due_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.due_date ? String(r.due_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function advisoriesFilterSpec() {
+    var rows = STATE.advisories || [];
+    return [
+      // Slide 136 "جلسات المستشار": search the advisor / topic, filter by
+      // assignee ("مسند إليه"), status and scheduled date.
+      { key: "q", type: "search", ar: "المستشار / الموضوع", en: "Advisor / topic",
+        fields: ["advisor_name_ar", "advisor_name_en", "topic"] },
+      companyFilterOption(),
+      { key: "advisor", ar: "مسند إليه", en: "Assigned to", field: "advisor_user_id",
+        options: distinctOptions(rows, function (r) { return r.advisor_user_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.advisor_user_id) === String(v); })[0] || {};
+            return { ar: r.advisor_name_ar || r.advisor_name_en || "#" + plainNum(v),
+                     en: r.advisor_name_en || r.advisor_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return advisorSessionStatusLabel(v); }) },
+      { key: "scheduled", ar: "الموعد", en: "Scheduled", field: "scheduled_date",
+        resolve: function (r) { return r.scheduled_at ? String(r.scheduled_at).slice(0, 10) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.scheduled_at ? String(r.scheduled_at).slice(0, 10) : "";
+        }) },
+    ];
+  }
+
+  function documentsFilterSpec() {
+    var rows = (STATE.documentsPage && STATE.documentsPage.items) || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / الجهة", en: "Name / company",
+        fields: ["original_filename", "title_ar", "title_en", "company_name_ar", "company_name_en"] },
+      { key: "expiry", ar: "الانتهاء", en: "Expiry", field: "expiry_state",
+        options: [
+          { value: "expired", ar: "منتهي", en: "Expired" },
+          { value: "expiring_soon", ar: "قريب الانتهاء", en: "Expiring soon" },
+          { value: "valid", ar: "ساري", en: "Valid" },
+        ] },
+    ];
+  }
+
+  // Slide 135 "حسابات / ميزانية / مراكز" and "إيرادات / مصروفات / ذمم". The
+  // accounting payloads are per-company reads, so the selects are built from the
+  // rows actually returned rather than from a fixed catalogue.
+  function accountsFilterSpec() {
+    var rows = STATE.acctAccounts || [];
+    var typeLabel = {
+      asset: ["أصول", "Asset"],
+      liability: ["التزامات", "Liability"],
+      equity: ["حقوق ملكية", "Equity"],
+      revenue: ["إيرادات", "Revenue"],
+      expense: ["مصروفات", "Expense"],
+    };
+    return [
+      { key: "q", type: "search", ar: "اسم الحساب / الرمز", en: "Account name / code",
+        fields: ["code", "name_ar", "name_en"] },
+      companyFilterOption(),
+      { key: "type", ar: "التصنيف", en: "Type", field: "account_type",
+        options: distinctOptions(rows, function (r) { return r.account_type; },
+          function (v) { var t = typeLabel[v]; return t ? { ar: t[0], en: t[1] } : v; }) },
+      // Slide 135 "حسابات / ميزانية / مراكز" also fixes عملة and حالة.
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "status", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "نشط", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+    ];
+  }
+
+  function journalsFilterSpec() {
+    var rows = STATE.acctJournals || [];
+    return [
+      { key: "q", type: "search", ar: "رقم القيد / الوصف", en: "Journal no. / description",
+        fields: ["number", "description"] },
+      companyFilterOption(),
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "posted", ar: "مُرحّل", en: "Posted" },
+          { value: "reversed", ar: "معكوس", en: "Reversed" },
+        ] },
+      // Slide 135 "القيود": the deck fixes عملة and فترة among the journal
+      // filters; the period is the entry month.
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.entry_date ? String(r.entry_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.entry_date ? String(r.entry_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function invoicesFilterSpec() {
+    var rows = STATE.acctInvoices || [];
+    return [
+      { key: "q", type: "search", ar: "رقم / العميل / المورد / الوصف", en: "No. / party / description",
+        fields: ["number", "party_name", "description"] },
+      companyFilterOption(),
+      { key: "direction", ar: "التصنيف", en: "Direction", field: "direction",
+        options: [
+          { value: "issued", ar: "صادرة (مستحق لنا)", en: "Issued (receivable)" },
+          { value: "received", ar: "واردة (مستحق علينا)", en: "Received (payable)" },
+        ] },
+      { key: "status", ar: "حالة الاعتماد والتسوية", en: "Approval & settlement",
+        field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "issued", ar: "صادرة", en: "Issued" },
+          { value: "partially_settled", ar: "مسددة جزئيًا", en: "Partially settled" },
+          { value: "settled", ar: "مسددة", en: "Settled" },
+          { value: "cancelled", ar: "ملغاة", en: "Cancelled" },
+        ] },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      // Slide 135 fixes فترة among the receivable filters; the invoice's period
+      // is its issue month (the due date drives the default sort instead).
+      { key: "period", ar: "الفترة", en: "Period", field: "period",
+        resolve: function (r) { return r.issue_date ? String(r.issue_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.issue_date ? String(r.issue_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function partiesFilterSpec() {
+    var rows = STATE.acctParties || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / التواصل", en: "Name / contact",
+        fields: ["name", "contact", "currency"] },
+      companyFilterOption(),
+      { key: "type", ar: "التصنيف", en: "Type", field: "party_type",
+        options: [
+          { value: "customer", ar: "عميل", en: "Customer" },
+          { value: "supplier", ar: "مورد", en: "Supplier" },
+        ] },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+    ];
+  }
+
+  function budgetsFilterSpec() {
+    var rows = STATE.acctBudgets || [];
+    return [
+      { key: "q", type: "search", ar: "السنة / المصدر", en: "Year / source",
+        fields: ["fiscal_year", "source"] },
+      companyFilterOption(),
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "year", ar: "السنة", en: "Year", field: "fiscal_year",
+        options: distinctOptions(rows, function (r) { return r.fiscal_year; }) },
+      // Slide 135 "حسابات / ميزانية / مراكز" fixes مسؤول too. The budget carries
+      // its approver (``approved_by_id``); the serializer adds that person's
+      // name so the select reads as a person rather than a bare id. The deck's
+      // "شهر/ربع" is not offered: a budget has no month or quarter column, and
+      // an empty select is dropped rather than shown as a dead control.
+      { key: "owner", ar: "المسؤول", en: "Responsible", field: "approved_by_id",
+        options: distinctOptions(rows.filter(function (r) { return r.approved_by_id; }),
+          function (r) { return r.approved_by_id; },
+          function (v) {
+            var b = rows.filter(function (x) { return String(x.approved_by_id) === String(v); })[0] || {};
+            return { ar: b.approved_by_name_ar || b.approved_by_name_en || "#" + plainNum(v),
+                     en: b.approved_by_name_en || b.approved_by_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "approved", ar: "معتمدة", en: "Approved" },
+          { value: "superseded", ar: "مستبدلة", en: "Superseded" },
+        ] },
+    ];
+  }
+
+  function assetsFilterSpec() {
+    var rows = STATE.acctAssets || [];
+    return [
+      // Slide 135 search terms "الاسم/البنك/المركز/رمز البند": the asset record
+      // carries a name, a category and notes; the bank/centre/line-code the deck
+      // lists have no backing column on ``Asset``, so only real fields are
+      // searched rather than offering a term that can never match.
+      { key: "q", type: "search", ar: "الاسم / الفئة / ملاحظات", en: "Name / category / notes",
+        fields: ["name", "category", "notes"] },
+      companyFilterOption(),
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "status", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "نشط", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+    ];
+  }
+
+  // Mount a paged, filtered list into a placeholder element inside a panel.
+  // The panel owns the heading and any create form; the list owns its own
+  // filter bar, rows and pager (slides 134-136).
+  function mountList(containerId, key, rows, rowFn, spec, bindFn, cmp) {
+    var el = byId(containerId);
+    if (!el) return;
+    var list = applyListFilters(rows, key, spec).slice().sort(cmp || byIdAsc);
+    renderPaged(el, key, list, rowFn, bindFn || null, spec);
+  }
+
+  // The deck's default sort for the accounting lists (slides 135-136) is by
+  // name / period rather than by id; a text comparison keeps a stable order and
+  // falls back to the mandatory secondary sort by ID so paging never shuffles.
+  function byTextAsc(get) {
+    return function (a, b) {
+      return String(get(a) || "").localeCompare(String(get(b) || ""), "ar") || byIdAsc(a, b);
+    };
+  }
+
+  function byDateAsc(get) {
+    return function (a, b) {
+      return String(get(a) || "9999-12-31").localeCompare(String(get(b) || "9999-12-31")) || byIdAsc(a, b);
+    };
+  }
+
+  function byDateDesc(get) {
+    return function (a, b) {
+      return String(get(b) || "").localeCompare(String(get(a) || "")) || byIdAsc(a, b);
+    };
   }
 
   // ---- state -----------------------------------------------------------
@@ -2071,6 +2586,17 @@
     return STATE.lang === "ar"
       ? row.name_ar || row.name_en || ""
       : row.name_en || row.name_ar || "";
+  }
+
+  // A person's display name from a row that carries ``<prefix>_name_ar`` /
+  // ``<prefix>_name_en`` (assignee, executor, reviewer). Falls back to the
+  // English name and then to an empty string, so a caller can supply its own
+  // "#id" placeholder.
+  function personName(row, arKey, enKey) {
+    if (!row) return "";
+    return STATE.lang === "ar"
+      ? row[arKey] || row[enKey] || ""
+      : row[enKey] || row[arKey] || "";
   }
 
   function reportCompanyName(r) {
@@ -2384,7 +2910,11 @@
     }).then(function (rows) {
       var spec = subsidiariesFilterSpec();
       var list = applyListFilters(scopeFilter(rows, "id"), "subsidiaries", spec);
-      list.sort(byIdAsc);
+      // Deck slide 134: الشركات/المحفظة sort "آخر تحديث تنازليًا", with the
+      // mandatory secondary sort by ID so paging is stable.
+      list.sort(function (a, b) {
+        return String(b.updated_at || "").localeCompare(String(a.updated_at || "")) || byIdAsc(a, b);
+      });
       renderPaged(host, "subsidiaries", list, subsidiaryCard, function (h) {
         h.querySelectorAll("[data-company]").forEach(function (card) {
           card.addEventListener("click", function () {
@@ -4112,7 +4642,8 @@
     var suffix = q.length ? "?" + q.join("&") : "";
     return get("/api/v1/form-submissions" + suffix)
       .then(function (page) {
-        return page && page.items ? page.items : [];
+        STATE.submissions = page && page.items ? page : { items: [] };
+        return STATE.submissions.items;
       })
       .catch(function (err) {
         handleLoadError(err);
@@ -4129,19 +4660,19 @@
       var forms = res[0];
       var rows = res[1];
       fillFormFilter(forms);
-      if (!rows.length) {
-        host.innerHTML = emptyHtml(
-          "لا توجد طلبات مطابقة. ابدأ بإنشاء طلب جديد.",
-          "No matching requests. Start by creating a new one."
-        );
-        return;
-      }
-      host.innerHTML = rows.map(requestRow).join("");
-      host.querySelectorAll("[data-submission]").forEach(function (row) {
-        row.addEventListener("click", function () {
-          openSubmission(parseInt(row.getAttribute("data-submission"), 10));
-        });
+      var spec = requestsFilterSpec();
+      var list = applyListFilters(rows, "requests", spec);
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });
+      host.innerHTML = "";
+      renderPaged(host, "requests", list, requestRow, function (h) {
+        h.querySelectorAll("[data-submission]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openSubmission(parseInt(row.getAttribute("data-submission"), 10));
+          });
+        });
+      }, spec);
     });
   }
 
@@ -4656,16 +5187,19 @@
       return get("/api/v1/documents" + (q.length ? "?" + q.join("&") : ""));
     }).then(function (page) {
       var rows = page && page.items ? page.items : [];
-      if (!rows.length) {
-        host.innerHTML = emptyHtml("لا توجد مستندات.", "No documents found.");
-        return;
-      }
-      host.innerHTML = rows.map(documentRow).join("");
-      host.querySelectorAll("[data-doc]").forEach(function (row) {
-        row.addEventListener("click", function () {
-          openDocument(JSON.parse(row.getAttribute("data-doc")));
-        });
+      STATE.documentsPage = page || { items: [] };
+      var spec = documentsFilterSpec();
+      var list = applyListFilters(rows, "documents", spec);
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });
+      renderPaged(host, "documents", list, documentRow, function (h) {
+        h.querySelectorAll("[data-doc]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openDocument(JSON.parse(row.getAttribute("data-doc")));
+          });
+        });
+      }, spec);
     }).catch(function (err) {
       handleLoadError(err);
       host.innerHTML = errorHtml(errText(err));
@@ -5576,19 +6110,49 @@
     host.innerHTML = loadingHtml();
     return get("/api/v1/leads/opportunities")
       .then(function (rows) {
-        var list = (rows || []).filter(function (o) { return !STATE.oppStatus || o.status === STATE.oppStatus; });
-        if (!list.length) {
-          host.innerHTML = noticeHtml("لا توجد عروض في هذه الحالة.", "No listings in this state.");
-          return;
-        }
-        host.innerHTML = '<div class="av-panel"><div class="av-list">' + list.map(opportunityRow).join("") + "</div></div>";
-        host.querySelectorAll("[data-opp]").forEach(function (row) {
-          row.addEventListener("click", function () {
-            openOpportunity(parseInt(row.getAttribute("data-opp"), 10));
-          });
+        STATE.opportunities = rows || [];
+        var spec = opportunitiesFilterSpec();
+        // The header chips and the filter bar's status select both narrow the
+        // list; the chip is applied first so the deck's quick chips still work.
+        var chipRows = STATE.opportunities.filter(function (o) {
+          return !STATE.oppStatus || o.status === STATE.oppStatus;
         });
+        var list = applyListFilters(chipRows, "opportunities", spec);
+        // Deck slide 135: newest submission first, stable secondary sort by ID.
+        list.sort(function (a, b) {
+          return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+        });
+        host.innerHTML = '<div class="av-panel"><div id="oppList"></div></div>';
+        renderPaged(byId("oppList"), "opportunities", list, opportunityRow, function (h) {
+          h.querySelectorAll("[data-opp]").forEach(function (row) {
+            row.addEventListener("click", function () {
+              openOpportunity(parseInt(row.getAttribute("data-opp"), 10));
+            });
+          });
+        }, spec);
       })
       .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function opportunitiesFilterSpec() {
+    var rows = STATE.opportunities || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان / القطاع / الوصف", en: "Title / sector / description",
+        fields: ["public_title_ar", "public_title_en", "sector", "description"] },
+      { key: "type", ar: "النوع", en: "Type", field: "opportunity_type",
+        options: distinctOptions(rows, function (r) { return r.opportunity_type; },
+          function (v) { return leadLabel(OPPORTUNITY_TYPE, v); }) },
+      { key: "market", ar: "السوق", en: "Market", field: "market",
+        options: distinctOptions(rows, function (r) { return r.market; },
+          function (v) { return leadLabel(LEAD_MARKET, v); }) },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.created_at ? String(r.created_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.created_at ? String(r.created_at).slice(0, 7) : "";
+        }) },
+    ];
   }
 
   function opportunityRow(o) {
@@ -5785,22 +6349,20 @@
     return get(query)
       .then(function (res) {
         var items = (res && res.items) || [];
-        if (!items.length) {
-          host.innerHTML =
-            '<div class="av-panel">' +
-            emptyHtml("لا توجد طلبات مطابقة.", "No matching leads.") +
-            "</div>";
-          return;
-        }
-        host.innerHTML =
-          '<div class="av-panel"><div class="av-list">' +
-          items.map(leadRow).join("") +
-          "</div></div>";
-        host.querySelectorAll("[data-lead]").forEach(function (row) {
-          row.addEventListener("click", function () {
-            openLead(parseInt(row.getAttribute("data-lead"), 10));
-          });
+        STATE.leads = items;
+        var spec = leadsFilterSpec();
+        var list = applyListFilters(items, "leads", spec);
+        list.sort(function (a, b) {
+          return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
         });
+        host.innerHTML = panel("العملاء المحتملون", "Leads", "");
+        renderPaged(host, "leads", list, leadRow, function (h) {
+          h.querySelectorAll("[data-lead]").forEach(function (row) {
+            row.addEventListener("click", function () {
+              openLead(parseInt(row.getAttribute("data-lead"), 10));
+            });
+          });
+        }, spec);
       })
       .catch(function (err) {
         host.innerHTML = errorHtml(
@@ -6411,8 +6973,14 @@
   function renderEmployees() {
     var host = byId("empContent");
     var q = STATE.empCompany ? "?company_id=" + STATE.empCompany : "";
-    return Promise.all([ensureCompanies(), get("/api/v1/employees" + q)]).then(function (res) {
+    // Departments back the deck's "إدارة" filter (slides 101/135). The read is
+    // soft so a role without department.read still gets the employee list.
+    var deptReq = has("department.read") ? softGet("/api/v1/admin/departments") : Promise.resolve([]);
+    return Promise.all([ensureCompanies(), get("/api/v1/employees" + q), deptReq]).then(function (res) {
       var employees = res[1] || [];
+      STATE.departments = res[2] || [];
+      STATE.hr = STATE.hr || {};
+      STATE.hr.employees = employees;
       var canManage = has("employee.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="empForm">' +
@@ -6420,21 +6988,36 @@
           field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "")) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("eNameEn", "")) +
           field("المسمى الوظيفي", "Job title", textInput("eTitle", "")) +
+          field("الجنسية", "Nationality", textInput("eNationality", "")) +
           field("تاريخ التعيين", "Hire date", dateInput("eHire", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة موظف", "Add employee") + "</button></div></form>"
         : "";
-      var filter =
-        '<div class="av-form av-form-inline">' +
-        field("تصفية بالشركة", "Filter by company", selectInput("empFilter", companySelectOptions(true), STATE.empCompany || "")) +
-        "</div>";
-      var list = employees.length
-        ? '<div class="av-list">' + employees.map(employeeRow).join("") + "</div>"
-        : noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope.");
-      host.innerHTML = panel("الموظفون", "Employees", create + filter + list);
-      var f = byId("empFilter");
-      if (f) f.addEventListener("change", function () { STATE.empCompany = this.value ? parseInt(this.value, 10) : null; renderEmployees(); });
-      bindRowClicks(host, "emp", openEmployee);
+      var spec = employeesFilterSpec();
+      var list = applyListFilters(employees, "employees", spec);
+      list.sort(function (a, b) {
+        return String(a.full_name_ar || "").localeCompare(String(b.full_name_ar || ""), "ar") || byIdAsc(a, b);
+      });
+      host.innerHTML = panel("الموظفون", "Employees", create);
+      renderPaged(host, "employees", list, employeeRow, function (h) {
+        bindRowClicks(h, "emp", openEmployee);
+      }, spec);
+      var form = byId("empForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          busy(form.querySelector("button"), true);
+          post("/api/v1/employees", {
+            company_id: parseInt(valOf("eCompany"), 10),
+            full_name_ar: valOf("eNameAr"),
+            full_name_en: valOf("eNameEn") || null,
+            job_title: valOf("eTitle") || null,
+            nationality: valOf("eNationality") || null,
+            hire_date: valOf("eHire") || null,
+          }).then(function () { toast(dual("تمت إضافة الموظف.", "Employee added."), "ok"); return renderEmployees(); })
+            .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
+        });
+      }
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6447,7 +7030,8 @@
       '<div class="av-row"' + rowClickAttr("emp", e) + ">" +
       '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
       '<div class="s">' + escapeHtml(companyNameById(e.company_id)) + " · " +
-      escapeHtml(e.job_title || "") + salary + "</div></div>" +
+      escapeHtml(e.job_title || "") + salary +
+      (e.nationality ? " · " + dual("الجنسية", "Nationality") + " " + escapeHtml(e.nationality) : "") + "</div></div>" +
       statusBadgeFromMap(e.status, {
         active: ["نشط", "Active", "ok"],
         on_leave: ["في إجازة", "On leave", "warn"],
@@ -6582,12 +7166,34 @@
           dual("إنشاء تقييم", "Create assessment") + "</button></div></form>"
         : "";
       var list = rows.length
-        ? '<div class="av-list">' + rows.map(assessmentRow).join("") + "</div>"
+        ? '<div id="assessList"></div>'
         : noticeHtml("لا توجد تقييمات.", "No assessments.");
       var title = STATE.assessType === "leadership" ? "تقييمات القيادة (D04: سرّية)" : "التقييمات";
       var titleEn = STATE.assessType === "leadership" ? "Leadership assessments (D04: confidential)" : "Assessments";
       host.innerHTML = panel(title, titleEn, filter + create + list);
-      bindRowClicks(host, "assess", openAssessment);
+      var assessHost = byId("assessList");
+      if (assessHost) {
+        // Slide 134/135 "التقييمات": the deck's search / company / period /
+        // status filters and default "الفترة الأحدث" sort; the type chip above
+        // still narrows employee vs. confidential leadership assessments.
+        var assessSpec = [
+          { key: "q", type: "search", ar: "الفترة", en: "Period", fields: ["period_label", "assessment_type"] },
+          companyFilterOption(),
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: [
+              { value: "draft", ar: "مسودة", en: "Draft" },
+              { value: "submitted", ar: "مُقدَّم", en: "Submitted" },
+              { value: "approved", ar: "معتمد", en: "Approved" },
+            ] },
+        ];
+        var assessRows = applyListFilters(scopeFilter(rows), "assessments", assessSpec);
+        assessRows.sort(function (a, b) {
+          return String(b.period_label || "").localeCompare(String(a.period_label || "")) || byIdAsc(a, b);
+        });
+        renderPaged(assessHost, "assessments", assessRows, assessmentRow, function (h) {
+          bindRowClicks(h, "assess", openAssessment);
+        }, assessSpec);
+      }
       document.querySelectorAll("[data-assess-type]").forEach(function (b) {
         b.addEventListener("click", function () {
           STATE.assessType = b.getAttribute("data-assess-type");
@@ -6788,20 +7394,29 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("تسجيل جلسة", "Record session") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (s) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(s.topic || dual("جلسة استشارية", "Advisory session")) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(s.company_id)) + " · " +
-              escapeHtml(s.scheduled_at ? String(s.scheduled_at).slice(0, 16).replace("T", " ") : "—") + "</div></div>" +
-              statusBadgeFromMap(s.status, { scheduled: ["مجدولة", "Scheduled", "warn"], completed: ["مكتملة", "Completed", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد جلسات استشارية.", "No advisory sessions.");
+      STATE.advisories = rows;
+      var sessSpec = advisoriesFilterSpec();
+      var sessList = applyListFilters(scopeFilter(rows), "advisories", sessSpec);
+      sessList.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var sessRow = function (s) {
+        var advisorName = personName(s, "advisor_name_ar", "advisor_name_en") ||
+          (s.advisor_user_id ? "#" + plainNum(s.advisor_user_id) : "");
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(s.topic || dual("جلسة استشارية", "Advisory session")) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(s.company_id)) +
+          (advisorName ? " · " + escapeHtml(advisorName) : "") + " · " +
+          escapeHtml(s.scheduled_at ? String(s.scheduled_at).slice(0, 16).replace("T", " ") : "—") + "</div></div>" +
+          statusBadgeFromMap(s.status, { scheduled: ["مجدولة", "Scheduled", "warn"], completed: ["مكتملة", "Completed", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+          "</div>";
+      };
       host.innerHTML =
-        panel("الجلسات الاستشارية", "Advisory sessions", create + list) +
+        panel("الجلسات الاستشارية", "Advisory sessions", create + '<div id="advSessions"></div>') +
         advisorAssignmentsPanel(assignments) +
         advisorReportsPanel(reports);
+      renderPaged(byId("advSessions"), "advisories", sessList, sessRow, null, sessSpec);
+      renderAdvisorReportsList(reports);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6852,21 +7467,49 @@
         "</div></form>"
       : "";
     var list = reports.length
-      ? '<div class="av-list">' + reports.map(function (r) {
-          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-            dual("تقرير", "Report") + " " + r.period_month + "/" + r.period_year + "</div>" +
-            '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-            escapeHtml(r.recommendations || r.development || "—") + "</div></div>" +
-            (r.status === "draft" && canWrite
-              ? '<button class="btn-outline" type="button" data-act="adv-report-submit-one" data-id="' + plainNum(r.id) + '">' + dual("إرسال", "Submit") + "</button>"
-              : "") +
-            statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
-            "</div>";
-        }).join("") + "</div>"
+      ? '<div id="advReports"></div>'
       : noticeHtml("لا توجد تقارير شهرية.", "No monthly reports.");
     return panel("التقارير الشهرية للمستشار (S19)", "Advisor monthly reports (S19)",
       '<p class="note-block">' + dual("يحفظ المستشار تقريره الشهري (التطويرات والتحديات والتوصيات) ويرسله لمدير تطوير الأعمال؛ بعد الإرسال يصبح أصلاً غير قابل للتعديل.", "An advisor saves a monthly report (development, challenges, recommendations) and submits it to Business Development; once submitted it is an immutable original.") + "</p>" +
       form + list);
+  }
+
+  function renderAdvisorReportsList(reports) {
+    var host = byId("advReports");
+    if (!host || !reports.length) return;
+    var canWrite = has("advisor.session.record") || has("advisor.session.read_own");
+    // Slide 136 "التقارير الشهرية للمستشار": company / period / status filters
+    // with the deck's apply / save / clear / export cluster; newest period first.
+    var spec = [
+      { key: "q", type: "search", ar: "الشركة / التوصيات", en: "Company / recommendations",
+        fields: ["recommendations", "development", "challenges", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+        options: distinctOptions(reports, function (r) {
+          return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+        }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "submitted", ar: "مُرسل", en: "Submitted" },
+        ] },
+    ];
+    var rows = applyListFilters(scopeFilter(reports), "advisorReports", spec);
+    rows.sort(function (a, b) {
+      return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+    });
+    renderPaged(host, "advisorReports", rows, function (r) {
+      return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+        dual("تقرير", "Report") + " " + r.period_month + "/" + r.period_year + "</div>" +
+        '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+        escapeHtml(r.recommendations || r.development || "—") + "</div></div>" +
+        (r.status === "draft" && canWrite
+          ? '<button class="btn-outline" type="button" data-act="adv-report-submit-one" data-id="' + plainNum(r.id) + '">' + dual("إرسال", "Submit") + "</button>"
+          : "") +
+        statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
+        "</div>";
+    }, null, spec);
   }
 
   function onEmployeeAct(action, id, el) {
@@ -7025,11 +7668,25 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء مهمة", "Create task") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(taskRow).join("") + "</div>"
-        : noticeHtml("لا توجد مهام.", "No tasks.");
-      host.innerHTML = panel("المهام", "Tasks", create + list);
-      bindRowClicks(host, "task", openTask);
+      var list = rows;
+      STATE.ops = STATE.ops || {};
+      STATE.ops.tasks = rows;
+      var spec = tasksFilterSpec();
+      list = applyListFilters(scopeFilter(list), "tasks", spec);
+      // Deck slide 134: الطلبات/المهام sort "الأقرب استحقاقًا ثم الأقدم" -- the
+      // nearest due date first, ties broken by the oldest task, then the
+      // mandatory secondary sort by ID so paging stays stable.
+      list.sort(function (a, b) {
+        return (
+          String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")) ||
+          String(a.created_at || "").localeCompare(String(b.created_at || "")) ||
+          byIdAsc(a, b)
+        );
+      });
+      host.innerHTML = panel("المهام", "Tasks", create);
+      renderPaged(host, "tasks", list, taskRow, function (h) {
+        bindRowClicks(h, "task", openTask);
+      }, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -7174,16 +7831,42 @@
           dual("إرسال التقرير الأسبوعي", "Submit weekly report") + "</button></div></form>"
         : "";
       var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (r) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              dual("أسبوع", "Week") + " " + dec(r.period_week) + " · " + dec(r.period_year) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-              (r.answers || []).length + " " + dual("إجابات", "answers") + "</div></div>" +
-              statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "ok"] }) +
-              "</div>";
-          }).join("") + "</div>"
+        ? '<div id="weeklyList"></div>'
         : noticeHtml("لا توجد تقارير أسبوعية.", "No weekly reports.");
       host.innerHTML = panel("التقرير الأسبوعي (بحد أقصى الأسئلة المعتمدة)", "Weekly report (at most the approved question set)", create + list) + weeklyTemplatePanel(questions);
+      var weeklyHost = byId("weeklyList");
+      if (weeklyHost) {
+        // Slide 134 "التغذية / التقارير": the weekly report list carries the
+        // deck's search / period / status filters and the apply / save / clear /
+        // export cluster, with a stable secondary sort by ID.
+        var weeklySpec = [
+          { key: "q", type: "search", ar: "الملخص", en: "Summary",
+            fields: ["summary", "status"] },
+          companyFilterOption(),
+          { key: "period", ar: "الفترة", en: "Period",
+            resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_week).padStart(2, "0") : ""; },
+            options: distinctOptions(rows, function (r) {
+              return r.period_year ? r.period_year + "-" + String(r.period_week).padStart(2, "0") : "";
+            }) },
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: [
+              { value: "draft", ar: "مسودة", en: "Draft" },
+              { value: "submitted", ar: "مُقدَّم", en: "Submitted" },
+            ] },
+        ];
+        var weeklyRows = applyListFilters(scopeFilter(rows), "weekly", weeklySpec);
+        weeklyRows.sort(function (a, b) {
+          return (b.period_year - a.period_year) || (b.period_week - a.period_week) || byIdAsc(a, b);
+        });
+        renderPaged(weeklyHost, "weekly", weeklyRows, function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dual("أسبوع", "Week") + " " + dec(r.period_week) + " · " + dec(r.period_year) + "</div>" +
+            '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+            (r.answers || []).length + " " + dual("إجابات", "answers") + "</div></div>" +
+            statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "ok"] }) +
+            "</div>";
+        }, null, weeklySpec);
+      }
       var tplForm = byId("weeklyQForm");
       if (tplForm) {
         tplForm.addEventListener("submit", function (ev) {
@@ -7242,6 +7925,30 @@
       form + list);
   }
 
+  function campaignRow(c) {
+    var canManage = has("campaign.manage");
+    var results = canManage
+      ? '<form class="av-form av-form-inline" data-stop="1" id="campRes' + c.id + '">' +
+        field("الإنفاق", "Spend", numInput("crSpend" + c.id, c.spend)) +
+        field("عدد العملاء المحتملين", "Leads", numInput("crLeads" + c.id, c.lead_count)) +
+        field("التحويلات", "Conversions", numInput("crConv" + c.id, c.conversion_count)) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
+        dual("حفظ النتائج", "Save results") + "</button></div></form>"
+      : "";
+    var linked = (c.linked_lead_count || 0);
+    var linkedBar = '<div class="s" style="margin-top:6px">' +
+      dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
+      ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
+      dual("عرض العملاء", "View leads") + "</button></div>" +
+      '<div id="campLeads' + c.id + '"></div>';
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
+      '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
+      " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
+      statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+      "</div>" + results + linkedBar + "</div>";
+  }
+
   function renderCampaigns() {
     var host = byId("opsContent");
     return Promise.all([
@@ -7249,6 +7956,7 @@
       softGet("/api/v1/operations/campaigns"),
     ]).then(function (res) {
       var rows = res[1] || [];
+      STATE.campaigns = rows;
       var canManage = has("campaign.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="campaignForm">' +
@@ -7261,31 +7969,15 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء حملة", "Create campaign") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (c) {
-            var results = canManage
-              ? '<form class="av-form av-form-inline" data-stop="1" id="campRes' + c.id + '">' +
-                field("الإنفاق", "Spend", numInput("crSpend" + c.id, c.spend)) +
-                field("عدد العملاء المحتملين", "Leads", numInput("crLeads" + c.id, c.lead_count)) +
-                field("التحويلات", "Conversions", numInput("crConv" + c.id, c.conversion_count)) +
-                '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
-                dual("حفظ النتائج", "Save results") + "</button></div></form>"
-              : "";
-            var linked = (c.linked_lead_count || 0);
-            var linkedBar = '<div class="s" style="margin-top:6px">' +
-              dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
-              ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
-              dual("عرض العملاء", "View leads") + "</button></div>" +
-              '<div id="campLeads' + c.id + '"></div>';
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
-              " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
-              statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + results + linkedBar + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد حملات.", "No campaigns.");
-      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + list);
+      var spec = campaignsFilterSpec();
+      var list = applyListFilters(rows, "campaigns", spec);
+      // Deck slide 134: العملاء/الحملات sort "موعد المتابعة تصاعديًا" then the
+      // mandatory secondary sort by ID so paging stays stable.
+      list.sort(function (a, b) {
+        return String(a.start_date || "9999").localeCompare(String(b.start_date || "9999")) || byIdAsc(a, b);
+      });
+      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create);
+      renderPaged(host, "campaigns", list, campaignRow, null, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -7395,13 +8087,38 @@
             dual("حفظ المسودة", "Save draft") + "</button></div></form>"
           : "";
         var list = rows.length
-          ? '<div class="av-list">' + rows.map(briefRow).join("") + "</div>"
+          ? '<div id="briefList"></div>'
           : noticeHtml("لا توجد تقارير بعد.", "No briefs yet.");
         host.innerHTML = panel(
           "تقرير تطوير الأعمال (خمسة محاور)",
           "Business development brief (five axes)",
           form + list,
         );
+        var briefHost = byId("briefList");
+        if (briefHost) {
+          // Slide 134 "التغذية / التقارير": search plus period / status filters
+          // and the deck's apply / save / clear / export cluster; newest period
+          // first with a stable secondary sort by ID.
+          var briefSpec = [
+            { key: "q", type: "search", ar: "الملخص التنفيذي", en: "Executive summary",
+              fields: ["executive_summary", "status", "urgency"] },
+            { key: "period", ar: "الفترة", en: "Period",
+              resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+              options: distinctOptions(rows, function (r) {
+                return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+              }) },
+            { key: "status", ar: "الحالة", en: "Status", field: "status",
+              options: [
+                { value: "draft", ar: "مسودة", en: "Draft" },
+                { value: "submitted", ar: "مُرسل", en: "Submitted" },
+              ] },
+          ];
+          var briefRows = applyListFilters(rows, "briefs", briefSpec);
+          briefRows.sort(function (a, b) {
+            return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+          });
+          renderPaged(briefHost, "briefs", briefRows, briefRow, null, briefSpec);
+        }
       })
       .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
@@ -7510,8 +8227,17 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إصدار قرار", "Issue decision") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (d) {
+      var list = rows;
+      STATE.decisions = rows;
+      var spec = decisionsFilterSpec();
+      list = applyListFilters(list, "decisions", spec);
+      // Deck slide 135: الفرص/القرارات sort "آخر تحديث؛ القرار: تاريخ الرفع" --
+      // newest first, and the mandatory secondary sort by ID so paging stays
+      // stable.
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var decRow = function (d) {
             var controls = canManage
               ? '<div class="av-user-controls" data-stop="1">' +
                 selectInput("dcStatus" + d.id, [
@@ -7531,12 +8257,32 @@
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
               '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
+              (d.executor_user_id ? escapeHtml(personName(d, "executor_name_ar", "executor_name_en") || ("#" + plainNum(d.executor_user_id))) + " · " : "") +
               dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
               statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
               "</div>" + controls + reply + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد قرارات.", "No decisions.");
-      host.innerHTML = panel("قرارات المالك", "Owner decisions", create + list);
+      };
+      host.innerHTML = panel("قرارات المالك", "Owner decisions", create);
+      renderPaged(host, "decisions", list, decRow, function (h) {
+        h.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = btn.getAttribute("data-id");
+            patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
+              .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+              .catch(domainError);
+          });
+        });
+        h.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = btn.getAttribute("data-id");
+            var note = valOf("dcReply" + did);
+            if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+            post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
+              .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
+              .catch(domainError);
+          });
+        });
+      }, spec);
       var form = byId("decForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -7553,24 +8299,6 @@
             .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
         });
       }
-      host.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var did = btn.getAttribute("data-id");
-          patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
-            .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
-            .catch(domainError);
-        });
-      });
-      host.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var did = btn.getAttribute("data-id");
-          var note = valOf("dcReply" + did);
-          if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
-          post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
-            .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
-            .catch(domainError);
-        });
-      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -7701,20 +8429,17 @@
       var shown = filter
         ? rows.filter(function (r) { return r.source === filter; })
         : rows;
-      if (!shown.length) {
-        host.innerHTML = emptyHtml(
-          "لا توجد تغذية راجعة مطابقة.",
-          "No matching feedback."
-        );
-        return;
-      }
-      host.innerHTML = shown.map(fbRowHtml).join("");
-      host.querySelectorAll("[data-fb-source]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          var src = el.getAttribute("data-fb-source");
-          navTo((FB_SOURCES[src] || {}).view || "operations");
+      var spec = feedbackFilterSpec();
+      shown = applyListFilters(shown, "feedback", spec);
+      host.innerHTML = "";
+      renderPaged(host, "feedback", shown, fbRowHtml, function (h) {
+        h.querySelectorAll("[data-fb-source]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var src = el.getAttribute("data-fb-source");
+            navTo((FB_SOURCES[src] || {}).view || "operations");
+          });
         });
-      });
+      }, spec);
     });
   }
 
@@ -7818,39 +8543,53 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة سجل", "Add record") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (r) {
-            var est = r.estimated_value !== null && r.estimated_value !== undefined
-              ? escapeHtml(plainNum(r.estimated_value) + " " + (r.currency || ""))
-              : dual("—", "—");
-            var controls = canManage
-              ? '<div class="av-user-controls" data-stop="1">' +
-                selectInput("prStatus" + r.id, [
-                  { value: "open", label: opt("مفتوح", "Open") },
-                  { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
-                  { value: "on_hold", label: opt("معلّق", "On hold") },
-                  { value: "closed", label: opt("مغلق", "Closed") },
-                  { value: "cancelled", label: opt("ملغى", "Cancelled") },
-                ], r.status) +
-                '<button class="btn-outline" data-act="proj-status" data-id="' + r.id + '">' + dual("تحديث", "Update") + "</button></div>"
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(r.name) + "</div>" +
-              '<div class="s">' + projectTypeBadge(r.record_type) + " " +
-              (r.company_id ? escapeHtml(companyNameById(r.company_id)) + " · " : "") +
-              (r.period_start || r.period_end
-                ? dual("الفترة", "Period") + " " + escapeHtml(dateStr(r.period_start)) + " – " + escapeHtml(dateStr(r.period_end)) + " · "
-                : "") +
-              dual("تقدير", "Estimate") + " " + est +
-              (r.resource_estimate ? " · " + escapeHtml(r.resource_estimate) : "") +
-              "</div>" +
-              (r.objective ? '<div class="s">' + escapeHtml(r.objective) + "</div>" : "") +
-              "</div>" +
-              statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
-              "</div>" + controls + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد مشاريع أو فرص.", "No projects or opportunities.");
-      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create + list);
+      STATE.projects = rows;
+      var spec = projectsFilterSpec();
+      var filtered = applyListFilters(scopeFilter(rows), "projects", spec);
+      filtered.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var projectRow = function (r) {
+        var est = r.estimated_value !== null && r.estimated_value !== undefined
+          ? escapeHtml(plainNum(r.estimated_value) + " " + (r.currency || ""))
+          : dual("—", "—");
+        var controls = canManage
+          ? '<div class="av-user-controls" data-stop="1">' +
+            selectInput("prStatus" + r.id, [
+              { value: "open", label: opt("مفتوح", "Open") },
+              { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+              { value: "on_hold", label: opt("معلّق", "On hold") },
+              { value: "closed", label: opt("مغلق", "Closed") },
+              { value: "cancelled", label: opt("ملغى", "Cancelled") },
+            ], r.status) +
+            '<button class="btn-outline" data-act="proj-status" data-id="' + r.id + '">' + dual("تحديث", "Update") + "</button></div>"
+          : "";
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(r.name) + "</div>" +
+          '<div class="s">' + projectTypeBadge(r.record_type) + " " +
+          (r.company_id ? escapeHtml(companyNameById(r.company_id)) + " · " : "") +
+          (r.period_start || r.period_end
+            ? dual("الفترة", "Period") + " " + escapeHtml(dateStr(r.period_start)) + " – " + escapeHtml(dateStr(r.period_end)) + " · "
+            : "") +
+          dual("تقدير", "Estimate") + " " + est +
+          (r.resource_estimate ? " · " + escapeHtml(r.resource_estimate) : "") +
+          "</div>" +
+          (r.objective ? '<div class="s">' + escapeHtml(r.objective) + "</div>" : "") +
+          "</div>" +
+          statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
+          "</div>" + controls + "</div>";
+      };
+      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create);
+      renderPaged(host, "projects", filtered, projectRow, function (h) {
+        h.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var rid = btn.getAttribute("data-id");
+            patch("/api/v1/operations/projects/" + rid, { status: valOf("prStatus" + rid) })
+              .then(function () { toast(dual("تم تحديث السجل.", "Record updated."), "ok"); return renderProjectsView(); })
+              .catch(domainError);
+          });
+        });
+      }, spec);
       var form = byId("projectForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -7872,14 +8611,6 @@
             .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
         });
       }
-      host.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var rid = btn.getAttribute("data-id");
-          patch("/api/v1/operations/projects/" + rid, { status: valOf("prStatus" + rid) })
-            .then(function () { toast(dual("تم تحديث السجل.", "Record updated."), "ok"); return renderProjectsView(); })
-            .catch(domainError);
-        });
-      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8035,21 +8766,44 @@
       ? softGet("/api/v1/accounting/financial-reports")
       : Promise.resolve([])
     ).then(function (reports) {
-      var list = reports.length
-        ? '<div class="av-list">' + reports.map(function (r) {
-            return '<div class="av-row" style="cursor:default"><div class="grow">' +
-              '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
-              '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
-              statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
       var group = has("dashboard.holding") ? groupReportPanel() : "";
       host.innerHTML = panel(
         "ماليات الشركات (المقارنة والملخص المالي للمجموعة)",
         "Subsidiary finance (comparison and group financial summary)",
-        group + list
+        group + '<div id="finReportsList"></div>'
       );
+      var listHost = byId("finReportsList");
+      if (listHost) {
+        // Slides 134-136: the financial-report archive carries the deck's
+        // company / period / status / currency filters, the apply / save /
+        // clear / export cluster, and "الفترة الأحدث" as the default sort.
+        var finSpec = [
+          { key: "q", type: "search", ar: "الشركة", en: "Company",
+            fields: ["company_name_ar", "company_name_en", "currency"] },
+          companyFilterOption(),
+          { key: "period", ar: "الفترة", en: "Period",
+            resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+            options: distinctOptions(reports, function (r) {
+              return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+            }) },
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: distinctOptions(reports, function (r) { return r.status; },
+              function (v) { return { ar: (FIN_MAP[v] || [v])[0], en: (FIN_MAP[v] || [v, v])[1] }; }) },
+          { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+            options: distinctOptions(reports, function (r) { return r.currency; }) },
+        ];
+        var finRows = applyListFilters(scopeFilter(reports), "financialReports", finSpec);
+        finRows.sort(function (a, b) {
+          return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+        });
+        renderPaged(listHost, "financialReports", finRows, function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow">' +
+            '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+            dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+            '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
+            statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
+        }, null, finSpec);
+      }
       if (has("dashboard.holding")) bindHost(host, onAcctAct);
       return null;
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
@@ -8152,14 +8906,15 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة حساب", "Add account") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (a) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(a.code + " · " + (STATE.lang === "ar" ? a.name_ar : a.name_en || a.name_ar)) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " + escapeHtml(a.account_type) + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد حسابات.", "No accounts.");
-      host.innerHTML = panel("دليل الحسابات (D01)", "Chart of accounts (D01)", create + list);
+      STATE.acctAccounts = rows;
+      host.innerHTML = panel("دليل الحسابات (D01)", "Chart of accounts (D01)", create + '<div id="acctAccountsList"></div>');
+      mountList("acctAccountsList", "accounts", rows, function (a) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(a.code + " · " + (STATE.lang === "ar" ? a.name_ar : a.name_en || a.name_ar)) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " + escapeHtml(a.account_type) + "</div></div></div>";
+      }, accountsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by account code.
+        byTextAsc(function (a) { return a.code; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8181,22 +8936,25 @@
           dual("إضافة سطر", "Add line") + '</button><button class="btn-solid" type="submit">' +
           dual("حفظ القيد", "Save journal") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (j) {
-            var controls = (j.status === "draft" && has("journal.post")
-              ? actBtn("journal.post", "jn-post", j.id, "ترحيل", "Post")
-              : "") + (j.status === "posted" && has("journal.reverse")
-              ? actBtn("journal.reverse", "jn-reverse", j.id, "عكس القيد", "Reverse")
-              : "");
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(j.number || ("#" + j.id)) + " · " + escapeHtml(dateStr(j.entry_date)) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(j.company_id)) +
-              " · " + dual("مدين", "Debit") + " " + dec(j.total_debit) + " · " + dual("دائن", "Credit") + " " + dec(j.total_credit) + "</div></div>" +
-              statusBadgeFromMap(j.status, { draft: ["مسودة", "Draft", "warn"], posted: ["مُرحّل", "Posted", "ok"], reversed: ["معكوس", "Reversed", "miss"] }) +
-              "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد قيود.", "No journals.");
-      host.innerHTML = panel("القيود (D01: غير قابلة للتعديل بعد الترحيل — التصحيح بالعكس)", "Journals (D01: immutable once posted — correction by reversal)", create + list);
+      STATE.acctJournals = rows;
+      host.innerHTML = panel("القيود (D01: غير قابلة للتعديل بعد الترحيل — التصحيح بالعكس)", "Journals (D01: immutable once posted — correction by reversal)", create + '<div id="acctJournalsList"></div>');
+      mountList("acctJournalsList", "journals", rows, function (j) {
+        var controls = (j.status === "draft" && has("journal.post")
+          ? actBtn("journal.post", "jn-post", j.id, "ترحيل", "Post")
+          : "") + (j.status === "posted" && has("journal.reverse")
+          ? actBtn("journal.reverse", "jn-reverse", j.id, "عكس القيد", "Reverse")
+          : "");
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(j.number || ("#" + j.id)) + " · " + escapeHtml(dateStr(j.entry_date)) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(j.company_id)) +
+          " · " + dual("مدين", "Debit") + " " + dec(j.total_debit) + " · " + dual("دائن", "Credit") + " " + dec(j.total_credit) + "</div></div>" +
+          statusBadgeFromMap(j.status, { draft: ["مسودة", "Draft", "warn"], posted: ["مُرحّل", "Posted", "ok"], reversed: ["معكوس", "Reversed", "miss"] }) +
+          "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
+      }, journalsFilterSpec(), null,
+        // Slide 135 "القيود": newest entry date first, stable by ID.
+        function (a, b) {
+          return String(b.entry_date || "").localeCompare(String(a.entry_date || "")) || byIdAsc(a, b);
+        });
       if (create) {
         addJournalLine();
         host.querySelector('[data-act="jn-add-line"]').addEventListener("click", addJournalLine);
@@ -8479,23 +9237,25 @@
           moneyBlock("مستحق علينا (فواتير واردة)", "Payable (received)", summary.payables) +
           "</div>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (iv) {
-            var settle = iv.status !== "settled" && has("settlement.manage")
-              ? '<div class="av-user-controls" data-stop="1">' +
-                numInput("stAmt" + iv.id, "") +
-                '<button class="btn-outline" data-act="iv-settle" data-id="' + iv.id + '">' + dual("تسجيل تسوية", "Record settlement") + "</button></div>"
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
-              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
-              dirBadge(iv.direction) +
-              statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + settle + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد فواتير.", "No invoices.");
-      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + list);
+      STATE.acctInvoices = rows;
+      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + '<div id="acctInvoicesList"></div>');
+      mountList("acctInvoicesList", "invoices", rows, function (iv) {
+        var settle = iv.status !== "settled" && has("settlement.manage")
+          ? '<div class="av-user-controls" data-stop="1">' +
+            numInput("stAmt" + iv.id, "") +
+            '<button class="btn-outline" data-act="iv-settle" data-id="' + iv.id + '">' + dual("تسجيل تسوية", "Record settlement") + "</button></div>"
+          : "";
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
+          dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
+          dirBadge(iv.direction) +
+          statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+          "</div>" + settle + "</div>";
+      }, invoicesFilterSpec(), null,
+        // Slide 135 "إيرادات / مصروفات / ذمم": default sort "الاستحقاق تصاعديًا
+        // للذمم" -- earliest due date first.
+        byDateAsc(function (iv) { return iv.due_date; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8530,16 +9290,15 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة طرف", "Add party") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (p) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(p.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
-              escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
-              " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا يوجد عملاء أو موردون.", "No customers or suppliers.");
-      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + list);
+      STATE.acctParties = rows;
+      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + '<div id="acctPartiesList"></div>');
+      mountList("acctPartiesList", "parties", rows, function (p) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(p.name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
+          escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
+          " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
+      }, partiesFilterSpec());
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8586,15 +9345,16 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة أصل", "Add asset") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (a) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(a.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
-              dual("التكلفة", "Cost") + " " + dec(a.cost) + " · " + escapeHtml(a.category || "") + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد أصول.", "No assets.");
-      host.innerHTML = panel("الأصول (D01)", "Assets (D01)", create + list);
+      STATE.acctAssets = rows;
+      host.innerHTML = panel("الأصول (D01)", "Assets (D01)", create + '<div id="acctAssetsList"></div>');
+      mountList("acctAssetsList", "assets", rows, function (a) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(a.name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
+          dual("التكلفة", "Cost") + " " + dec(a.cost) + " · " + escapeHtml(a.category || "") + "</div></div></div>";
+      }, assetsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by asset name.
+        byTextAsc(function (a) { return a.name; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8613,24 +9373,28 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء موازنة", "Create budget") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (b) {
-            var approve = b.status !== "approved" && has("budget.approve")
-              ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
-              : "";
-            var utilBtn = b.status === "approved" && has("budget.read")
-              ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
-              " · v" + dec(b.version) + "</div>" +
-              '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
-              " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
-              statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
-              "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد موازنات.", "No budgets.");
-      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + list);
+      STATE.acctBudgets = rows;
+      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + '<div id="acctBudgetsList"></div>');
+      mountList("acctBudgetsList", "budgets", rows, function (b) {
+        var approve = b.status !== "approved" && has("budget.approve")
+          ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
+          : "";
+        var utilBtn = b.status === "approved" && has("budget.read")
+          ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
+          : "";
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
+          " · v" + dec(b.version) + "</div>" +
+          '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
+          " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
+          statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
+          "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
+      }, budgetsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by budget period,
+        // newest year first (a later year supersedes an earlier one).
+        function (a, b) {
+          return (b.fiscal_year - a.fiscal_year) || byIdAsc(a, b);
+        });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -8683,6 +9447,7 @@
     ]).then(function (res) {
       var rows = res[1] || [];
       var evals = res[2] || [];
+      STATE.kpis = rows;
       var canManage = has("kpi.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="kpiForm">' +
@@ -8696,8 +9461,14 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة مؤشر", "Add KPI") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (k) {
+      var kpiSpec = kpisFilterSpec();
+      var kpiList = applyListFilters(rows, "kpis", kpiSpec);
+      // Slide 136 "المؤشرات / العملات": default sort by effective date (the
+      // KPI's approval timestamp), newest first, stable by ID.
+      kpiList.sort(function (a, b) {
+        return String(b.approved_at || "").localeCompare(String(a.approved_at || "")) || byIdAsc(a, b);
+      });
+      var kpiRow = function (k) {
             var toggle = canManage
               ? actBtn("kpi.manage", k.is_active ? "kpi-deactivate" : "kpi-activate", k.id,
                   k.is_active ? "إيقاف" : "اعتماد", k.is_active ? "Deactivate" : "Approve")
@@ -8710,8 +9481,7 @@
               (k.target_value != null ? '<span class="status rev"><i></i>' + dual("المستهدف", "Target") + " " + dec(k.target_value) + "</span>" : "") +
               toggle +
               "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد مؤشرات.", "No KPIs.");
+      };
       var evaluations = evals.length
         ? '<div class="av-list">' + evals.map(function (ev) {
             return '<div class="av-row" data-kpi-open="' + ev.id + '"><div class="grow"><div class="t">' +
@@ -8730,8 +9500,10 @@
               dual("اختر مؤشرًا لعرض السجلات المصدر خلف النتيجة.",
                    "Select a KPI to see the source records behind its result.") + "</div>") +
         panel("تعريفات المؤشرات (D02: مصدر + طريقة + فترة)",
-              "KPI definitions (D02: source + method + period)", create + list);
+              "KPI definitions (D02: source + method + period)",
+              create + '<div id="kpiDefs"></div>');
       host.innerHTML = body;
+      renderPaged(byId("kpiDefs"), "kpis", kpiList, kpiRow, null, kpiSpec);
       host.querySelectorAll("[data-kpi-open]").forEach(function (row) {
         row.addEventListener("click", function (e) {
           if (e.target.closest && e.target.closest("[data-stop]")) return;
@@ -9891,11 +10663,62 @@
 
 
   // ---- tab: users ----
+  // Slide 136 fixes the user list's filters (company, owner, type, status,
+  // date, version) and search fields (name / email / role; record id / action).
+  // The directory is server-paged, so the search and role/status selects map to
+  // the API's own ``search`` / ``role_code`` / ``is_active`` parameters rather
+  // than filtering a client-side page. Authorization is unchanged.
+  function adminUsersPageState() {
+    return STATE.adminUsers || (STATE.adminUsers = {
+      limit: 25, offset: 0, total: 0, search: "", role_code: "", is_active: "",
+    });
+  }
+
+  function adminUserFiltersHtml(page, roles) {
+    var roleOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "كل الأدوار" : "All roles") + "</option>";
+    roles.forEach(function (r) {
+      roleOpts += '<option value="' + escAttr(r.code) + '"' + (r.code === page.role_code ? " selected" : "") + ">" +
+        escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en) + "</option>";
+    });
+    var statusOpts = [
+      { value: "", ar: "كل الحالات", en: "All statuses" },
+      { value: "true", ar: "نشط", en: "Active" },
+      { value: "false", ar: "موقوف", en: "Inactive" },
+    ].map(function (o) {
+      return '<option value="' + o.value + '"' + (o.value === page.is_active ? " selected" : "") + ">" +
+        escAttr(STATE.lang === "ar" ? o.ar : o.en) + "</option>";
+    }).join("");
+    var sizes = PAGE_SIZES.map(function (s) {
+      return '<option value="' + s + '"' + (s === page.limit ? " selected" : "") + ">" +
+        plainNum(s) + "</option>";
+    }).join("");
+    return (
+      '<div class="list-filters" id="listFilter-adminUsers">' +
+      '<label class="lf-field lf-search">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+      '<input class="av-input" id="adminUsersSearch" value="' + escAttr(page.search) + '" placeholder="' +
+      escAttr(STATE.lang === "ar" ? "الاسم / البريد / الدور" : "Name / email / role") + '" aria-label="' +
+      escAttr(STATE.lang === "ar" ? "بحث" : "Search") + '"></label>' +
+      '<select class="av-select lf-select" id="adminUsersRole" aria-label="' + escAttr(STATE.lang === "ar" ? "الدور" : "Role") + '">' + roleOpts + "</select>" +
+      '<select class="av-select lf-select" id="adminUsersStatus" aria-label="' + escAttr(STATE.lang === "ar" ? "الحالة" : "Status") + '">' + statusOpts + "</select>" +
+      '<label class="pager-size">' + dual("لكل صفحة", "Per page") +
+      '<select class="av-select" id="adminUsersSize">' + sizes + "</select></label>" +
+      '<div class="lf-actions">' +
+      '<button type="button" class="lf-btn primary" data-admin-action="users-apply">' + dual("تطبيق", "Apply") + "</button>" +
+      '<button type="button" class="lf-btn" data-admin-action="users-clear">' + dual("مسح", "Clear") + "</button>" +
+      "</div></div>"
+    );
+  }
+
   function renderAdminUsers() {
     var host = byId("adminContent");
-    var page = STATE.adminUsers || (STATE.adminUsers = { limit: 25, offset: 0, total: 0 });
+    var page = adminUsersPageState();
+    var query = "/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset;
+    if (page.search) query += "&search=" + encodeURIComponent(page.search);
+    if (page.role_code) query += "&role_code=" + encodeURIComponent(page.role_code);
+    if (page.is_active) query += "&is_active=" + encodeURIComponent(page.is_active);
     return Promise.all([
-      get("/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset),
+      get(query),
       softGet("/api/v1/admin/roles"),
       ensureCompanies(),
       softGet("/api/v1/admin/departments"),
@@ -9929,13 +10752,16 @@
         );
       }).join("");
 
+      var pages = Math.max(1, Math.ceil(page.total / page.limit));
+      var curPage = Math.floor(page.offset / page.limit) + 1;
       var pager =
         '<div class="av-pager">' +
         '<button class="btn-outline" data-admin-action="users-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
-        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
+        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) +
+        " · " + plainNum(curPage) + " / " + plainNum(pages) + "</span>" +
         '<button class="btn-outline" data-admin-action="users-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
 
-      host.innerHTML = adminPanel("المستخدمون", "Users", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
+      host.innerHTML = adminPanel("المستخدمون", "Users", adminUserFiltersHtml(page, roles) + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
     });
   }
 
@@ -10723,11 +11549,13 @@
   // ---- tab: audit ----
   function renderAdminAudit() {
     var host = byId("adminContent");
-    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0, action: "", entity_type: "" });
+    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0, action: "", entity_type: "", company_id: "" });
     var query = "/api/v1/admin/audit-logs?limit=" + page.limit + "&offset=" + page.offset;
     if (page.action) query += "&action=" + encodeURIComponent(page.action);
     if (page.entity_type) query += "&entity_type=" + encodeURIComponent(page.entity_type);
-    return get(query).then(function (data) {
+    if (page.company_id) query += "&company_id=" + encodeURIComponent(page.company_id);
+    return Promise.all([ensureCompanies(), get(query)]).then(function (res) {
+      var data = res[1];
       page.total = data.total;
       var rows = data.items.map(function (e) {
         var actor = STATE.lang === "ar" ? e.actor_name_ar || "—" : e.actor_name_en || e.actor_name_ar || "—";
@@ -10743,18 +11571,46 @@
         '<button class="btn-outline" data-admin-action="audit-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
         '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
         '<button class="btn-outline" data-admin-action="audit-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
+      // Slide 136 "المستخدمون / النشاط": search plus company, type, status and
+      // date filters, with the deck's apply / save / clear / export cluster.
+      // The audit read gate is unchanged; the export is gated on analytics.export
+      // exactly as the deck's "عند سماح التصدير" requires.
+      var companyOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "كل الشركات" : "All companies") + "</option>" +
+        (STATE.companies || []).map(function (c) {
+          return '<option value="' + escAttr(c.id) + '"' + (String(c.id) === String(page.company_id) ? " selected" : "") + ">" +
+            escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) + "</option>";
+        }).join("");
+      var saved = savedFilters("audit");
+      var savedSel = saved.length
+        ? '<select class="av-select lf-select" id="auditSaved" aria-label="' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + '">' +
+          '<option value="">' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + "</option>" +
+          saved.map(function (s) { return '<option value="' + escAttr(s.name) + '">' + escapeHtml(s.name) + "</option>"; }).join("") +
+          "</select>"
+        : "";
+      var exportBtn = has("analytics.export")
+        ? '<button type="button" class="lf-btn" id="auditExport">' + dual("تصدير النتائج", "Export results") + "</button>"
+        : "";
       var filters =
-        '<div class="av-toolbar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
-        '<input class="av-input" id="auditAction" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بالإجراء (مثال: journal.posted)" : "Filter by action (e.g. journal.posted)") + '" value="' + escAttr(page.action) + '">' +
-        '<input class="av-input" id="auditEntity" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بنوع الكيان" : "Filter by entity type") + '" value="' + escAttr(page.entity_type) + '">' +
-        '<button class="btn-outline" id="auditApply">' + dual("تطبيق", "Apply") + "</button>" +
-        '<button class="btn-outline" id="auditClear">' + dual("مسح", "Clear") + "</button></div>";
+        '<div class="list-filters" id="listFilter-audit">' +
+        '<label class="lf-field lf-search">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+        '<input class="av-input" id="auditAction" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بالإجراء (مثال: journal.posted)" : "Filter by action (e.g. journal.posted)") + '" value="' + escAttr(page.action) + '"></label>' +
+        '<input class="av-input lf-select" id="auditEntity" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بنوع الكيان" : "Filter by entity type") + '" value="' + escAttr(page.entity_type) + '">' +
+        '<select class="av-select lf-select" id="auditCompany" aria-label="' + escAttr(STATE.lang === "ar" ? "الشركة" : "Company") + '">' + companyOpts + "</select>" +
+        savedSel +
+        '<div class="lf-actions">' +
+        '<button type="button" class="lf-btn primary" id="auditApply">' + dual("تطبيق", "Apply") + "</button>" +
+        '<button type="button" class="lf-btn" id="auditSave">' + dual("حفظ المرشح باسمي", "Save filter") + "</button>" +
+        '<button type="button" class="lf-btn" id="auditClear">' + dual("مسح", "Clear") + "</button>" +
+        exportBtn +
+        "</div></div>";
       host.innerHTML = adminPanel("سجل النشاط", "Audit trail", filters + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
       var apply = byId("auditApply");
       if (apply) {
         apply.addEventListener("click", function () {
           page.action = valOf("auditAction");
           page.entity_type = valOf("auditEntity");
+          page.company_id = valOf("auditCompany");
           page.offset = 0;
           renderAdminAudit();
         });
@@ -10764,10 +11620,43 @@
         clear.addEventListener("click", function () {
           page.action = "";
           page.entity_type = "";
+          page.company_id = "";
           page.offset = 0;
           renderAdminAudit();
         });
       }
+      var save = byId("auditSave");
+      if (save) {
+        save.addEventListener("click", function () {
+          var values = { action: page.action, entity_type: page.entity_type, company_id: page.company_id };
+          if (!values.action && !values.entity_type && !values.company_id) {
+            toast(dual("لا يوجد مرشح لحفظه.", "Nothing to save yet."), "err");
+            return;
+          }
+          var name = window.prompt(dual("اسم المرشح:", "Filter name:"),
+            dual("مرشح ", "Filter ") + new Date().toLocaleDateString());
+          if (!name) return;
+          var list = savedFilters("audit").filter(function (s) { return s.name !== name; });
+          list.push({ name: name, values: values });
+          try { localStorage.setItem("safir.filters.v1.audit", JSON.stringify(list)); } catch (e) { /* storage disabled */ }
+          toast(dual("تم حفظ المرشح: " + name, "Filter saved: " + name), "ok");
+          renderAdminAudit();
+        });
+      }
+      var savedSelect = byId("auditSaved");
+      if (savedSelect) {
+        savedSelect.addEventListener("change", function () {
+          var found = savedFilters("audit").filter(function (s) { return s.name === savedSelect.value; })[0];
+          if (!found) return;
+          page.action = found.values.action || "";
+          page.entity_type = found.values.entity_type || "";
+          page.company_id = found.values.company_id || "";
+          page.offset = 0;
+          renderAdminAudit();
+        });
+      }
+      var exp = byId("auditExport");
+      if (exp) exp.addEventListener("click", function () { exportListCsv("audit", data.items); });
     });
   }
 
@@ -11245,6 +12134,23 @@
 
     if (action === "users-prev") { STATE.adminUsers.offset = Math.max(0, STATE.adminUsers.offset - STATE.adminUsers.limit); return renderAdminUsers(); }
     if (action === "users-next") { STATE.adminUsers.offset += STATE.adminUsers.limit; return renderAdminUsers(); }
+    if (action === "users-apply") {
+      var page = adminUsersPageState();
+      var search = byId("adminUsersSearch");
+      var roleSel = byId("adminUsersRole");
+      var statusSel = byId("adminUsersStatus");
+      var sizeSel = byId("adminUsersSize");
+      page.search = search ? search.value.trim() : "";
+      page.role_code = roleSel ? roleSel.value : "";
+      page.is_active = statusSel ? statusSel.value : "";
+      if (sizeSel) page.limit = parseInt(sizeSel.value, 10) || 25;
+      page.offset = 0;
+      return renderAdminUsers();
+    }
+    if (action === "users-clear") {
+      STATE.adminUsers = { limit: 25, offset: 0, total: 0, search: "", role_code: "", is_active: "" };
+      return renderAdminUsers();
+    }
     if (action === "audit-prev") { STATE.adminAudit.offset = Math.max(0, STATE.adminAudit.offset - STATE.adminAudit.limit); return renderAdminAudit(); }
     if (action === "audit-next") { STATE.adminAudit.offset += STATE.adminAudit.limit; return renderAdminAudit(); }
 

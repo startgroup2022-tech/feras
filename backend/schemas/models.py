@@ -162,6 +162,12 @@ class CompanyOut(BaseModel):
     phone: str | None = None
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # The deck's portfolio list (slide 134) filters by "مدير"; the manager is
+    # derived from the company's granted company-manager user, so the picker can
+    # show a name rather than a bare id. Null when the company has no manager.
+    manager_user_id: int | None = None
+    manager_name_ar: str | None = None
+    manager_name_en: str | None = None
 
 
 class CompanyCreateRequest(BaseModel):
@@ -354,6 +360,10 @@ class FinancialReviewOut(BaseModel):
     id: int
     report_id: int
     reviewer_id: int
+    # Display names for the reviewer, so a list can offer the deck's "مراجع"
+    # filter (slide 134) without resolving a bare id client-side.
+    reviewer_name_ar: str | None = None
+    reviewer_name_en: str | None = None
     status: str
     verified_revenue: Decimal | None
     verified_expenses: Decimal | None
@@ -524,6 +534,10 @@ class SupportRequestOut(BaseModel):
     responsible_department: str
     requested_by_id: int | None
     assigned_to_id: int | None
+    # Display names for the assignee, so the list view can offer the deck's
+    # "مسؤول" filter without resolving a bare id client-side.
+    assigned_to_name_ar: str | None = None
+    assigned_to_name_en: str | None = None
     platform: str | None = None
     dimensions: str | None = None
     reference_link: str | None = None

@@ -98,6 +98,8 @@ class Task(Base, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company"] = relationship()
+    assignee: Mapped["User | None"] = relationship(foreign_keys=[assignee_id])
+    reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewer_id])
     events: Mapped[list["TaskEvent"]] = relationship(
         back_populates="task", cascade="all, delete-orphan"
     )
@@ -304,6 +306,8 @@ class AdvisorySession(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    advisor: Mapped["User"] = relationship(foreign_keys=[advisor_user_id])
+
 
 class AdvisorMonthlyReport(Base, TimestampMixin):
     """An advisor's monthly report for a company (S19).
@@ -374,6 +378,7 @@ class OwnerDecision(Base, TimestampMixin):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company | None"] = relationship()
+    executor: Mapped["User | None"] = relationship(foreign_keys=[executor_user_id])
     history: Mapped[list["OwnerDecisionEvent"]] = relationship(
         back_populates="decision", cascade="all, delete-orphan"
     )

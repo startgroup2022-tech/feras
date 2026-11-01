@@ -86,6 +86,8 @@ class EmployeeCreateRequest(BaseModel):
     email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
     hire_date: date | None = None
+    # Deck slides 102-106: country/nationality drives the localization rule.
+    nationality: str | None = Field(default=None, max_length=80)
     currency: str = Field(default="SAR", max_length=8)
     base_salary: Decimal | None = None
     housing_allowance: Decimal | None = None
@@ -101,6 +103,7 @@ class EmployeeUpdateRequest(BaseModel):
     job_title: str | None = Field(default=None, max_length=120)
     department_id: int | None = None
     status: EmployeeStatus | None = None
+    nationality: str | None = Field(default=None, max_length=80)
     email: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
     currency: str | None = Field(default=None, max_length=8)

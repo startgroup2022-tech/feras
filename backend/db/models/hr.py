@@ -84,6 +84,10 @@ class Employee(Base, TimestampMixin):
         ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
     )
     hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # S11/localization (deck slides 102-106): the employee record carries the
+    # country/nationality the localization rule is computed against. Nullable so
+    # existing rows stay valid; the deck's form marks it required on new records.
+    nationality: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=EmployeeStatus.ACTIVE.value, index=True
     )

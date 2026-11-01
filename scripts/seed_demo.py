@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,12 +28,15 @@ from backend.core.config import settings  # noqa: E402
 from backend.db.base import utcnow  # noqa: E402
 from backend.db.models.enums import (  # noqa: E402
     CompanyHealth,
+    EmployeeStatus,
+    FinancialReviewStatus,
     ReportStatus,
     SupportCategory,
     SupportStatus,
 )
+from backend.db.models.hr import Employee  # noqa: E402
 from backend.db.models.identity import Company, Role, User, UserCompanyAccess  # noqa: E402
-from backend.db.models.report import MonthlyReport  # noqa: E402
+from backend.db.models.report import MonthlyReport, MonthlyReportFinancialReview  # noqa: E402
 from backend.db.models.support import SupportRequest  # noqa: E402
 from backend.db.session import session_scope  # noqa: E402
 from backend.services.auth_service import create_user  # noqa: E402
@@ -67,13 +71,33 @@ def _demo_lead_clause():
 OPS_FINANCE_ROLE = "accountant"
 OPS_COMPANY_ROLE = "company_manager"
 
+# (code, name_ar, name_en, sector, health, country, currency). Country and
+# currency feed the company-list filters the deck fixes on slides 134-136
+# ("الدولة", "العملة") and the localization panel (slides 102-106); the group is
+# Gulf-based so a subsidiary may trade in a currency other than the SAR default.
 COMPANIES = [
-    ("SAF-TECH", "السفير للتقنية", "Safir Technology", "Technology", CompanyHealth.STRONG),
-    ("SAF-REAL", "السفير للعقار", "Safir Real Estate", "Real Estate", CompanyHealth.STABLE),
-    ("SAF-MFG", "السفير للتصنيع", "Safir Manufacturing", "Industrial", CompanyHealth.WATCH),
-    ("SAF-RET", "السفير للتجزئة", "Safir Retail", "Retail", CompanyHealth.STRONG),
-    ("SAF-LOG", "السفير للخدمات اللوجستية", "Safir Logistics", "Logistics", CompanyHealth.STABLE),
-    ("SAF-HLT", "السفير للرعاية الصحية", "Safir Healthcare", "Healthcare", CompanyHealth.ATTENTION),
+    ("SAF-TECH", "السفير للتقنية", "Safir Technology", "Technology", CompanyHealth.STRONG, "السعودية", "SAR"),
+    ("SAF-REAL", "السفير للعقار", "Safir Real Estate", "Real Estate", CompanyHealth.STABLE, "السعودية", "SAR"),
+    ("SAF-MFG", "السفير للتصنيع", "Safir Manufacturing", "Industrial", CompanyHealth.WATCH, "السعودية", "SAR"),
+    ("SAF-RET", "السفير للتجزئة", "Safir Retail", "Retail", CompanyHealth.STRONG, "الإمارات", "AED"),
+    ("SAF-LOG", "السفير للخدمات اللوجستية", "Safir Logistics", "Logistics", CompanyHealth.STABLE, "الإمارات", "AED"),
+    ("SAF-HLT", "السفير للرعاية الصحية", "Safir Healthcare", "Healthcare", CompanyHealth.ATTENTION, "قطر", "QAR"),
+]
+
+# (company_code, full_name_ar, full_name_en, job_title, nationality, hire_year)
+# Employee rows so the employee list (S11) has real data to filter by company,
+# nationality and status, matching deck slides 102-106 / 134-136.
+EMPLOYEES = [
+    ("SAF-TECH", "خالد العتيبي", "Khalid Al-Otaibi", "مهندس برمجيات أول", "السعودية", 2019),
+    ("SAF-TECH", "سارة المطيري", "Sarah Al-Mutairi", "مديرة مشاريع", "السعودية", 2020),
+    ("SAF-TECH", "راجيش كومار", "Rajesh Kumar", "مهندس دعم فني", "الهند", 2021),
+    ("SAF-REAL", "منى الحربي", "Mona Al-Harbi", "مديرة عقارات", "السعودية", 2018),
+    ("SAF-REAL", "أحمد الشامي", "Ahmed Al-Shami", "مسؤول تسويق عقاري", "مصر", 2022),
+    ("SAF-MFG", "عبدالرحمن الدوسري", "Abdulrahman Al-Dosari", "مدير المصنع", "السعودية", 2017),
+    ("SAF-MFG", "محمد إقبال", "Muhammad Iqbal", "مشرف خط إنتاج", "باكستان", 2020),
+    ("SAF-RET", "ليلى النعيمي", "Layla Al-Nuaimi", "مديرة متجر", "الإمارات", 2021),
+    ("SAF-LOG", "يوسف القحطاني", "Yousef Al-Qahtani", "منسّق لوجستي", "السعودية", 2022),
+    ("SAF-HLT", "هند العبيدي", "Hind Al-Obaidi", "أخصائية توطين", "قطر", 2023),
 ]
 
 # (company_code, revenue, expenses, net, receivables, status, problems)
@@ -97,15 +121,19 @@ REPORTS_2027_09 = [
     ("SAF-LOG", "1290000", "1100000", "190000", "280000", ReportStatus.REVIEWED),
 ]
 
+# (company_code, title, category, status, assignee_email). The assignee is a
+# demo user (or None) so the deck's "مسؤول" request filter (slide 134) has
+# labelled rows to show.
 SUPPORT_REQUESTS = [
     ("SAF-TECH", "طلب تطوير خطة التوسع الإقليمي", SupportCategory.BUSINESS_DEVELOPMENT,
-     SupportStatus.IN_PROGRESS),
+     SupportStatus.IN_PROGRESS, f"bd@{DEMO_EMAIL_DOMAIN}"),
     ("SAF-REAL", "حملة تسويقية لمشروع الواجهة البحرية", SupportCategory.MARKETING,
-     SupportStatus.NEW),
+     SupportStatus.NEW, f"marketing@{DEMO_EMAIL_DOMAIN}"),
     ("SAF-MFG", "مراجعة الهيكل المالي والتكاليف", SupportCategory.ACCOUNTING,
-     SupportStatus.NEW),
-    ("SAF-RET", "هوية بصرية لفرع جديد", SupportCategory.DESIGN, SupportStatus.COMPLETED),
-    ("SAF-LOG", "دعم في إعداد نموذج تسعير", SupportCategory.GENERAL, SupportStatus.NEW),
+     SupportStatus.NEW, f"accountant@{DEMO_EMAIL_DOMAIN}"),
+    ("SAF-RET", "هوية بصرية لفرع جديد", SupportCategory.DESIGN, SupportStatus.COMPLETED,
+     f"design@{DEMO_EMAIL_DOMAIN}"),
+    ("SAF-LOG", "دعم في إعداد نموذج تسعير", SupportCategory.GENERAL, SupportStatus.NEW, None),
 ]
 
 # S18 / AC-18: the weekly employee report asks at most five core questions and
@@ -286,7 +314,7 @@ def seed(reset: bool) -> None:
 
         # ---- companies ----
         companies: dict[str, Company] = {}
-        for code, name_ar, name_en, sector, health in COMPANIES:
+        for code, name_ar, name_en, sector, health, country, currency in COMPANIES:
             existing = db.execute(
                 select(Company).where(Company.code == code)
             ).scalar_one_or_none()
@@ -297,6 +325,8 @@ def seed(reset: bool) -> None:
                     name_en=name_en,
                     sector=sector,
                     health=health.value,
+                    country=country,
+                    currency=currency,
                     contact_email=f"{code.lower()}@{DEMO_EMAIL_DOMAIN}",
                 )
                 db.add(existing)
@@ -484,8 +514,15 @@ def seed(reset: bool) -> None:
             print("  1 demo attachment on SAF-TECH report")
 
         # ---- support requests ----
+        def user_by_email(email):
+            if not email:
+                return None
+            return db.execute(
+                select(User).where(User.email == email)
+            ).scalar_one_or_none()
+
         created_requests = 0
-        for code, title, category, status in SUPPORT_REQUESTS:
+        for code, title, category, status, assignee_email in SUPPORT_REQUESTS:
             company = companies[code]
             exists = db.execute(
                 select(SupportRequest).where(
@@ -495,6 +532,7 @@ def seed(reset: bool) -> None:
             ).scalar_one_or_none()
             if exists:
                 continue
+            assignee = user_by_email(assignee_email)
             db.add(
                 SupportRequest(
                     company_id=company.id,
@@ -503,11 +541,76 @@ def seed(reset: bool) -> None:
                     category=category.value,
                     status=status.value,
                     requested_by_id=manager.id,
+                    assigned_to_id=assignee.id if assignee else None,
                 )
             )
             created_requests += 1
         db.commit()
         print(f"  {created_requests} support requests")
+
+        # ---- financial reviews on the reviewed reports ----
+        # The deck's report filter (slide 134) names a "مراجع"; a review record
+        # is what carries that reviewer, so seed one for each reviewed report.
+        created_reviews = 0
+        reviewed = db.execute(
+            select(MonthlyReport).where(
+                MonthlyReport.period_year == 2027,
+                MonthlyReport.period_month == 10,
+                MonthlyReport.status == ReportStatus.REVIEWED.value,
+            )
+        ).scalars().all()
+        for report in reviewed:
+            exists = db.execute(
+                select(MonthlyReportFinancialReview).where(
+                    MonthlyReportFinancialReview.report_id == report.id
+                )
+            ).scalar_one_or_none()
+            if exists:
+                continue
+            db.add(
+                MonthlyReportFinancialReview(
+                    report_id=report.id,
+                    reviewer_id=accountant.id,
+                    status=FinancialReviewStatus.APPROVED.value,
+                    verified_revenue=report.revenue,
+                    verified_expenses=report.expenses,
+                    verified_net_result=report.net_result,
+                    verified_outstanding_receivables=report.outstanding_receivables,
+                    financial_notes="بيانات مطابقة للدفاتر المعتمدة.",
+                    is_financially_accurate=True,
+                    reviewed_at=utcnow(),
+                )
+            )
+            created_reviews += 1
+        db.commit()
+        print(f"  {created_reviews} financial reviews")
+
+        # ---- employees (S11) ----
+        created_employees = 0
+        for code, full_name_ar, full_name_en, job_title, nationality, hire_year in EMPLOYEES:
+            company = companies[code]
+            exists = db.execute(
+                select(Employee).where(
+                    Employee.company_id == company.id,
+                    Employee.full_name_ar == full_name_ar,
+                )
+            ).scalar_one_or_none()
+            if exists:
+                continue
+            db.add(
+                Employee(
+                    company_id=company.id,
+                    full_name_ar=full_name_ar,
+                    full_name_en=full_name_en,
+                    job_title=job_title,
+                    nationality=nationality,
+                    hire_date=date(hire_year, 3, 1),
+                    status=EmployeeStatus.ACTIVE.value,
+                )
+            )
+            created_employees += 1
+        db.commit()
+        print(f"  {created_employees} employees")
 
         # ---- Phase 3 operations demo: forms, workflows, submissions,
         #      approvals and documents -------------------------------------

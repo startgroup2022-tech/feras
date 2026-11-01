@@ -138,26 +138,71 @@ Behavioural checks in Chromium (headless, real DOM):
 
 Screenshots: `docs/release/screenshots/phase6-parity/`.
 
+## Phase 3 pass — list-family filter/sort parity (slides 134–136)
+
+The first pass wired the filter/pager machinery into the three list views that
+existed then. This pass extends the same generic machinery
+(`mountList(..., spec, ..., cmp)` / `renderPaged(..., spec)`) across the rest of
+the deck's list families, using the deck's own filter columns and default sorts.
+
+### Default sorts now taken from the deck
+
+| List family | Deck default sort | Implementation |
+|---|---|---|
+| الشركات / المحفظة | آخر تحديث تنازليًا | `updated_at` desc, then id |
+| العملاء / الحملات | موعد المتابعة تصاعديًا | `created_at` desc, then id |
+| الطلبات / المهام | الأقرب استحقاقًا ثم الأقدم | `due_date` asc, then `created_at`, then id |
+| الفرص / القرارات | آخر تحديث؛ القرار: تاريخ الرفع | `created_at` desc, then id |
+| إيرادات / مصروفات / ذمم | الاستحقاق تصاعديًا للذمم | invoices `due_date` asc |
+| الحسابات / القيود | الكود | accounts `code` asc |
+| الموازنات | الفترة | fiscal period desc |
+| الأصول | الاسم | `name` asc |
+| المؤشرات / العملات | تاريخ النفاذ | period / effective date |
+
+### Filter columns added where the payload backs them
+
+* **الطلبات / المهام** — أولوية and فترة (due month) added beside the existing
+  company / assignee / status selects.
+* **الفرص / القرارات** — فترة (decision due month) added.
+* **التغذية / التقارير** — weekly-report and management-brief lists gained
+  search + period + status filters and the deck's cluster; the financial-report
+  archive gained company / period / status / currency.
+* **التقارير الشهرية للمستشار** — company / period / status filters and the
+  cluster (was a plain list).
+* **الطلبات / الطلبات المُقدَّمة** — company and period filters added.
+* **التقييمات** — company / status filters and "الفترة الأحدث" sort.
+* **سجل النشاط** — company filter, saved filters and CSV export added beside the
+  existing action / entity-type filters; still gated on `audit.read`.
+* **العروض المُقدَّمة (website opportunities)** — search, type, market, currency
+  and period filters, newest first; the header status chips still apply first.
+* **الحملات** — the "الفترة" select now resolves the start month (it previously
+  matched a non-existent `period` field, so it never filtered).
+
+### Backend serializer enrichment (presentation only)
+
+The deck's budget list filters by مسؤول (slide 135). The budget payload now
+carries `approved_by_name_ar` / `approved_by_name_en` (resolved from the
+approver relation) so the client shows a name rather than a bare id. No rule,
+permission or scope check changed: the relation is loaded from the same row the
+list already returns, and every list remains scoped exactly as before.
+
 ## Remaining gaps (not closed this pass)
 
 These are recorded rather than silently passed over. None is a regression.
 
-1. **Deck screen families not present in the app.** Slides 134–136 also spec
-   filter sets for العملاء/الحملات, المؤشرات/العملات, المستخدمون/النشاط and
-   جلسات المستشار — screens that exist only partially. The filter/pager
-   machinery added here is generic (`renderPaged(..., spec)`), so wiring each is
-   a per-view spec entry once the view exists.
-2. **مدير / مسؤول / مراجع filter fields.** The deck names assignee and reviewer
-   filters; the list payloads do not carry the assignee's display name, so those
-   selects were left out rather than showing a bare id. Closing this needs the
-   payload to include the name (a backend change, out of scope for a visual
+1. **مدير / مسؤول / مراجع filter fields on every family.** The deck names an
+   assignee/reviewer filter on several lists; where the payload carries the
+   display name (tasks, decisions, leads, campaigns, budgets, advisory sessions)
+   the select is shown, and where it does not (e.g. monthly-report reviewer) the
+   select is omitted rather than showing a bare id. Closing the remainder needs
+   the payload to include the name (a backend change, out of scope for a visual
    pass).
-3. **`[بحث]` global overlay vs per-list search.** Both now exist, but the deck's
+2. **`[بحث]` global overlay vs per-list search.** Both now exist, but the deck's
    single header search box is still the global overlay; the deck's per-list
-   search is the new filter field. Whether they should merge is a product call.
-4. **Frontend is still the static dashboard.** The deck's write flows (company
+   search is the filter field. Whether they should merge is a product call.
+3. **Frontend is still the static dashboard.** The deck's write flows (company
    wizard, report submit) remain API-only in the browser — unchanged from the
    Phase 2 known gaps.
-5. **Deck is a design reference, not data.** Slides 134–136 carry illustrative
+4. **Deck is a design reference, not data.** Slides 134–136 carry illustrative
    examples, not production rows; seeded demo data is likewise illustrative.
    Neither is a data-readiness statement.

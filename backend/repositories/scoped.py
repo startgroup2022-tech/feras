@@ -14,8 +14,13 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.db.models.enums import FinancialSummaryStatus, ReportStatus, SupportStatus
-from backend.db.models.identity import Company, User
+from backend.db.models.enums import (
+    FinancialSummaryStatus,
+    ReportStatus,
+    RoleCode,
+    SupportStatus,
+)
+from backend.db.models.identity import Company, Role, User, UserCompanyAccess
 from backend.db.models.financial import (
     FinancialPeriod,
     FinancialSummaryVersion,
@@ -60,6 +65,39 @@ class CompanyRepository:
         stmt = _apply_company_scope(stmt, Company.id, user)
         return int(self.db.execute(stmt).scalar_one())
 
+    def managers_for(self, company_ids: list[int]) -> dict[int, User]:
+        """Map each company to its company-manager user, when one exists.
+
+        The deck's portfolio list (slide 134) offers a "مدير" filter, but the
+        company row carries no manager column -- the relationship lives in
+        ``user_company_access``. This resolves it in one query so the caller can
+        label the filter with a real name instead of a bare id. A company with
+        several granted managers prefers the primary grant, then the lowest id,
+        so the mapping is deterministic.
+        """
+        if not company_ids:
+            return {}
+        stmt = (
+            select(UserCompanyAccess.company_id, User)
+            .join(User, User.id == UserCompanyAccess.user_id)
+            .join(Role, Role.id == User.role_id)
+            .where(
+                UserCompanyAccess.company_id.in_(company_ids),
+                UserCompanyAccess.can_read.is_(True),
+                Role.code == RoleCode.COMPANY_MANAGER.value,
+                User.is_active.is_(True),
+            )
+            .order_by(
+                UserCompanyAccess.company_id,
+                UserCompanyAccess.is_primary.desc(),
+                User.id,
+            )
+        )
+        managers: dict[int, User] = {}
+        for company_id, user in self.db.execute(stmt).all():
+            managers.setdefault(company_id, user)
+        return managers
+
 
 class MonthlyReportRepository:
     def __init__(self, db: Session) -> None:
@@ -70,7 +108,11 @@ class MonthlyReportRepository:
     ) -> list[MonthlyReport]:
         stmt = (
             select(MonthlyReport)
-            .options(selectinload(MonthlyReport.financial_review))
+            .options(
+                selectinload(MonthlyReport.financial_review).selectinload(
+                    MonthlyReportFinancialReview.reviewer
+                )
+            )
             # D03: the listing shows the *live* version only, so a corrected
             # report appears once. The full chain is read via ``versions_for``.
             .where(MonthlyReport.is_live.is_(True))
