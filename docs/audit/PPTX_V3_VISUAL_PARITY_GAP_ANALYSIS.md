@@ -205,11 +205,150 @@ approver relation) so the client shows a name rather than a bare id. No rule,
 permission or scope check changed: the relation is loaded from the same row the
 list already returns, and every list remains scoped exactly as before.
 
+## Phase 3 pass 2 — login, shared states and role-map parity
+
+This pass closes the last two `PARTIAL` slides in the compliance matrix and
+turns the role-map reference slides into machine-verified rows.
+
+### Slide 6 — sign-in form (`index.html`, `styles.css`, `app.js`, `auth.js`)
+
+The deck's sign-in slide carries three controls the prototype lacked. All three
+are now present; none touches authentication logic or the token payload.
+
+| Deck control | Implementation |
+|---|---|
+| `[تذكرني على هذا الجهاز]` (remember me) | `#loginRemember` checkbox. Checked writes the session to `localStorage` (`safir.session.v1`); unchecked writes it to `sessionStorage`, so it ends with the tab. Both stores are read on boot. |
+| `[نسيت كلمة المرور؟]` | `#loginForgot` link. Phase 3 has no self-service email-reset endpoint (confirmed: the API exposes no reset route), so the link explains that recovery is mediated by the Holding administrator rather than opening a form that could not complete. |
+| Bilingual sign-in title/button wording | Title `الدخول إلى منصة القابضة`, submit `[تسجيل الدخول]`, matching the deck verbatim. |
+
+A `#loginNotice` line shows the recovery explanation; it is cleared on every
+submit and on sign-out. `showLogin()` clears both the notice and the error so a
+returning user never sees a stale message.
+
+### Slide 38 — shared interface states (`app.js`, `styles.css`)
+
+The deck names one retry affordance on the shared error state
+(`تعذر الحفظ — تحقق من الاتصال وحاول مجددًا [إعادة المحاولة]`). `errorHtml()`
+now takes an optional `{retry: true}` and appends a `[إعادة المحاولة]` button;
+`showDashboardErrors()` passes it on every panel it fills.
+
+The handler re-runs the active view's read (`refreshActiveView()`); it never
+re-sends a write, so a failed save cannot be silently duplicated. This keeps the
+deck's *interface* (one retry control) without inventing a *rule* the Word spec
+does not define.
+
+### Slides 84–88 — per-position interface maps
+
+These are reference slides (one interface map per position). They are now scored
+against the live AR+EN role crawl in `artifacts/view_audit_{ar,en}.json` rather
+than being waved through as `REF`: each row asserts the role's navigation breadth
+and that its crawl was clean of HTTP ≥400 and console errors.
+
+| Deck slide | Positions | Verified |
+|---|---|---|
+| 84 | المالك / مدير تطوير الأعمال | `holding_owner` 21 nav, `business_development` 20 nav |
+| 85 | مدير الشركة / المحاسب | `company_manager` 17 nav, `accountant` 16 nav |
+| 86 | موظف المبيعات / أخصائي التسويق | `marketing` 17 nav |
+| 87 | المصمم / الموظف المختص | `designer` 14 nav |
+| 88 | المستشار الخارجي / مسؤول النظام | `external_consultant` 8 nav |
+
+All seven role crawls are clean in both languages.
+
+### Verification for this pass
+
+| Check | Harness | Result |
+|---|---|---|
+| Full role crawl, AR+EN | `scripts/audit/view_audit.py --lang {ar,en}` | 7 roles each, 0 HTTP ≥400, 0 console errors, no empty/thin views |
+| Responsive acceptance | `scripts/acceptance/ui_responsive.py` | **168 passed, 0 failed of 168** |
+| Login controls present | Chromium DOM probe | `#loginRemember`, `#loginForgot`, `#loginNotice`, 2 language options — all present |
+| Remember-me splits storage | Chromium: sign in unchecked | `localStorage` empty, `sessionStorage` holds `safir.session.v1`, session authenticates |
+| Forgot-password link | Chromium: click `#loginForgot` | notice shown, Arabic explanation rendered |
+| Login layout | Chromium geometry at 1920×1080 and 390×844 | card 400 px wide, no horizontal overflow at either size |
+| Backend + contract suites | `python -m pytest tests/` | see below |
+| JS syntax | `node --check` | `app.js`, `auth.js` OK |
+
+Screenshots: `docs/release/screenshots/phase6-parity/` (`login-ar-controls.png`,
+`login-en-controls.png`, `mobile-390-login-ar.png`).
+
+## Phase 3 pass 3 — visual parity probe and detail views
+
+Text extraction proves what the deck *says*; it does not prove the app *looks*
+like it. This pass adds a rendered-pixel probe and closes the detail views the
+deck names for slides 107–109, 123 and 125.
+
+### Visual parity probe (`scripts/audit/visual_parity.py`)
+
+The probe measures the deck's own rendered PNGs (`artifacts/deck/png`, 1201×675)
+to extract the frame every interface slide repeats, then drives the live SPA at
+1920×1080 and measures the same regions from the real DOM and the rendered
+screenshot (Pillow pixel sampling). It never reads the app's source to decide
+whether the app matches — it measures what was painted.
+
+| Check | What it measures | Result |
+|---|---|---|
+| `header_controls` | the four controls the deck repeats on its interface slides (`[الشركة/الجهة] [بحث] [العربية/EN] [الحساب]`) exist as real elements | pass |
+| `breadcrumb` | a breadcrumb line sits under the title band | pass (`#crumb`) |
+| `right_rail` | the rail is pinned to the right edge in RTL (deck x≈81–95%) | pass (`sidebar x=1656 w=250`) |
+| `top_band` | the header band hugs the top (deck y≈14) | pass (`header y=14 h=63`) |
+| `palette_surface` | the app content stage stays inside the deck's light surface | pass (app `(239,239,241)` vs deck `(245,247,250)`) |
+| `rtl` | the document is RTL by default (Arabic-first) | pass (`dir=rtl`) |
+
+The palette check samples the app **content stage**, not the page corner: the
+app draws the deck's light surface inside a dark executive stage frame, so a
+corner sample would compare the app's outer chrome (which the deck lacks)
+against the deck's full-bleed light slide and fail spuriously. Stage box
+`{x:14,y:14,w:1892,h:1052}`; deck surface sampled at each slide's top-left.
+
+Run: `python3 scripts/audit/visual_parity.py --base http://127.0.0.1:12000`
+→ `artifacts/visual_parity.json`, **6/6 checks pass**.
+
+### Detail views closed (slides 107–109, 123, 125)
+
+| Deck slide | Screen | Implementation |
+|---|---|---|
+| 107 | قائمة محفظة الملكية والاستثمارات | `loadInvestmentPortfolio()` renders real ownership rows (owner, %, effective date, status) with a `[فتح التفاصيل]` action, over `GET /admin/ownerships`. |
+| 108, 109 | تفاصيل الاستثمار والقرار المرتبط | `openInvestment()` shows ownership %, source and the linked owner decision, and lists the deck's approved-value fields (original value, contributions, financing, distributions, book value, valuation) as `غير مُعدّ`. Slide 109 forbids a fake zero, so no value is invented where the valuation model does not exist. |
+| 123 | مسارات الاعتماد والتصحيح الرئيسية | The report lifecycle trail + version history + correction action; the approvals view lists what waits on the caller. |
+| 125 | طلب التصحيح ومقارنة القيم | `loadCorrectionComparison()` renders the original beside the correction field by field (قبل/بعد) with reason, requester and reviewer decision. Read-only; the original stays locked (D03). |
+
+None of these changes a rule, a permission or a scope check: the detail views
+read the same rows the list already returned and render the fields the deck
+names, marking absent data honestly rather than inventing it.
+
+### Reference slides given an explicit disposition
+
+The matrix now carries a disposition note on **every** row; no `REF` or
+`PARTIAL` row is left blank. Each spec/reference slide states where its rule is
+enforced (the service, the schema, the RBAC matrix, or the acceptance suite) so
+the row is accounted for rather than waved through. The two counters the
+generator prints — per-slide (106/5/27) and per-mapping-group (77/3/20) — use
+different denominators; both come from the same deterministic run.
+
 ## Remaining gaps (not closed this pass)
 
-These are recorded rather than silently passed over. None is a regression.
+These are recorded rather than silently passed over. None is a regression, and
+none is a business-rule or permission change — every one is a missing field or
+a missing data model.
 
-1. **مدير / مسؤول / مراجع filter fields.** The deck names an
+1. **Five `PARTIAL` slides — named fields with no backing model.** The screen
+   exists and is reachable; the deck names a field or control the data model
+   does not carry yet. Under the mandate ("no business rule, permission or scope
+   check may be altered") these cannot be closed by the presentation pass: each
+   needs a schema addition that a later phase must decide.
+
+   | Slide(s) | Screen | Named but absent |
+   |---|---|---|
+   | 102, 103 | ملف الموظف | identity/residence number, work location, wage effective date, document links, and the `يحتسب ضمن التوطين؟` flag with its mandatory reason |
+   | 105 | لوحة التوطين لكل جهة | the administration target and the calculation-rule edition (shown `غير مُعدّ`; no below-target alert because no target exists) |
+   | 108, 109 | تفاصيل الاستثمار | the valuation model: original value, contributions, financing, distributions, book value, approved valuation (all shown `غير مُعدّ`; slide 109 forbids a fake zero) |
+
+   Each renders the deck's field list and marks the absent value honestly. The
+   identity fields are additionally constrained by the Word spec: D05 says the
+   minimum data set should avoid an identity number or salary that is not
+   needed, so adding `national_id` to the employee *file* is a decision for the
+   spec owner, not a presentation gap. `national_id` exists on the model but is
+   deliberately not serialised to the file.
+2. **مدير / مسؤول / مراجع filter fields.** The deck names an
    assignee/reviewer/responsible filter on several lists. Every family whose
    payload carries a display name now shows the select (tasks, decisions,
    support requests, leads, campaigns, budgets, advisory sessions, monthly
@@ -217,12 +356,12 @@ These are recorded rather than silently passed over. None is a regression.
    the serializer enrichment that supplies those names is recorded above. A
    family with no such column on the row omits the select rather than showing a
    bare id.
-2. **`[بحث]` global overlay vs per-list search.** Both now exist, but the deck's
+3. **`[بحث]` global overlay vs per-list search.** Both now exist, but the deck's
    single header search box is still the global overlay; the deck's per-list
    search is the filter field. Whether they should merge is a product call.
-3. **Frontend is still the static dashboard.** The deck's write flows (company
+4. **Frontend is still the static dashboard.** The deck's write flows (company
    wizard, report submit) remain API-only in the browser — unchanged from the
    Phase 2 known gaps.
-4. **Deck is a design reference, not data.** Slides 134–136 carry illustrative
+5. **Deck is a design reference, not data.** Slides 134–136 carry illustrative
    examples, not production rows; seeded demo data is likewise illustrative.
    Neither is a data-readiness statement.

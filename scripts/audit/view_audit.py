@@ -114,6 +114,19 @@ async def audit_role(
         await page.reload(wait_until="networkidle")
         await page.wait_for_timeout(2500)
 
+    # On a phone the rail is a ☰ drawer (deck slides 39/89/90); open it so the
+    # entries are clickable. On desktop the toggle is hidden and this is a no-op.
+    async def _ensure_drawer():
+        toggle = page.locator("#navToggle")
+        if await toggle.count() and await toggle.is_visible():
+            if not await page.evaluate(
+                "() => document.body.classList.contains('nav-open')"
+            ):
+                await toggle.click()
+                await page.wait_for_timeout(350)
+
+    await _ensure_drawer()
+
     # The sidebar hides 15 of the 21 entries inside a collapsed "More"
     # group, so open it before asking what RBAC let this role see.
     if await page.locator("#sbMoreToggle").count():
@@ -123,6 +136,8 @@ async def audit_role(
         if expanded != "true":
             await page.click("#sbMoreToggle")
             await page.wait_for_timeout(500)
+
+    await _ensure_drawer()
 
     visible_nav = await page.eval_on_selector_all(
         ".nav-item",
@@ -144,6 +159,7 @@ async def audit_role(
         entry: dict = {"nav_visible": shown}
 
         if shown:
+            await _ensure_drawer()
             try:
                 await page.click(f'.nav-item[data-view="{view}"]', timeout=5000)
             except Exception:

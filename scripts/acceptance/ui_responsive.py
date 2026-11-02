@@ -69,7 +69,15 @@ async def _login(page, base):
 
 async def _open_view(page, view):
     """Click the sidebar entry for ``view`` (the SPA is an IIFE, so the
-    internal ``loadView`` is not reachable from the page context)."""
+    internal ``loadView`` is not reachable from the page context).
+
+    On a phone the rail lives in the ☰ drawer (deck slides 39/89/90), so the
+    drawer is opened first when the toggle is visible."""
+    toggle = page.locator("#navToggle")
+    if await toggle.count() and await toggle.is_visible():
+        if not await page.evaluate("() => document.body.classList.contains('nav-open')"):
+            await toggle.click()
+            await page.wait_for_timeout(350)
     item = page.locator(f'.nav-item[data-view="{view}"]').first
     if await item.count():
         try:

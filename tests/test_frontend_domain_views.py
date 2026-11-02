@@ -616,17 +616,24 @@ def test_sidebar_sits_on_the_right_in_rtl():
     assert body and "flex-direction:row" in body.group(1)
 
 
-def test_sidebar_collapses_to_a_content_sized_bar_on_narrow_screens():
-    # On narrow screens the rail becomes a horizontal bar. Full-width items
-    # would then each claim a row, so the mobile rule must reset the width.
+def test_sidebar_collapses_to_a_drawer_on_narrow_screens():
+    # Deck slides 39/89/90 put the rail behind a ☰ button on a phone: the
+    # sidebar slides in as an off-canvas drawer over a scrim rather than
+    # wrapping into a horizontal bar (which would claim a row per item).
     assert re.search(
-        r"@media \(max-width:1180px\)\{[^@]*?\.sidebar \.nav-item\{width:auto",
+        r"@media \(max-width:1180px\)\{[^@]*?\.sidebar\{[^}]*position:fixed",
         CSS, re.S,
-    ), "sidebar mobile rule must reset nav-item width"
+    ), "sidebar must become a fixed drawer on narrow screens"
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?body\.nav-open \.sidebar\{transform:translateX\(0\);\}",
+        CSS, re.S,
+    ), "the drawer must open when body.nav-open is set"
     assert re.search(
         r"@media \(max-width:1180px\)\{[^@]*?\.stage-body\.with-sidebar\{flex-direction:column;\}",
         CSS, re.S,
     ), "sidebar must stack above the content on narrow screens"
+    assert re.search(r"<button[^>]*id=\"navToggle\"", INDEX), "header needs the ☰ toggle"
+    assert "bindNavDrawer" in APP_JS, "app.js must wire the drawer toggle"
 
 
 def test_header_no_longer_carries_the_full_top_nav():
@@ -681,6 +688,26 @@ def test_optional_panel_fetches_do_not_swallow_server_errors():
     for expected in ("401", "403", "404"):
         assert expected in body
     assert APP_JS.count(".catch(function () { return []; })") == 0
+
+
+def test_every_export_stamps_the_period_entity_and_state():
+    # Deck slides 130-132: "كل مخرج يحمل: الفترة والجهة والعملة وحالة البيانات
+    # وآخر تحديث ومسودة/معتمد ورقم النسخة." The CSV preamble carries the period,
+    # the entity, the state and the generation time.
+    assert "function exportMeta(" in APP_JS
+    meta = _fn_body("exportMeta")
+    for token in ("الفترة", "الجهة", "آخر تحديث", "الحالة"):
+        assert token in meta, f"export preamble must carry {token}"
+    body = _fn_body("exportListCsv")
+    assert "exportMeta(key)" in body, "the CSV must be stamped with its metadata"
+
+
+def test_employee_report_control_is_gated_and_wired():
+    # Deck slide 101 names [تقرير الموظفين] beside [موظف جديد] and [فتح الملف].
+    assert 'id="empReport"' in APP_JS
+    body = _fn_body("renderEmployees")
+    assert 'has("employee.read")' in body, "the report is gated on employee.read"
+    assert 'exportListCsv("employees", list)' in body
 
 
 def test_every_role_that_can_open_a_view_can_read_its_primary_endpoint():

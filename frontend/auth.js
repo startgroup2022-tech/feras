@@ -13,10 +13,24 @@
   var API_BASE = "";
 
   var session = null;
+  var remembered = true;
 
   function load() {
+    // "Remember me" (deck slide 6): a remembered session lives in
+    // localStorage and survives a browser restart; an un-remembered one lives
+    // in sessionStorage and dies with the tab. localStorage wins if both exist.
+    var raw = null;
     try {
-      var raw = localStorage.getItem(STORE_KEY);
+      raw = localStorage.getItem(STORE_KEY);
+      remembered = !!raw;
+      if (!raw) {
+        raw = sessionStorage.getItem(STORE_KEY);
+        remembered = false;
+      }
+    } catch (e) {
+      raw = null;
+    }
+    try {
       session = raw ? JSON.parse(raw) : null;
     } catch (e) {
       session = null;
@@ -24,11 +38,19 @@
     return session;
   }
 
-  function save(s) {
+  function save(s, remember) {
     session = s;
+    if (remember !== undefined) remembered = remember !== false;
+    var persist = remembered;
     try {
-      if (s) localStorage.setItem(STORE_KEY, JSON.stringify(s));
-      else localStorage.removeItem(STORE_KEY);
+      if (s) {
+        var raw = JSON.stringify(s);
+        (persist ? localStorage : sessionStorage).setItem(STORE_KEY, raw);
+        (persist ? sessionStorage : localStorage).removeItem(STORE_KEY);
+      } else {
+        localStorage.removeItem(STORE_KEY);
+        sessionStorage.removeItem(STORE_KEY);
+      }
     } catch (e) {
       /* storage disabled — session stays in memory for this page only */
     }
@@ -124,7 +146,7 @@
     });
   }
 
-  function login(email, password) {
+  function login(email, password, remember) {
     return fetch(API_BASE + "/api/v1/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -141,11 +163,14 @@
             e.status = res.status;
             throw e;
           }
-          save({
-            access_token: data.access_token,
-            refresh_token: data.refresh_token,
-            expires_at: Date.now() + data.expires_in * 1000,
-          });
+          save(
+            {
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+              expires_at: Date.now() + data.expires_in * 1000,
+            },
+            remember,
+          );
           return data;
         });
     });

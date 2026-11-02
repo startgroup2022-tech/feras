@@ -574,6 +574,26 @@ body:not(.authed) .stage-wrap{display:none;}
   border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:600;margin-bottom:14px;
 }
 .login-error.show{display:block;}
+.login-notice{
+  display:none;background:var(--gold-100);color:var(--gold-700);border:1px solid #EBD9A8;
+  border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:600;margin-bottom:14px;line-height:1.7;
+}
+.login-notice.show{display:block;}
+.login-remember{
+  display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-700);
+  font-weight:500;cursor:pointer;user-select:none;
+}
+.login-remember input{
+  width:15px;height:15px;margin:0;accent-color:var(--navy-600);cursor:pointer;flex:0 0 auto;
+}
+.login-links{display:flex;justify-content:center;margin-top:14px;}
+.login-forgot{
+  border:none;background:transparent;cursor:pointer;padding:4px 6px;border-radius:7px;
+  font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-600);
+  text-decoration:underline;text-underline-offset:3px;transition:.15s;
+}
+.login-forgot:hover{color:var(--gold-600);}
+.login-foot{display:flex;justify-content:center;margin-top:16px;}
 .login-hint{
   margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);
   font-size:10.5px;color:var(--ink-400);text-align:center;line-height:1.6;
@@ -604,6 +624,13 @@ body:not(.authed) .stage-wrap{display:none;}
   display:flex;align-items:center;gap:8px;
 }
 .rep-grid .data-error,.subs .data-error,.aii-list .data-error{grid-column:1/-1;}
+.retry-btn{
+  margin-inline-start:auto;flex:0 0 auto;border:1px solid currentColor;background:#fff;
+  color:var(--red);border-radius:8px;padding:5px 11px;cursor:pointer;
+  font-family:var(--f-body);font-size:11px;font-weight:600;transition:.15s;
+}
+.retry-btn:hover{background:var(--red);color:#fff;}
+.retry-btn:disabled{opacity:.55;cursor:progress;}
 
 /* ============================================================
    VIEWS — the dashboard is one of several routed views.
@@ -1178,25 +1205,48 @@ html.lang-ar .sb-label{letter-spacing:.02em;}
 .attn-act.gold:hover{filter:brightness(1.06);color:#241A05;}
 
 /* ---------- responsive: sidebar collapses on narrow screens ---------- */
+/* The ☰ toggle is a phone-only affordance (deck slides 39/89/90). */
+.nav-toggle{display:none;}
+.nav-scrim{display:none;}
+
 @media (max-width:1180px){
   .stage-body.with-sidebar{flex-direction:column;}
-  .sidebar{
-    order:0;flex:0 0 auto;width:100%;
-    flex-direction:row;flex-wrap:wrap;align-items:center;
-    padding:6px 10px;gap:6px;overflow:visible;
+  .nav-toggle{
+    display:grid;place-items:center;flex:0 0 auto;
+    width:36px;height:36px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--line);background:#fff;color:var(--navy-700);
+    padding:0;transition:.18s;
   }
-  .sb-brand{padding:6px 10px;border-bottom:none;}
-  .sb-section{padding:0;display:flex;flex-wrap:wrap;gap:2px;}
-  .sb-label{display:none;}
-  .sb-nav{flex-direction:row;flex-wrap:wrap;}
-  .sb-foot{display:none;}
-  .sb-group{display:flex;flex-wrap:wrap;align-items:center;}
-  .sb-group-toggle{width:auto;}
-  .sb-group-items{display:flex;flex-direction:row;flex-wrap:wrap;padding:0;}
-  /* The rail's full-width items must size to content once the rail becomes a
-     horizontal bar, or every item claims a row of its own. */
-  .sidebar .nav-item{width:auto;padding:7px 11px;}
-  .sb-ico{display:none;}
+  .nav-toggle:hover{background:var(--bg-2);border-color:#D3DCEA;}
+  /* The rail becomes a slide-in drawer instead of a wrapping bar, so the
+     header keeps only ☰, brand and the action cluster on a phone. */
+  .sidebar{
+    order:0;position:fixed;inset-block:0;inset-inline-start:0;z-index:60;
+    flex:0 0 auto;width:min(82vw,300px);height:100dvh;
+    flex-direction:column;flex-wrap:nowrap;align-items:stretch;
+    padding:14px 10px;gap:6px;overflow-y:auto;overflow-x:hidden;
+    transform:translateX(-102%);
+    transition:transform .24s ease;
+    box-shadow:0 0 0 1px rgba(10,23,48,.08),0 18px 50px rgba(10,23,48,.28);
+  }
+  html.lang-ar .sidebar{transform:translateX(102%);}
+  body.nav-open .sidebar{transform:translateX(0);}
+  .nav-scrim{
+    display:block;position:fixed;inset:0;z-index:55;
+    background:rgba(10,23,48,.42);opacity:0;pointer-events:none;
+    transition:opacity .24s ease;
+  }
+  .nav-scrim[hidden]{display:none;}
+  body.nav-open .nav-scrim{opacity:1;pointer-events:auto;}
+  .sb-brand{padding:6px 10px 12px;border-bottom:1px solid rgba(255,255,255,.08);}
+  .sb-section{padding:6px 4px 3px;display:block;}
+  .sb-label{display:block;}
+  .sb-nav{flex-direction:column;flex-wrap:nowrap;}
+  .sb-group{display:block;}
+  .sb-group-toggle{width:100%;}
+  .sb-group-items{display:flex;flex-direction:column;flex-wrap:nowrap;padding:0;}
+  .sidebar .nav-item{width:100%;padding:9px 11px;}
+  .sb-ico{display:block;}
 }
 
 /* ---------- header breadcrumb (replaces the old 20-item top nav) ---------- */

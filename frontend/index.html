@@ -24,34 +24,50 @@
         </svg>
       </div>
       <div>
-        <div class="login-title"><span class="ar">سفير القابضة ٢٠٢٧</span><span class="en">Safir Holding 2027</span></div>
-        <div class="login-sub"><span class="ar">منصة القيادة التنفيذية · تسجيل الدخول</span><span class="en">Executive Platform · Sign in</span></div>
+        <div class="login-title"><span class="ar">الدخول إلى منصة القابضة</span><span class="en">Sign in to the Holding platform</span></div>
+        <div class="login-sub"><span class="ar">سفير القابضة ٢٠٢٧ · منصة القيادة التنفيذية</span><span class="en">Safir Holding 2027 · Executive Platform</span></div>
       </div>
     </div>
 
     <div class="login-error" id="loginError"></div>
+    <div class="login-notice" id="loginNotice"></div>
 
     <form id="loginForm" autocomplete="on">
       <div class="login-field">
-        <label><span class="ar">البريد الإلكتروني المؤسسي</span><span class="en">Corporate email</span></label>
+        <label><span class="ar">البريد الإلكتروني *</span><span class="en">Email *</span></label>
         <input type="email" id="loginEmail" name="email" autocomplete="username" required
                placeholder="name@safir.local" dir="ltr" />
       </div>
       <div class="login-field">
-        <label><span class="ar">كلمة المرور</span><span class="en">Password</span></label>
+        <label><span class="ar">كلمة المرور *</span><span class="en">Password *</span></label>
         <input type="password" id="loginPassword" name="password" autocomplete="current-password" required
                placeholder="••••••••" dir="ltr" />
       </div>
       <div class="login-actions">
-        <div class="login-lang">
-          <button type="button" class="lang-opt on" data-lang="ar">عربي</button>
-          <button type="button" class="lang-opt" data-lang="en">EN</button>
-        </div>
+        <!-- Deck slide 6 puts [ ] تذكرني على هذا الجهاز on the sign-in form.
+             Checked keeps the session in localStorage (survives a browser
+             restart); unchecked keeps it in sessionStorage for this tab only. -->
+        <label class="login-remember">
+          <input type="checkbox" id="loginRemember" checked />
+          <span><span class="ar">تذكرني على هذا الجهاز</span><span class="en">Remember me on this device</span></span>
+        </label>
       </div>
       <button type="submit" class="login-btn" id="loginBtn">
-        <span class="ar">دخول المنصة</span><span class="en">Sign in</span>
+        <span class="ar">تسجيل الدخول</span><span class="en">Sign in</span>
       </button>
+      <div class="login-links">
+        <button type="button" class="login-forgot" id="loginForgot">
+          <span class="ar">نسيت كلمة المرور؟</span><span class="en">Forgot password?</span>
+        </button>
+      </div>
     </form>
+
+    <div class="login-foot">
+      <div class="login-lang">
+        <button type="button" class="lang-opt on" data-lang="ar">عربي</button>
+        <button type="button" class="lang-opt" data-lang="en">English</button>
+      </div>
+    </div>
 
     <div class="login-hint">
       <span class="ar">الدخول مقتصر على حسابات القابضة والشركات التابعة المصرّح لها.</span>
@@ -66,6 +82,13 @@
 <!-- ================= HEADER ================= -->
 <header class="header">
   <div class="header-inner">
+    <!-- Deck slides 39/89/90: on a phone the sidebar opens from a ☰ button
+         rather than turning into a wrapping bar. Shown only ≤1180px. -->
+    <button class="nav-toggle" id="navToggle" type="button"
+            aria-label="القائمة / Menu" aria-controls="sidebar" aria-expanded="false"
+            title="القائمة" data-title-ar="القائمة" data-title-en="Menu">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
     <div class="brand">
       <div class="brand-mark" id="brandMark">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
@@ -204,6 +227,10 @@
       </div>
     </div>
   </aside>
+
+  <!-- Backdrop for the phone nav drawer (deck slides 39/89/90). Inert on
+       desktop, where the rail is always visible. -->
+  <div class="nav-scrim" id="navScrim" hidden></div>
 
 
 <div class="board" id="board">

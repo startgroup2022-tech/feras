@@ -1142,15 +1142,31 @@
     );
   }
 
-  function errorHtml(message) {
+  function errorHtml(message, opts) {
     var safe = escapeHtml(message || "تعذّر تحميل البيانات.");
+    var retry = opts && opts.retry
+      ? '<button type="button" class="retry-btn" data-retry>' +
+        '<span class="ar">إعادة المحاولة</span><span class="en">Retry</span></button>'
+      : "";
     return (
       '<div class="data-error">' +
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' +
       '<span class="ar">' + safe + '</span>' +
-      '<span class="en">' + safe + "</span></div>"
+      '<span class="en">' + safe + "</span>" +
+      retry + "</div>"
     );
   }
+
+  // The deck's shared error state (slide 38: "تعذر الحفظ — تحقق من الاتصال
+  // وحاول مجددًا [إعادة المحاولة]") offers one retry control. It re-runs the
+  // active view's fetch; it never re-sends a write, so a failed save cannot be
+  // silently duplicated.
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-retry]");
+    if (!btn) return;
+    btn.disabled = true;
+    refreshActiveView();
+  });
 
   function emptyHtml(ar, en) {
     return (
@@ -1796,6 +1812,27 @@
     }
   }
 
+  // Deck slides 130-132: "كل مخرج يحمل: الفترة والجهة والعملة وحالة البيانات
+  // وآخر تحديث ومسودة/معتمد ورقم النسخة." The export is the caller's own scoped
+  // list, so it is prefixed with the period and entity the list was rendered
+  // for rather than left bare.
+  function exportMeta(key) {
+    var period = STATE.year && STATE.month ? STATE.year + "-" + STATE.month : "—";
+    var entity = STATE.scopeCompany == null
+      ? (STATE.lang === "ar" ? "كل المجموعة" : "Whole group")
+      : (function () {
+          var c = companyById(STATE.scopeCompany);
+          return c ? (STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) : String(STATE.scopeCompany);
+        })();
+    return [
+      "# " + (STATE.lang === "ar" ? "الفترة" : "Period") + ": " + period,
+      "# " + (STATE.lang === "ar" ? "الجهة" : "Entity") + ": " + entity,
+      "# " + (STATE.lang === "ar" ? "آخر تحديث" : "Generated") + ": " + new Date().toISOString(),
+      "# " + (STATE.lang === "ar" ? "الحالة" : "State") + ": " +
+        (STATE.lang === "ar" ? "بيانات مسحوبة من النظام" : "data read from the system"),
+    ].join("\r\n") + "\r\n";
+  }
+
   function exportListCsv(key, rows) {
     var lines = [];
     if (!rows || !rows.length) {
@@ -1816,7 +1853,7 @@
           .join(","),
       );
     });
-    var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var blob = new Blob(["\ufeff" + exportMeta(key) + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url;
@@ -2820,6 +2857,42 @@
       navTo(h || "dashboard", false);
     });
     bindMoreGroup();
+    bindNavDrawer();
+  }
+
+  // Deck slides 39/89/90: on a phone the rail opens from ☰. The toggle only
+  // exists visually ≤1180px (CSS), but the binding is harmless on desktop.
+  function bindNavDrawer() {
+    var toggle = byId("navToggle");
+    var scrim = byId("navScrim");
+    var sidebar = byId("sidebar");
+    if (!toggle || !scrim) return;
+
+    function setOpen(open) {
+      body.classList.toggle("nav-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      scrim.hidden = !open;
+    }
+    function close() { setOpen(false); }
+
+    toggle.addEventListener("click", function () {
+      setOpen(!body.classList.contains("nav-open"));
+    });
+    scrim.addEventListener("click", close);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") close();
+    });
+    if (sidebar) {
+      // Tapping a destination closes the drawer so the view is not hidden
+      // behind it. Delegated so it survives permission re-renders.
+      sidebar.addEventListener("click", function (e) {
+        if (e.target.closest(".nav-item")) close();
+      });
+    }
+    // A resize back to desktop must not leave the scrim armed.
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 1180) close();
+    });
   }
 
   // The sidebar collapses the operational views behind one "Additional tools"
@@ -3166,6 +3239,83 @@
     return '<div class="sec-title">' + dual("\u0633\u0644\u0633\u0644\u0629 \u0627\u0644\u0646\u0633\u062e", "Version history") + "</div>" + rows;
   }
 
+  // Deck slide 125 — طلب التصحيح ومقارنة القيم. A correction version carries
+  // ``corrects_report_id``; the original stays locked and readable. The block
+  // reads the original through the same scoped GET the detail already uses and
+  // shows field-by-field قبل/بعد. It is read-only: it never edits either side.
+  var CORRECTION_COMPARE_FIELDS = [
+    ["revenue", "الإيرادات", "Revenue", true],
+    ["expenses", "المصروفات", "Expenses", true],
+    ["net_result", "صافي النتيجة", "Net result", true],
+    ["outstanding_receivables", "الذمم المدينة", "Receivables", true],
+    ["important_developments", "أهم التطورات", "Developments", false],
+    ["new_customers", "عملاء جدد", "New customers", false],
+    ["new_opportunities", "فرص جديدة", "New opportunities", false],
+    ["major_problems", "مشاكل رئيسية", "Major problems", false],
+    ["support_required", "الدعم المطلوب", "Support required", false],
+    ["management_notes", "ملاحظات الإدارة", "Management notes", false],
+  ];
+
+  function correctionValueText(value, isMoney) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (isMoney) { var m = money(value); return STATE.lang === "ar" ? m.ar : m.en; }
+    return String(value);
+  }
+
+  var CORRECTION_APPROVAL_LABEL = {
+    pending: ["قيد الاعتماد", "Pending"],
+    approved: ["معتمد", "Approved"],
+    rejected: ["مرفوض", "Rejected"],
+  };
+
+  function loadCorrectionComparison(correctedId, originalId) {
+    var host = byId("repCompare");
+    if (!host) return;
+    Promise.all([
+      get("/api/v1/monthly-reports/" + originalId),
+      get("/api/v1/monthly-reports/" + correctedId),
+    ]).then(function (res) {
+      var original = res[0], current = res[1];
+      // The requester/date comes from the new version's own workflow trail; no
+      // figure is invented when the trail is absent.
+      var submit = (current.lifecycle || []).filter(function (e) {
+        return e.action === "submitted" || e.action === "resubmitted";
+      })[0] || {};
+      var approval = CORRECTION_APPROVAL_LABEL[current.approval_status] ||
+        [current.approval_status, current.approval_status];
+      var head =
+        '<div class="sec-title">' +
+        dual("مقارنة قبل وبعد (الأصل مقابل النسخة المصححة)", "Before / after (original vs. correction)") +
+        "</div>" +
+        '<div class="s">' +
+        dual(
+          "الأصل نسخة " + toArabicDigits(String(original.version_number)) + " مقفلة وقابلة للعرض؛ النسخة الجديدة لا تصبح نهائية قبل الاعتماد.",
+          "Original v" + original.version_number + " is locked and readable; the new version is not final until approved.",
+        ) + "</div>" +
+        '<div class="kv">' +
+        kv(dual("سبب التصحيح", "Correction reason"), escapeHtml(original.return_reason || "—")) +
+        kv(dual("مقدم الطلب وتاريخه", "Requester & date"),
+           escapeHtml(submit.actor_name_ar || "—") + " · " + fmtDateTime(submit.created_at || current.created_at)) +
+        kv(dual("المراجع والقرار", "Reviewer & decision"), dual(approval[0], approval[1])) +
+        "</div>";
+      var rows = CORRECTION_COMPARE_FIELDS.map(function (f) {
+        var key = f[0], ar = f[1], en = f[2], isMoney = f[3];
+        var before = original[key], after = current[key];
+        var changed = String(before === null || before === undefined ? "" : before) !==
+          String(after === null || after === undefined ? "" : after);
+        return (
+          '<div class="note-block"' + (changed ? ' style="border-inline-start:3px solid var(--gold)"' : "") + ">" +
+          '<span class="lbl">' + dual(ar, en) + "</span>" +
+          '<span class="s">' + dual("قبل: ", "Before: ") + escapeHtml(correctionValueText(before, isMoney)) + "</span><br>" +
+          '<span class="s">' + dual("بعد: ", "After: ") + escapeHtml(correctionValueText(after, isMoney)) + "</span>" +
+          (changed ? ' <span class="status warn"><i></i>' + dual("معدّل", "Changed") + "</span>" : "") +
+          "</div>"
+        );
+      }).join("");
+      host.innerHTML = head + rows;
+    }).catch(function () { host.innerHTML = ""; });
+  }
+
   function reportLifecycleBlock(r) {
     var events = r.lifecycle || [];
     if (!events.length) return "";
@@ -3441,12 +3591,20 @@
                 "Figures are read from the approved financial summary, never copied into the report.") + "</div>"
             : "") +
           reportVersionsBlock(r) +
+          '<div id="repCompare"></div>' +
           reportLifecycleBlock(r) +
           '<div id="repOrganize"></div>' +
           '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
 
         loadClarifications(id);
+
+        // Slide 125: a correction version shows the original next to it, so the
+        // reviewer sees قبل/بعد before approving. Read-only; only when this row
+        // is itself a correction of another version.
+        if (r.corrects_report_id) {
+          loadCorrectionComparison(id, r.corrects_report_id);
+        }
 
         // S09: AI text organization. The proposal never overwrites the report;
         // the manager applies a field explicitly through the normal PATCH.
@@ -5460,6 +5618,9 @@
             }).join("") + "</div>"
           : '<p class="av-empty">' + dual("جميع الشركات أرسلت تقاريرها.", "All companies submitted reports.") + "</p>") +
         "</div>" +
+        '<div class="av-panel" id="investPortfolio"><h3>' +
+        dual("سجل محفظة الملكية والاستثمارات", "Ownership & investment register") +
+        "</h3>" + loadingHtml() + "</div>" +
         '<div class="av-panel"><h3>' + dual("مؤشرات المجموعة", "Group indicators") + "</h3>" + groupIndicators() + "</div>" +
         "</div>";
       host.querySelectorAll("[data-invest-co]").forEach(function (el) {
@@ -5467,6 +5628,144 @@
           openCompany(parseInt(el.getAttribute("data-invest-co"), 10));
         });
       });
+      loadInvestmentPortfolio();
+    });
+  }
+
+  // ---- deck slides 107/108/109: investment register + record detail --------
+  // The deck's investment screen is the *ownership* register (الملكية, القيمة
+  // المرجعية/الدفترية, التقييم, المصدر) with a linked owner decision. The
+  // ownership row is the real, approved record and it is what this screen shows.
+  // The valuation fields the deck also names (original value, contributions,
+  // financing, distributions, book value, valuation) have no backend model yet,
+  // so they render as "غير مُعدّ" rather than an invented zero -- which is the
+  // deck's own rule ("عند لا يوجد لا يضع النظام صفرًا كتقييم", slide 109).
+  function loadInvestmentPortfolio() {
+    var host = byId("investPortfolio");
+    if (!host) return;
+    if (!has("ownership.read")) {
+      host.innerHTML = noticeHtml(
+        "لا تملك صلاحية عرض سجل الملكية.",
+        "You may not view the ownership register.",
+      );
+      return;
+    }
+    softGet("/api/v1/admin/ownerships").then(function (rows) {
+      rows = rows || [];
+      if (!rows.length) {
+        host.innerHTML = noticeHtml(
+          "لا توجد حصص ملكية مسجّلة بعد.",
+          "No ownership stakes recorded yet.",
+        );
+        return;
+      }
+      host.innerHTML = rows.map(function (o) {
+        var name = STATE.lang === "ar"
+          ? o.owned_company_name_ar || o.owned_company_name_en
+          : o.owned_company_name_en || o.owned_company_name_ar;
+        var owner = o.owner_company_id
+          ? (STATE.lang === "ar" ? o.owner_company_name_ar : o.owner_company_name_en)
+          : o.external_owner_name;
+        var pct = plainNum(o.ownership_percentage) + "%";
+        return (
+          '<div class="av-row" data-invest-own="' + o.owned_company_id + '">' +
+          '<div class="co-dot" style="background:' + PALETTE[o.owned_company_id % PALETTE.length] + '">' +
+          initial(name) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
+          '<div class="s">' + dual("المالك", "Owner") + ": " + escapeHtml(owner || "—") +
+          " · " + dual("الملكية", "Ownership") + " " + pct +
+          " · " + dual("تاريخ النفاذ", "Effective") + " " + escapeHtml(dateStr(o.effective_from)) +
+          "</div></div>" +
+          statusBadgeFromMap(o.status, {
+            active: ["قائمة", "Active", "ok"],
+            ended: ["منتهية", "Ended", "warn"],
+          }) +
+          '<button type="button" class="btn-outline" data-invest-open="' + o.owned_company_id + '">' +
+          dual("فتح التفاصيل", "Open details") + "</button></div>"
+        );
+      }).join("");
+      host.querySelectorAll("[data-invest-open]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          openInvestment(parseInt(btn.getAttribute("data-invest-open"), 10));
+        });
+      });
+    }).catch(function (err) {
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
+  function openInvestment(companyId) {
+    openModal({
+      title: dual("تفاصيل الاستثمار والقرار المرتبط", "Investment detail & linked decision"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        Promise.all([
+          softGet("/api/v1/admin/ownerships?owned_company_id=" + companyId),
+          softGet("/api/v1/operations/owner-decisions?company_id=" + companyId),
+          ensureCompanies(),
+        ]).then(function (res) {
+          var stakes = (res[0] || []).filter(function (o) { return o.status === "active"; });
+          var decisions = res[1] || [];
+          var body = byId("modalBody");
+          if (!body) return;
+          var name = companyNameById(companyId);
+          var stake = stakes[0];
+          var ownership = stake
+            ? plainNum(stake.ownership_percentage) + "%"
+            : null;
+          // Fields the deck names that have no model yet: shown as غير مُعدّ,
+          // never as an invented zero. ``dual()`` returns markup, so it is
+          // passed to kv() unescaped; server strings stay escaped.
+          var notConfigured = dual("غير مُعدّ", "Not configured");
+          body.innerHTML =
+            '<div class="kv">' +
+            kv(dual("الشركة", "Company"), escapeHtml(name)) +
+            kv(dual("نسبة الملكية", "Ownership %"),
+               ownership ? escapeHtml(ownership) + " · " +
+                 dual("منذ ", "since ") + escapeHtml(dateStr(stake.effective_from))
+                 : notConfigured) +
+            kv(dual("الحالة", "Status"), stake
+              ? statusBadgeFromMap(stake.status, { active: ["قائمة", "Active", "ok"], ended: ["منتهية", "Ended", "warn"] })
+              : notConfigured) +
+            kv(dual("القيمة الأصلية وتاريخ الاستثمار", "Original value & date"), notConfigured) +
+            kv(dual("المساهمات الرأسمالية اللاحقة", "Subsequent contributions"), notConfigured) +
+            kv(dual("التمويل أو القروض", "Financing / loans"), notConfigured) +
+            kv(dual("التوزيعات المستلمة", "Distributions received"), notConfigured) +
+            kv(dual("القيمة الدفترية وتاريخها", "Book value & date"), notConfigured) +
+            kv(dual("التقييم المعتمد", "Approved valuation"), notConfigured) +
+            kv(dual("المصدر والمرجع", "Source / reference"),
+               escapeHtml(stake && stake.notes ? stake.notes : "") || notConfigured) +
+            "</div>" +
+            '<div class="s">' +
+            dual(
+              "القيم المعتمدة (القيمة الأصلية، المساهمات، التمويل، التوزيعات، القيمة الدفترية، التقييم) تنتظر نموذج تقييم معتمد؛ النظام لا يضع صفرًا مكانها.",
+              "Approved values (original value, contributions, financing, distributions, book value, valuation) await an approved valuation model; the system does not substitute a zero.",
+            ) + "</div>" +
+            '<div class="sec-title">' + dual("القرار المرتبط", "Linked decision") + "</div>" +
+            (decisions.length
+              ? '<div class="av-list">' + decisions.map(function (d) {
+                  return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                    '<div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
+                    '<div class="s">' + escapeHtml(d.follow_up_note || "") + "</div></div>" +
+                    statusBadgeFromMap(d.status, {
+                      open: ["مفتوح", "Open", "warn"],
+                      in_progress: ["قيد التنفيذ", "In progress", "rev"],
+                      done: ["منفّذ", "Done", "ok"],
+                      cancelled: ["ملغى", "Cancelled", "miss"],
+                    }) + "</div>";
+                }).join("") + "</div>"
+              : noticeHtml("لا يوجد قرار مرتبط بعد.", "No linked decision yet.")) +
+            '<div class="s">' +
+            dual(
+              "كل زيادة ملكية أو تخارج يرتبط بقرار؛ يحتفظ بالسابق ولا يُلغى استثمار معتمد بغير إصدار مرتبط.",
+              "Every ownership increase or exit links to a decision; the previous one is kept and an approved investment is never cancelled without a linked version.",
+            ) + "</div>";
+        }).catch(function (err) {
+          var body = byId("modalBody");
+          if (body) body.innerHTML = errorHtml(errText(err));
+        });
+      },
     });
   }
 
@@ -6865,6 +7164,11 @@
     return c ? companyName(c) : String(id);
   }
 
+  function departmentNameById(id) {
+    var d = (STATE.departments || []).filter(function (x) { return x.id === id; })[0];
+    return d ? (STATE.lang === "ar" ? d.name_ar : d.name_en || d.name_ar) : String(id);
+  }
+
   function companySelectOptions(extraAll) {
     // Option labels are plain text: selectInput escapes them, and a <select>
     // cannot hold markup, so the label must already be in the active language.
@@ -7016,10 +7320,29 @@
       list.sort(function (a, b) {
         return String(a.full_name_ar || "").localeCompare(String(b.full_name_ar || ""), "ar") || byIdAsc(a, b);
       });
+      // Deck slide 101 names [تقرير الموظفين] next to [موظف جديد] and [فتح الملف].
+      // The report is the caller's own filtered, scoped list exported as CSV --
+      // it introduces no data access beyond what the list already shows.
       host.innerHTML = panel("الموظفون", "Employees", create);
       renderPaged(host, "employees", list, employeeRow, function (h) {
         bindRowClicks(h, "emp", openEmployee);
       }, spec);
+      if (has("employee.read")) {
+        host.insertAdjacentHTML("beforeend",
+          '<div class="av-panel" id="empReportPanel"><div class="av-form-actions">' +
+          '<button type="button" class="btn-outline" id="empReport">' +
+          dual("تقرير الموظفين", "Employee report") + "</button></div></div>");
+        var reportBtn = byId("empReport");
+        if (reportBtn) {
+          reportBtn.addEventListener("click", function () { exportListCsv("employees", list); });
+        }
+      }
+      // Appended after renderPaged (which owns the host's innerHTML).
+      host.insertAdjacentHTML("beforeend",
+        '<div class="av-panel" id="empLocalization"><h3>' +
+        dual("لوحة التوطين لكل جهة", "Localization board per entity") +
+        '</h3><div id="empLocBody"></div></div>');
+      renderLocalizationBoard(employees);
       var form = byId("empForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -7058,6 +7381,69 @@
     );
   }
 
+  // ---- deck slide 105: localization board per entity -----------------------
+  // The "citizen" of an entity is the employee whose nationality matches the
+  // entity's country (deck slide 106: "المواطن هو صاحب جنسية دولة الجهة"). The
+  // counts are computed live from the employee rows the caller may already read;
+  // a missing country or nationality is left out of both numerator and
+  // denominator, and the deck's target (0-100) is administration data that has
+  // no model yet, so it is shown as غير مُعدّ rather than an invented number.
+  function renderLocalizationBoard(employees) {
+    var host = byId("empLocBody");
+    if (!host) return;
+    var byCompany = {};
+    (employees || []).forEach(function (e) {
+      if (e.status !== "active") return;
+      var cid = e.company_id;
+      var c = companyById(cid);
+      var bucket = byCompany[cid] || (byCompany[cid] = {
+        country: (c && c.country) || null, total: 0, citizens: 0, counted: 0,
+      });
+      bucket.total += 1;
+      if (bucket.country && e.nationality) {
+        bucket.counted += 1;
+        if (String(e.nationality).trim() === String(bucket.country).trim()) bucket.citizens += 1;
+      }
+    });
+    var ids = Object.keys(byCompany);
+    if (!ids.length) {
+      host.innerHTML = noticeHtml("لا يوجد موظفون نشطون بعد.", "No active employees yet.");
+      return;
+    }
+    host.innerHTML =
+      '<div class="s">' +
+      dual(
+        "المواطن هو صاحب جنسية دولة الجهة؛ النسبة = المحتسبون ÷ المشمولون × 100. لا متوسط بسيط لنسب الدول المختلفة.",
+        "A citizen holds the entity's country nationality; rate = counted ÷ included × 100. No simple average across countries.",
+      ) + "</div>" +
+      '<div class="av-list">' + ids.map(function (cid) {
+        var b = byCompany[cid];
+        var rate = b.counted ? ((b.citizens / b.counted) * 100).toFixed(1) : null;
+        var rateTxt = rate === null ? dual("غير مُعدّ", "Not configured")
+          : (STATE.lang === "ar" ? toArabicDigits(rate) + "٪" : rate + "%");
+        // No target is configured yet, so no below-target alert is raised (the
+        // deck only alerts when the rate falls below an approved target).
+        return (
+          '<div class="av-row" style="cursor:default;flex-direction:column;align-items:stretch">' +
+          '<div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="co-dot" style="background:' + PALETTE[cid % PALETTE.length] + '">' +
+          initial(companyNameById(cid)) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(companyNameById(cid)) + "</div>" +
+          '<div class="s">' + dual("الدولة", "Country") + ": " +
+          escapeHtml(b.country || "—") + "</div></div>" +
+          "</div>" +
+          '<div class="kv">' +
+          kv(dual("الإجمالي", "Total"), plainNum(b.total)) +
+          kv(dual("المواطنون", "Citizens"), plainNum(b.citizens)) +
+          kv(dual("غير المواطنين", "Non-citizens"), plainNum(b.total - b.citizens)) +
+          kv(dual("المشمولون", "Included"), plainNum(b.counted)) +
+          kv(dual("النسبة الحالية", "Current rate"), escapeHtml(rateTxt)) +
+          kv(dual("المستهدف", "Target"), dual("غير مُعدّ", "Not configured")) +
+          "</div></div>"
+        );
+      }).join("") + "</div>";
+  }
+
   function openEmployee(e) {
     openModal({
       title: dual("ملف الموظف", "Employee file"),
@@ -7074,10 +7460,26 @@
 
   function employeeDetail(e, movements) {
     var name = STATE.lang === "ar" ? e.full_name_ar : e.full_name_en || e.full_name_ar;
+    // Deck slides 102/103: the employee file carries the identity and
+    // relationship block (number, entity, department, direct manager, status,
+    // nationality). Each is shown only when the row has it; no value is invented.
+    var manager = (STATE.hr && STATE.hr.employees || []).filter(function (x) { return x.id === e.manager_id; })[0];
+    var managerName = manager
+      ? (STATE.lang === "ar" ? manager.full_name_ar : manager.full_name_en || manager.full_name_ar)
+      : (e.manager_id ? "#" + plainNum(e.manager_id) : "—");
     var info = '<div class="kv">' +
       kv(dual("الشركة", "Company"), escapeHtml(companyNameById(e.company_id))) +
+      kv(dual("الرقم الوظيفي", "Employee no."), escapeHtml(e.employee_code || "—")) +
       kv(dual("الاسم", "Name"), escapeHtml(name)) +
+      kv(dual("الجنسية", "Nationality"), escapeHtml(e.nationality || "—")) +
       kv(dual("المسمى", "Job title"), escapeHtml(e.job_title || "—")) +
+      kv(dual("الإدارة", "Department"), escapeHtml(e.department_id ? departmentNameById(e.department_id) : "—")) +
+      kv(dual("المدير المباشر", "Direct manager"), escapeHtml(managerName)) +
+      kv(dual("الحالة", "Status"), statusBadgeFromMap(e.status, {
+        active: ["نشط", "Active", "ok"],
+        on_leave: ["في إجازة", "On leave", "warn"],
+        terminated: ["منتهٍ", "Terminated", "miss"],
+      })) +
       kv(dual("البريد", "Email"), escapeHtml(e.email || "—")) +
       kv(dual("الهاتف", "Phone"), escapeHtml(e.phone || "—")) +
       kv(dual("تاريخ التعيين", "Hire date"), escapeHtml(dateStr(e.hire_date))) +
@@ -8269,16 +8671,26 @@
                 textInput("dcReply" + d.id, "") +
                 '<button class="btn-outline" data-act="dec-reply" data-id="' + d.id + '">' + dual("رد", "Reply") + "</button></div>"
               : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+            // Deck slide 27: each decision opens on [فتح القرار] to the detail
+            // screen (slide 28) before the owner acts.
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default" data-decision="' + d.id + '"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
               '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
               (d.executor_user_id ? escapeHtml(personName(d, "executor_name_ar", "executor_name_en") || ("#" + plainNum(d.executor_user_id))) + " · " : "") +
               dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
               statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
+              '<button class="btn-outline" data-act="dec-open" data-id="' + d.id + '">' + dual("فتح القرار", "Open decision") + "</button>" +
               "</div>" + controls + reply + "</div>";
       };
       host.innerHTML = panel("قرارات المالك", "Owner decisions", create);
       renderPaged(host, "decisions", list, decRow, function (h) {
+        h.querySelectorAll('[data-act="dec-open"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = parseInt(btn.getAttribute("data-id"), 10);
+            var row = (STATE.decisions || []).filter(function (x) { return x.id === did; })[0];
+            if (row) openDecision(row);
+          });
+        });
         h.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
           btn.addEventListener("click", function () {
             var did = btn.getAttribute("data-id");
@@ -8315,6 +8727,137 @@
         });
       }
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Deck slide 28 — تفاصيل القرار. A unified read of the request, its history
+  // and the decision options, opened from [فتح القرار] on the list (slide 27).
+  // It renders only fields the decision row already carries; the status change
+  // and the executor reply are the same endpoints the list already calls, so no
+  // new business rule or permission path is introduced. Acting on a decision
+  // still requires owner_decision.manage; the executor reply still requires the
+  // decision to name the signed-in user (S22).
+  function openDecision(d) {
+    var canManage = has("owner_decision.manage");
+    var canReply = USER && d.executor_user_id === USER.id;
+    var history = (d.history || []).slice().sort(function (a, b) {
+      return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+    });
+    var statusMap = {
+      open: ["مفتوح", "Open", "warn"],
+      in_progress: ["قيد التنفيذ", "In progress", "warn"],
+      done: ["منجز", "Done", "ok"],
+      cancelled: ["ملغى", "Cancelled", "miss"],
+    };
+    var historyBlock = history.length
+      ? '<div class="sec-title">' + dual("سجل العمل", "Work log") + "</div>" +
+        '<div class="kv">' +
+        history
+          .map(function (h) {
+            var who = h.actor_id ? "#" + plainNum(h.actor_id) : "—";
+            var st = h.status
+              ? escapeHtml(STATE.lang === "ar" ? statusMap[h.status][0] : statusMap[h.status][1])
+              : "—";
+            return kv(fmtDateTime(h.created_at), st + " · " + escapeHtml(h.note || who));
+          })
+          .join("") +
+        "</div>"
+      : "";
+
+    var actions = "";
+    if (canManage) {
+      actions =
+        '<div class="sec-title">' + dual("خيارات القرار", "Decision options") + "</div>" +
+        '<div class="av-user-controls">' +
+        selectInput("decOpenStatus", [
+          { value: "open", label: opt("مفتوح", "Open") },
+          { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+          { value: "done", label: opt("منجز", "Done") },
+          { value: "cancelled", label: opt("ملغى", "Cancelled") },
+        ], d.status) +
+        '<button class="btn-solid" data-act="dec-detail-status" data-id="' + d.id + '">' +
+        dual("اعتماد القرار", "Apply decision") + "</button></div>" +
+        '<div class="av-field" style="margin-top:10px">' +
+        '<textarea class="av-textarea" id="decOpenNote"' +
+        phAttr("ph.comment") + "></textarea>" +
+        '<button class="btn-outline" data-act="dec-detail-note" data-id="' + d.id + '" style="margin-top:8px">' +
+        dual("إضافة ملاحظة للمتابعة", "Add follow-up note") + "</button></div>";
+    } else if (canReply) {
+      actions =
+        '<div class="sec-title">' + dual("رد المنفّذ", "Executor reply") + "</div>" +
+        '<div class="av-field">' +
+        '<textarea class="av-textarea" id="decOpenNote"' +
+        phAttr("ph.comment") + "></textarea>" +
+        '<button class="btn-solid" data-act="dec-detail-reply" data-id="' + d.id + '" style="margin-top:8px">' +
+        dual("إرسال تحديث التنفيذ", "Send execution update") + "</button></div>";
+    }
+
+    openModal({
+      title: dual("تفاصيل القرار", "Decision detail"),
+      wide: true,
+      body:
+        '<div class="kv">' +
+        kv(dual("الرقم", "Number"), escapeHtml(d.number)) +
+        kv(dual("العنوان", "Title"), escapeHtml(d.title)) +
+        kv(dual("الجهة", "Entity"), d.company_id ? escapeHtml(companyNameById(d.company_id)) : dual("القابضة", "Holding")) +
+        kv(dual("الحالة", "Status"), statusBadgeFromMap(d.status, statusMap)) +
+        kv(dual("المسؤول", "Executor"),
+           escapeHtml(personName(d, "executor_name_ar", "executor_name_en") || (d.executor_user_id ? "#" + plainNum(d.executor_user_id) : "—"))) +
+        kv(dual("الاستحقاق", "Due"), escapeHtml(dateStr(d.due_date))) +
+        (d.follow_up_note ? kv(dual("ملاحظة المتابعة", "Follow-up note"), escapeHtml(d.follow_up_note)) : "") +
+        "</div>" +
+        (d.body ? '<div class="sec-title">' + dual("التفاصيل", "Details") + '</div><p class="note-block">' + escapeHtml(d.body) + "</p>" : "") +
+        historyBlock +
+        actions,
+      onMount: function (root) {
+        var statusBtn = root.querySelector('[data-act="dec-detail-status"]');
+        if (statusBtn) {
+          statusBtn.addEventListener("click", function () {
+            var st = valOf("decOpenStatus");
+            var note = valOf("decOpenNote");
+            var payload = { status: st };
+            if (note) payload.follow_up_note = note;
+            busy(statusBtn, true);
+            patch("/api/v1/operations/owner-decisions/" + d.id, payload)
+              .then(function () {
+                closeModal();
+                toast(dual("تم تحديث القرار.", "Decision updated."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(statusBtn, false); });
+          });
+        }
+        var noteBtn = root.querySelector('[data-act="dec-detail-note"]');
+        if (noteBtn) {
+          noteBtn.addEventListener("click", function () {
+            var note = valOf("decOpenNote");
+            if (!note) { toast(dual("الملاحظة مطلوبة.", "A note is required."), "warn"); return; }
+            busy(noteBtn, true);
+            patch("/api/v1/operations/owner-decisions/" + d.id, { follow_up_note: note })
+              .then(function () {
+                closeModal();
+                toast(dual("تم حفظ الملاحظة.", "Note saved."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(noteBtn, false); });
+          });
+        }
+        var replyBtn = root.querySelector('[data-act="dec-detail-reply"]');
+        if (replyBtn) {
+          replyBtn.addEventListener("click", function () {
+            var note = valOf("decOpenNote");
+            if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+            busy(replyBtn, true);
+            post("/api/v1/operations/owner-decisions/" + d.id + "/respond", { note: note })
+              .then(function () {
+                closeModal();
+                toast(dual("تم إرسال الرد.", "Reply sent."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(replyBtn, false); });
+          });
+        }
+      },
+    });
   }
 
   // ======================================================================
@@ -13116,18 +13659,18 @@
 
   function showDashboardErrors(message) {
     var repGrid = document.querySelector(".rep-grid");
-    if (repGrid) repGrid.innerHTML = errorHtml(message);
+    if (repGrid) repGrid.innerHTML = errorHtml(message, { retry: true });
     var subs = document.querySelector(".subs");
-    if (subs) subs.innerHTML = errorHtml(message);
+    if (subs) subs.innerHTML = errorHtml(message, { retry: true });
     var overview = document.querySelector(".ov-card .card-body");
-    if (overview) overview.innerHTML = errorHtml(message);
+    if (overview) overview.innerHTML = errorHtml(message, { retry: true });
     var list = document.getElementById("insightsList");
-    if (list) list.innerHTML = errorHtml(message);
+    if (list) list.innerHTML = errorHtml(message, { retry: true });
     showAiError(message);
     var sbody = document.getElementById("supportBody");
     if (sbody) {
       sbody.innerHTML =
-        '<tr><td colspan="5">' + errorHtml(message) + "</td></tr>";
+        '<tr><td colspan="5">' + errorHtml(message, { retry: true }) + "</td></tr>";
     }
   }
 
@@ -13138,6 +13681,8 @@
     if (screen) screen.style.display = "";
     var pw = document.getElementById("loginPassword");
     if (pw) pw.value = "";
+    setLoginError("");
+    setLoginNotice("");
   }
 
   function hideLogin() {
@@ -13157,21 +13702,35 @@
     }
   }
 
+  function setLoginNotice(message) {
+    var el = document.getElementById("loginNotice");
+    if (!el) return;
+    if (message) {
+      el.innerHTML = message;
+      el.classList.add("show");
+    } else {
+      el.classList.remove("show");
+    }
+  }
+
   function bindLogin() {
     var form = document.getElementById("loginForm");
     if (!form) return;
+    var rememberBox = document.getElementById("loginRemember");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var email = (document.getElementById("loginEmail").value || "").trim();
       var password = document.getElementById("loginPassword").value || "";
+      var remember = rememberBox ? !!rememberBox.checked : true;
       var btn = document.getElementById("loginBtn");
       setLoginError("");
+      setLoginNotice("");
       if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span>';
       }
       api
-        .login(email, password)
+        .login(email, password, remember)
         .then(function () {
           return enterApp();
         })
@@ -13182,10 +13741,25 @@
           if (btn) {
             btn.disabled = false;
             btn.innerHTML =
-              '<span class="ar">دخول المنصة</span><span class="en">Sign in</span>';
+              '<span class="ar">تسجيل الدخول</span><span class="en">Sign in</span>';
           }
         });
     });
+
+    // Deck slide 6 puts [نسيت كلمة المرور؟] on the sign-in form. Recovery is
+    // handled by the Holding administrator in this phase (there is no
+    // self-service email reset endpoint), so the link explains that rather
+    // than opening a form that could not complete.
+    var forgot = document.getElementById("loginForgot");
+    if (forgot) {
+      forgot.addEventListener("click", function () {
+        setLoginNotice(
+          STATE.lang === "ar"
+            ? "لإعادة تعيين كلمة المرور، تواصل مع مسؤول القابضة (إدارة المستخدمين) لتزويدك برابط/كلمة مرور جديدة."
+            : "To reset your password, contact the Holding administrator (User management) to be issued a new one.",
+        );
+      });
+    }
   }
 
   function bindLogout() {
