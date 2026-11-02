@@ -594,12 +594,22 @@ dark-navy RTL **sidebar** over the white content area.
   (sidebar shell, six primary sections, every item still `data-perm`-gated,
   More-group behaviour, attention panel, feedback gate = endpoint perms).
 
-**PPTX parity is still not claimed.** `Platform Interface Design v3.pptx` has
-never reached the environment (verified repeatedly — see
-`docs/POWERPOINT-SCREEN-MATRIX.md` on branch `docs/powerpoint-parity-v3`, which
-also carries `scripts/extract_pptx.py` / `render_pptx.sh` / `compare_screens.py`
-ready for the deck). The six-section nav above implements the module list the
-brief names; it does **not** assert a visual match to unseen slides. Word-spec
+**PPTX parity is claimed for the interface controls, not for pixels.**
+`Platform Interface Design v3.pptx` **is** in this repository: commit `8f7dc23`
+("تصميم المنصة"), 929 928 bytes, **138 slides**, on branch `phase2-functional-v1`.
+It is *not* an ancestor of `feature/phase3-functional` or
+`frontend-app-conversion`, so a working-tree search finds nothing — read it out of
+git instead:
+
+```bash
+git show 8f7dc23:"Platform Interface Design v3.pptx" > /tmp/deck.pptx
+```
+
+The deck's text layer (`ppt/slides/slideN.xml`) preserves the Arabic runs; slides
+137–138 are the acceptance checklist, slide 49 the screen registry and slides
+134–136 the list/filter/pagination spec. Parity is scored against those; pixel
+comparison is not asserted (LibreOffice/poppler are not installed here to render
+slides). See `docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`. Word-spec
 business rules and security controls are unchanged.
 
 ## Phase 3 — lead pipeline seed and D04 assignment UI
@@ -752,4 +762,9 @@ permission or scope check changed. Report:
   rather than shown empty.
 - **Extending:** the deck also specs filter sets for العملاء/الحملات,
   المؤشرات/العملات, المستخدمون/النشاط and جلسات المستشار. The machinery is
-  generic, so each is a per-view spec entry once the view exists.
+  generic, so each is a per-view spec entry once the view exists. Those families
+  are now wired; the same pass added the deck's per-family default sorts (see
+  the sort table in `docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`).
+- **Only add a filter the payload can back.** Dimensions the deck names but the
+  row has no column for (a cost centre on an invoice, احتساب on an employee row,
+  a month/quarter on a budget) are omitted rather than shown as dead controls.
