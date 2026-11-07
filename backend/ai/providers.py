@@ -51,7 +51,28 @@ class NullProvider:
     def _compose(self, context: dict) -> str:
         if context.get("scope") == "company":
             return self._company_answer(context)
+        if context.get("scope") == "knowledge":
+            return self._knowledge_answer(context)
         return self._holding_answer(context)
+
+    def _knowledge_answer(self, context: dict) -> str:
+        """Answer from the retrieved knowledge only, citing it by number.
+
+        No figure is produced here at all, so the answer is grounded by
+        construction; the sources it names are exactly the chunks the caller
+        was permitted to retrieve.
+        """
+        sources = context.get("knowledge") or []
+        if not sources:
+            return (
+                "لا توجد معرفة معتمدة مطابقة لسؤالك في قاعدة المعرفة المتاحة لك. "
+                "جرّب صياغة أخرى، أو تواصل مع الجهة المسؤولة لإضافة المستند."
+            )
+        lines = ["استناداً إلى قاعدة المعرفة المعتمدة المتاحة لك:"]
+        for index, source in enumerate(sources, start=1):
+            lines.append(f"[{index}] {source['title_ar']}: {source['excerpt']}")
+        lines.append("هذه الإجابة مبنية على المستندات المذكورة أعلاه فقط.")
+        return " ".join(lines)
 
     def _company_answer(self, context: dict) -> str:
         kpis = context.get("kpis", {})

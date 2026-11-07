@@ -6,7 +6,7 @@ whenever a new model module is added.
 """
 
 from backend.db.base import Base
-from backend.db.models.ai import AIMessage, AIConversation, AuditLog
+from backend.db.models.ai import AIMessage, AIConversation, AIUsageEvent, AuditLog
 from backend.db.models.accounting import (
     Account,
     AccountingPolicy,
@@ -66,7 +66,14 @@ from backend.db.models.governance import (
     TwoFactorRecoveryCode,
     UserTwoFactor,
 )
-from backend.db.models.group import Department, Holding, Ownership, Position, Sector
+from backend.db.models.group import (
+    Department,
+    Holding,
+    InvestmentValuation,
+    Ownership,
+    Position,
+    Sector,
+)
 from backend.db.models.identity import (
     Company,
     Permission,
@@ -76,6 +83,13 @@ from backend.db.models.identity import (
     UserCompanyAccess,
 )
 from backend.db.models.integrations import WebhookDelivery, WebhookEndpoint
+from backend.db.models.knowledge import (
+    KnowledgeCategory,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeProposal,
+    KnowledgeVersion,
+)
 from backend.db.models.notifications import Notification
 from backend.db.models.notification_preferences import (
     NotificationDeliveryLog,
@@ -130,6 +144,7 @@ __all__ = [
     "Company",
     "UserCompanyAccess",
     "Holding",
+    "InvestmentValuation",
     "Ownership",
     "Department",
     "Position",
@@ -151,7 +166,14 @@ __all__ = [
     "SupportRequestAttachment",
     "AIConversation",
     "AIMessage",
+    "AIUsageEvent",
     "AuditLog",
+    # Phase 3: AI knowledge base (RAG)
+    "KnowledgeCategory",
+    "KnowledgeDocument",
+    "KnowledgeVersion",
+    "KnowledgeChunk",
+    "KnowledgeProposal",
     # Phase 3: dynamic operations platform
     "DynamicForm",
     "FormVersion",

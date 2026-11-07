@@ -173,10 +173,16 @@ class SupportStatus(str, enum.Enum):
 
 
 class AIScope(str, enum.Enum):
-    """Two AI contexts: Holding-level and per-company."""
+    """The AI contexts a conversation may belong to.
+
+    ``HOLDING`` and ``COMPANY`` answer from the live dashboard figures;
+    ``KNOWLEDGE`` answers from the retrieved knowledge base. Keeping them
+    distinct means a conversation can never pivot between scopes.
+    """
 
     HOLDING = "holding"
     COMPANY = "company"
+    KNOWLEDGE = "knowledge"
 
 
 class AIMessageRole(str, enum.Enum):
@@ -911,5 +917,66 @@ class CurrencyChangeStatus(str, enum.Enum):
     REJECTED = "rejected"
     SCHEDULED = "scheduled"
     APPLIED = "applied"
+
+
+# --------------------------------------------------------------------------
+# AI knowledge base
+# --------------------------------------------------------------------------
+class KnowledgeSensitivity(str, enum.Enum):
+    """How widely a knowledge document may be retrieved.
+
+    Sensitivity is a retrieval gate, not a label: it is evaluated *before* any
+    chunk is scored, so a confidential document can never contribute text to an
+    answer the caller is not entitled to see. The ladder is deliberately coarse
+    so a rule can be stated in one sentence.
+    """
+
+    PUBLIC = "public"        # any authenticated user
+    COMPANY = "company"      # users with read access to the owning company
+    HOLDING = "holding"      # holding-wide roles only
+    CONFIDENTIAL = "confidential"  # owner (or an explicit delegated grant)
+
+
+class KnowledgeDocumentStatus(str, enum.Enum):
+    """Lifecycle of a knowledge document.
+
+    Only ``APPROVED`` documents are retrievable. A draft or a pending document
+    exists so a reviewer can see it, but it contributes nothing to an answer
+    until it is approved -- that is what keeps an unreviewed draft out of the
+    owner's executive assistant.
+    """
+
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class KnowledgeChunkSource(str, enum.Enum):
+    """How a retrieval hit was found, surfaced to the caller for transparency."""
+
+    SEMANTIC = "semantic"
+    FULLTEXT = "fulltext"
+    LEXICAL = "lexical"
+    HYBRID = "hybrid"
+
+
+class KnowledgeProposalStatus(str, enum.Enum):
+    """A learning proposal waits for the owner; it never self-applies."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class AIUsageOutcome(str, enum.Enum):
+    """Outcome of one metered provider call, for the usage monitor."""
+
+    SUCCESS = "success"
+    RATE_LIMITED = "rate_limited"
+    TIMEOUT = "timeout"
+    PROVIDER_ERROR = "provider_error"
+    REJECTED_PAID = "rejected_paid"
+    BLOCKED_BUDGET = "blocked_budget"
 
 

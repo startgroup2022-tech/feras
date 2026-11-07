@@ -150,8 +150,15 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the website CMS, which builds on the bilingual role description, which
     # builds on branding, which builds on phase 10, which builds on phase 6-9,
     # which builds on phase 3, which builds on phase 2, which builds on the
-    # initial schema -- no branches.
-    assert head == "d806fc545297"
+    # initial schema -- no branches. The Phase 3 AI knowledge base builds on the
+    # S11 localization field; the deck v3 employee restricted fields/localization
+    # setup, company localization target, and the investment valuation summary
+    # build on top of it.
+    assert head == "f49eb1554901"
+    assert revisions["f49eb1554901"] == "9950bdb57824"
+    assert revisions["9950bdb57824"] == "b27b32d9905b"
+    assert revisions["b27b32d9905b"] == "2b7c225bbb32"
+    assert revisions["2b7c225bbb32"] == "d806fc545297"
     assert revisions["d806fc545297"] == "3473d285d919"
     assert revisions["3473d285d919"] == "62040b21dfa2"
     assert revisions["62040b21dfa2"] == "d6e7f8a9b0c1"

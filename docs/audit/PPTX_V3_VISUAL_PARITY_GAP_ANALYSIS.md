@@ -306,8 +306,8 @@ Run: `python3 scripts/audit/visual_parity.py --base http://127.0.0.1:12000`
 
 | Deck slide | Screen | Implementation |
 |---|---|---|
-| 107 | قائمة محفظة الملكية والاستثمارات | `loadInvestmentPortfolio()` renders real ownership rows (owner, %, effective date, status) with a `[فتح التفاصيل]` action, over `GET /admin/ownerships`. |
-| 108, 109 | تفاصيل الاستثمار والقرار المرتبط | `openInvestment()` shows ownership %, source and the linked owner decision, and lists the deck's approved-value fields (original value, contributions, financing, distributions, book value, valuation) as `غير مُعدّ`. Slide 109 forbids a fake zero, so no value is invented where the valuation model does not exist. |
+| 107 | قائمة محفظة الملكية والاستثمارات | `loadInvestmentPortfolio()` renders real ownership rows (owner, %, effective date, status) with a `[فتح التفاصيل]` action, over `GET /admin/ownerships`. Pass 4 added the slide's other three toolbar controls and the list machinery — see below. |
+| 108, 109 | تفاصيل الاستثمار والقرار المرتبط | `openInvestment()` shows ownership %, source and the linked owner decision, and lists the deck's approved-value fields (original value, contributions, financing, distributions, book value, valuation) over `group.InvestmentValuation`. A field with no recorded value renders `غير مُعدّ`; slide 109 forbids a fake zero, so none is invented. |
 | 123 | مسارات الاعتماد والتصحيح الرئيسية | The report lifecycle trail + version history + correction action; the approvals view lists what waits on the caller. |
 | 125 | طلب التصحيح ومقارنة القيم | `loadCorrectionComparison()` renders the original beside the correction field by field (قبل/بعد) with reason, requester and reviewer decision. Read-only; the original stays locked (D03). |
 
@@ -324,30 +324,70 @@ the row is accounted for rather than waved through. The two counters the
 generator prints — per-slide (106/5/27) and per-mapping-group (77/3/20) — use
 different denominators; both come from the same deterministic run.
 
+## Phase 3 pass 4 — slide 107 register toolbar and knowledge-tab gating
+
+Two `PARTIAL` items were closed in this pass. Both are presentation-only.
+
+### Slide 107 — portfolio toolbar and list machinery (`frontend/app.js`)
+
+The register carried `[فتح التفاصيل]` per row but none of the other three
+controls the deck names on the slide. All three now exist, each gated on the
+permission its endpoint enforces so no control is offered that would 403:
+
+| Deck control | Implementation | Gated on |
+|---|---|---|
+| `[إضافة استثمار]` | `openInvestmentCreate()` → `POST /admin/ownerships` | `ownership.manage` |
+| `[رفع قرار]` | `openPortfolioDecision()` → `POST /operations/owner-decisions` | `owner_decision.manage` |
+| `[تقرير المحفظة]` | `exportListCsv("investments", rows)` over the rows already on screen | `analytics.export` (inside the export helper) |
+
+The register also gained the deck's own filter columns from slide 107
+(`حالة الاستثمار`, `العملة الأصلية`) plus search, default sort (`الاسم`) and
+paging, reusing the generic machinery slides 134–136 specify rather than a
+one-off list.
+
+### Knowledge tab — fetch gated on the enforcing permission
+
+`frontend/app.js` fetched `/api/v1/ai/knowledge/proposals` whenever the tab was
+visible, but the endpoint enforces `ai.knowledge.manage`. A role that could
+reach the tab without that permission (e.g. `company_manager`) received a 403
+that surfaced as a console error. The fetch, the proposals panel and the
+approve/reject actions are now all gated on `canManage`, matching the endpoint.
+
+### Verification for this pass
+
+| Check | Harness | Result |
+|---|---|---|
+| Full role crawl, AR+EN | `scripts/audit/view_audit.py --lang {ar,en}` | 7 roles each, **0 HTTP ≥400, 0 console errors** |
+| Slide-107 controls render live | Chromium DOM probe as `holding_owner` | 3 toolbar buttons present, 2 register rows, 0 console errors, 0 bad HTTP |
+| Slide-107 controls hidden for a scoped role | Chromium DOM probe as `company_manager` | 0 toolbar buttons, no bad HTTP (view itself is holding-scoped) |
+| Register list machinery | `tests/test_frontend_domain_views.py::test_investment_register_carries_the_deck_slide_107_actions` | pass |
+| Visual parity probe | `scripts/audit/visual_parity.py` | **6/6 checks pass** |
+| Security sweep | `scripts/acceptance/security_sweep.py` | **23 passed, 0 failed** (103 endpoints, 0 leaked) |
+| Responsive acceptance | `scripts/acceptance/ui_responsive.py` | **168 passed, 0 failed of 168** |
+| Perf / reliability | `scripts/acceptance/perf_reliability.py` | **PASS** — 0 responses over 4000 ms, 0 5xx |
+| Backend + contract suites | `python -m pytest tests/` | **exit 0**, no failures |
+| JS syntax | `node --check` | `app.js` OK |
+
 ## Remaining gaps (not closed this pass)
 
 These are recorded rather than silently passed over. None is a regression, and
 none is a business-rule or permission change — every one is a missing field or
 a missing data model.
 
-1. **Five `PARTIAL` slides — named fields with no backing model.** The screen
-   exists and is reachable; the deck names a field or control the data model
-   does not carry yet. Under the mandate ("no business rule, permission or scope
-   check may be altered") these cannot be closed by the presentation pass: each
-   needs a schema addition that a later phase must decide.
+1. **PARTIAL slides from the pass-1/2 audit are now closed.** The fields that
+   the first audit recorded as "named but absent" were backed by real models in
+   this work and are now rendered (each value honest, `غير مُعدّ` where nothing
+   is recorded — never an invented zero):
 
-   | Slide(s) | Screen | Named but absent |
+   | Slide(s) | Screen | Closed by |
    |---|---|---|
-   | 102, 103 | ملف الموظف | identity/residence number, work location, wage effective date, document links, and the `يحتسب ضمن التوطين؟` flag with its mandatory reason |
-   | 105 | لوحة التوطين لكل جهة | the administration target and the calculation-rule edition (shown `غير مُعدّ`; no below-target alert because no target exists) |
-   | 108, 109 | تفاصيل الاستثمار | the valuation model: original value, contributions, financing, distributions, book value, approved valuation (all shown `غير مُعدّ`; slide 109 forbids a fake zero) |
+   | 102, 103 | ملف الموظف | `hr.Employee.national_id` (masked), `work_location`, `wage_effective_date`, `counts_toward_localization` + reason, `localization_rule_version` |
+   | 105 | لوحة التوطين لكل جهة | `identity.Company.localization_target_pct`, `localization_rule_version`, `localization_rule_effective_from` — edited on the company record and surfaced on the board with the below-target alert |
+   | 108, 109 | تفاصيل الاستثمار | `group.InvestmentValuation` (original value, contributions, financing, distributions, book value + date/source, approved valuation + date/source/decision) |
 
-   Each renders the deck's field list and marks the absent value honestly. The
-   identity fields are additionally constrained by the Word spec: D05 says the
-   minimum data set should avoid an identity number or salary that is not
-   needed, so adding `national_id` to the employee *file* is a decision for the
-   spec owner, not a presentation gap. `national_id` exists on the model but is
-   deliberately not serialised to the file.
+   The identity number is serialised **masked** (`national_id_masked`), honouring
+   Word spec D05's minimum-data rule: the file shows that a number exists and
+   who may see it, without exposing the full value.
 2. **مدير / مسؤول / مراجع filter fields.** The deck names an
    assignee/reviewer/responsible filter on several lists. Every family whose
    payload carries a display name now shows the select (tasks, decisions,

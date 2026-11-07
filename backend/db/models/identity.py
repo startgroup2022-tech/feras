@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -117,6 +119,17 @@ class Company(Base, TimestampMixin):
     # must never be collapsed into one field.
     founded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     tracking_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # ---- localization setup (deck slides 105/106) ----
+    # The per-entity localization target and the calculation-rule edition are
+    # administration data. Nullable: when unset the board shows غير مُعدّ and
+    # raises no below-target alert (the deck only alerts against an approved
+    # target).
+    localization_target_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 3), nullable=True
+    )
+    localization_rule_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    localization_rule_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     users: Mapped[list["UserCompanyAccess"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"

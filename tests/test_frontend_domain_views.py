@@ -735,6 +735,12 @@ def test_every_role_that_can_open_a_view_can_read_its_primary_endpoint():
             "/api/v1/operations/tasks",
             "task.read_own",
         ),
+        "knowledge_admin": (
+            ["ai.knowledge.read", "ai.admin"],
+            "renderAdminKnowledge",
+            "/api/v1/ai/knowledge/proposals",
+            "ai.knowledge.manage",
+        ),
     }
     for role, perms in ROLE_PERMISSIONS.items():
         for section, (gate, renderer, endpoint, perm) in sections.items():
@@ -749,3 +755,128 @@ def test_every_role_that_can_open_a_view_can_read_its_primary_endpoint():
                 f"{role} can open {section} but lacks {perm}; {renderer} "
                 f"fetches {endpoint} unguarded and would 403"
             )
+
+
+def test_phase3_knowledge_base_admin_tab_is_gated_and_wired():
+    """Phase 3: the RAG knowledge base has a real admin surface.
+
+    The tab is reachable only with a knowledge/admin permission, its renderer
+    calls the real knowledge endpoints (not a stub), and the provider/usage
+    monitor is fetched only by an ``ai.admin`` holder.
+    """
+    tab = re.search(r'data-admin-tab="knowledge"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "knowledge admin tab not found"
+    for token in tab.group(1).split():
+        assert token in ALL_PERMISSIONS, f"unknown permission on knowledge tab: {token}"
+    assert '"knowledge"' in APP_JS
+    assert 'knowledge: ["ai.knowledge.read", "ai.admin"]' in APP_JS
+    body = _fn_body("renderAdminKnowledge")
+    assert "/api/v1/ai/knowledge/documents" in body
+    assert "/api/v1/ai/knowledge/proposals" in body
+    assert 'has("ai.admin")' in body
+    assert 'has("ai.knowledge.write")' in body
+
+
+def test_phase3_knowledge_assistant_is_wired_to_its_scope():
+    """The knowledge assistant posts to the dedicated /ai/knowledge scope.
+
+    It is a separate surface from the figures assistant, its answer and sources
+    are escaped, and the box is gated on ``ai.knowledge.ask``.
+    """
+    assert 'id="kbAsk"' in INDEX
+    assert 'data-perm="ai.knowledge.ask"' in INDEX
+    assert "function askKnowledge(" in APP_JS
+    assert 'post("/api/v1/ai/knowledge", { question: question })' in APP_JS
+    body = _fn_body("askKnowledge")
+    assert "escapeHtml(data.answer" in body
+    assert "escapeHtml(s.excerpt" in body
+    assert "bindKnowledgeAskBox" in APP_JS
+
+
+def test_employee_restricted_tab_matches_the_deck_slide_103():
+    """The employee file carries the deck's restricted-fields tab.
+
+    The tab is gated on the same ``employee.salary.read`` permission as the
+    salary block, and it names the fields the deck lists: identity/residence
+    (masked), work location, wage effective date, document links and the
+    localization inclusion decision with its reason and applied rule.
+    """
+    body = _fn_body("employeeDetail")
+    assert 'has("employee.salary.read")' in body
+    for label in (
+        "الهوية أو الإقامة",
+        "موقع العمل",
+        "تاريخ نفاذ البيانات",
+        "المستندات أو الروابط الأساسية",
+        "يحتسب ضمن التوطين؟",
+        "سبب عدم الاحتساب",
+        "الوظيفة المحتسبة",
+        "قاعدة الاحتساب المطبقة",
+        "المراجع وتاريخ القرار",
+    ):
+        assert label in body, f"restricted field label missing: {label}"
+    # The masked identity number comes from the server payload.
+    assert "e.national_id_masked" in body
+
+
+def test_localization_board_carries_target_rule_and_below_target_alert():
+    """Deck slide 105: the board shows the current rate, the target, the applied
+    calculation rule, and a below-target follow-up flag; the target/rule are
+    editable administration data (slide 106)."""
+    body = _fn_body("renderLocalizationBoard")
+    assert 'dual("المستهدف", "Target")' in body
+    assert 'dual("قاعدة الاحتساب", "Calculation rule")' in body
+    assert "localization_target_pct" in body
+    assert "Below target" in body
+    assert "data-loc-edit" in APP_JS
+    edit = _fn_body("openLocalizationEdit")
+    assert 'patch("/api/v1/companies/"' in edit
+    assert "localization_target_pct" in edit
+
+
+def test_investment_detail_reads_the_valuation_model_not_a_placeholder():
+    """Deck slides 108/109: the detail shows the recorded figures and the yes/no
+    valuation; when no valuation is recorded it says so rather than showing a
+    zero, and the editor writes to the valuation endpoint."""
+    body = _fn_body("openInvestment")
+    assert "/api/v1/admin/investment-valuations/" in body
+    assert "has_valuation" in body
+    assert "No approved valuation" in body
+    assert 'has("investment.manage")' in body
+    # The old "await an approved valuation model" placeholder is gone.
+    assert "تنتظر نموذج تقييم" not in APP_JS
+    edit = _fn_body("openInvestmentEdit")
+    assert 'patch("/api/v1/admin/investment-valuations/"' in edit
+    assert "book_value" in edit
+    assert "valuation_reference" in edit
+
+
+def test_investment_register_carries_the_deck_slide_107_actions():
+    """Deck slide 107 names [إضافة استثمار], [فتح التفاصيل], [رفع قرار] and
+    [تقرير المحفظة] on the ownership/investment register. Each action appears
+    only when the role holds the permission the endpoint it calls enforces, and
+    the portfolio report exports the register the caller is already reading."""
+    body = _fn_body("loadInvestmentPortfolio")
+    assert "portfolioActionsHtml()" in body
+    assert "bindPortfolioActions(list)" in body
+    # The register carries the deck's own list machinery (slides 134-136):
+    # search + filters + paging over the rows the caller may already read.
+    assert 'applyListFilters(rows, "investments", spec)' in body
+    assert 'renderPaged(listHost, "investments", list' in body
+    assert '{ key: "q", type: "search"' in body
+
+    acts = _fn_body("portfolioActionsHtml")
+    assert 'dual("إضافة استثمار", "Add investment")' in acts
+    assert 'dual("رفع قرار", "Raise decision")' in acts
+    assert 'dual("تقرير المحفظة", "Portfolio report")' in acts
+    # gated on the permission each action's endpoint enforces
+    assert 'has("ownership.manage")' in acts
+    assert 'has("owner_decision.manage")' in acts
+
+    create = _fn_body("openInvestmentCreate")
+    assert 'post("/api/v1/admin/ownerships"' in create
+    decision = _fn_body("openPortfolioDecision")
+    assert 'post("/api/v1/operations/owner-decisions"' in decision
+
+    bind = _fn_body("bindPortfolioActions")
+    assert 'exportListCsv("investments", rows)' in bind

@@ -85,6 +85,47 @@ class Settings(BaseSettings):
     AI_BASE_URL: str = ""  # e.g. https://api.openai.com/v1 or http://localhost:11434/v1
     AI_TIMEOUT_SECONDS: float = 30.0
 
+    # ---- OpenRouter (primary provider) ----
+    # The key lives only in the server environment; it is never sent to the
+    # browser and never logged. ``AI_PROVIDER=openrouter`` selects this path.
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # Default model. ``openrouter/free`` is a router that only ever selects
+    # zero-cost models, so it is a safe default; the provider still verifies the
+    # effective price of whatever it routes to and refuses anything billable.
+    OPENROUTER_MODEL: str = "openrouter/free"
+    # Ordered fallbacks, all verified free at request time. An empty list means
+    # "no fallback" -- the provider never silently escalates to a paid model.
+    OPENROUTER_FALLBACK_MODELS: str = ""
+    # Models shown as verified-free in the admin panel. Refresh is a live call;
+    # this is only the seed list used when the panel is opened offline.
+    OPENROUTER_FREE_MODELS: str = "openrouter/free"
+    # Attribution headers OpenRouter recommends; optional and non-secret.
+    OPENROUTER_SITE_URL: str = ""
+    OPENROUTER_APP_TITLE: str = "Safir Holding 2027"
+    # Refuse a completion whose *reported* cost exceeds this (USD). Zero means
+    # "any nonzero cost is rejected". This is a second line of defence after the
+    # pricing check: if a router returned a paid model, the reported cost trips
+    # the breaker and the answer is discarded.
+    OPENROUTER_MAX_COST_USD: float = 0.0
+
+    # ---- AI request limits and usage monitoring ----
+    # Per-user, per-window application-level limits (independent of the
+    # provider's own rate limits) so one account cannot exhaust the group's
+    # free quota or hammer an upstream.
+    AI_RATE_LIMIT_ENABLED: bool = True
+    AI_RATE_LIMIT_REQUESTS: int = 30
+    AI_RATE_LIMIT_WINDOW_SECONDS: int = 3600
+    # Group-wide daily ceiling on metered provider calls. Reaching it degrades
+    # to the deterministic provider rather than failing the request.
+    AI_DAILY_REQUEST_LIMIT: int = 2000
+    # How many knowledge chunks to retrieve as context for one answer.
+    AI_KNOWLEDGE_TOP_K: int = 6
+    # Chunk size (characters) for knowledge indexing. Overlap keeps a sentence
+    # that straddles a boundary retrievable from either side.
+    AI_KNOWLEDGE_CHUNK_CHARS: int = 900
+    AI_KNOWLEDGE_CHUNK_OVERLAP: int = 150
+
     # ---- notification centre ----
     # Days before a document's expiry date that an "expiring soon" notification
     # is raised. Mirrors EXPIRING_SOON_DAYS but is configurable per deployment.

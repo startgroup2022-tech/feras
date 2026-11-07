@@ -104,6 +104,26 @@ class Employee(Base, TimestampMixin):
     leave_balance_days: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     advance_balance: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
 
+    # ---- restricted fields (deck slide 103; serialised only for a caller with
+    # employee.salary.read, the same gate as compensation) ----
+    # The deck names these as the restricted tab: identity/residence number,
+    # work location, the wage effective date, external document links, and the
+    # localization inclusion decision with its reason and applied rule.
+    work_location: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    wage_effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Newline-separated external document URLs; the deck is explicit that this is
+    # a link list, not a file upload ("لا رفع ملفات هنا").
+    document_links: Mapped[str | None] = mapped_column(Text, nullable=True)
+    counts_toward_localization: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    localization_exclusion_reason: Mapped[str | None] = mapped_column(
+        String(400), nullable=True
+    )
+    localization_job_title: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    localization_rule_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    localization_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"

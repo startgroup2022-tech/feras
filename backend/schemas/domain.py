@@ -94,6 +94,15 @@ class EmployeeCreateRequest(BaseModel):
     transport_allowance: Decimal | None = None
     leave_balance_days: Decimal | None = None
     advance_balance: Decimal | None = None
+    # Deck slide 103 restricted fields.
+    work_location: str | None = Field(default=None, max_length=160)
+    wage_effective_date: date | None = None
+    document_links: str | None = Field(default=None, max_length=4000)
+    counts_toward_localization: bool | None = None
+    localization_exclusion_reason: str | None = Field(default=None, max_length=400)
+    localization_job_title: str | None = Field(default=None, max_length=160)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_reference: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=4000)
 
 
@@ -112,6 +121,15 @@ class EmployeeUpdateRequest(BaseModel):
     transport_allowance: Decimal | None = None
     leave_balance_days: Decimal | None = None
     advance_balance: Decimal | None = None
+    # Deck slide 103 restricted fields.
+    work_location: str | None = Field(default=None, max_length=160)
+    wage_effective_date: date | None = None
+    document_links: str | None = Field(default=None, max_length=4000)
+    counts_toward_localization: bool | None = None
+    localization_exclusion_reason: str | None = Field(default=None, max_length=400)
+    localization_job_title: str | None = Field(default=None, max_length=160)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_reference: str | None = Field(default=None, max_length=200)
     notes: str | None = Field(default=None, max_length=4000)
 
 

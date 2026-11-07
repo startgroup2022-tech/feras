@@ -347,6 +347,33 @@
         </div>
 
       </div>
+
+      <!-- Knowledge-base assistant (RAG). Separate from the figures assistant:
+           it answers only from approved, in-scope knowledge documents and
+           cites them. Gated on ai.knowledge.ask. -->
+      <div class="kb-ask" id="kbAsk" data-perm="ai.knowledge.ask">
+        <div class="ask-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#B08A31" stroke-width="2" stroke-linecap="round"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 10.9 10.1 9 12 3.4Z"/></svg>
+          <span class="ar">اسأل قاعدة المعرفة</span><span class="en">Ask the knowledge base</span>
+        </div>
+        <div class="ask-box" id="kbAskBox">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9DAABD" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+          <input id="kbInput" type="text" placeholder="مثال: سياسة الإجازات" />
+          <button class="ask-send" id="kbSend" title="إرسال" data-title-ar="إرسال" data-title-en="Send">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4 3 11l7 2.4L12.6 21 20 4Z"/></svg>
+          </button>
+        </div>
+        <div class="answer" id="kbAnswer" style="display:none">
+          <div class="answer-head">
+            <div class="ai-orb" style="width:22px;height:22px;border-radius:8px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 3.4 13.9 9l5.6 1.9-5.6 1.9L12 18.4l-1.9-5.6L4.5 10.9 10.1 9 12 3.4Z" fill="#DCBE72"/></svg>
+            </div>
+            <span class="who"><span class="ar">إجابة من قاعدة المعرفة المعتمدة</span><span class="en">Answer from the approved knowledge base</span></span>
+          </div>
+          <div class="answer-q" id="kbAnswerQ"></div>
+          <div id="kbAnswerBody"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -835,6 +862,7 @@
       <button class="chip" data-admin-tab="builder" data-perm="form.read form.create"><span class="ar">منشئ النماذج</span><span class="en">Form builder</span></button>
       <button class="chip" data-admin-tab="workflows" data-perm="workflow.read"><span class="ar">مسارات الموافقات</span><span class="en">Workflows</span></button>
       <button class="chip" data-admin-tab="integrations" data-perm="integration.read"><span class="ar">التكاملات</span><span class="en">Integrations</span></button>
+      <button class="chip" data-admin-tab="knowledge" data-perm="ai.knowledge.read ai.admin"><span class="ar">قاعدة المعرفة</span><span class="en">Knowledge base</span></button>
       <button class="chip" data-admin-tab="audit" data-perm="audit.read"><span class="ar">سجل النشاط</span><span class="en">Audit trail</span></button>
     </div>
   </div>

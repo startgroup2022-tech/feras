@@ -152,6 +152,7 @@
       en: "https://hooks.example.com/safir",
     },
     "ph.formCode": { ar: "مثال: capex", en: "e.g. capex" },
+    "ph.knowledgeSlug": { ar: "مثال: leave-policy-2027", en: "e.g. leave-policy-2027" },
     "ph.fieldKey": { ar: "مثال: amount", en: "e.g. amount" },
     "ph.scopeSector": { ar: "مثال: Technology", en: "e.g. Technology" },
     "ph.requirementKey": { ar: "مثال: quote", en: "e.g. quote" },
@@ -5634,12 +5635,13 @@
 
   // ---- deck slides 107/108/109: investment register + record detail --------
   // The deck's investment screen is the *ownership* register (الملكية, القيمة
-  // المرجعية/الدفترية, التقييم, المصدر) with a linked owner decision. The
-  // ownership row is the real, approved record and it is what this screen shows.
-  // The valuation fields the deck also names (original value, contributions,
-  // financing, distributions, book value, valuation) have no backend model yet,
-  // so they render as "غير مُعدّ" rather than an invented zero -- which is the
-  // deck's own rule ("عند لا يوجد لا يضع النظام صفرًا كتقييم", slide 109).
+  // المرجعية/الدفترية, التقييم, المصدر) with a linked owner decision. Each
+  // ownership row is the real, approved record; its documented valuation summary
+  // (original value, contributions, financing, distributions, book value,
+  // approved valuation) is joined from the investment-valuations endpoint when
+  // the caller holds investment.read. A field with no recorded value renders as
+  // "غير مُعدّ" rather than an invented zero -- the deck's own rule
+  // ("عند لا يوجد لا يضع النظام صفرًا كتقييم", slide 109).
   function loadInvestmentPortfolio() {
     var host = byId("investPortfolio");
     if (!host) return;
@@ -5650,16 +5652,63 @@
       );
       return;
     }
-    softGet("/api/v1/admin/ownerships").then(function (rows) {
-      rows = rows || [];
+    var canReadVal = has("investment.read");
+    Promise.all([
+      softGet("/api/v1/admin/ownerships"),
+      canReadVal ? softGet("/api/v1/admin/investment-valuations") : Promise.resolve([]),
+    ]).then(function (res) {
+      var rows = res[0] || [];
+      var byCompany = {};
+      (res[1] || []).forEach(function (v) { byCompany[v.owned_company_id] = v; });
       if (!rows.length) {
-        host.innerHTML = noticeHtml(
+        host.innerHTML = portfolioActionsHtml() + noticeHtml(
           "لا توجد حصص ملكية مسجّلة بعد.",
           "No ownership stakes recorded yet.",
         );
+        bindPortfolioActions(rows);
         return;
       }
-      host.innerHTML = rows.map(function (o) {
+      var notConfigured = dual("غير مُعدّ", "Not configured");
+      function bookValueCell(v) {
+        if (!v || v.book_value == null) return notConfigured;
+        return escapeHtml(money(v.book_value)[STATE.lang] || "") +
+          (v.book_value_date ? " · " + escapeHtml(dateStr(v.book_value_date)) : "") +
+          (v.book_value_source ? " · " + escapeHtml(v.book_value_source) : "");
+      }
+      function valuationCell(v) {
+        // Slide 109: yes/no choice; "no" states none is recorded, never a zero.
+        if (!v || v.has_valuation !== true) return dual("لا يوجد تقييم معتمد", "No approved valuation");
+        return escapeHtml(money(v.valuation_amount)[STATE.lang] || "") +
+          (v.valuation_date ? " · " + escapeHtml(dateStr(v.valuation_date)) : "");
+      }
+      // The deck keeps [إضافة استثمار] / [رفع قرار] / [تقرير المحفظة] above the
+      // register, so the toolbar is rendered outside the paged host (which owns
+      // its own innerHTML, filter bar and pager).
+      host.innerHTML = portfolioActionsHtml() + '<div id="investList"></div>';
+      var listHost = byId("investList");
+      var spec = [
+        { key: "q", type: "search", ar: "الشركة / المالك", en: "Company / owner",
+          fields: ["owned_company_name_ar", "owned_company_name_en",
+                   "owner_company_name_ar", "owner_company_name_en", "external_owner_name"] },
+        { key: "status", ar: "حالة الاستثمار", en: "Investment status", field: "status",
+          options: distinctOptions(rows, function (r) { return r.status; },
+            function (v) {
+              var m = { active: ["نشط", "Active"], ended: ["مغلق", "Closed"] };
+              return { ar: (m[v] || [v])[0], en: (m[v] || [v, v])[1] };
+            }) },
+        { key: "currency", ar: "العملة الأصلية", en: "Original currency",
+          resolve: function (r) { var v = byCompany[r.owned_company_id]; return v && v.currency; },
+          options: distinctOptions(rows, function (r) {
+            var v = byCompany[r.owned_company_id]; return v && v.currency;
+          }) },
+      ];
+      var list = applyListFilters(rows, "investments", spec);
+      // Deck default sort: "الاسم" then the newest valuation / investment date.
+      list.sort(function (a, b) {
+        return String(a.owned_company_name_ar || "").localeCompare(
+          String(b.owned_company_name_ar || ""), "ar") || byIdAsc(a, b);
+      });
+      renderPaged(listHost, "investments", list, function (o) {
         var name = STATE.lang === "ar"
           ? o.owned_company_name_ar || o.owned_company_name_en
           : o.owned_company_name_en || o.owned_company_name_ar;
@@ -5667,6 +5716,14 @@
           ? (STATE.lang === "ar" ? o.owner_company_name_ar : o.owner_company_name_en)
           : o.external_owner_name;
         var pct = plainNum(o.ownership_percentage) + "%";
+        var v = byCompany[o.owned_company_id];
+        var valBlock = canReadVal
+          ? '<div class="s">' +
+            dual("القيمة الدفترية", "Book value") + ": " + bookValueCell(v) +
+            " · " + dual("التقييم", "Valuation") + ": " + valuationCell(v) +
+            (v && v.currency ? " · " + escapeHtml(v.currency) : "") +
+            "</div>"
+          : "";
         return (
           '<div class="av-row" data-invest-own="' + o.owned_company_id + '">' +
           '<div class="co-dot" style="background:' + PALETTE[o.owned_company_id % PALETTE.length] + '">' +
@@ -5675,7 +5732,7 @@
           '<div class="s">' + dual("المالك", "Owner") + ": " + escapeHtml(owner || "—") +
           " · " + dual("الملكية", "Ownership") + " " + pct +
           " · " + dual("تاريخ النفاذ", "Effective") + " " + escapeHtml(dateStr(o.effective_from)) +
-          "</div></div>" +
+          "</div>" + valBlock + "</div>" +
           statusBadgeFromMap(o.status, {
             active: ["قائمة", "Active", "ok"],
             ended: ["منتهية", "Ended", "warn"],
@@ -5683,14 +5740,123 @@
           '<button type="button" class="btn-outline" data-invest-open="' + o.owned_company_id + '">' +
           dual("فتح التفاصيل", "Open details") + "</button></div>"
         );
-      }).join("");
-      host.querySelectorAll("[data-invest-open]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          openInvestment(parseInt(btn.getAttribute("data-invest-open"), 10));
+      }, function (h, slice) {
+        h.querySelectorAll("[data-invest-open]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openInvestment(parseInt(btn.getAttribute("data-invest-open"), 10));
+          });
         });
-      });
+      }, spec);
+      bindPortfolioActions(list);
     }).catch(function (err) {
       host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
+  // Deck slide 107 names three actions beside [فتح التفاصيل]: [إضافة استثمار]
+  // (a new ownership stake), [رفع قرار] (raise the linked owner decision) and
+  // [تقرير المحفظة] (export the register the caller is already looking at).
+  // Each appears only when the role holds the permission its endpoint enforces,
+  // so no control is offered that would 403.
+  function portfolioActionsHtml() {
+    var acts = "";
+    if (has("ownership.manage")) {
+      acts += '<button type="button" class="btn-outline" id="invAdd">' +
+        dual("إضافة استثمار", "Add investment") + "</button>";
+    }
+    if (has("owner_decision.manage")) {
+      acts += '<button type="button" class="btn-outline" id="invRaiseDecision">' +
+        dual("رفع قرار", "Raise decision") + "</button>";
+    }
+    acts += '<button type="button" class="btn-outline" id="invReport">' +
+      dual("تقرير المحفظة", "Portfolio report") + "</button>";
+    return '<div class="av-form-actions" id="invActions">' + acts + "</div>";
+  }
+
+  function bindPortfolioActions(rows) {
+    var add = byId("invAdd");
+    if (add) add.addEventListener("click", openInvestmentCreate);
+    var raise = byId("invRaiseDecision");
+    if (raise) raise.addEventListener("click", openPortfolioDecision);
+    var report = byId("invReport");
+    if (report) {
+      report.addEventListener("click", function () { exportListCsv("investments", rows); });
+    }
+  }
+
+  function openInvestmentCreate() {
+    var ownedOpts = (STATE.companies || []).map(function (c) {
+      return { value: c.id, label: companyName(c) };
+    });
+    var ownerOpts = [{ value: "", label: STATE.lang === "ar" ? "— (مالك خارجي)" : "— (external owner)" }]
+      .concat((STATE.companies || []).map(function (c) {
+        return { value: c.id, label: companyName(c) };
+      }));
+    openModal({
+      title: dual("إضافة استثمار (حصة ملكية)", "Add investment (ownership stake)"),
+      body:
+        '<form class="av-form" id="invAddForm">' +
+        field("الشركة المملوكة", "Owned company", selectInput("iaOwned", ownedOpts, "")) +
+        field("المالك (شركة)", "Owner (company)", selectInput("iaOwner", ownerOpts, "")) +
+        field("اسم المالك الخارجي", "External owner name", textInput("iaExternal", "", "")) +
+        field("نسبة الملكية %", "Ownership %", numInput("iaPct", "", "")) +
+        field("من تاريخ", "Effective from", dateInput("iaFrom", "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        body.querySelector("#invAddForm").addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var payload = {
+            owned_company_id: parseInt(valOf("iaOwned"), 10),
+            ownership_percentage: numVal("iaPct"),
+            effective_from: valOf("iaFrom") || null,
+          };
+          var owner = valOf("iaOwner");
+          var external = valOf("iaExternal");
+          if (owner) payload.owner_company_id = parseInt(owner, 10);
+          else if (external) payload.external_owner_name = external;
+          post("/api/v1/admin/ownerships", payload).then(function () {
+            toast(dual("تمت إضافة الحصة.", "Stake added."), "ok");
+            closeModal();
+            loadInvestmentPortfolio();
+          }).catch(domainError);
+        });
+      },
+    });
+  }
+
+  function openPortfolioDecision() {
+    openModal({
+      title: dual("رفع قرار مالك مرتبط بالمحفظة", "Raise an owner decision linked to the portfolio"),
+      body:
+        '<form class="av-form" id="invDecisionForm">' +
+        field("رقم القرار", "Decision number", textInput("idNumber", "", "")) +
+        field("الموضوع", "Title", textInput("idTitle", "", "")) +
+        field("الشركة", "Company",
+          selectInput("idCompany", [{ value: "", label: STATE.lang === "ar" ? "— (القابضة)" : "— (Holding)" }]
+            .concat((STATE.companies || []).map(function (c) {
+              return { value: c.id, label: companyName(c) };
+            })), "")) +
+        field("النص", "Body", textArea("idBody", "", "")) +
+        field("تاريخ الاستحقاق", "Due date", dateInput("idDue", "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("رفع القرار", "Raise decision") + "</button></div></form>",
+      onMount: function (root, body) {
+        body.querySelector("#invDecisionForm").addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var company = valOf("idCompany");
+          post("/api/v1/operations/owner-decisions", {
+            number: valOf("idNumber"),
+            title: valOf("idTitle"),
+            company_id: company ? parseInt(company, 10) : null,
+            body: valOf("idBody") || null,
+            due_date: valOf("idDue") || null,
+          }).then(function () {
+            toast(dual("تم رفع القرار.", "Decision raised."), "ok");
+            closeModal();
+          }).catch(domainError);
+        });
+      },
     });
   }
 
@@ -5703,21 +5869,34 @@
         Promise.all([
           softGet("/api/v1/admin/ownerships?owned_company_id=" + companyId),
           softGet("/api/v1/operations/owner-decisions?company_id=" + companyId),
+          softGet("/api/v1/admin/investment-valuations/" + companyId),
           ensureCompanies(),
         ]).then(function (res) {
           var stakes = (res[0] || []).filter(function (o) { return o.status === "active"; });
           var decisions = res[1] || [];
+          var val = res[2] || {};
           var body = byId("modalBody");
           if (!body) return;
           var name = companyNameById(companyId);
           var stake = stakes[0];
-          var ownership = stake
-            ? plainNum(stake.ownership_percentage) + "%"
-            : null;
-          // Fields the deck names that have no model yet: shown as غير مُعدّ,
-          // never as an invented zero. ``dual()`` returns markup, so it is
-          // passed to kv() unescaped; server strings stay escaped.
+          var ownership = stake ? plainNum(stake.ownership_percentage) + "%" : null;
+          // Deck slide 109: a figure with no recorded value is shown as غير مُعدّ,
+          // never as an invented zero. ``dual()`` returns markup, so it is passed
+          // to kv() unescaped; server strings stay escaped.
           var notConfigured = dual("غير مُعدّ", "Not configured");
+          function amount(v) {
+            return v === null || v === undefined ? notConfigured : escapeHtml(money(v)[STATE.lang] || "");
+          }
+          var hasVal = val.has_valuation === true;
+          // The valuation is a yes/no choice: "yes" shows the approved amount,
+          // date, source and reference; "no" explicitly states none is recorded.
+          var valuationTxt = hasVal
+            ? amount(val.valuation_amount) + " · " +
+              dual("بتاريخ ", "on ") + escapeHtml(dateStr(val.valuation_date)) +
+              (val.valuation_source ? " · " + escapeHtml(val.valuation_source) : "") +
+              (val.valuation_reference ? " · " + escapeHtml(val.valuation_reference) : "")
+            : dual("لا يوجد تقييم معتمد", "No approved valuation");
+          var canEdit = has("investment.manage");
           body.innerHTML =
             '<div class="kv">' +
             kv(dual("الشركة", "Company"), escapeHtml(name)) +
@@ -5728,20 +5907,31 @@
             kv(dual("الحالة", "Status"), stake
               ? statusBadgeFromMap(stake.status, { active: ["قائمة", "Active", "ok"], ended: ["منتهية", "Ended", "warn"] })
               : notConfigured) +
-            kv(dual("القيمة الأصلية وتاريخ الاستثمار", "Original value & date"), notConfigured) +
-            kv(dual("المساهمات الرأسمالية اللاحقة", "Subsequent contributions"), notConfigured) +
-            kv(dual("التمويل أو القروض", "Financing / loans"), notConfigured) +
-            kv(dual("التوزيعات المستلمة", "Distributions received"), notConfigured) +
-            kv(dual("القيمة الدفترية وتاريخها", "Book value & date"), notConfigured) +
-            kv(dual("التقييم المعتمد", "Approved valuation"), notConfigured) +
-            kv(dual("المصدر والمرجع", "Source / reference"),
-               escapeHtml(stake && stake.notes ? stake.notes : "") || notConfigured) +
+            kv(dual("القيمة الأصلية وتاريخ الاستثمار", "Original value & date"),
+               val.original_value == null && !val.investment_date ? notConfigured
+                 : amount(val.original_value) +
+                   (val.investment_date ? " · " + escapeHtml(dateStr(val.investment_date)) : "")) +
+            kv(dual("المساهمات الرأسمالية اللاحقة", "Subsequent contributions"), amount(val.subsequent_contributions)) +
+            kv(dual("التمويل أو القروض", "Financing / loans"), amount(val.financing)) +
+            kv(dual("التوزيعات المستلمة", "Distributions received"), amount(val.distributions)) +
+            kv(dual("القيمة الدفترية وتاريخها", "Book value & date"),
+               val.book_value == null ? notConfigured
+                 : amount(val.book_value) +
+                   (val.book_value_date ? " · " + escapeHtml(dateStr(val.book_value_date)) : "") +
+                   (val.book_value_source ? " · " + escapeHtml(val.book_value_source) : "")) +
+            kv(dual("التقييم المعتمد", "Approved valuation"), valuationTxt) +
+            kv(dual("القرار المرتبط", "Linked decision"),
+               escapeHtml(val.decision_reference || "") || notConfigured) +
             "</div>" +
             '<div class="s">' +
             dual(
-              "القيم المعتمدة (القيمة الأصلية، المساهمات، التمويل، التوزيعات، القيمة الدفترية، التقييم) تنتظر نموذج تقييم معتمد؛ النظام لا يضع صفرًا مكانها.",
-              "Approved values (original value, contributions, financing, distributions, book value, valuation) await an approved valuation model; the system does not substitute a zero.",
+              "القيمة الدفترية تدخل كما اعتمدها المحاسب بتاريخها ومصدرها ولا تُحسب بجمع المساهمات والتمويل والتوزيعات؛ عند غياب التقييم لا يضع النظام صفرًا.",
+              "The book value is entered as approved by the accountant with its date and source, never derived by summing contributions, financing and distributions; with no valuation the system stores no zero.",
             ) + "</div>" +
+            (canEdit
+              ? '<div class="av-form-actions"><button type="button" class="btn" id="invEdit">' +
+                dual("تعديل القيم والتقييم", "Edit figures & valuation") + "</button></div>"
+              : "") +
             '<div class="sec-title">' + dual("القرار المرتبط", "Linked decision") + "</div>" +
             (decisions.length
               ? '<div class="av-list">' + decisions.map(function (d) {
@@ -5761,9 +5951,71 @@
               "كل زيادة ملكية أو تخارج يرتبط بقرار؛ يحتفظ بالسابق ولا يُلغى استثمار معتمد بغير إصدار مرتبط.",
               "Every ownership increase or exit links to a decision; the previous one is kept and an approved investment is never cancelled without a linked version.",
             ) + "</div>";
+          var editBtn = byId("invEdit");
+          if (editBtn) {
+            editBtn.addEventListener("click", function () { openInvestmentEdit(companyId, val); });
+          }
         }).catch(function (err) {
           var body = byId("modalBody");
           if (body) body.innerHTML = errorHtml(errText(err));
+        });
+      },
+    });
+  }
+
+  function openInvestmentEdit(companyId, val) {
+    val = val || {};
+    openModal({
+      title: dual("إدخال قيم الاستثمار والتقييم", "Enter investment figures & valuation"),
+      wide: true,
+      body:
+        '<form class="av-form" id="invForm">' +
+        field("العملة", "Currency", textInput("invCurrency", val.currency || "SAR")) +
+        field("تاريخ الاستثمار", "Investment date", dateInput("invDate", val.investment_date || "")) +
+        field("القيمة الأصلية", "Original value", numInput("invOriginal", val.original_value != null ? val.original_value : "")) +
+        field("المساهمات الرأسمالية اللاحقة", "Subsequent contributions", numInput("invContrib", val.subsequent_contributions != null ? val.subsequent_contributions : "")) +
+        field("التمويل أو القروض", "Financing / loans", numInput("invFinancing", val.financing != null ? val.financing : "")) +
+        field("التوزيعات المستلمة", "Distributions received", numInput("invDistributions", val.distributions != null ? val.distributions : "")) +
+        field("القيمة الدفترية", "Book value", numInput("invBook", val.book_value != null ? val.book_value : "")) +
+        field("تاريخ القيمة الدفترية", "Book value date", dateInput("invBookDate", val.book_value_date || "")) +
+        field("مصدر القيمة الدفترية", "Book value source", textInput("invBookSource", val.book_value_source || "")) +
+        field("يوجد تقييم معتمد؟", "Has an approved valuation?",
+          '<select id="invHasVal" class="inp"><option value="false"' + (val.has_valuation ? "" : " selected") + ">" +
+          dual("لا يوجد", "No") + '</option><option value="true"' + (val.has_valuation ? " selected" : "") + ">" +
+          dual("يوجد", "Yes") + "</option></select>") +
+        field("مبلغ التقييم", "Valuation amount", numInput("invValAmount", val.valuation_amount != null ? val.valuation_amount : "")) +
+        field("تاريخ التقييم", "Valuation date", dateInput("invValDate", val.valuation_date || "")) +
+        field("جهة التقييم", "Valuation source", textInput("invValSource", val.valuation_source || "")) +
+        field("مرجع التقييم", "Valuation reference", textInput("invValRef", val.valuation_reference || "")) +
+        field("معرف قرار الاعتماد", "Approving decision id", textInput("invDecision", val.decision_reference || "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        var form = body.querySelector("#invForm");
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var hasVal = valOf("invHasVal") === "true";
+          patch("/api/v1/admin/investment-valuations/" + companyId, {
+            currency: valOf("invCurrency") || null,
+            investment_date: valOf("invDate") || null,
+            original_value: numVal("invOriginal"),
+            subsequent_contributions: numVal("invContrib"),
+            financing: numVal("invFinancing"),
+            distributions: numVal("invDistributions"),
+            book_value: numVal("invBook"),
+            book_value_date: valOf("invBookDate") || null,
+            book_value_source: valOf("invBookSource") || null,
+            has_valuation: hasVal,
+            valuation_amount: hasVal ? numVal("invValAmount") : null,
+            valuation_date: hasVal ? (valOf("invValDate") || null) : null,
+            valuation_source: hasVal ? (valOf("invValSource") || null) : null,
+            valuation_reference: hasVal ? (valOf("invValRef") || null) : null,
+            decision_reference: valOf("invDecision") || null,
+          }).then(function () {
+            toast(dual("تم حفظ قيم الاستثمار.", "Investment figures saved."), "ok");
+            closeModal();
+            openInvestment(companyId);
+          }).catch(domainError);
         });
       },
     });
@@ -7386,8 +7638,9 @@
   // entity's country (deck slide 106: "المواطن هو صاحب جنسية دولة الجهة"). The
   // counts are computed live from the employee rows the caller may already read;
   // a missing country or nationality is left out of both numerator and
-  // denominator, and the deck's target (0-100) is administration data that has
-  // no model yet, so it is shown as غير مُعدّ rather than an invented number.
+  // denominator. The per-entity target and calculation-rule edition are
+  // administration data on the company (deck slides 105/106); when a target is
+  // approved the board raises a below-target alert, otherwise it shows غير مُعدّ.
   function renderLocalizationBoard(employees) {
     var host = byId("empLocBody");
     if (!host) return;
@@ -7410,6 +7663,7 @@
       host.innerHTML = noticeHtml("لا يوجد موظفون نشطون بعد.", "No active employees yet.");
       return;
     }
+    var canEdit = has("company.manage");
     host.innerHTML =
       '<div class="s">' +
       dual(
@@ -7418,11 +7672,32 @@
       ) + "</div>" +
       '<div class="av-list">' + ids.map(function (cid) {
         var b = byCompany[cid];
-        var rate = b.counted ? ((b.citizens / b.counted) * 100).toFixed(1) : null;
+        var c = companyById(cid) || {};
+        var rate = b.counted ? ((b.citizens / b.counted) * 100) : null;
         var rateTxt = rate === null ? dual("غير مُعدّ", "Not configured")
-          : (STATE.lang === "ar" ? toArabicDigits(rate) + "٪" : rate + "%");
-        // No target is configured yet, so no below-target alert is raised (the
-        // deck only alerts when the rate falls below an approved target).
+          : (STATE.lang === "ar" ? toArabicDigits(rate.toFixed(1)) + "٪" : rate.toFixed(1) + "%");
+        // The target is administration data; only an approved target can raise
+        // the deck's below-target alert (slide 105: "الحالية − المستهدف؛
+        // انخفاض = متابعة").
+        var target = c.localization_target_pct != null ? Number(c.localization_target_pct) : null;
+        var targetTxt = target === null ? dual("غير مُعدّ", "Not configured")
+          : (STATE.lang === "ar" ? toArabicDigits(target) + "٪" : target + "%");
+        var delta = (rate !== null && target !== null) ? (rate - target) : null;
+        var alert = (delta !== null && delta < 0)
+          ? '<div class="s" style="color:#b3261e">' +
+            dual("انخفاض عن المستهدف — يحتاج متابعة", "Below target — needs follow-up") + "</div>"
+          : "";
+        var ruleTxt = c.localization_rule_version
+          ? escapeHtml(c.localization_rule_version) +
+            (c.localization_rule_effective_from
+              ? " · " + dual("منذ ", "since ") + escapeHtml(dateStr(c.localization_rule_effective_from))
+              : "")
+          : dual("غير مُعدّ", "Not configured");
+        var editBtn = canEdit
+          ? '<div class="av-form-actions">' +
+            '<button type="button" class="btn-outline" data-loc-edit="' + cid + '">' +
+            dual("تحديث القاعدة والمستهدف", "Edit target & rule") + "</button></div>"
+          : "";
         return (
           '<div class="av-row" style="cursor:default;flex-direction:column;align-items:stretch">' +
           '<div style="display:flex;align-items:center;gap:11px">' +
@@ -7438,10 +7713,45 @@
           kv(dual("غير المواطنين", "Non-citizens"), plainNum(b.total - b.citizens)) +
           kv(dual("المشمولون", "Included"), plainNum(b.counted)) +
           kv(dual("النسبة الحالية", "Current rate"), escapeHtml(rateTxt)) +
-          kv(dual("المستهدف", "Target"), dual("غير مُعدّ", "Not configured")) +
-          "</div></div>"
+          kv(dual("المستهدف", "Target"), escapeHtml(targetTxt)) +
+          kv(dual("قاعدة الاحتساب", "Calculation rule"), ruleTxt) +
+          "</div>" + alert + editBtn + "</div>"
         );
       }).join("") + "</div>";
+    host.querySelectorAll("[data-loc-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openLocalizationEdit(parseInt(btn.getAttribute("data-loc-edit"), 10));
+      });
+    });
+  }
+
+  function openLocalizationEdit(companyId) {
+    var c = companyById(companyId) || {};
+    openModal({
+      title: dual("إعداد التوطين والتقرير المجمع", "Localization setup & aggregate report"),
+      body:
+        '<form class="av-form" id="locForm">' +
+        field("النسبة المستهدفة ٪", "Target %", numInput("locTarget", c.localization_target_pct != null ? c.localization_target_pct : "")) +
+        field("إصدار قاعدة الاحتساب", "Calculation-rule version", textInput("locRule", c.localization_rule_version || "")) +
+        field("نفاذ القاعدة", "Rule effective from", dateInput("locRuleFrom", c.localization_rule_effective_from || "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        var form = body.querySelector("#locForm");
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          patch("/api/v1/companies/" + companyId, {
+            localization_target_pct: numVal("locTarget"),
+            localization_rule_version: valOf("locRule") || null,
+            localization_rule_effective_from: valOf("locRuleFrom") || null,
+          }).then(function () {
+            toast(dual("تم تحديث إعداد التوطين.", "Localization setup updated."), "ok");
+            closeModal();
+            return renderEmployees();
+          }).catch(domainError);
+        });
+      },
+    });
   }
 
   function openEmployee(e) {
@@ -7493,6 +7803,43 @@
       info += kv(dual("الراتب", "Salary"), dual("محجوب", "Restricted"));
     }
     info += "</div>";
+
+    // Deck slide 103: the restricted tab. Rendered only for a caller with the
+    // restricted/salary permission; the same fields are omitted from the API
+    // payload for anyone else, so this block can never leak them.
+    var restricted = "";
+    if (has("employee.salary.read")) {
+      var links = (e.document_links || "").split(/\s*\n\s*/).filter(function (u) { return u.trim(); });
+      var linksHtml = links.length
+        ? links.map(function (u) {
+            return '<a class="mono" href="' + escAttr(u.trim()) + '" target="_blank" rel="noopener">' +
+              escapeHtml(u.trim()) + "</a>";
+          }).join("<br>")
+        : escapeHtml("—");
+      var countsVal = e.counts_toward_localization === true
+        ? dual("نعم", "Yes")
+        : e.counts_toward_localization === false
+          ? dual("لا", "No")
+          : dual("ينتظر مراجعة", "Awaiting review");
+      restricted = panel("الحقول المقيدة والاحتساب", "Restricted fields & localization",
+        '<div class="kv">' +
+        kv(dual("الهوية أو الإقامة", "Identity / residence"), escapeHtml(e.national_id_masked || "—")) +
+        kv(dual("موقع العمل", "Work location"), escapeHtml(e.work_location || "—")) +
+        kv(dual("تاريخ نفاذ البيانات", "Wage effective date"), escapeHtml(dateStr(e.wage_effective_date))) +
+        kv(dual("المستندات أو الروابط الأساسية", "Key documents / links"), linksHtml) +
+        kv(dual("يحتسب ضمن التوطين؟", "Counts toward localization?"), countsVal) +
+        kv(dual("سبب عدم الاحتساب", "Exclusion reason"), escapeHtml(e.localization_exclusion_reason || "—")) +
+        kv(dual("الوظيفة المحتسبة", "Localization job title"), escapeHtml(e.localization_job_title || "—")) +
+        kv(dual("قاعدة الاحتساب المطبقة", "Applied calculation rule"), escapeHtml(e.localization_rule_version || "—")) +
+        kv(dual("المراجع وتاريخ القرار", "Reference & decision date"), escapeHtml(e.localization_reference || "—")) +
+        "</div>" +
+        '<div class="s">' +
+        dual(
+          "المزايا بيان إداري فقط؛ لا احتساب راتب أو خصم أو صرف. هذه الحقول محجوبة عن المستشار والموظفين التنفيذيين.",
+          "Allowances are an administrative statement only; no salary, deduction or payout is computed. These fields are withheld from the advisor and executive staff.",
+        ) + "</div>");
+    }
+
     var movForm = has("employee.movement.manage")
       ? '<form class="av-form av-form-inline" id="movForm">' +
         field("النوع", "Type", selectInput("mvType", [
@@ -7522,6 +7869,7 @@
         }).join("") + "</div>"
       : noticeHtml("لا توجد حركات مسجّلة.", "No movements recorded.");
     return panel("بيانات الموظف", "Employee details", info) +
+      restricted +
       panel("الحركات (يدوية — دون ربط آلي بالرواتب)", "Movements (manual — no automatic payroll link)", movForm + movList);
   }
 
@@ -10676,7 +11024,7 @@
       .catch(function (err) { domainError(err); busy(el, false); });
   }
 
-  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "positions", "users", "roles", "motivation", "website", "builder", "workflows", "integrations", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "positions", "users", "roles", "motivation", "website", "builder", "workflows", "integrations", "knowledge", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
@@ -10690,6 +11038,7 @@
     builder: ["form.read", "form.create"],
     workflows: ["workflow.read"],
     integrations: ["integration.read"],
+    knowledge: ["ai.knowledge.read", "ai.admin"],
     audit: ["audit.read"],
   };
 
@@ -10751,6 +11100,7 @@
     if (tab === "builder") return renderAdminBuilder();
     if (tab === "workflows") return renderAdminWorkflows();
     if (tab === "integrations") return renderAdminIntegrations();
+    if (tab === "knowledge") return renderAdminKnowledge();
     if (tab === "audit") return renderAdminAudit();
     return Promise.resolve();
   }
@@ -12683,6 +13033,176 @@
     );
   }
 
+  // ---- tab: AI knowledge base (RAG) ----
+  // The curated knowledge base and the AI provider/usage monitor. Everything is
+  // read from the API: a document is retrievable only once its version is
+  // approved, and the usage panel is a counter, never a second copy of a
+  // conversation. A role without `ai.knowledge.*` still reaches the provider
+  // status if it holds `ai.admin`, so the two panels degrade independently.
+  function knowledgeSensitivityLabel(value) {
+    var map = {
+      public: ["عام", "Public"],
+      company: ["الشركة", "Company"],
+      holding: ["القابضة", "Holding"],
+      confidential: ["سري", "Confidential"],
+    };
+    var pair = map[value] || [value, value];
+    return STATE.lang === "ar" ? pair[0] : pair[1];
+  }
+
+  function knowledgeStatusBadge(value) {
+    var map = {
+      draft: ["مسودة", "Draft", "warn"],
+      pending: ["بانتظار المراجعة", "Pending", "warn"],
+      approved: ["معتمد", "Approved", "ok"],
+      archived: ["مؤرشف", "Archived", "miss"],
+    };
+    return statusBadgeFromMap(value, map);
+  }
+
+  function knowledgeDocumentRow(doc, canWrite, canApprove) {
+    var title = STATE.lang === "ar" ? doc.title_ar : doc.title_en || doc.title_ar;
+    var acts = "";
+    if (canApprove && doc.status !== "archived" && !doc.current_version_id) {
+      // A document with no approved version is a draft: its latest version must
+      // be approved before any of it can be retrieved.
+      acts += '<button class="btn-outline" data-admin-action="knowledge-approve" data-id="' +
+        doc.id + '">' + dual("اعتماد الإصدار", "Approve version") + "</button>";
+    }
+    if (canApprove && doc.status !== "archived") {
+      acts += '<button class="btn-outline" data-admin-action="knowledge-archive" data-id="' +
+        doc.id + '">' + dual("أرشفة", "Archive") + "</button>";
+    }
+    if (canWrite) {
+      acts += '<button class="btn-outline" data-admin-action="knowledge-newversion" data-id="' +
+        doc.id + '">' + dual("إصدار جديد", "New version") + "</button>";
+    }
+    return (
+      '<div class="av-row" style="cursor:default"><div class="grow">' +
+      '<div class="t">' + escapeHtml(title) + "</div>" +
+      '<div class="s">' + escapeHtml(doc.slug) + " · " +
+      dual("الحساسية", "Sensitivity") + ": " + escapeHtml(knowledgeSensitivityLabel(doc.sensitivity)) +
+      " · " + dual("الإصدار الحالي", "Current version") + ": " +
+      (doc.current_version_id ? "#" + plainNum(doc.current_version_id) : dual("لا يوجد", "None")) +
+      "</div></div>" +
+      knowledgeStatusBadge(doc.status) + acts + "</div>"
+    );
+  }
+
+  function renderAdminKnowledge() {
+    var host = byId("adminContent");
+    var canRead = has("ai.knowledge.read");
+    var canWrite = has("ai.knowledge.write");
+    var canApprove = has("ai.knowledge.approve");
+    var canManage = has("ai.knowledge.manage");
+    var canAdmin = has("ai.admin");
+
+    var jobs = [];
+    jobs.push(canRead ? softGet("/api/v1/ai/knowledge/categories") : Promise.resolve([]));
+    jobs.push(canRead ? softGet("/api/v1/ai/knowledge/documents") : Promise.resolve([]));
+    // The proposals list is gated on ai.knowledge.manage, the permission
+    // list_proposals enforces -- not on the read permission that made the tab
+    // reachable, otherwise a reader-only role gets a 403 in the console.
+    jobs.push(canManage ? softGet("/api/v1/ai/knowledge/proposals") : Promise.resolve([]));
+    jobs.push(canAdmin ? get("/api/v1/ai/usage").catch(function () { return null; }) : Promise.resolve(null));
+
+    return Promise.all(jobs).then(function (res) {
+      var categories = res[0] || [];
+      var documents = res[1] || [];
+      var proposals = res[2] || [];
+      var usage = res[3];
+      var panels = [];
+
+      if (canWrite) {
+        var catOptions = [{ value: "", label: opt("بدون تصنيف", "No category") }];
+        categories.forEach(function (c) {
+          catOptions.push({ value: c.id, label: STATE.lang === "ar" ? c.name_ar : c.name_en });
+        });
+        var companyOptions = [{ value: "", label: opt("القابضة", "Holding") }];
+        (STATE.companies || []).forEach(function (c) {
+          companyOptions.push({ value: c.id, label: companyName(c) });
+        });
+        var form = '<form class="av-form av-form-inline" id="knowledgeForm">' +
+          field("المعرف", "Slug", textInput("knSlug", "", "ph.knowledgeSlug")) +
+          field("العنوان (عربي)", "Title (AR)", textInput("knTitleAr", "")) +
+          field("العنوان (إنجليزي)", "Title (EN)", textInput("knTitleEn", "")) +
+          field("التصنيف", "Category", selectInput("knCategory", catOptions, "")) +
+          field("الشركة", "Company", selectInput("knCompany", companyOptions, "")) +
+          field("الحساسية", "Sensitivity", selectInput("knSensitivity", [
+            { value: "public", label: opt("عام", "Public") },
+            { value: "company", label: opt("الشركة", "Company") },
+            { value: "holding", label: opt("القابضة", "Holding") },
+            { value: "confidential", label: opt("سري", "Confidential") },
+          ], "holding")) +
+          field("المحتوى (عربي)", "Body (AR)", textArea("knBodyAr", "", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة مستند", "Add document") + "</button></div></form>";
+        panels.push(adminPanel("مستند جديد", "New document", form));
+      }
+
+      if (canRead) {
+        var list = documents.length
+          ? '<div class="av-list">' + documents.map(function (d) {
+              return knowledgeDocumentRow(d, canWrite, canApprove);
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مستندات في نطاقك.", "No documents in your scope yet.");
+        panels.push(adminPanel("المستندات المعتمدة والنشطة", "Documents", list));
+      }
+
+      if (canManage) {
+        var propList = proposals.length
+          ? '<div class="av-list">' + proposals.map(function (p) {
+              var acts = p.status === "pending"
+                ? '<button class="btn-outline" data-admin-action="knowledge-proposal-approve" data-id="' + p.id + '">' + dual("اعتماد", "Approve") + "</button>" +
+                  '<button class="btn-outline" data-admin-action="knowledge-proposal-reject" data-id="' + p.id + '">' + dual("رفض", "Reject") + "</button>"
+                : "";
+              return (
+                '<div class="av-row" style="cursor:default"><div class="grow">' +
+                '<div class="t">' + escapeHtml(p.title) + "</div>" +
+                '<div class="s">' + escapeHtml(p.rationale || "") + "</div></div>" +
+                knowledgeStatusBadge(p.status) + acts + "</div>"
+              );
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مقترحات تعلّم.", "No learning proposals.");
+        panels.push(adminPanel("مقترحات التعلّم", "Learning proposals", propList));
+      }
+
+      if (canAdmin && usage) {
+        var totals = (usage.usage && usage.usage.totals) || {};
+        var provider = '<div class="kv">' +
+          kv(dual("المزوّد", "Provider"), escapeHtml(usage.provider)) +
+          kv(dual("النموذج", "Model"), escapeHtml(usage.model || "—")) +
+          kv(dual("المفتاح مُهيّأ", "API key present"), dual(usage.api_key_present ? "نعم" : "لا", usage.api_key_present ? "yes" : "no")) +
+          kv(dual("مجاني موثّق", "Verified free"), dual(usage.verified_free ? "نعم" : "لا", usage.verified_free ? "yes" : "no")) +
+          kv(dual("سقف التكلفة (دولار)", "Cost cap (USD)"), plainNum(usage.max_cost_usd)) +
+          kv(dual("الطلبات (٢٤س)", "Requests (24h)"), plainNum(totals.requests || 0)) +
+          kv(dual("الرموز", "Tokens"), plainNum(totals.tokens || 0)) +
+          kv(dual("التكلفة (دولار)", "Cost (USD)"), plainNum(totals.cost_usd || 0)) +
+          kv(dual("أخطاء", "Errors"), plainNum(totals.errors || 0)) +
+          kv(dual("مرفوض مدفوع", "Rejected (paid)"), plainNum(totals.rejected_paid || 0)) +
+          kv(dual("الحد اليومي", "Daily limit"), plainNum(usage.daily_limit) + " / " + plainNum(usage.daily_used)) +
+          "</div>";
+        var models = (usage.free_models || []).length
+          ? '<div class="av-list">' + usage.free_models.slice(0, 8).map(function (m) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t mono">' +
+                escapeHtml(m.id) + "</div><div class=\"s\">" + escapeHtml(m.name || "") + "</div></div></div>";
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد نماذج مجانية موثّقة.", "No verified free models.");
+        panels.push(adminPanel("مزوّد الذكاء الاصطناعي والاستخدام", "AI provider & usage", provider));
+        panels.push(adminPanel("النماذج المجانية المتاحة", "Available free models",
+          models + (usage.discovery_error ? '<p class="av-empty">' + escapeHtml(usage.discovery_error) + "</p>" : "")));
+      }
+
+      if (!panels.length) {
+        panels.push(noticeHtml("لا تملك صلاحية عرض قاعدة المعرفة.", "You cannot view the knowledge base."));
+      }
+      host.className = "av-grid cols-1";
+      host.innerHTML = panels.join("");
+    }).catch(function (err) {
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
   // ---- admin event handling ----
   function onAdminClick(e) {
     var el = e.target.closest ? e.target.closest("[data-admin-action]") : null;
@@ -12764,6 +13284,54 @@
         toast(STATE.lang === "ar" ? "تم تعطيل نقطة النهاية." : "Endpoint disabled.", "ok");
         return renderAdminIntegrations();
       }).catch(adminError);
+    }
+
+    // ---- AI knowledge base (RAG) ----
+    if (action === "knowledge-approve") {
+      busy(el, true);
+      return get("/api/v1/ai/knowledge/documents/" + id + "/versions").then(function (versions) {
+        var latest = (versions || []).slice().sort(function (a, b) {
+          return (b.version_number || 0) - (a.version_number || 0);
+        })[0];
+        if (!latest) {
+          toast(dual("لا يوجد إصدار لاعتماده.", "No version to approve."), "warn");
+          return;
+        }
+        return post("/api/v1/ai/knowledge/versions/" + latest.id + "/approve", {})
+          .then(function () {
+            toast(dual("تم اعتماد الإصدار وأصبح قابلًا للاسترجاع.", "Version approved and retrievable."), "ok");
+            return renderAdminKnowledge();
+          });
+      }).catch(adminError);
+    }
+    if (action === "knowledge-archive") {
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/documents/" + id + "/archive", {}).then(function () {
+        toast(dual("تمت أرشفة المستند.", "Document archived."), "ok");
+        return renderAdminKnowledge();
+      }).catch(adminError);
+    }
+    if (action === "knowledge-newversion") {
+      var body = window.prompt(dual("نص الإصدار الجديد (عربي)", "New version body (AR)"));
+      if (!body) return;
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/documents/" + id + "/versions", { body_ar: body })
+        .then(function (v) {
+          return post("/api/v1/ai/knowledge/versions/" + v.id + "/approve", {})
+            .then(function () {
+              toast(dual("تم إنشاء إصدار واعتماده.", "Version created and approved."), "ok");
+              return renderAdminKnowledge();
+            });
+        }).catch(adminError);
+    }
+    if (action === "knowledge-proposal-approve" || action === "knowledge-proposal-reject") {
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/proposals/" + id + "/resolve",
+        { approve: action === "knowledge-proposal-approve" })
+        .then(function () {
+          toast(dual("تمت معالجة المقترح.", "Proposal resolved."), "ok");
+          return renderAdminKnowledge();
+        }).catch(adminError);
     }
 
     // ---- website management (Phase 11 CMS) ----
@@ -13077,6 +13645,24 @@
           return renderAdminIntegrations();
         })
         .catch(adminError);
+    }
+    if (form.id === "knowledgeForm") {
+      e.preventDefault();
+      var knCompany = valOf("knCompany");
+      var payload = {
+        slug: valOf("knSlug"),
+        title_ar: valOf("knTitleAr"),
+        title_en: valOf("knTitleEn") || null,
+        body_ar: valOf("knBodyAr"),
+        category_id: valOf("knCategory") ? parseInt(valOf("knCategory"), 10) : null,
+        company_id: knCompany ? parseInt(knCompany, 10) : null,
+        sensitivity: valOf("knSensitivity"),
+      };
+      return post("/api/v1/ai/knowledge/documents", payload)
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تمت إضافة المستند (مسودة)." : "Document added (draft).", "ok");
+          return renderAdminKnowledge();
+        }).catch(adminError);
     }
     if (form.id === "builderForm") {
       e.preventDefault();
@@ -13584,6 +14170,63 @@
     if (box) box.innerHTML = errorHtml(message);
   }
 
+  // Knowledge-base assistant. It posts to the dedicated /ai/knowledge scope,
+  // which retrieves only approved, in-scope chunks and returns them as sources.
+  // The answer and its sources are escaped before insertion: a hosted provider
+  // could otherwise emit markup.
+  function askKnowledge(question) {
+    return post("/api/v1/ai/knowledge", { question: question }).then(function (data) {
+      var box = document.getElementById("kbAnswer");
+      if (!box) return data;
+      box.style.display = "";
+      var q = document.getElementById("kbAnswerQ");
+      if (q) {
+        var safeQ = escapeHtml(question);
+        q.innerHTML = '<span class="ar">«' + safeQ + '»</span><span class="en">“' + safeQ + '”</span>';
+      }
+      var body = document.getElementById("kbAnswerBody");
+      if (body) {
+        var safe = escapeHtml(data.answer || "");
+        var html = '<p><span class="ar">' + safe + '</span><span class="en">' + safe + "</span></p>";
+        var sources = data.sources || [];
+        if (sources.length) {
+          html += '<div class="av-list">' + sources.map(function (s) {
+            var title = STATE.lang === "ar" ? s.title_ar : s.title_en || s.title_ar;
+            return '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t">' + escapeHtml(title) + "</div>" +
+              '<div class="s">' + escapeHtml(s.excerpt || "") + "</div></div></div>";
+          }).join("") + "</div>";
+        }
+        body.innerHTML = html;
+      }
+      return data;
+    });
+  }
+
+  function bindKnowledgeAskBox() {
+    var box = document.getElementById("kbAskBox");
+    if (!box) return;
+    var input = document.getElementById("kbInput");
+    var send = document.getElementById("kbSend");
+    if (!input || !send) return;
+    function submit() {
+      var q = (input.value || "").trim();
+      if (!q) return;
+      input.value = "";
+      var body = document.getElementById("kbAnswerBody");
+      var ans = document.getElementById("kbAnswer");
+      if (ans) ans.style.display = "";
+      if (body) body.innerHTML = loadingHtml();
+      askKnowledge(q).catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+    }
+    send.addEventListener("click", submit);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") submit();
+    });
+  }
+
   // Clear the curated demo figures immediately after sign-in so nothing is ever
   // mistaken for real data while the API responses are in flight.
   function showLoadingStates() {
@@ -13818,6 +14461,7 @@
         applyPlatformLogo();
         applyPermissions();
         bindAskBox();
+        bindKnowledgeAskBox();
         bindLogout();
         bindHeaderActions();
         bindNav();

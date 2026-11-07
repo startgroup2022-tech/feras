@@ -243,47 +243,73 @@ MAPPING: list[dict] = [
          view="employees", signals=[("control", "employees:employees:rows")]),
     dict(slides=[102, 103], title="ملف الموظف", family="EMP", view="employees",
          signals=[("detail", "employees:openEmployee"), ("ui", "employeeDetail"),
-                  ("ui", "الرقم الوظيفي"), ("ui", "المدير المباشر")],
-         partial_reason="slide 103 restricted fields absent from the model: "
-                        "identity/residence number, work location, wage effective "
-                        "date, document links, and the 'counts toward "
-                        "localization?' flag with its reason",
+                  ("ui", "الرقم الوظيفي"), ("ui", "المدير المباشر"),
+                  # Slide 103 restricted block, gated behind employee.salary.read:
+                  # masked identity/residence number, work location, wage
+                  # effective date, document links, and the localization
+                  # inclusion decision with its reason and applied rule.
+                  ("ui", "الهوية أو الإقامة"), ("ui", "موقع العمل"),
+                  ("ui", "تاريخ نفاذ البيانات"), ("ui", "المستندات أو الروابط الأساسية"),
+                  ("ui", "يحتسب ضمن التوطين؟"), ("ui", "سبب عدم الاحتساب"),
+                  ("ui", "قاعدة الاحتساب المطبقة")],
          note="Employee file carries the deck's identity block: employee number, "
-              "entity, nationality, department, direct manager, status, and the "
-              "salary block gated on employee.salary.read."),
+              "entity, nationality, department, direct manager, status, the "
+              "salary block and the slide-103 restricted tab, both gated on "
+              "employee.salary.read; the identity number is masked."),
     dict(slides=[104], title="قواعد بيانات الموظفين ودورة الملف", family="spec",
          view=None, status="REF",
          note="Employee-data rules and file lifecycle; enforced by hr_service "
               "(employee.create/update, movement decision) and tests/test_hr."),
     dict(slides=[105], title="لوحة التوطين لكل جهة", family="EMP", view="employees",
          signals=[("ui", "function renderLocalizationBoard"),
-                  ("ui", "لوحة التوطين لكل جهة")],
-         partial_reason="localization target and calculation-rule edition absent: "
-                        "shown غير مُعدّ, and no below-target alert is raised",
+                  ("ui", "لوحة التوطين لكل جهة"),
+                  # Slide 105/106: target + calculation-rule edition with a
+                  # below-target follow-up flag, backed by company admin data.
+                  ("ui", "localization_target_pct"),
+                  ("ui", "قاعدة الاحتساب"), ("ui", "function openLocalizationEdit")],
          note="Per-entity board computed from active employees: country, total, "
-              "citizens, non-citizens, included, current rate."),
+              "citizens, non-citizens, included, current rate, target, applied "
+              "calculation rule and a below-target follow-up flag; the target "
+              "and rule are editable administration data (slide 106)."),
     dict(slides=[106], title="إعداد التوطين والتقرير المجمع", family="spec",
          view=None, status="REF",
-         note="Localization setup and aggregate report; the target/rule are "
-              "administration data with no model yet, recorded as PARTIAL on "
-              "slide 105 rather than asserted here."),
+         note="Localization setup and aggregate report; the per-entity target "
+              "and calculation-rule edition live on the company record and are "
+              "surfaced on slide 105's board."),
     # 107-115 investments / currencies / KPIs
     dict(slides=[107], title="قائمة محفظة الملكية والاستثمارات", family="INV",
          view="investments",
          signals=[("view", "investments"), ("ui", "function loadInvestmentPortfolio"),
                   ("ui", "سجل محفظة الملكية والاستثمارات"),
+                  # Slide 107 names four actions on the register:
+                  # [إضافة استثمار] [فتح التفاصيل] [رفع قرار] [تقرير المحفظة].
+                  ("ui", "إضافة استثمار"), ("ui", "فتح التفاصيل"),
+                  ("ui", "رفع قرار"), ("ui", "تقرير المحفظة"),
+                  ("ui", "حالة الاستثمار"), ("ui", "العملة الأصلية"),
                   ("api", "GET /api/v1/admin/ownerships")],
          note="The register renders real ownership rows (owner, %, effective "
-              "date, status) with an [فتح التفاصيل] action."),
+              "date, status) with the deck's four actions: [إضافة استثمار] and "
+              "[رفع قرار] appear only for the roles that hold ownership.manage "
+              "/ owner_decision.manage (the permissions their endpoints "
+              "enforce), and [تقرير المحفظة] exports the register the caller is "
+              "already reading. The register also carries the deck's own filter "
+              "columns (حالة الاستثمار، العملة الأصلية) plus search, sort and "
+              "paging (slides 134-136)."),
     dict(slides=[108, 109], title="تفاصيل الاستثمار والقرار المرتبط", family="INV",
          view="investments",
          signals=[("ui", "function openInvestment"),
                   ("ui", "القيمة الدفترية وتاريخها"),
-                  ("ui", "التقييم المعتمد"), ("ui", "القرار المرتبط")],
-         partial_reason="valuation model absent: original value, contributions, "
-                        "financing, distributions, book value and valuation "
-                        "render غير مُعدّ (deck slide 109 forbids a fake zero)",
-         note="Detail shows ownership %, source, and the linked owner decision."),
+                  ("ui", "التقييم المعتمد"), ("ui", "القرار المرتبط"),
+                  ("ui", "function openInvestmentEdit"),
+                  # Slide 109: the yes/no valuation and the entered (never
+                  # derived) book value, backed by the valuation endpoints.
+                  ("ui", "has_valuation"),
+                  ("api", "GET /api/v1/admin/investment-valuations")],
+         note="Detail shows ownership %, original value, contributions, "
+              "financing, distributions, the entered book value with its date "
+              "and source, the yes/no valuation (no invented zero) and the "
+              "linked owner decision; figures are entered as approved, not "
+              "summed (deck slide 109)."),
     dict(slides=[110], title="إعداد العملات وسعر التحويل", family="FX",
          view="admin", signals=[("control", "admin:structure:buttons")]),
     dict(slides=[111], title="التقرير المجمع متعدد العملات", family="FX",

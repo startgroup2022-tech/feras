@@ -16,9 +16,11 @@ These are the Phase 2 foundations. They are deliberately small and additive:
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -128,6 +130,59 @@ class Ownership(Base, TimestampMixin):
     owner_company: Mapped[Company | None] = relationship(
         foreign_keys=[owner_company_id], backref="ownership_out"
     )
+
+
+class InvestmentValuation(Base, TimestampMixin):
+    """The documented valuation summary for one owned company (deck 107-109).
+
+    Deck slide 109 is explicit about the *rules*, and this model encodes them
+    rather than inventing numbers:
+
+    * The book value is entered as approved by the accountant with its date and
+      source; it is **not** computed by summing contributions/financing/
+      distributions ("لا تحسب بجمع ... عشوائيًا").
+    * A valuation is a yes/no choice: when ``has_valuation`` is false the record
+      stores **no** zero (deck: "عند لا يوجد لا يضع النظام صفرًا كتقييم"). When
+      true, the amount, currency, date, source and the approving decision
+      reference are all required -- that rule lives in the schema validator.
+
+    One current summary per owned company; corrections replace it in place and
+    are audited.
+    """
+
+    __tablename__ = "investment_valuations"
+    __table_args__ = (
+        UniqueConstraint("owned_company_id", name="uq_investment_valuation_company"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owned_company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
+    investment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    original_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    subsequent_contributions: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )
+    financing: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    distributions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    book_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    book_value_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    book_value_source: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    has_valuation: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    valuation_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    valuation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valuation_source: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    valuation_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # The linked owner decision: every ownership increase or exit must carry one
+    # (deck 109: "كل زيادة ملكية أو تخارج يرتبط بقرار").
+    decision_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    owned_company: Mapped[Company] = relationship(foreign_keys=[owned_company_id])
 
 
 class Department(Base, TimestampMixin):

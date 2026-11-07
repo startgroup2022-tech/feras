@@ -27,6 +27,7 @@ class AuditAction:
     OWNERSHIP_CREATED = "ownership.created"
     OWNERSHIP_UPDATED = "ownership.updated"
     OWNERSHIP_ENDED = "ownership.ended"
+    INVESTMENT_VALUATION_UPDATED = "investment.valuation_updated"
     DEPARTMENT_CREATED = "department.created"
     DEPARTMENT_UPDATED = "department.updated"
     DEPARTMENT_STATUS_CHANGED = "department.status_changed"
@@ -83,6 +84,16 @@ class AuditAction:
     AI_CONVERSATION_STARTED = "ai.conversation_started"
     AI_MESSAGE_SENT = "ai.message_sent"
     AI_TEXT_ORGANIZED = "ai.text_organized"
+    # Knowledge-base administration. AI actions record *what* was done and by
+    # whom; conversation content is never copied into the audit metadata.
+    AI_KNOWLEDGE_DOCUMENT_CREATED = "ai.knowledge_document_created"
+    AI_KNOWLEDGE_VERSION_ADDED = "ai.knowledge_version_added"
+    AI_KNOWLEDGE_APPROVED = "ai.knowledge_approved"
+    AI_KNOWLEDGE_ARCHIVED = "ai.knowledge_archived"
+    AI_KNOWLEDGE_PROPOSAL_RAISED = "ai.knowledge_proposal_raised"
+    AI_KNOWLEDGE_PROPOSAL_RESOLVED = "ai.knowledge_proposal_resolved"
+    AI_KNOWLEDGE_RETRIEVED = "ai.knowledge_retrieved"
+    AI_PROVIDER_REJECTED_PAID_MODEL = "ai.provider_rejected_paid_model"
 
     # Phase 3: dynamic forms builder
     FORM_CREATED = "form.created"

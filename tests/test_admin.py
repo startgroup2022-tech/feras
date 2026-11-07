@@ -446,3 +446,126 @@ def test_user_update_is_audited(client, world, auth, db):
         json={"full_name_en": "Renamed"},
     )
     assert "user.updated" in [row.action for row in db.query(AuditLog).all()]
+
+
+def test_update_company_localization_setup(client, world, auth):
+    """Deck slides 105/106: the per-entity target and calculation rule are
+    administration data on the company, editable by the owner."""
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={
+            "localization_target_pct": "35.000",
+            "localization_rule_version": "SA-2026-v1",
+            "localization_rule_effective_from": "2026-01-01",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["localization_target_pct"] == "35.000"
+    assert body["localization_rule_version"] == "SA-2026-v1"
+    assert body["localization_rule_effective_from"] == "2026-01-01"
+
+
+def test_update_company_localization_target_is_bounded(client, world, auth):
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"localization_target_pct": "140"},
+    )
+    assert response.status_code == 422
+
+
+def _valuation_payload(**over):
+    base = {
+        "currency": "SAR",
+        "investment_date": "2026-02-01",
+        "original_value": "1000000.00",
+        "book_value": "1200000.00",
+        "book_value_date": "2026-06-30",
+        "book_value_source": "كشف معتمد",
+        "has_valuation": True,
+        "valuation_amount": "1500000.00",
+        "valuation_date": "2026-06-30",
+        "valuation_source": "تقييم معتمد",
+        "valuation_reference": "VAL-2026-07",
+        "decision_reference": "DEC-12",
+    }
+    base.update(over)
+    return base
+
+
+def test_owner_records_an_investment_valuation(client, world, auth):
+    """Deck slides 107-109: the accountant records the summary, the owner reads
+    it back; the book value is entered, never derived."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json=_valuation_payload(),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert float(body["book_value"]) == 1200000.00
+    assert body["has_valuation"] is True
+    assert body["decision_reference"] == "DEC-12"
+
+    read = client.get(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+    )
+    assert read.status_code == 200
+    assert float(read.json()["valuation_amount"]) == 1500000.00
+
+
+def test_valuation_no_must_not_carry_an_amount(client, world, auth):
+    """Deck slide 109: when the valuation choice is "no" the system stores no
+    zero -- an amount alongside has_valuation=false is rejected."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"has_valuation": False, "valuation_amount": "0.00"},
+    )
+    assert response.status_code == 422
+
+
+def test_valuation_yes_requires_amount_date_source_and_reference(client, world, auth):
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"has_valuation": True, "valuation_amount": "10.00"},
+    )
+    assert response.status_code == 422
+
+
+def test_company_manager_cannot_write_a_valuation(client, world, auth):
+    """The accountant/owner hold investment.manage; a company manager does not."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['alpha'].id}",
+        headers=auth(world["alpha_mgr"]),
+        json=_valuation_payload(),
+    )
+    assert response.status_code == 403
+
+
+def test_valuation_read_is_confined_to_scope(client, world, auth):
+    """A company manager reading another company's summary gets 404, matching
+    the platform's "not yours == does not exist" rule."""
+    response = client.get(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["alpha_mgr"]),
+    )
+    assert response.status_code == 404
+
+
+def test_valuation_update_is_audited(client, world, auth, db):
+    from backend.db.models.ai import AuditLog
+
+    client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json=_valuation_payload(),
+    )
+    actions = {
+        row.action for row in db.query(AuditLog).all()
+    }
+    assert "investment.valuation_updated" in actions
