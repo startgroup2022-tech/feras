@@ -430,6 +430,9 @@ class Budget(Base, TimestampMixin):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company"] = relationship()
+    # The deck's budget list filters by "مسؤول" (slide 135); exposing the
+    # approver lets the list show a name instead of a bare id.
+    approved_by: Mapped["User | None"] = relationship(foreign_keys=[approved_by_id])
 
 
 class KpiDefinition(Base, TimestampMixin):

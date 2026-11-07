@@ -134,8 +134,9 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the Execution 31 D03 versioned management-report
-    # workflow builds on the Execution 30 owner-decision governance tables
+    # A single linear chain: the employee country/nationality field (S11
+    # localization) builds on the Execution 31 D03 versioned management-report
+    # workflow, which builds on the Execution 30 owner-decision governance tables
     # (D01/D04/D09/D11), which build on the lead-to-campaign link (S13/S14),
     # which builds on the owner secret note (S23), which builds on the
     # management reports & clarifications (S21/S02/S09), which build on the
@@ -149,8 +150,16 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the website CMS, which builds on the bilingual role description, which
     # builds on branding, which builds on phase 10, which builds on phase 6-9,
     # which builds on phase 3, which builds on phase 2, which builds on the
-    # initial schema -- no branches.
-    assert head == "3473d285d919"
+    # initial schema -- no branches. The Phase 3 AI knowledge base builds on the
+    # S11 localization field; the deck v3 employee restricted fields/localization
+    # setup, company localization target, and the investment valuation summary
+    # build on top of it.
+    assert head == "f49eb1554901"
+    assert revisions["f49eb1554901"] == "9950bdb57824"
+    assert revisions["9950bdb57824"] == "b27b32d9905b"
+    assert revisions["b27b32d9905b"] == "2b7c225bbb32"
+    assert revisions["2b7c225bbb32"] == "d806fc545297"
+    assert revisions["d806fc545297"] == "3473d285d919"
     assert revisions["3473d285d919"] == "62040b21dfa2"
     assert revisions["62040b21dfa2"] == "d6e7f8a9b0c1"
     assert revisions["d6e7f8a9b0c1"] == "c5d6e7f8a9b0"

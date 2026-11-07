@@ -21,6 +21,8 @@ from backend.schemas import (
     GroupStructureNode,
     HoldingOut,
     HoldingUpdateRequest,
+    InvestmentValuationOut,
+    InvestmentValuationUpdateRequest,
     MotivationTextCreateRequest,
     MotivationTextOut,
     MotivationTextUpdateRequest,
@@ -240,6 +242,54 @@ def end_ownership(
         user_agent=ctx["user_agent"],
     )
     return OwnershipOut(**row)
+
+
+# --------------------------------------------------------------------------
+# investment valuation summaries (deck slides 107-109)
+# --------------------------------------------------------------------------
+@router.get("/investment-valuations", response_model=list[InvestmentValuationOut])
+def list_investment_valuations(db: DbSession, user: CurrentUser) -> list[InvestmentValuationOut]:
+    return [
+        InvestmentValuationOut(**row)
+        for row in ownership_service.list_investment_valuations(db, user=user)
+    ]
+
+
+@router.get(
+    "/investment-valuations/{owned_company_id}",
+    response_model=InvestmentValuationOut,
+)
+def get_investment_valuation(
+    owned_company_id: int, db: DbSession, user: CurrentUser
+) -> InvestmentValuationOut:
+    return InvestmentValuationOut(
+        **ownership_service.get_investment_valuation(
+            db, user=user, owned_company_id=owned_company_id
+        )
+    )
+
+
+@router.patch(
+    "/investment-valuations/{owned_company_id}",
+    response_model=InvestmentValuationOut,
+)
+def update_investment_valuation(
+    owned_company_id: int,
+    payload: InvestmentValuationUpdateRequest,
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.INVESTMENT_MANAGE)),
+) -> InvestmentValuationOut:
+    ctx = audit_service.request_context(request)
+    row = ownership_service.update_investment_valuation(
+        db,
+        actor=actor,
+        owned_company_id=owned_company_id,
+        payload=payload.model_dump(exclude_unset=True),
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return InvestmentValuationOut(**row)
 
 
 # --------------------------------------------------------------------------

@@ -261,12 +261,22 @@ def _get_task(db: Session, *, user: User, task_id: int) -> Task:
 
 
 def serialise_task(task: Task) -> dict:
+    # ``assignee``/``reviewer`` display names are added so the list can offer
+    # the deck's "مسؤول" filter (slides 134-136) and the detail view can label
+    # the reviewer without resolving bare ids on the client.
+    assignee = task.assignee
+    reviewer = task.reviewer
     return {
         "id": task.id, "company_id": task.company_id, "title": task.title,
         "description": task.description, "status": task.status, "priority": task.priority,
         "progress_percent": task.progress_percent, "due_date": task.due_date,
         "created_by_id": task.created_by_id, "assignee_id": task.assignee_id,
-        "reviewer_id": task.reviewer_id, "completed_at": task.completed_at,
+        "assignee_name_ar": assignee.full_name_ar if assignee else None,
+        "assignee_name_en": assignee.full_name_en if assignee else None,
+        "reviewer_id": task.reviewer_id,
+        "reviewer_name_ar": reviewer.full_name_ar if reviewer else None,
+        "reviewer_name_en": reviewer.full_name_en if reviewer else None,
+        "completed_at": task.completed_at,
         "is_overdue": _is_task_overdue(task),
         "created_at": task.created_at, "updated_at": task.updated_at,
         "events": [
@@ -692,8 +702,13 @@ def list_sessions(db: Session, *, user: User, company_id: int | None = None) -> 
 
 
 def serialise_session(s: AdvisorySession) -> dict:
+    # ``advisor`` display names back the deck's "مسند إليه" filter and the
+    # session row (slide 136); without them the list could only show a bare id.
+    advisor = s.advisor
     return {
         "id": s.id, "company_id": s.company_id, "advisor_user_id": s.advisor_user_id,
+        "advisor_name_ar": advisor.full_name_ar if advisor else None,
+        "advisor_name_en": advisor.full_name_en if advisor else None,
         "scheduled_at": s.scheduled_at, "status": s.status, "topic": s.topic,
         "notes": s.notes, "recommendations": s.recommendations,
         "recorded_by_id": s.recorded_by_id, "created_at": s.created_at,
@@ -966,9 +981,14 @@ def list_owner_decisions(db: Session, *, user: User, company_id: int | None = No
 
 
 def serialise_owner_decision(d: OwnerDecision) -> dict:
+    # ``executor`` display names back the deck's "مسؤول" filter (slide 135) and
+    # the executor picker on the decisions list.
+    executor = d.executor
     return {
         "id": d.id, "number": d.number, "company_id": d.company_id, "title": d.title,
         "body": d.body, "status": d.status, "executor_user_id": d.executor_user_id,
+        "executor_name_ar": executor.full_name_ar if executor else None,
+        "executor_name_en": executor.full_name_en if executor else None,
         "due_date": d.due_date, "follow_up_note": d.follow_up_note,
         "created_by_id": d.created_by_id, "decided_at": d.decided_at,
         "created_at": d.created_at,

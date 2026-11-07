@@ -1016,11 +1016,39 @@ def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> d
         "submitted_at": report.submitted_at,
         "created_at": report.created_at,
         "updated_at": report.updated_at,
-        "financial_review": report.financial_review,
+        "financial_review": _financial_review_out(report.financial_review),
         "attachments": report.attachments,
         "financial_part": financial_part,
     }
     return data
+
+
+def _financial_review_out(review) -> dict | None:
+    """Serialise the financial review, adding the reviewer's display name.
+
+    The deck's list spec (slide 134) names a "مراجع" filter; the payload only
+    carried the reviewer's id. The name is the same reviewer the detail view
+    already shows, so it exposes no new data.
+    """
+    if review is None:
+        return None
+    reviewer = review.reviewer
+    return {
+        "id": review.id,
+        "report_id": review.report_id,
+        "reviewer_id": review.reviewer_id,
+        "reviewer_name_ar": reviewer.full_name_ar if reviewer else None,
+        "reviewer_name_en": reviewer.full_name_en if reviewer else None,
+        "status": review.status,
+        "verified_revenue": review.verified_revenue,
+        "verified_expenses": review.verified_expenses,
+        "verified_net_result": review.verified_net_result,
+        "verified_outstanding_receivables": review.verified_outstanding_receivables,
+        "financial_notes": review.financial_notes,
+        "is_financially_accurate": review.is_financially_accurate,
+        "flagged_reason": review.flagged_reason,
+        "reviewed_at": review.reviewed_at,
+    }
 
 
 __all__ = [

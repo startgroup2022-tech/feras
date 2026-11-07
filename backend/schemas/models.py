@@ -162,6 +162,17 @@ class CompanyOut(BaseModel):
     phone: str | None = None
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # Localization setup (deck slides 105/106): the per-entity target and the
+    # calculation-rule edition. Null means unset -> the board shows غير مُعدّ.
+    localization_target_pct: Decimal | None = None
+    localization_rule_version: str | None = None
+    localization_rule_effective_from: date | None = None
+    # The deck's portfolio list (slide 134) filters by "مدير"; the manager is
+    # derived from the company's granted company-manager user, so the picker can
+    # show a name rather than a bare id. Null when the company has no manager.
+    manager_user_id: int | None = None
+    manager_name_ar: str | None = None
+    manager_name_en: str | None = None
 
 
 class CompanyCreateRequest(BaseModel):
@@ -183,6 +194,10 @@ class CompanyCreateRequest(BaseModel):
     # AC-03: the founding date and the monitoring-start date are distinct.
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # Localization setup (deck slides 105/106).
+    localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_rule_effective_from: date | None = None
 
     @field_validator("company_type")
     @classmethod
@@ -212,6 +227,10 @@ class CompanyUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # Localization setup (deck slides 105/106).
+    localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_rule_effective_from: date | None = None
 
     @field_validator("health")
     @classmethod
@@ -354,6 +373,10 @@ class FinancialReviewOut(BaseModel):
     id: int
     report_id: int
     reviewer_id: int
+    # Display names for the reviewer, so a list can offer the deck's "مراجع"
+    # filter (slide 134) without resolving a bare id client-side.
+    reviewer_name_ar: str | None = None
+    reviewer_name_en: str | None = None
     status: str
     verified_revenue: Decimal | None
     verified_expenses: Decimal | None
@@ -524,6 +547,10 @@ class SupportRequestOut(BaseModel):
     responsible_department: str
     requested_by_id: int | None
     assigned_to_id: int | None
+    # Display names for the assignee, so the list view can offer the deck's
+    # "مسؤول" filter without resolving a bare id client-side.
+    assigned_to_name_ar: str | None = None
+    assigned_to_name_en: str | None = None
     platform: str | None = None
     dimensions: str | None = None
     reference_link: str | None = None
@@ -669,6 +696,33 @@ class PeriodChangeOut(BaseModel):
     net_pct: float | None = None
 
 
+class RoleKpiOut(BaseModel):
+    """One tile on a role dashboard (deck slides 7-11)."""
+
+    key: str
+    label_ar: str
+    label_en: str
+    value: str
+    unit: str | None = None
+    delta: str | None = None
+    delta_dir: str | None = None  # "up" | "down" | None
+    tone: str = "navy"
+
+
+class RoleSummaryOut(BaseModel):
+    """The caller's role dashboard: a titled, role-specific KPI strip.
+
+    ``None`` on the dashboard when the role has no dedicated summary, in which
+    case the holding strip is the correct presentation.
+    """
+
+    title_ar: str
+    title_en: str
+    greeting_ar: str = ""
+    greeting_en: str = ""
+    kpis: list[RoleKpiOut] = []
+
+
 class DashboardResponse(BaseModel):
     scope: str  # "holding" | "company"
     company_id: int | None
@@ -683,11 +737,27 @@ class DashboardResponse(BaseModel):
     companies_requiring_attention: list[AttentionCompanyOut] = []
     priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
+    role_summary: "RoleSummaryOut | None" = None
 
 
 # --------------------------------------------------------------------------
 # AI
 # --------------------------------------------------------------------------
+class AIKnowledgeSourceOut(BaseModel):
+    """One retrieved knowledge chunk cited in a knowledge-scope answer."""
+
+    document_id: int
+    version_id: int
+    title_ar: str
+    title_en: str | None = None
+    company_id: int | None = None
+    sensitivity: str
+    chunk_id: int
+    score: float
+    source: str
+    excerpt: str
+
+
 class AIAskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     conversation_id: int | None = None
@@ -722,6 +792,11 @@ class AIAskResponse(BaseModel):
     grounded: bool = True
     ungrounded_numbers: list[str] = []
     message: AIMessageOut
+    # True when the deterministic provider answered because the configured one
+    # was unavailable, refused a non-free model, or the daily ceiling was hit.
+    degraded: bool = False
+    # Retrieved knowledge sources (knowledge scope only), for citation display.
+    sources: list["AIKnowledgeSourceOut"] = []
 
 
 class AIInsightOut(BaseModel):
@@ -750,6 +825,147 @@ class AIOrganizeFieldOut(BaseModel):
 class AIOrganizeResponse(BaseModel):
     proposals: list[AIOrganizeFieldOut]
     fields_considered: int
+
+
+# --------------------------------------------------------------------------
+# AI knowledge base (Phase 3)
+# --------------------------------------------------------------------------
+class KnowledgeCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str
+    description: str | None = None
+    display_order: int = 0
+    is_active: bool = True
+
+
+class KnowledgeCategoryCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=60)
+    name_ar: str = Field(min_length=2, max_length=160)
+    name_en: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+    display_order: int = 0
+
+
+class KnowledgeVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    version_number: int
+    body_ar: str
+    body_en: str | None = None
+    status: str
+    review_note: str | None = None
+    source_reference: str | None = None
+    created_at: datetime
+    approved_by_id: int | None = None
+
+
+class KnowledgeDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    title_ar: str
+    title_en: str | None = None
+    summary_ar: str | None = None
+    summary_en: str | None = None
+    category_id: int | None = None
+    company_id: int | None = None
+    sensitivity: str
+    status: str
+    language: str
+    current_version_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    slug: str = Field(min_length=2, max_length=160)
+    title_ar: str = Field(min_length=2, max_length=240)
+    title_en: str | None = Field(default=None, max_length=240)
+    body_ar: str = Field(min_length=2, max_length=200000)
+    body_en: str | None = Field(default=None, max_length=200000)
+    summary_ar: str | None = Field(default=None, max_length=4000)
+    summary_en: str | None = Field(default=None, max_length=4000)
+    category_id: int | None = None
+    company_id: int | None = None
+    sensitivity: str = "holding"
+    source_reference: str | None = Field(default=None, max_length=400)
+
+
+class KnowledgeVersionCreate(BaseModel):
+    body_ar: str = Field(min_length=2, max_length=200000)
+    body_en: str | None = Field(default=None, max_length=200000)
+    source_reference: str | None = Field(default=None, max_length=400)
+
+
+class KnowledgeApproveRequest(BaseModel):
+    review_note: str | None = Field(default=None, max_length=2000)
+
+
+class KnowledgeProposalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int | None = None
+    kind: str
+    title: str
+    proposed_body: str
+    rationale: str | None = None
+    status: str
+    resolution_note: str | None = None
+    applied_version_id: int | None = None
+    created_at: datetime
+
+
+class KnowledgeProposalCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=240)
+    proposed_body: str = Field(min_length=2, max_length=200000)
+    document_id: int | None = None
+    kind: str = "correction"
+    rationale: str | None = Field(default=None, max_length=4000)
+
+
+class KnowledgeProposalResolve(BaseModel):
+    approve: bool
+    resolution_note: str | None = Field(default=None, max_length=2000)
+
+
+class KnowledgeSearchHitOut(BaseModel):
+    document_id: int
+    version_id: int
+    title_ar: str
+    title_en: str | None = None
+    company_id: int | None = None
+    sensitivity: str
+    chunk_id: int
+    score: float
+    source: str
+    excerpt: str
+
+
+class AIProviderStatusOut(BaseModel):
+    """The AI provider's configuration and live free-model inventory."""
+
+    provider: str
+    model: str
+    fallbacks: list[str]
+    configured: bool
+    api_key_present: bool
+    base_url: str
+    max_cost_usd: float
+    verified_free: bool
+    free_models: list[dict] = []
+    discovery_error: str | None = None
+    rate_limit: dict = {}
+    daily_limit: int = 0
+    daily_used: int = 0
+    usage: dict = {}
 
 
 # --------------------------------------------------------------------------
@@ -890,6 +1106,96 @@ class GroupStructureNode(BaseModel):
     parent_name_en: str | None
     ownership_percentage: float | None
     direct_children: int = 0
+
+
+class InvestmentValuationUpdateRequest(BaseModel):
+    """The documented valuation summary for one owned company (deck 107-109).
+
+    The book value is entered as approved by the accountant, not computed by
+    summing contributions/financing/distributions. The valuation is a yes/no
+    choice: with ``has_valuation`` false the record stores no zero, so the
+    amount/date/source/reference must be blank; with it true all four are
+    required (a cross-field rule, hence ``model_validator``).
+    """
+
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    investment_date: date | None = None
+    original_value: Decimal | None = None
+    subsequent_contributions: Decimal | None = None
+    financing: Decimal | None = None
+    distributions: Decimal | None = None
+    book_value: Decimal | None = None
+    book_value_date: date | None = None
+    book_value_source: str | None = Field(default=None, max_length=200)
+    has_valuation: bool | None = None
+    valuation_amount: Decimal | None = None
+    valuation_date: date | None = None
+    valuation_source: str | None = Field(default=None, max_length=200)
+    valuation_reference: str | None = Field(default=None, max_length=200)
+    decision_reference: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _valuation_yes_no(self) -> "InvestmentValuationUpdateRequest":
+        if self.has_valuation is True:
+            missing = [
+                name
+                for name, value in (
+                    ("valuation_amount", self.valuation_amount),
+                    ("valuation_date", self.valuation_date),
+                    ("valuation_source", self.valuation_source),
+                    ("valuation_reference", self.valuation_reference),
+                )
+                if value in (None, "")
+            ]
+            if missing:
+                raise ValueError(
+                    "has_valuation=true requires " + ", ".join(missing)
+                )
+        if self.has_valuation is False:
+            stray = [
+                name
+                for name, value in (
+                    ("valuation_amount", self.valuation_amount),
+                    ("valuation_date", self.valuation_date),
+                    ("valuation_source", self.valuation_source),
+                    ("valuation_reference", self.valuation_reference),
+                )
+                if value not in (None, "")
+            ]
+            if stray:
+                raise ValueError(
+                    "has_valuation=false must not set " + ", ".join(stray)
+                    + " (the system never stores a zero as a valuation)"
+                )
+        return self
+
+
+class InvestmentValuationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    # ``id`` is None for a company with no recorded summary yet: the detail view
+    # shows "غير مُعدّ" rather than an invented zero (deck slide 109).
+    id: int | None = None
+    owned_company_id: int
+    owned_company_name_ar: str | None = None
+    owned_company_name_en: str | None = None
+    currency: str
+    investment_date: date | None = None
+    original_value: Decimal | None = None
+    subsequent_contributions: Decimal | None = None
+    financing: Decimal | None = None
+    distributions: Decimal | None = None
+    book_value: Decimal | None = None
+    book_value_date: date | None = None
+    book_value_source: str | None = None
+    has_valuation: bool = False
+    valuation_amount: Decimal | None = None
+    valuation_date: date | None = None
+    valuation_source: str | None = None
+    valuation_reference: str | None = None
+    decision_reference: str | None = None
+    notes: str | None = None
 
 
 class DepartmentCreateRequest(BaseModel):

@@ -13,6 +13,13 @@
 defect block go-live: an unpatched dependency set (real CVEs) and owner-dependent
 decisions still open (D01–D11). The application logic itself is in good shape.
 
+> **Superseded in part by Phase 4.** This audit is the Execution 29 baseline.
+> The dependency-CVE blocker recorded in §E is **resolved**: `pip-audit` now
+> reports no known vulnerabilities on the current pinned set, and the full suite
+> runs green on it. The open owner decisions (D01–D11) and the un-run production
+> load test and restore drill still stand. Current state:
+> `docs/audit/PHASE4_VERIFICATION_AUDIT.md`.
+
 ---
 
 ## A. Method

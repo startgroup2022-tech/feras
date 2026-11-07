@@ -1100,11 +1100,16 @@ def list_budgets(db: Session, *, user: User, company_id: int | None = None) -> l
 
 
 def serialise_budget(b: Budget) -> dict:
+    # The deck's budget list filters by "مسؤول" (slide 135); the approver's
+    # display name is resolved here so the client never shows a bare id.
+    approver = b.approved_by
     return {
         "id": b.id, "company_id": b.company_id, "fiscal_year": b.fiscal_year,
         "version": b.version, "currency": b.currency, "total_amount": b.total_amount,
         "source": b.source, "status": b.status, "notes": b.notes,
         "supersedes_id": b.supersedes_id, "approved_by_id": b.approved_by_id,
+        "approved_by_name_ar": approver.full_name_ar if approver else None,
+        "approved_by_name_en": approver.full_name_en if approver else None,
         "approved_at": b.approved_at, "created_at": b.created_at,
     }
 

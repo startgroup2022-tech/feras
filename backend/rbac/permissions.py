@@ -29,6 +29,10 @@ class Perm:
     COMPANY_ARCHIVE = "company.archive"
     OWNERSHIP_READ = "ownership.read"
     OWNERSHIP_MANAGE = "ownership.manage"
+    # Investment valuation summaries (deck slides 107-109). Read travels with
+    # ownership read; write is a finance function (accountant/owner).
+    INVESTMENT_READ = "investment.read"
+    INVESTMENT_MANAGE = "investment.manage"
     DEPARTMENT_READ = "department.read"
     DEPARTMENT_MANAGE = "department.manage"
     SECTOR_READ = "sector.read"
@@ -90,6 +94,18 @@ class Perm:
     # ---- ai ----
     AI_HOLDING = "ai.holding"
     AI_COMPANY = "ai.company"
+    # Knowledge-based Q&A and the RAG knowledge base. ``ai.knowledge.ask`` is
+    # the read-side capability (ask a question answered from the knowledge
+    # base); the ``ai.knowledge.*`` administration codes are separate so the
+    # owner can delegate curation without granting provider administration.
+    AI_KNOWLEDGE_ASK = "ai.knowledge.ask"
+    AI_KNOWLEDGE_READ = "ai.knowledge.read"
+    AI_KNOWLEDGE_WRITE = "ai.knowledge.write"
+    AI_KNOWLEDGE_APPROVE = "ai.knowledge.approve"
+    AI_KNOWLEDGE_MANAGE = "ai.knowledge.manage"
+    # Provider administration: model selection, usage and diagnostics. This is
+    # the AI management panel; it never exposes the API key.
+    AI_ADMIN = "ai.admin"
 
     # ---- Phase 3: dynamic forms builder ----
     FORM_READ = "form.read"
@@ -278,6 +294,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.COMPANY_ARCHIVE: "Activate, deactivate or archive a subsidiary",
     Perm.OWNERSHIP_READ: "View the group ownership structure",
     Perm.OWNERSHIP_MANAGE: "Create and change ownership stakes",
+    Perm.INVESTMENT_READ: "View investment valuation summaries",
+    Perm.INVESTMENT_MANAGE: "Enter and review investment valuation summaries",
     Perm.DEPARTMENT_READ: "View company departments",
     Perm.DEPARTMENT_MANAGE: "Create and edit company departments",
     Perm.SECTOR_READ: "View the managed sector list",
@@ -323,6 +341,12 @@ ALL_PERMISSIONS: dict[str, str] = {
     Perm.DASHBOARD_COMPANY: "View a company dashboard",
     Perm.AI_HOLDING: "Use Holding AI",
     Perm.AI_COMPANY: "Use Company AI",
+    Perm.AI_KNOWLEDGE_ASK: "Ask the knowledge-based assistant",
+    Perm.AI_KNOWLEDGE_READ: "View knowledge-base documents in your scope",
+    Perm.AI_KNOWLEDGE_WRITE: "Create and edit knowledge documents",
+    Perm.AI_KNOWLEDGE_APPROVE: "Approve or archive knowledge documents",
+    Perm.AI_KNOWLEDGE_MANAGE: "Manage knowledge categories and resolve proposals",
+    Perm.AI_ADMIN: "Administer the AI provider and monitor usage",
     Perm.FORM_READ: "View form definitions available to you",
     Perm.FORM_CREATE: "Create a dynamic form definition",
     Perm.FORM_UPDATE: "Edit a draft form definition and its fields",
@@ -467,7 +491,12 @@ _HOLDING_READ = {
     Perm.DASHBOARD_COMPANY,
     Perm.AI_HOLDING,
     Perm.AI_COMPANY,
+    # Knowledge-based Q&A is a read-side capability, so it travels with the
+    # holding read baseline. Curation (write/approve) is granted separately.
+    Perm.AI_KNOWLEDGE_ASK,
+    Perm.AI_KNOWLEDGE_READ,
     Perm.OWNERSHIP_READ,
+    Perm.INVESTMENT_READ,
     Perm.DEPARTMENT_READ,
     Perm.SECTOR_READ,
     Perm.POSITION_READ,
@@ -495,6 +524,10 @@ _OPERATOR_READ = {
     Perm.DOCUMENT_READ,
     Perm.DOCUMENT_UPLOAD,
     Perm.NOTIFICATION_READ_OWN,
+    # Asking the knowledge assistant is a read-side capability every internal
+    # operator has; the answer is still confined to what that operator may read.
+    # The external consultant is deliberately excluded (see EXTERNAL_CONSULTANT).
+    Perm.AI_KNOWLEDGE_ASK,
 }
 
 # Holding Finance: group-wide financial oversight and read-only admin views.
@@ -521,6 +554,15 @@ HOLDING_FINANCE = _HOLDING_READ | _OPERATOR_READ | {
     Perm.NOTIFICATION_MANAGE,
     Perm.INTEGRATION_READ,
     Perm.LEAD_READ,
+    # Holding Finance curates the group knowledge base: it authors documents,
+    # approves versions and resolves learning proposals. Provider
+    # administration (``ai.admin``) stays with the owner.
+    Perm.AI_KNOWLEDGE_WRITE,
+    Perm.AI_KNOWLEDGE_APPROVE,
+    Perm.AI_KNOWLEDGE_MANAGE,
+    # Investment valuation summaries are a finance entry/review function
+    # (deck slide 108: the accountant prepares, the owner approves).
+    Perm.INVESTMENT_MANAGE,
 }
 
 # Company-level configuration rights: an administrator (Company Owner) may
@@ -547,7 +589,13 @@ _COMPANY_READ = {
     Perm.REPORT_READ_OWN,
     Perm.DASHBOARD_COMPANY,
     Perm.AI_COMPANY,
+    # Company-scoped roles may ask the knowledge assistant and view the
+    # documents in their own scope; retrieval and listing both stay confined to
+    # their company scope and the document sensitivity ladder.
+    Perm.AI_KNOWLEDGE_ASK,
+    Perm.AI_KNOWLEDGE_READ,
     Perm.OWNERSHIP_READ,
+    Perm.INVESTMENT_READ,
     Perm.DEPARTMENT_READ,
     Perm.SECTOR_READ,
     Perm.POSITION_READ,
@@ -647,6 +695,7 @@ EMPLOYEE = {
     Perm.REPORT_READ_OWN,
     Perm.DASHBOARD_COMPANY,
     Perm.AI_COMPANY,
+    Perm.AI_KNOWLEDGE_ASK,
     Perm.SUPPORT_READ_OWN,
     Perm.SUPPORT_CREATE,
     Perm.FORM_READ,

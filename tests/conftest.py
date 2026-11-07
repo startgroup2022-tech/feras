@@ -26,6 +26,7 @@ from backend.db.base import Base, utcnow  # noqa: E402
 from backend.db.models import (  # noqa: E402
     AIConversation,
     AIMessage,
+    AIUsageEvent,
     Account,
     AccountingPolicy,
     AdvisorAssignment,
@@ -64,6 +65,11 @@ from backend.db.models import (  # noqa: E402
     Journal,
     JournalLine,
     KpiDefinition,
+    KnowledgeCategory,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeProposal,
+    KnowledgeVersion,
     LeadAssignment,
     LeadNote,
     ManagementBrief,
@@ -218,6 +224,13 @@ def _clean_data(_database):
             DocumentCategory,
             AIMessage,
             AIConversation,
+            AIUsageEvent,
+            # Phase 3: AI knowledge base (children before parents)
+            KnowledgeProposal,
+            KnowledgeChunk,
+            KnowledgeVersion,
+            KnowledgeDocument,
+            KnowledgeCategory,
             AuditLog,
             # Execution 02: financial summary workflow (children before parents)
             FinancialSummaryItem,

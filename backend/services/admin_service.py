@@ -213,6 +213,9 @@ def update_company(
         "phone",
         "founded_on",
         "tracking_start_date",
+        "localization_target_pct",
+        "localization_rule_version",
+        "localization_rule_effective_from",
     )
     for field in editable:
         if field in payload and payload[field] is not None:

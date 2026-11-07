@@ -15,6 +15,7 @@ from backend.api.v1 import (
     forms,
     hr,
     integrations,
+    knowledge,
     leads,
     notifications,
     operations,
@@ -36,6 +37,8 @@ api_router.include_router(financial.router)
 api_router.include_router(support.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(ai.router)
+# Phase 3: AI knowledge base (RAG)
+api_router.include_router(knowledge.router)
 # Phase 3: dynamic operations platform
 api_router.include_router(forms.router)
 api_router.include_router(workflows.router)

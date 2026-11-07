@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -27,12 +28,15 @@ from backend.core.config import settings  # noqa: E402
 from backend.db.base import utcnow  # noqa: E402
 from backend.db.models.enums import (  # noqa: E402
     CompanyHealth,
+    EmployeeStatus,
+    FinancialReviewStatus,
     ReportStatus,
     SupportCategory,
     SupportStatus,
 )
+from backend.db.models.hr import Employee  # noqa: E402
 from backend.db.models.identity import Company, Role, User, UserCompanyAccess  # noqa: E402
-from backend.db.models.report import MonthlyReport  # noqa: E402
+from backend.db.models.report import MonthlyReport, MonthlyReportFinancialReview  # noqa: E402
 from backend.db.models.support import SupportRequest  # noqa: E402
 from backend.db.session import session_scope  # noqa: E402
 from backend.services.auth_service import create_user  # noqa: E402
@@ -41,19 +45,59 @@ from backend.services.rbac_service import bootstrap_rbac  # noqa: E402
 
 DEMO_PASSWORD = "SafirDemo!2027"
 DEMO_EMAIL_DOMAIN = "demo.safir.local"
+# Website-lead visitor emails are validated as real addresses, and the email
+# validator rejects the reserved ``.local`` TLD, so seeded leads use this
+# marker domain instead. Seeded visitor addresses take the shape
+# ``<local>@<brand>.demo.safir.example``; this helper is what both the seed
+# guard and ``_reset`` match on, so a lead from the real public site is never
+# mistaken for a demo row.
+DEMO_LEAD_DOMAIN = "demo.safir.example"
+
+
+def _demo_lead_clause():
+    """SQLAlchemy criterion matching a seeded (demo) website lead's email."""
+    from sqlalchemy import or_
+
+    from backend.db.models.website import WebsiteLead
+
+    return or_(
+        WebsiteLead.email.like(f"%@{DEMO_LEAD_DOMAIN}"),
+        WebsiteLead.email.like(f"%.{DEMO_LEAD_DOMAIN}"),
+    )
+
 
 # Roles used when building the Phase-3 operations demo (forms, workflows,
 # approvals, documents). Kept as codes so they match the RBAC catalogue.
 OPS_FINANCE_ROLE = "accountant"
 OPS_COMPANY_ROLE = "company_manager"
 
+# (code, name_ar, name_en, sector, health, country, currency). Country and
+# currency feed the company-list filters the deck fixes on slides 134-136
+# ("الدولة", "العملة") and the localization panel (slides 102-106); the group is
+# Gulf-based so a subsidiary may trade in a currency other than the SAR default.
 COMPANIES = [
-    ("SAF-TECH", "السفير للتقنية", "Safir Technology", "Technology", CompanyHealth.STRONG),
-    ("SAF-REAL", "السفير للعقار", "Safir Real Estate", "Real Estate", CompanyHealth.STABLE),
-    ("SAF-MFG", "السفير للتصنيع", "Safir Manufacturing", "Industrial", CompanyHealth.WATCH),
-    ("SAF-RET", "السفير للتجزئة", "Safir Retail", "Retail", CompanyHealth.STRONG),
-    ("SAF-LOG", "السفير للخدمات اللوجستية", "Safir Logistics", "Logistics", CompanyHealth.STABLE),
-    ("SAF-HLT", "السفير للرعاية الصحية", "Safir Healthcare", "Healthcare", CompanyHealth.ATTENTION),
+    ("SAF-TECH", "السفير للتقنية", "Safir Technology", "Technology", CompanyHealth.STRONG, "السعودية", "SAR"),
+    ("SAF-REAL", "السفير للعقار", "Safir Real Estate", "Real Estate", CompanyHealth.STABLE, "السعودية", "SAR"),
+    ("SAF-MFG", "السفير للتصنيع", "Safir Manufacturing", "Industrial", CompanyHealth.WATCH, "السعودية", "SAR"),
+    ("SAF-RET", "السفير للتجزئة", "Safir Retail", "Retail", CompanyHealth.STRONG, "الإمارات", "AED"),
+    ("SAF-LOG", "السفير للخدمات اللوجستية", "Safir Logistics", "Logistics", CompanyHealth.STABLE, "الإمارات", "AED"),
+    ("SAF-HLT", "السفير للرعاية الصحية", "Safir Healthcare", "Healthcare", CompanyHealth.ATTENTION, "قطر", "QAR"),
+]
+
+# (company_code, full_name_ar, full_name_en, job_title, nationality, hire_year)
+# Employee rows so the employee list (S11) has real data to filter by company,
+# nationality and status, matching deck slides 102-106 / 134-136.
+EMPLOYEES = [
+    ("SAF-TECH", "خالد العتيبي", "Khalid Al-Otaibi", "مهندس برمجيات أول", "السعودية", 2019),
+    ("SAF-TECH", "سارة المطيري", "Sarah Al-Mutairi", "مديرة مشاريع", "السعودية", 2020),
+    ("SAF-TECH", "راجيش كومار", "Rajesh Kumar", "مهندس دعم فني", "الهند", 2021),
+    ("SAF-REAL", "منى الحربي", "Mona Al-Harbi", "مديرة عقارات", "السعودية", 2018),
+    ("SAF-REAL", "أحمد الشامي", "Ahmed Al-Shami", "مسؤول تسويق عقاري", "مصر", 2022),
+    ("SAF-MFG", "عبدالرحمن الدوسري", "Abdulrahman Al-Dosari", "مدير المصنع", "السعودية", 2017),
+    ("SAF-MFG", "محمد إقبال", "Muhammad Iqbal", "مشرف خط إنتاج", "باكستان", 2020),
+    ("SAF-RET", "ليلى النعيمي", "Layla Al-Nuaimi", "مديرة متجر", "الإمارات", 2021),
+    ("SAF-LOG", "يوسف القحطاني", "Yousef Al-Qahtani", "منسّق لوجستي", "السعودية", 2022),
+    ("SAF-HLT", "هند العبيدي", "Hind Al-Obaidi", "أخصائية توطين", "قطر", 2023),
 ]
 
 # (company_code, revenue, expenses, net, receivables, status, problems)
@@ -77,15 +121,19 @@ REPORTS_2027_09 = [
     ("SAF-LOG", "1290000", "1100000", "190000", "280000", ReportStatus.REVIEWED),
 ]
 
+# (company_code, title, category, status, assignee_email). The assignee is a
+# demo user (or None) so the deck's "مسؤول" request filter (slide 134) has
+# labelled rows to show.
 SUPPORT_REQUESTS = [
     ("SAF-TECH", "طلب تطوير خطة التوسع الإقليمي", SupportCategory.BUSINESS_DEVELOPMENT,
-     SupportStatus.IN_PROGRESS),
+     SupportStatus.IN_PROGRESS, f"bd@{DEMO_EMAIL_DOMAIN}"),
     ("SAF-REAL", "حملة تسويقية لمشروع الواجهة البحرية", SupportCategory.MARKETING,
-     SupportStatus.NEW),
+     SupportStatus.NEW, f"marketing@{DEMO_EMAIL_DOMAIN}"),
     ("SAF-MFG", "مراجعة الهيكل المالي والتكاليف", SupportCategory.ACCOUNTING,
-     SupportStatus.NEW),
-    ("SAF-RET", "هوية بصرية لفرع جديد", SupportCategory.DESIGN, SupportStatus.COMPLETED),
-    ("SAF-LOG", "دعم في إعداد نموذج تسعير", SupportCategory.GENERAL, SupportStatus.NEW),
+     SupportStatus.NEW, f"accountant@{DEMO_EMAIL_DOMAIN}"),
+    ("SAF-RET", "هوية بصرية لفرع جديد", SupportCategory.DESIGN, SupportStatus.COMPLETED,
+     f"design@{DEMO_EMAIL_DOMAIN}"),
+    ("SAF-LOG", "دعم في إعداد نموذج تسعير", SupportCategory.GENERAL, SupportStatus.NEW, None),
 ]
 
 # S18 / AC-18: the weekly employee report asks at most five core questions and
@@ -126,28 +174,122 @@ def _seed_weekly_questions(db) -> None:
     db.commit()
 
 
+def _demo_scope(db):
+    """Return (company_ids, user_ids) for rows the demo seed owns.
+
+    "Demo" means a company whose code is in ``COMPANIES`` or a user whose email
+    is on the demo domain. Everything the seed creates hangs off one of those
+    two, so scoping every delete to this set is what keeps a real holding --
+    its companies, users, documents and filings -- out of harm's way.
+    """
+    codes = [c[0] for c in COMPANIES]
+    company_ids = [
+        cid for (cid,) in db.execute(select(Company.id).where(Company.code.in_(codes)))
+    ]
+    user_ids = [
+        uid
+        for (uid,) in db.execute(
+            select(User.id).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))
+        )
+    ]
+    return company_ids, user_ids
+
+
 def _reset(db) -> None:
-    """Delete demo rows only -- identified by the demo email domain."""
+    """Delete demo rows only -- identified by demo company codes and the demo
+    email domain.
+
+    Real companies, real users and the rows they own are never touched. Rows
+    the seed created are found by their owning company (a demo code) or their
+    owning user (a demo address); the company/user delete at the end then
+    cascades to anything still attached.
+    """
+    from sqlalchemy import or_
+
     from backend.db.models.documents import Document
     from backend.db.models.forms import DynamicForm
+    from backend.db.models.governance import LeadAssignment
+    from backend.db.models.group import Ownership
+    from backend.db.models.report import MonthlyReportFinancialReview
     from backend.db.models.submissions import FormSubmission
+    from backend.db.models.website import (
+        WebsiteLead,
+        WebsiteLeadAttachment,
+        WebsiteOpportunity,
+    )
     from backend.db.models.workflows import WorkflowDefinition
 
-    demo_users = list(
-        db.execute(select(User).where(User.email.like(f"%@{DEMO_EMAIL_DOMAIN}"))).scalars()
-    )
+    demo_company_ids, demo_user_ids = _demo_scope(db)
+    if not demo_company_ids and not demo_user_ids:
+        print("  no demo rows to remove")
+        return
+
+    def _scoped(query, model, by=("company_id",)):
+        """Delete rows of ``model`` owned by a demo company or demo user.
+
+        ``by`` names the ownership columns to match on. Company-owned rows are
+        scoped to the demo *companies* only, never to a demo uploader: a real
+        company's document must survive even if a demo account happened to
+        upload it.
+        """
+        cols = {c.name for c in model.__table__.columns}
+        clauses = []
+        if "company_id" in by and "company_id" in cols and demo_company_ids:
+            clauses.append(model.company_id.in_(demo_company_ids))
+        for col in by:
+            if col in cols and col != "company_id" and demo_user_ids:
+                clauses.append(getattr(model, col).in_(demo_user_ids))
+        if not clauses:
+            return 0
+        return query.filter(or_(*clauses)).delete(synchronize_session=False)
+
     # Operations rows are holding-scoped and not company-cascaded, so purge
     # them explicitly before the users/companies they reference disappear.
-    db.query(Document).delete()
-    db.query(FormSubmission).delete()
-    db.query(WorkflowDefinition).delete()
-    db.query(DynamicForm).delete()
-    for user in demo_users:
+    # Order matters: submissions cascade into instances, events and tasks, and
+    # the forms/workflows they point at are RESTRICT on delete.
+    _scoped(db.query(FormSubmission), FormSubmission)
+    _scoped(db.query(Document), Document)
+    _scoped(db.query(DynamicForm), DynamicForm, by=("created_by_id",))
+    _scoped(db.query(WorkflowDefinition), WorkflowDefinition, by=("created_by_id",))
+    # Seeded website leads are identified by their demo-domain visitor email
+    # (the visitor is external, so there is no demo user row to match on).
+    # Delete the dependents first so nothing is left orphaned, and never touch
+    # a lead submitted through the real public site.
+    demo_lead_ids = list(
+        db.execute(select(WebsiteLead.id).where(_demo_lead_clause())).scalars()
+    )
+    if demo_lead_ids:
+        for model in (LeadAssignment, WebsiteOpportunity, WebsiteLeadAttachment):
+            db.query(model).filter(model.lead_id.in_(demo_lead_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(WebsiteLead).filter(WebsiteLead.id.in_(demo_lead_ids)).delete(
+            synchronize_session=False
+        )
+    # Two FKs to the rows we are about to remove are RESTRICT, so clear them
+    # first or the delete below would fail instead of quietly succeeding.
+    if demo_user_ids:
+        db.query(MonthlyReportFinancialReview).filter(
+            MonthlyReportFinancialReview.reviewer_id.in_(demo_user_ids)
+        ).delete(synchronize_session=False)
+    if demo_company_ids:
+        db.query(Ownership).filter(
+            or_(
+                Ownership.owner_company_id.in_(demo_company_ids),
+                Ownership.owned_company_id.in_(demo_company_ids),
+            )
+        ).delete(synchronize_session=False)
+
+    users = list(db.execute(select(User).where(User.id.in_(demo_user_ids))).scalars())
+    for user in users:
         db.delete(user)
-    for company in db.execute(select(Company)).scalars():
+    companies = list(
+        db.execute(select(Company).where(Company.id.in_(demo_company_ids))).scalars()
+    )
+    for company in companies:
         db.delete(company)
     db.commit()
-    print(f"  removed {len(demo_users)} demo users and all companies")
+    print(f"  removed {len(users)} demo users and {len(companies)} demo companies")
 
 
 def seed(reset: bool) -> None:
@@ -172,7 +314,7 @@ def seed(reset: bool) -> None:
 
         # ---- companies ----
         companies: dict[str, Company] = {}
-        for code, name_ar, name_en, sector, health in COMPANIES:
+        for code, name_ar, name_en, sector, health, country, currency in COMPANIES:
             existing = db.execute(
                 select(Company).where(Company.code == code)
             ).scalar_one_or_none()
@@ -183,6 +325,8 @@ def seed(reset: bool) -> None:
                     name_en=name_en,
                     sector=sector,
                     health=health.value,
+                    country=country,
+                    currency=currency,
                     contact_email=f"{code.lower()}@{DEMO_EMAIL_DOMAIN}",
                 )
                 db.add(existing)
@@ -270,7 +414,13 @@ def seed(reset: bool) -> None:
             f"design@{DEMO_EMAIL_DOMAIN}", "التصميم", "Designer", "designer",
             all_company_codes,
         )
-        print("  8 demo users (one per role, plus two company managers)")
+        # The seventh spec role (SAFIR_ROLE_PERMISSION_MATRIX.md §1). Without a
+        # demo user the advisor-scoped views cannot be exercised end to end.
+        ensure_user(
+            f"consultant@{DEMO_EMAIL_DOMAIN}", "مستشار خارجي", "External Consultant",
+            "external_consultant", ("SAF-TECH",),
+        )
+        print("  9 demo users (one per role, plus two company managers)")
 
         # ---- monthly reports for October 2027 ----
         created_reports = 0
@@ -364,8 +514,15 @@ def seed(reset: bool) -> None:
             print("  1 demo attachment on SAF-TECH report")
 
         # ---- support requests ----
+        def user_by_email(email):
+            if not email:
+                return None
+            return db.execute(
+                select(User).where(User.email == email)
+            ).scalar_one_or_none()
+
         created_requests = 0
-        for code, title, category, status in SUPPORT_REQUESTS:
+        for code, title, category, status, assignee_email in SUPPORT_REQUESTS:
             company = companies[code]
             exists = db.execute(
                 select(SupportRequest).where(
@@ -375,6 +532,7 @@ def seed(reset: bool) -> None:
             ).scalar_one_or_none()
             if exists:
                 continue
+            assignee = user_by_email(assignee_email)
             db.add(
                 SupportRequest(
                     company_id=company.id,
@@ -383,11 +541,76 @@ def seed(reset: bool) -> None:
                     category=category.value,
                     status=status.value,
                     requested_by_id=manager.id,
+                    assigned_to_id=assignee.id if assignee else None,
                 )
             )
             created_requests += 1
         db.commit()
         print(f"  {created_requests} support requests")
+
+        # ---- financial reviews on the reviewed reports ----
+        # The deck's report filter (slide 134) names a "مراجع"; a review record
+        # is what carries that reviewer, so seed one for each reviewed report.
+        created_reviews = 0
+        reviewed = db.execute(
+            select(MonthlyReport).where(
+                MonthlyReport.period_year == 2027,
+                MonthlyReport.period_month == 10,
+                MonthlyReport.status == ReportStatus.REVIEWED.value,
+            )
+        ).scalars().all()
+        for report in reviewed:
+            exists = db.execute(
+                select(MonthlyReportFinancialReview).where(
+                    MonthlyReportFinancialReview.report_id == report.id
+                )
+            ).scalar_one_or_none()
+            if exists:
+                continue
+            db.add(
+                MonthlyReportFinancialReview(
+                    report_id=report.id,
+                    reviewer_id=accountant.id,
+                    status=FinancialReviewStatus.APPROVED.value,
+                    verified_revenue=report.revenue,
+                    verified_expenses=report.expenses,
+                    verified_net_result=report.net_result,
+                    verified_outstanding_receivables=report.outstanding_receivables,
+                    financial_notes="بيانات مطابقة للدفاتر المعتمدة.",
+                    is_financially_accurate=True,
+                    reviewed_at=utcnow(),
+                )
+            )
+            created_reviews += 1
+        db.commit()
+        print(f"  {created_reviews} financial reviews")
+
+        # ---- employees (S11) ----
+        created_employees = 0
+        for code, full_name_ar, full_name_en, job_title, nationality, hire_year in EMPLOYEES:
+            company = companies[code]
+            exists = db.execute(
+                select(Employee).where(
+                    Employee.company_id == company.id,
+                    Employee.full_name_ar == full_name_ar,
+                )
+            ).scalar_one_or_none()
+            if exists:
+                continue
+            db.add(
+                Employee(
+                    company_id=company.id,
+                    full_name_ar=full_name_ar,
+                    full_name_en=full_name_en,
+                    job_title=job_title,
+                    nationality=nationality,
+                    hire_date=date(hire_year, 3, 1),
+                    status=EmployeeStatus.ACTIVE.value,
+                )
+            )
+            created_employees += 1
+        db.commit()
+        print(f"  {created_employees} employees")
 
         # ---- Phase 3 operations demo: forms, workflows, submissions,
         #      approvals and documents -------------------------------------
@@ -402,6 +625,9 @@ def seed(reset: bool) -> None:
 
         # ---- S20 projects & opportunities demo ----
         _seed_projects(db, companies=companies, owner=owner, bd=bd)
+
+        # ---- S13/S14 website lead pipeline demo ----
+        _seed_leads(db, companies=companies, owner=owner, bd=bd)
 
         print(
             "\nDemo seed complete.\n"
@@ -794,6 +1020,190 @@ def _seed_projects(db, *, companies, owner, bd) -> None:
         db.add(ProjectRecord(**row, created_by_id=bd.id))
     db.commit()
     print(f"  {len(records)} projects/opportunities")
+
+
+def _seed_leads(db, *, companies, owner, bd) -> None:
+    """Seed the public-website lead pipeline (S13/S14, spec §18).
+
+    Leads are created through the real ``website_lead_service`` so the demo
+    matches what the public site actually produces: the same field validation,
+    routing table and reference format. Without this the primary ``leads`` view
+    renders empty.
+
+    Visitor emails use a dedicated demo domain (``DEMO_LEAD_DOMAIN``) so
+    ``_reset`` can find these rows again -- the visitor is external, so there is
+    no demo user to match on -- without ever touching a lead submitted through
+    the real site.
+    """
+    from backend.db.models.website import WebsiteLead
+    from backend.schemas.website import (
+        BusinessListingSubmission,
+        CompanyFormationSubmission,
+        ContactSubmission,
+        FeasibilitySubmission,
+        InvestmentSubmission,
+    )
+    from backend.services import website_lead_service
+
+    existing = db.execute(
+        select(WebsiteLead.id).where(_demo_lead_clause())
+    ).scalars().first()
+    if existing is not None:
+        print("  leads demo already present (skipped)")
+        return
+
+    # A current, in-flight mix: one brand-new, one being worked, one qualified
+    # and one already converted. Priorities are set by the service (urgent for
+    # investment, high for feasibility), so the pipeline shows a realistic spread.
+    rows = [
+        (
+            "company_formation",
+            CompanyFormationSubmission(
+                market="bahrain",
+                locale="ar",
+                full_name="شركة الوفاء القابضة",
+                email="contact@alwafa.demo.safir.example",
+                phone="+97317000001",
+                company_name="الوفاء القابضة",
+                message="نرغب في تأسيس شركة تقنية في البحرين بثلاثة شركاء.",
+                consent=True,
+                desired_activity="تقنية المعلومات والاستشارات",
+                number_of_partners=3,
+                investor_type="company",
+                needs_office=True,
+            ),
+        ),
+        (
+            "feasibility_study",
+            FeasibilitySubmission(
+                market="saudi",
+                locale="ar",
+                full_name="مجموعة الصفوة",
+                email="info@alsafwa.demo.safir.example",
+                phone="+96650000002",
+                company_name="الصفوة للتجزئة",
+                message="دراسة جدوى لافتتاح فروع تجزئة في الرياض.",
+                consent=True,
+                project_idea="سلسلة متاجر تجزئة متخصصة",
+                sector="التجزئة",
+                target_city="الرياض",
+                project_stage="new",
+                study_type="market",
+            ),
+        ),
+        (
+            "investment",
+            InvestmentSubmission(
+                market="gulf",
+                locale="en",
+                full_name="Gulf Ventures FZE",
+                email="deals@gulfventures.demo.safir.example",
+                phone="+97150000003",
+                company_name="Gulf Ventures",
+                message="Interested in co-investing in the logistics vertical.",
+                consent=True,
+                investor_profile="institutional investor, logistics focus",
+            ),
+        ),
+        (
+            "general_contact",
+            ContactSubmission(
+                market="bahrain",
+                locale="en",
+                full_name="Noor Consultants",
+                email="hello@noor.demo.safir.example",
+                phone="+97317000004",
+                company_name="Noor Consultants",
+                message="We would like to discuss a partnership for advisory services.",
+                consent=True,
+                inquiry_type="partnership",
+                subject="Partnership inquiry",
+            ),
+        ),
+        (
+            "business_listing",
+            BusinessListingSubmission(
+                market="saudi",
+                locale="ar",
+                full_name="مؤسسة الأمانة للتجزئة",
+                email="owner@alamanah.demo.safir.example",
+                phone="+96650000005",
+                company_name="الأمانة للتجزئة",
+                message="راغبون في شريك استراتيجي لتوسيع سلسلة المتاجر.",
+                consent=True,
+                applicant_capacity="owner",
+                opportunity_type="strategic_partner",
+                sector="التجزئة",
+                business_age_years=6,
+                description="سلسلة متاجر تجزئة عاملة في الرياض بستة فروع.",
+                value_min=500000,
+                value_max=1500000,
+                currency="SAR",
+                reason_for_listing="التوسع في مدن إضافية.",
+                desired_outcome="شريك استراتيجي برأس مال وخبرة تشغيلية.",
+            ),
+        ),
+    ]
+
+    created = []
+    for service_type, payload in rows:
+        lead = website_lead_service.create_lead(db, service_type=service_type, payload=payload)
+        created.append(lead)
+
+    # Move two of them along the pipeline so the status badges are not all "new".
+    # The service records the status change and emits an integration event.
+    if len(created) >= 2:
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[1].id, changes={"status": "in_progress"}
+        )
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[2].id, changes={"status": "qualified"}
+        )
+    if len(created) >= 4:
+        website_lead_service.update_lead(
+            db, user=bd, lead_id=created[3].id, changes={"status": "converted"}
+        )
+
+    # An assignment (D04) and the independent manager note (S13) on the first
+    # lead, so the lead detail modal shows both histories on first open.
+    if created:
+        from backend.services import lead_assignment_service
+
+        lead_assignment_service.assign_lead(
+            db,
+            user=bd,
+            lead_id=created[0].id,
+            company_id=companies["SAF-TECH"].id,
+            assignee_id=bd.id,
+            reason="First triage — routed to the Technology manager.",
+        )
+        website_lead_service.add_lead_note(
+            db,
+            user=owner,
+            lead_id=created[0].id,
+            body="متابعة مع فريق التأسيس وإبلاغ العميل خلال ٤٨ ساعة.",
+        )
+
+    # The business listing produced a private opportunity; review and publish it
+    # so the opportunity queue is not empty and the public site has one live
+    # listing. Public copy is written by the Holding, never echoed from the
+    # confidential description.
+    from backend.db.models.website import WebsiteOpportunity
+
+    opportunity = db.execute(select(WebsiteOpportunity)).scalars().first()
+    if opportunity is not None:
+        website_lead_service.review_opportunity(
+            db,
+            user=owner,
+            opportunity_id=opportunity.id,
+            status="published",
+            publish=True,
+            public_title_ar="فرصة شراكة استراتيجية — قطاع التجزئة",
+            public_title_en="Strategic partnership — retail sector",
+            public_summary_ar="سلسلة تجزئة عاملة تبحث عن شريك استراتيجي للتوسع.",
+            public_summary_en="An operating retail chain seeking a strategic expansion partner.",
+        )
+    print(f"  {len(created)} website leads (mixed statuses, one assigned+noted, 1 published opportunity)")
 
 
 def first_of(items, predicate):
