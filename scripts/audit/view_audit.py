@@ -275,6 +275,8 @@ async def audit_role(
 
     result["bad_http"] = bad_http
     result["console_errors"] = console_errors
+    result["dir"] = await page.evaluate("() => document.documentElement.dir")
+    result["lang_attr"] = await page.evaluate("() => document.documentElement.lang")
     await ctx.close()
     return result
 
@@ -312,7 +314,12 @@ async def main() -> int:
     (ARTIFACTS / "view_audit.json").write_text(
         json.dumps(out, ensure_ascii=False, indent=2)
     )
-    print(f"wrote {ARTIFACTS / 'view_audit.json'}")
+    # Per-language artifacts feed the deck compliance matrix (slide 5), which
+    # reads the crawl of each direction rather than assuming it ran.
+    (ARTIFACTS / f"view_audit_{args.lang}.json").write_text(
+        json.dumps(out, ensure_ascii=False, indent=2)
+    )
+    print(f"wrote {ARTIFACTS / 'view_audit.json'} and view_audit_{args.lang}.json")
     return 0
 
 

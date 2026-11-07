@@ -269,6 +269,10 @@ h1.page-title{font-family:var(--f-display);font-size:22px;font-weight:600;color:
    KPI STRIP
    ============================================================ */
 .kpis{grid-area:kpis;display:grid;grid-template-columns:repeat(6,1fr);gap:11px;}
+/* Role strip: four tiles, so the grid is four columns; the holding strip keeps
+   six. ``hidden`` must win over the grid display. */
+.role-kpis{grid-template-columns:repeat(4,1fr);}
+.role-kpis[hidden]{display:none;}
 .kpi{
   background:#fff;border:1px solid var(--line);border-radius:14px;
   padding:10px 13px 9px;position:relative;overflow:hidden;transition:.26s cubic-bezier(.2,.7,.3,1);

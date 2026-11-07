@@ -6,19 +6,21 @@ Status key: **OK** every named control present; **PARTIAL** screen exists but a 
 
 Slides 1-138: OK 111 - PARTIAL 0 - REF 27. (100 mapping groups.)
 
+Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG pixels vs live DOM + screenshot): 6/6 checks pass -- OK.
+
 | Slide | Deck title (verbatim) | Family | App view | Status | Evidence |
 |---|---|---|---|---|---|
 | 1 | START UPSPHERE HOLDING  |  منصة سفير القابضة | cover | - | REF | Deck cover; no screen. |
 | 2 | مبادئ تصميم المنصة | principles | - | REF | Design principles; no single screen. |
 | 3 | خريطة الوحدات الرئيسية | module map | dashboard | OK | view dashboard renders (4085 chars); Six modules map to the six primary sidebar sections. |
-| 4 | قالب الشاشة الموحد | screen template | dashboard | OK | view dashboard renders (4085 chars); header entity+period control present; RTL sidebar right, fixed top bar, header entity+period selector. |
-| 5 | العربية والإنجليزية والاستجابة للشاشات | i18n | dashboard | OK | en crawl clean; ar crawl clean; AR RTL / EN LTR; both crawled clean. |
+| 4 | قالب الشاشة الموحد | screen template | dashboard | OK | view dashboard renders (4085 chars); header entity+period control (entity-select=ok, period-select=ok, entity-wired=ok, live-probe=ok); RTL sidebar right, fixed top bar, header entity+period selector. |
+| 5 | العربية والإنجليزية والاستجابة للشاشات | i18n | dashboard | OK | en: 7 roles crawled, dir=ltr, nav entries 113; ar: 7 roles crawled, dir=rtl, nav entries 113; AR RTL / EN LTR; both crawled clean. |
 | 6 | تسجيل الدخول | login | - | OK | sign-in controls (remember=ok, forgot=ok, notice=ok, lang-toggle=ok, storage-split=ok, forgot-handler=ok); Login gate: email + password + [تذكرني على هذا الجهاز] + [تسجيل الدخول] + [نسيت كلمة المرور؟] + language toggle. Recovery is admin-mediated (no self-service email-reset endpoint in Phase 3). |
-| 7 | لوحة المالك | role dashboard | dashboard | OK | view dashboard renders (4085 chars); role holding_owner: ar nav=21, en nav=21 |
-| 8 | لوحة مدير تطوير الأعمال | role dashboard | dashboard | OK | role business_development: ar nav=20, en nav=20 |
-| 9 | لوحة مدير الشركة التابعة | role dashboard | dashboard | OK | role company_manager: ar nav=17, en nav=17 |
-| 10 | لوحة الموظف المختص | role dashboard | dashboard | OK | role designer: ar nav=14, en nav=14 |
-| 11 | لوحة موظف المبيعات | role dashboard | dashboard | OK | role marketing: ar nav=17, en nav=17 |
+| 7 | لوحة المالك | role dashboard | dashboard | OK | view dashboard renders (4085 chars); role holding_owner: ar nav=21, en nav=21; role holding_owner: 4 tiles ['profit_trend', 'operating_cash', 'liquidity_risk', 'pending_decisions']; role holding_owner: strip painted; Browser probe: title «لوحة القيادة للمجموعة», greeting «مرحبًا المالك | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['اتجاه الأرباح', 'النقد التشغيلي', 'مخاطر السيولة', 'قرارات معلقة'].; Owner strip: profit trend, operating cash, liquidity risk, pending decisions. |
+| 8 | لوحة مدير تطوير الأعمال | role dashboard | dashboard | OK | role business_development: ar nav=20, en nav=20; role business_development: 4 tiles ['awaiting_assignment', 'tasks_in_progress', 'active_opportunities', 'reports_follow_up']; role business_development: strip painted; Browser probe: title «لوحة تطوير الأعمال», greeting «مرحبًا مدير تطوير الأعمال | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['طلبات بانتظار الإسناد', 'مهام قيد التنفيذ', 'فرص نشطة', 'تقارير تحتاج متابعة'].; BD strip: awaiting assignment, tasks in progress, active opportunities, reports to follow up. |
+| 9 | لوحة مدير الشركة التابعة | role dashboard | dashboard | OK | role company_manager: ar nav=17, en nav=17; role company_manager: 3 tiles ['month_result', 'cash_balance', 'support_requests']; role company_manager: strip painted; Browser probe: title «لوحة الشركة», greeting «مرحبًا مدير الشركة | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['نتيجة الشهر', 'الرصيد النقدي', 'طلبات الدعم'].; Company strip: month result, cash balance, support requests. The deck's fourth tile (prospective clients) is gated on website_lead.read, which company_manager deliberately does not hold -- the tile is absent rather than faked, and reappears automatically if that boundary is relaxed (S13 AC-13). |
+| 10 | لوحة الموظف المختص | role dashboard | dashboard | OK | role designer: ar nav=14, en nav=14; role designer: 4 tiles ['my_open_tasks', 'overdue', 'awaiting_info', 'completed_month']; role designer: strip painted; Browser probe: title «مساحة عملي», greeting «مرحبًا موظف مختص | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['مهامي المفتوحة', 'متأخرة', 'بانتظار معلومات', 'مكتملة هذا الشهر'].; Specialist strip counts only tasks assigned to the caller. |
+| 11 | لوحة موظف المبيعات | role dashboard | dashboard | OK | role marketing: ar nav=17, en nav=17; role marketing: 4 tiles ['new_leads', 'awaiting_contact', 'qualified_leads', 'follow_up_week']; role marketing: strip painted; Browser probe: title «العملاء والفرص», greeting «مرحبًا موظف المبيعات | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['عملاء جدد', 'بانتظار التواصل', 'فرص مؤهلة', 'متابعة هذا الأسبوع'].; Sales strip: new leads, awaiting contact, qualified leads, follow up this week. |
 | 12 | قائمة الشركات التابعة | ORG | subsidiaries | OK | view subsidiaries renders (932 chars); subsidiaries.filterbar=1 |
 | 13 | ملف الشركة التابعة | ORG | subsidiaries | OK | subsidiaries detail: openCompany() present |
 | 14 | واجهة العملاء المحتملين | ORG | leads | OK | view leads renders (1278 chars); leads.filterbar=1 |

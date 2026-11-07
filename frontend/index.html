@@ -239,8 +239,8 @@
   <div class="head-row anim view" data-view="dashboard" style="animation-delay:.02s">
     <div>
       <div class="eyebrow"><span class="rule"></span><span id="periodEyebrow"><span class="ar">الرؤية التنفيذية</span><span class="en">Executive View</span></span></div>
-      <h1 class="page-title"><span class="ar">لوحة القيادة التنفيذية للمجموعة</span><span class="en">Holding Executive Dashboard</span></h1>
-      <p class="page-sub"><span class="ar">من بيانات الشركات التابعة الشهرية ← إلى رؤية القابضة ← إلى ذكاء الأعمال ← إلى دعم القرار.</span><span class="en">From subsidiary monthly data → to Holding visibility → to AI intelligence → to management decisions.</span></p>
+      <h1 class="page-title" id="pageTitle"><span class="ar">لوحة القيادة التنفيذية للمجموعة</span><span class="en">Holding Executive Dashboard</span></h1>
+      <p class="page-sub" id="pageSub"><span class="ar">من بيانات الشركات التابعة الشهرية ← إلى رؤية القابضة ← إلى ذكاء الأعمال ← إلى دعم القرار.</span><span class="en">From subsidiary monthly data → to Holding visibility → to AI intelligence → to management decisions.</span></p>
     </div>
     <div class="head-right">
       <div class="chip"><span class="live"></span><span id="updatedChip"><span class="ar">تحديث حي</span><span class="en">Live</span></span></div>
@@ -251,8 +251,14 @@
     </div>
   </div>
 
+  <!-- ============== ROLE KPI STRIP (deck slides 7-11) ==============
+       Each primary role gets its own four tiles instead of the holding
+       strip. Populated by hydrateRoleSummary() from the API's role_summary;
+       hidden (so the holding strip shows) when the role has no summary. -->
+  <section class="kpis role-kpis view" data-view="dashboard" id="roleKpis" hidden></section>
+
   <!-- ============== KPI STRIP ============== -->
-  <section class="kpis view" data-view="dashboard" data-perm="dashboard.holding dashboard.company">
+  <section class="kpis view" data-view="dashboard" id="holdingKpis" data-perm="dashboard.holding dashboard.company">
     <div class="kpi anim" style="animation-delay:.06s" data-drill="companies_count" role="button" tabindex="0">
       <div class="kpi-head"><div class="kpi-lbl"><span class="ar">عدد الشركات</span><span class="en">Companies</span></div>
         <div class="kpi-ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg></div></div>

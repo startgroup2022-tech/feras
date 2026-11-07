@@ -1008,6 +1008,75 @@
   }
 
   // ---- hydration -------------------------------------------------------
+  var ROLE_TONE = {
+    navy: "",
+    green: "green",
+    red: "red",
+    amber: "amber",
+    gold: "gold",
+  };
+
+  function roleKpiCard(kpi) {
+    var tone = ROLE_TONE[kpi.tone] || "";
+    var unit = kpi.unit
+      ? '<span class="unit">' + escapeHtml(kpi.unit) + "</span>"
+      : "";
+    var foot = "";
+    if (kpi.delta) {
+      var dir =
+        kpi.delta_dir === "up" ? "up" : kpi.delta_dir === "down" ? "down" : "flat";
+      foot =
+        '<div class="kpi-foot"><span class="delta ' +
+        dir +
+        '">' +
+        escapeHtml(kpi.delta) +
+        "</span></div>";
+    }
+    return (
+      '<div class="kpi' +
+      (tone ? " " + tone : "") +
+      ' anim">' +
+      '<div class="kpi-head"><div class="kpi-lbl">' +
+      dual(escapeHtml(kpi.label_ar), escapeHtml(kpi.label_en)) +
+      "</div></div>" +
+      '<div class="kpi-val num">' +
+      escapeHtml(kpi.value) +
+      unit +
+      "</div>" +
+      foot +
+      "</div>"
+    );
+  }
+
+  // Deck slides 7-11: when the API returns a role summary, the caller gets its
+  // own tile strip and the holding strip is replaced. A role with no summary
+  // (or one whose every source is denied) keeps the holding strip.
+  function hydrateRoleSummary(data) {
+    var box = byId("roleKpis");
+    if (!box) return;
+    var holding = byId("holdingKpis");
+    var title = byId("pageTitle");
+    var sub = byId("pageSub");
+    var summary = data && data.role_summary;
+    if (!summary || !summary.kpis || !summary.kpis.length) {
+      box.hidden = true;
+      box.innerHTML = "";
+      if (holding) holding.hidden = false;
+      return;
+    }
+    box.innerHTML = summary.kpis.map(roleKpiCard).join("");
+    box.hidden = false;
+    if (holding) holding.hidden = true;
+    // Deck slides 7-11 give each role its own page title and greeting above
+    // the tiles, replacing the holding heading.
+    if (title) {
+      title.innerHTML = dual(escapeHtml(summary.title_ar), escapeHtml(summary.title_en));
+    }
+    if (sub && summary.greeting_ar) {
+      sub.innerHTML = dual(escapeHtml(summary.greeting_ar), escapeHtml(summary.greeting_en));
+    }
+  }
+
   function hydrateKpis(data) {
     var k = data.kpis || {};
     setKpi("companies_count", k.companies_count);
@@ -14270,6 +14339,7 @@
       : "/api/v1/dashboard/company/" + primaryCompanyId() + period;
     return get(path).then(function (data) {
       STATE.dashboard = data;
+      hydrateRoleSummary(data);
       hydrateKpis(data);
       hydrateCompanies(data);
       hydratePriorities(data);

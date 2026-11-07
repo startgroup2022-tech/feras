@@ -368,6 +368,69 @@ approve/reject actions are now all gated on `canManage`, matching the endpoint.
 | Backend + contract suites | `python -m pytest tests/` | **exit 0**, no failures |
 | JS syntax | `node --check` | `app.js` OK |
 
+## Phase 3 pass 5 — role dashboards (slides 7–11) and a `lang` audit defect
+
+This pass closes the role-dashboard family and fixes a weak audit signal that
+had been scoring a slide without reading a real artifact.
+
+### Slides 7–11 — per-role dashboards (`role_summary_service.py`, `app.js`, `index.html`)
+
+The deck gives five primary roles their own dashboard: a role heading, the
+greeting `مرحبًا <الدور> | يعرض النظام البيانات المسموح بها لدورك`, and a
+four-tile KPI strip, all drawn from the records that role may read.
+
+| Slide | Role | Tiles (deck wording, verified verbatim) |
+|---|---|---|
+| 7 | المالك | اتجاه الأرباح، النقد التشغيلي، مخاطر السيولة، قرارات معلقة |
+| 8 | مدير تطوير الأعمال | طلبات بانتظار الإسناد، مهام قيد التنفيذ، فرص نشطة، تقارير تحتاج متابعة |
+| 9 | مدير الشركة | نتيجة الشهر، الرصيد النقدي، (العملاء المحتملون)، طلبات الدعم |
+| 10 | الموظف المختص | مهامي المفتوحة، متأخرة، بانتظار معلومات، مكتملة هذا الشهر |
+| 11 | موظف المبيعات | عملاء جدد، بانتظار التواصل، فرص مؤهلة، متابعة هذا الأسبوع |
+
+`backend/services/role_summary_service.py` computes each tile set from the same
+scoped queries the underlying views use. Every source is gated on the caller's
+own read permission and restricted with `accessible_company_ids`, so a tile can
+never report a figure the caller could not otherwise open. The dashboard
+response carries `role_summary`; `frontend/app.js` swaps the holding strip for
+the role strip and replaces the page heading and greeting. A role with no deck
+dashboard (the accountant) keeps the holding strip — `role_summary` is `None`,
+never an empty block.
+
+Slide 9's fourth tile (`العملاء المحتملون`) is gated on `website_lead.read`,
+which `company_manager` deliberately does not hold (S13). The tile is therefore
+absent rather than faked, and reappears automatically if that boundary is ever
+relaxed. This is the documented, deliberate manager↔lead boundary — no
+permission changed.
+
+### Slide 5 — `lang` signal now reads a real crawl
+
+The compliance matrix's slide-5 (`العربية والإنجليزية والاستجابة للشاشات`) row
+was scored by a `lang` signal that returned `True` unconditionally — a weak
+signal that proved nothing. It now reads `artifacts/view_audit_ar.json` and
+`view_audit_en.json`, counts the roles crawled, and asserts the text direction
+(`dir=rtl` for Arabic, `dir=ltr` for English). `scripts/audit/view_audit.py`
+records `document.documentElement.dir`/`lang` and writes the per-language
+artifact. Both crawls are clean: 7 roles each, `bad_http=0`, `console=0`,
+correct direction.
+
+### Slide 7–11 labels read from the DOM, not parsed from text
+
+`scripts/audit/role_dashboard_probe.py` now reads each tile's label node and the
+rendered page title, so the matrix's evidence is the deck's own wording rather
+than a re-parse of a value/label/unit stream.
+
+### Verification for this pass
+
+| Check | Command | Result |
+|---|---|---|
+| Role dashboards | `pytest tests/test_role_dashboards.py` | pass |
+| Frontend wiring | `pytest tests/test_frontend_domain_views.py` | pass |
+| Full suite | `python -m pytest tests/` | **1054 passed**, exit 0 |
+| Schema drift | `alembic check` | No new upgrade operations detected. |
+| Visual frame parity | `scripts/audit/visual_parity.py` | **6/6** checks pass |
+| AR/EN crawl | `scripts/audit/view_audit.py` (both langs) | 7 roles each, `bad_http=0`, `console=0`, dir/lang correct |
+| Role strip render | `scripts/audit/role_dashboard_probe.py` | 5 roles render their own strip; accountant keeps the holding strip |
+
 ## Remaining gaps (not closed this pass)
 
 These are recorded rather than silently passed over. None is a regression, and

@@ -36,7 +36,7 @@ from backend.repositories.scoped import (
     MonthlyReportRepository,
     SupportRequestRepository,
 )
-from backend.services import motivation_service
+from backend.services import motivation_service, role_summary_service
 
 
 def _scoped(stmt, column, user: User):
@@ -549,4 +549,10 @@ def build_dashboard(
         "companies_requiring_attention": attention,
         "priorities": _priorities(db, user, year, month),
         "motivation": motivation_service.pick_for_role(db, role_code=user.role_code),
+        # Deck slides 7-11: each role gets its own tile set, computed from the
+        # records it may read. ``None`` keeps the holding strip for any role the
+        # deck did not draw a dashboard for.
+        "role_summary": role_summary_service.build_role_summary(
+            db, user=user, year=year, month=month
+        ),
     }

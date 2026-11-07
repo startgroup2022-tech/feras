@@ -133,6 +133,23 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
 - Dashboard now returns `change_vs_previous` and `companies_performance`
   (per-company revenue/expenses/net, growth vs. previous month, report status).
 - `PATCH /support-requests/{id}/assign` (owner-only).
+- `backend/services/role_summary_service.py` — per-role dashboard (`role_summary`
+  on the dashboard response), giving each of the deck's five primary roles its
+  own four-tile strip (deck slides 7–11). Tiles are computed from the same
+  scoped queries and gated on the caller's own read permission; a role with no
+  deck dashboard returns `None` and keeps the holding strip. Presentation only.
+
+## Audit harness (`scripts/audit/`)
+
+- `build_deck_compliance.py` — regenerates `docs/audit/PPTX_V3_COMPLIANCE_MATRIX.md`
+  (138 slides) from the deck OOXML text layer, the live SPA inventory, the
+  endpoint probe and the browser probes. Regenerate rather than hand-edit.
+- `visual_parity.py` — pixel/DOM comparison of the rendered deck PNGs against
+  the live app frame (`artifacts/visual_parity.json`); needs Pillow.
+- `view_audit.py --lang ar|en` — crawls every view per role, records
+  `dir`/`lang`, writes `view_audit.json` + `view_audit_<lang>.json`.
+- `role_dashboard_probe.py` — signs in per role, screenshots the dashboard, and
+  records the rendered strip labels and page title.
 
 ## Frontend: real app (auth-gated, live data)
 

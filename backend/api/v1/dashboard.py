@@ -26,6 +26,7 @@ from backend.schemas import (
     MotivationTextOut,
     PeriodChangeOut,
     PriorityOut,
+    RoleSummaryOut,
 )
 from backend.services import dashboard_service
 
@@ -64,6 +65,9 @@ def _response(data: dict, *, scope: str, company_id: int | None, year: int, mont
         priorities=[PriorityOut(**row) for row in data["priorities"]],
         motivation=(
             MotivationTextOut(**data["motivation"]) if data.get("motivation") else None
+        ),
+        role_summary=(
+            RoleSummaryOut(**data["role_summary"]) if data.get("role_summary") else None
         ),
     )
 

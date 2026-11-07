@@ -60,15 +60,40 @@ MAPPING: list[dict] = [
               "is admin-mediated (no self-service email-reset endpoint in Phase 3)."),
     # 07-11 role dashboards
     dict(slides=[7], title="لوحة المالك", family="role dashboard",
-         view="dashboard", signals=[("view", "dashboard"), ("role", "holding_owner")]),
+         view="dashboard",
+         signals=[("view", "dashboard"), ("role", "holding_owner"),
+                  ("role-summary", "holding_owner"),
+                  ("role-render", "holding_owner")],
+         note="Owner strip: profit trend, operating cash, liquidity risk, "
+              "pending decisions."),
     dict(slides=[8], title="لوحة مدير تطوير الأعمال", family="role dashboard",
-         view="dashboard", signals=[("role", "business_development")]),
+         view="dashboard",
+         signals=[("role", "business_development"),
+                  ("role-summary", "business_development"),
+                  ("role-render", "business_development")],
+         note="BD strip: awaiting assignment, tasks in progress, active "
+              "opportunities, reports to follow up."),
     dict(slides=[9], title="لوحة مدير الشركة التابعة", family="role dashboard",
-         view="dashboard", signals=[("role", "company_manager")]),
+         view="dashboard",
+         signals=[("role", "company_manager"),
+                  ("role-summary", "company_manager"),
+                  ("role-render", "company_manager")],
+         note="Company strip: month result, cash balance, support requests. The "
+              "deck's fourth tile (prospective clients) is gated on "
+              "website_lead.read, which company_manager deliberately does not "
+              "hold -- the tile is absent rather than faked, and reappears "
+              "automatically if that boundary is relaxed (S13 AC-13)."),
     dict(slides=[10], title="لوحة الموظف المختص", family="role dashboard",
-         view="dashboard", signals=[("role", "designer")]),
+         view="dashboard",
+         signals=[("role", "designer"), ("role-summary", "designer"),
+                  ("role-render", "designer")],
+         note="Specialist strip counts only tasks assigned to the caller."),
     dict(slides=[11], title="لوحة موظف المبيعات", family="role dashboard",
-         view="dashboard", signals=[("role", "marketing")]),
+         view="dashboard",
+         signals=[("role", "marketing"), ("role-summary", "marketing"),
+                  ("role-render", "marketing")],
+         note="Sales strip: new leads, awaiting contact, qualified leads, "
+              "follow up this week."),
     # 12-37 platform screens
     dict(slides=[12], title="قائمة الشركات التابعة", family="ORG",
          view="subsidiaries",
@@ -451,16 +476,96 @@ def _rbac_role(role: str, must_have: list[str], must_lack: list[str]) -> tuple[b
     return ok, detail
 
 
-def _check(sig, inv, api_probe) -> tuple[bool, str]:
+def _strip_note(role: str, rendered: dict) -> str:
+    """Browser evidence for slides 7-11: which strip actually rendered."""
+    r = (rendered or {}).get(role)
+    if not r:
+        return ""
+    if r.get("role_strip_visible"):
+        labels = r.get("role_strip_labels") or []
+        title = r.get("page_title") or ""
+        box = r.get("strip_box") or {}
+        return (
+            f" Browser probe: title «{title}», greeting «{r.get('greeting')}», "
+            f"{box.get('cols')}-col strip {box.get('w')}x{box.get('h')} "
+            f"labels {labels}."
+        )
+    if r.get("holding_strip_visible"):
+        return " Browser probe: no role-specific strip; holding strip rendered."
+    return " Browser probe: neither strip rendered."
+
+
+def _check(sig, inv, api_probe, role_probe=None, parity=None,
+           rendered=None) -> tuple[bool, str]:
     kind, key = sig
     if kind == "view":
         e = _inv_entry(inv, key)
         ok = bool(e and (e.get("chars") or 0) >= 40)
         return ok, f"view {key} renders ({e.get('chars') if e else 0} chars)"
     if kind == "scope":
-        return True, "header entity+period control present"
+        # Deck slide 4: the fixed top bar carries an entity/period selector. Prove
+        # the control exists in the markup, is wired in the bridge, and rendered
+        # in the live 1920x1080 probe -- not merely that a header element exists.
+        fe = pathlib.Path(__file__).resolve().parents[2] / "frontend"
+        html = (fe / "index.html").read_text(encoding="utf-8")
+        js = (fe / "app.js").read_text(encoding="utf-8")
+        parts = {
+            "entity-select": 'id="scopeCompany"' in html,
+            "period-select": 'id="periodSelect"' in html or "period" in js.lower(),
+            "entity-wired": "scopeCompany" in js,
+            "live-probe": bool(((parity or {}).get("app") or {}).get("entitySelector")),
+        }
+        ok = all(parts.values())
+        detail = ", ".join(f"{k}={'ok' if v else 'MISSING'}" for k, v in parts.items())
+        return ok, f"header entity+period control ({detail})"
     if kind == "lang":
-        return True, f"{key} crawl clean"
+        # Deck slide 5: both directions must actually run. Read the crawl of
+        # that language rather than asserting it.
+        root = pathlib.Path(__file__).resolve().parents[2] / "artifacts"
+        p = root / f"view_audit_{key}.json"
+        if not p.exists():
+            return False, f"{key} crawl artifact missing"
+        data = json.loads(p.read_text())
+        roles = data.get("roles") or {}
+        if not roles:
+            return False, f"{key} crawl has no roles"
+        dirty = [
+            r for r, v in roles.items()
+            if v.get("bad_http") or v.get("console_errors") or v.get("error")
+        ]
+        nav = sum(len(v.get("visible_nav") or []) for v in roles.values())
+        # The direction must match the language: ar -> rtl, en -> ltr.
+        want_dir = "rtl" if key == "ar" else "ltr"
+        wrong_dir = [r for r, v in roles.items() if v.get("dir") != want_dir]
+        ok = not dirty and not wrong_dir
+        detail = f"{key}: {len(roles)} roles crawled, dir={want_dir}, nav entries {nav}"
+        if dirty:
+            detail += f"; DIRTY {dirty}"
+        if wrong_dir:
+            detail += f"; WRONG DIR {wrong_dir}"
+        return ok, detail
+    if kind == "role-summary":
+        # Deck slides 7-11: the role's dashboard returns its own tile set.
+        entry = (role_probe or {}).get(key)
+        if not entry:
+            return False, f"role {key}: not probed"
+        tiles = entry.get("tiles") or []
+        ok = entry.get("status") == 200 and len(tiles) >= 3
+        return ok, f"role {key}: {len(tiles)} tiles {tiles}" if ok else (
+            f"role {key}: status={entry.get('status')} tiles={tiles}"
+        )
+    if kind == "role-render":
+        # Deck slides 7-11: the browser actually painted the role's own strip.
+        entry = (rendered or {}).get(key)
+        if not entry:
+            return False, f"role {key}: not rendered-probed"
+        if entry.get("error"):
+            return False, f"role {key}: {entry['error']}"
+        if entry.get("role_strip_visible"):
+            return True, f"role {key}: strip painted;" + _strip_note(key, rendered)
+        if entry.get("holding_strip_visible"):
+            return True, f"role {key}: holding strip painted;" + _strip_note(key, rendered)
+        return False, f"role {key}: no strip painted"
     if kind == "ui":
         fe = pathlib.Path(__file__).resolve().parents[2] / "frontend"
         blob = ""
@@ -550,6 +655,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--inventory", default="artifacts/app_inventory.json")
     ap.add_argument("--api-probe", default="artifacts/api_probe.json")
+    ap.add_argument("--role-summaries", default="artifacts/role_summaries.json")
+    ap.add_argument("--role-dashboards", default="artifacts/role_dashboards.json")
+    ap.add_argument("--visual-parity", default="artifacts/visual_parity.json")
     ap.add_argument("--deck-text", default="artifacts/deck/slides_text.json")
     ap.add_argument("--out", default="docs/audit/PPTX_V3_COMPLIANCE_MATRIX.md")
     args = ap.parse_args()
@@ -558,6 +666,12 @@ def main() -> int:
     inv = json.loads(inv_path.read_text()) if inv_path.exists() else {"views": {}}
     probe_path = pathlib.Path(args.api_probe)
     probe = json.loads(probe_path.read_text()) if probe_path.exists() else {}
+    roles_path = pathlib.Path(args.role_summaries)
+    role_probe = json.loads(roles_path.read_text()) if roles_path.exists() else {}
+    dash_path = pathlib.Path(args.role_dashboards)
+    rendered = json.loads(dash_path.read_text()) if dash_path.exists() else {}
+    parity_path = pathlib.Path(args.visual_parity)
+    parity = json.loads(parity_path.read_text()) if parity_path.exists() else {}
     text_path = pathlib.Path(args.deck_text)
     deck_text = json.loads(text_path.read_text()) if text_path.exists() else {}
 
@@ -577,7 +691,7 @@ def main() -> int:
             if m.get("signals"):
                 oks = []
                 for sig in m["signals"]:
-                    ok, msg = _check(sig, inv, api_probe)
+                    ok, msg = _check(sig, inv, api_probe, role_probe, parity, rendered)
                     oks.append(ok)
                     ev.append(msg)
                 status = "OK" if all(oks) else "PARTIAL"
@@ -627,6 +741,18 @@ def main() -> int:
         fh.write(f"Slides 1-138: OK {slide_counts['OK']} - PARTIAL "
                  f"{slide_counts['PARTIAL']} - REF {slide_counts['REF']}. "
                  f"({len(MAPPING)} mapping groups.)\n\n")
+        # The mandate is visual, not textual, parity: report the pixel/DOM
+        # comparison of the rendered deck against the rendered app up front.
+        if parity:
+            ok = parity.get("ok")
+            checks = parity.get("checks") or {}
+            n_ok = sum(1 for c in checks.values() if c.get("ok"))
+            fh.write(
+                f"Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG "
+                f"pixels vs live DOM + screenshot): "
+                f"{n_ok}/{len(checks)} checks pass"
+                f"{' -- OK' if ok else ' -- see artifacts/visual_parity.json'}.\n\n"
+            )
         fh.write("| Slide | Deck title (verbatim) | Family | App view | Status | Evidence |\n")
         fh.write("|---|---|---|---|---|---|\n")
         for n in range(1, 139):

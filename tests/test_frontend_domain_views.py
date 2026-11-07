@@ -395,6 +395,22 @@ def test_s01_indicator_drilldown_is_wired():
         assert 'data-drill="' + kpi + '"' in INDEX, kpi
 
 
+def test_role_dashboard_strip_is_wired():
+    # Deck slides 7-11: each primary role gets its own KPI strip, not the
+    # holding one. The markup carries the container and the bridge renders it
+    # from the live role_summary payload.
+    assert 'id="roleKpis"' in INDEX
+    assert 'id="holdingKpis"' in INDEX
+    # The role's own heading/greeting replaces the holding one (deck slides 7-11).
+    assert 'id="pageTitle"' in INDEX
+    assert 'id="pageSub"' in INDEX
+    assert "function hydrateRoleSummary(" in APP_JS
+    assert "hydrateRoleSummary(data)" in APP_JS  # called from loadDashboard
+    assert "role_summary" in APP_JS
+    assert 'byId("pageTitle")' in APP_JS
+    assert "summary.title_ar" in APP_JS
+
+
 def test_d01_accounting_policies_tab_is_wired():
     # D01: an accountant drafts a policy and approves it; a draft is inert.
     # The screen must be reachable, gated by the policy permission, and its

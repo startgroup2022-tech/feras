@@ -696,6 +696,33 @@ class PeriodChangeOut(BaseModel):
     net_pct: float | None = None
 
 
+class RoleKpiOut(BaseModel):
+    """One tile on a role dashboard (deck slides 7-11)."""
+
+    key: str
+    label_ar: str
+    label_en: str
+    value: str
+    unit: str | None = None
+    delta: str | None = None
+    delta_dir: str | None = None  # "up" | "down" | None
+    tone: str = "navy"
+
+
+class RoleSummaryOut(BaseModel):
+    """The caller's role dashboard: a titled, role-specific KPI strip.
+
+    ``None`` on the dashboard when the role has no dedicated summary, in which
+    case the holding strip is the correct presentation.
+    """
+
+    title_ar: str
+    title_en: str
+    greeting_ar: str = ""
+    greeting_en: str = ""
+    kpis: list[RoleKpiOut] = []
+
+
 class DashboardResponse(BaseModel):
     scope: str  # "holding" | "company"
     company_id: int | None
@@ -710,6 +737,7 @@ class DashboardResponse(BaseModel):
     companies_requiring_attention: list[AttentionCompanyOut] = []
     priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
+    role_summary: "RoleSummaryOut | None" = None
 
 
 # --------------------------------------------------------------------------
