@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from backend.db.models.enums import CompanyHealth
 
@@ -510,6 +511,36 @@ def test_create_company_persists_wizard_and_localization_fields(client, world, a
     assert body["access_scope"] == "single_company"
     assert body["localization_target_pct"] == "40.000"
     assert body["localization_rule_version"] == "SA-2027-v1"
+
+
+def test_create_company_grants_the_creator_write_access(client, db, world, auth):
+    """The owner who registers a subsidiary can immediately write against it.
+
+    Holding-wide scope widens reads only; a write needs an explicit
+    ``user_company_access`` row, so the create endpoint must grant the actor one
+    or every subsequent write on the new company is refused with 403.
+    """
+    from backend.db.models.identity import UserCompanyAccess
+    from backend.rbac.authorization import can_write_company
+
+    response = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={"code": "GRANT-1", "name_ar": "شركة المنحة", "sector": "Technology"},
+    )
+    assert response.status_code == 201, response.text
+    company_id = response.json()["id"]
+
+    db.expire_all()
+    grant = db.execute(
+        select(UserCompanyAccess).where(
+            UserCompanyAccess.user_id == world["owner"].id,
+            UserCompanyAccess.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    assert grant is not None, "the creator must be granted access to the new company"
+    assert grant.can_read and grant.can_write
+    assert can_write_company(world["owner"], company_id)
 
 
 def test_create_company_rejects_invalid_wizard_values(client, world, auth):

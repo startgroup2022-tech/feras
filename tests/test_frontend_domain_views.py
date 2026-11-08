@@ -915,3 +915,81 @@ def test_admin_users_carries_the_deck_slide_37_add_user_control():
 
     # The action is wired into the admin dispatcher.
     assert 'action === "user-create"' in APP_JS
+
+
+# --- Deck slides 7-11: the board must not stack two strips in one area ------
+#
+# An all-role browser sweep of the live board found two overlap bugs, both
+# invisible to a text-only check because each element's *own* box is correct:
+#
+#  1. ``#roleKpis`` and ``#holdingKpis`` both claim grid-area "kpis". Exactly
+#     one is meant to be visible, but ``.kpis{display:grid}`` outranks the UA
+#     ``[hidden]`` rule, so the hidden strip painted on top of the visible one
+#     (``elementsFromPoint`` returned ``holdingKpis`` over ``roleKpis``).
+#  2. ``#roleSection`` and ``#smartBriefSection`` both carried ``.role-section``
+#     and therefore both claimed grid-area "role"; for a company manager (who
+#     sees both) they overlapped on the exact same 1602x73 box.
+
+
+def test_hidden_kpi_strip_does_not_render():
+    # A class that sets display must not beat [hidden], or the hidden strip
+    # paints over the visible one.
+    assert re.search(r"\.kpis\[hidden\]\{display:none;\}", CSS), \
+        ".kpis[hidden] must force display:none"
+    assert re.search(r"\.role-kpis\[hidden\]\{display:none;\}", CSS)
+
+
+def test_role_sections_share_one_grid_band_and_never_both_claim_the_area():
+    # The two role sections are wrapped in a single band that owns grid-area
+    # "role"; the sections themselves must not claim a grid area, or two
+    # visible siblings overlap.
+    assert re.search(r"\.role-band\{[^}]*grid-area:role", CSS), \
+        ".role-band must own grid-area role"
+    assert not re.search(r"\.role-section\{[^}]*grid-area", CSS), \
+        ".role-section must not claim a grid area of its own"
+    band = re.search(r'<div class="role-band[^"]*"[^>]*id="roleBand">(.*?)</div>\s*\n\s*<!-- =+ KPI STRIP', INDEX, re.S)
+    assert band, "role band not found in index.html"
+    assert 'id="roleSection"' in band.group(1)
+    assert 'id="smartBriefSection"' in band.group(1)
+
+
+def test_role_band_collapses_when_both_sections_are_hidden():
+    # The band is a grid child; when neither section is visible it must not
+    # leave an empty row on the board.
+    assert re.search(
+        r"\.role-band:not\(:has\(\.role-section:not\(\[hidden\]\)\)\)\{display:none;\}",
+        CSS,
+    ), "the role band must collapse when it holds no visible section"
+
+
+# --- Deck lists: renderPaged must not wipe the panel header -----------------
+#
+# ``renderPaged(host, ...)`` sets ``host.innerHTML`` to the rows. When the same
+# element that carries the panel chrome (title, [عميل محتمل]/[موظف جديد]/... add
+# button) is passed as ``host``, the first render deletes that chrome -- the
+# list still shows rows, so a text check passes, but the deck's named action is
+# gone. Each of these views must render its rows into a dedicated child, not
+# into the panel element itself.
+
+
+def test_paged_domain_lists_do_not_overwrite_their_panel_header():
+    for key, host_id in [
+        ("leads", "leadList"),
+        ("employees", "empList"),
+        ("tasks", "taskList"),
+        ("campaigns", "campaignList"),
+        ("decisions", "decList"),
+        ("projects", "projList"),
+    ]:
+        # The rows go into an element with the id the panel created...
+        assert re.search(
+            r"renderPaged\(byId\(\"%s\"\)" % host_id, APP_JS
+        ), f"{key} must page into #{host_id}, not the panel element"
+        # ...and that id is created inside the panel body alongside the action.
+        assert re.search(
+            r'panel\([^;]*?' + re.escape('id="%s"' % host_id), APP_JS, re.S
+        ), f"{key}: the panel body must contain #{host_id}"
+        # Passing the panel element itself would erase the header on re-render.
+        assert not re.search(
+            r"renderPaged\(host, \"%s\"" % key, APP_JS
+        ), f"{key} must not page into the panel element (header would be lost)"

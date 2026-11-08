@@ -389,15 +389,17 @@ MAPPING: list[dict] = [
               "the services and covered by tests/test_support, test_reports, "
               "test_operations; there is no single UI screen to score."),
     dict(slides=[123], title="مسارات الاعتماد والتصحيح الرئيسية", family="workflow",
-         view="approvals",
-         signals=[("view", "approvals"), ("ui", "function reportLifecycleBlock"),
+         view="reports",
+         signals=[("view", "reports"), ("ui", "function reportLifecycleBlock"),
                   ("ui", "function reportVersionsBlock"),
                   ("ui", "function correctReportForm"),
                   ("api", "GET /api/v1/monthly-reports/1/versions")],
          note="The five-step trail (مسودة -> مرسلة -> مراجعة -> معتمدة -> طلب "
               "تصحيح) is the report lifecycle trail plus the version history and "
-              "the correction action; the approvals view lists what waits on the "
-              "caller."),
+              "the correction action, all rendered in the report detail (reports "
+              "view). The approvals inbox is a different concept -- tasks awaiting "
+              "the caller -- and is legitimately empty for a user with nothing "
+              "pending, so it is not the screen this slide depicts."),
     dict(slides=[124], title="مسار خدمة وقرار دون خلط الصلاحيات", family="workflow",
          view=None, status="REF",
          note="Service path and decision path kept on separate permissions: a "
@@ -769,6 +771,8 @@ def main() -> int:
     ap.add_argument("--role-summaries", default="artifacts/role_summaries.json")
     ap.add_argument("--role-dashboards", default="artifacts/role_dashboards.json")
     ap.add_argument("--visual-parity", default="artifacts/visual_parity.json")
+    ap.add_argument("--slide-visual-parity",
+                    default="artifacts/deck/visual_parity_slides.json")
     ap.add_argument("--wizard-probe", default="artifacts/company_wizard.json")
     ap.add_argument("--company-file-probe", default="artifacts/company_file.json")
     ap.add_argument("--deck-controls", default="artifacts/deck_controls.json")
@@ -786,6 +790,10 @@ def main() -> int:
     rendered = json.loads(dash_path.read_text()) if dash_path.exists() else {}
     parity_path = pathlib.Path(args.visual_parity)
     parity = json.loads(parity_path.read_text()) if parity_path.exists() else {}
+    slide_parity_path = pathlib.Path(args.slide_visual_parity)
+    slide_parity = (
+        json.loads(slide_parity_path.read_text()) if slide_parity_path.exists() else {}
+    )
     wiz_path = pathlib.Path(args.wizard_probe)
     wizard_probe = json.loads(wiz_path.read_text()) if wiz_path.exists() else {}
     cf_path = pathlib.Path(args.company_file_probe)
@@ -875,16 +883,54 @@ def main() -> int:
                 f"{n_ok}/{len(checks)} checks pass"
                 f"{' -- OK' if ok else ' -- see artifacts/visual_parity.json'}.\n\n"
             )
-        fh.write("| Slide | Deck title (verbatim) | Family | App view | Status | Evidence |\n")
-        fh.write("|---|---|---|---|---|---|\n")
+        # Per-slide visual parity: every slide the matrix maps to a screen is
+        # compared against that screen's rendered pixels, so a slide cannot be
+        # "OK" on text alone while the screen looks nothing like the deck.
+        slide_visual: dict[int, bool] = {}
+        if slide_parity:
+            for r in slide_parity.get("slides") or []:
+                slide_visual[r["slide"]] = bool(r.get("ok"))
+            no_shot = slide_parity.get("no_screenshot") or []
+            fh.write(
+                f"Per-slide visual parity (`scripts/audit/deck_visual_parity.py`, "
+                f"deck PNG frame vs the mapped screen's rendered pixels): "
+                f"{slide_parity.get('ok', 0)}/"
+                f"{slide_parity.get('screens_checked', 0)} mapped screens match"
+                + (
+                    f"; failed slides {slide_parity['failed']}"
+                    if slide_parity.get("failed")
+                    else " -- OK"
+                )
+                + ".\n\n"
+            )
+            if no_shot:
+                fh.write(
+                    f"> {len(no_shot)} mapped slide(s) could not be visually "
+                    f"verified (no rendered screenshot for their view): "
+                    f"{', '.join(str(r['slide']) for r in no_shot)}. Run "
+                    f"`view_audit.py --lang ar` to cover them.\n\n"
+                )
+        def cell(v: str) -> str:
+            return str(v).replace("|", "\\|").replace("\n", " ")
+
+        fh.write("| Slide | Deck title (verbatim) | Family | App view | Visual | Status | Evidence |\n")
+        fh.write("|---|---|---|---|---|---|---|\n")
         for n in range(1, 139):
             if n not in by_slide:
-                fh.write(f"| {n} | _unmapped_ | - | - | REF | no screen mapping |\n")
+                fh.write(f"| {n} | _unmapped_ | - | - | - | REF | no screen mapping |\n")
                 continue
             m, status, ev = by_slide[n]
             title = (deck_text.get(str(n)) or [m["title"]])[0]
-            fh.write(f"| {n} | {title} | {m['family']} | {m.get('view') or '-'} | "
-                     f"{status} | {ev} |\n")
+            has_view = bool(m.get("view"))
+            vis = "-"
+            if n in slide_visual:
+                vis = "OK" if slide_visual[n] else "FAIL"
+            elif has_view:
+                # Mapped to a screen but not visually probed (no screenshot):
+                # never show a bare "-" that reads as "not applicable".
+                vis = "?"
+            fh.write(f"| {n} | {cell(title)} | {cell(m['family'])} | {m.get('view') or '-'} | "
+                     f"{vis} | {status} | {cell(ev)} |\n")
         fh.write("\n## Remaining gaps (the PARTIAL rows above)\n\n")
         fh.write("Each item below is a screen that exists and is reachable but does "
                  "not yet reach the deck's interface. None of these is a business "
@@ -906,6 +952,16 @@ def main() -> int:
                  "by signal.\n")
         fh.write("- A mapping with no `signals` is never scored OK by default: a "
                  "group must carry evidence, or it is left as REF.\n")
+        fh.write("- **Visual** -- the slide's *rendered* frame vs the mapped "
+                 "screen's rendered pixels (`deck_visual_parity.py`). `OK` means "
+                 "the app paints the deck's frame (light surface, RTL rail where "
+                 "the deck draws one, a non-empty content band, and a multi-tile "
+                 "KPI strip on the role slides); `-` means the slide maps to no "
+                 "screen; `?` means it maps to a screen whose screenshot was not "
+                 "available to probe; `FAIL` would list the slide in the parity "
+                 "line above. This column is deliberately independent of the text "
+                 "evidence: a slide can pass the text checks and still fail the "
+                 "visual one.\n")
     print(f"wrote {out}: slides=138 OK={slide_counts['OK']} "
           f"PARTIAL={slide_counts['PARTIAL']} REF={slide_counts['REF']} "
           f"(groups: OK={counts['OK']} PARTIAL={counts['PARTIAL']} "

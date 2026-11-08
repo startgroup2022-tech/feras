@@ -263,8 +263,13 @@
        [طلبات ومهام القابضة] for BD, [متابعة شركتك] for the manager,
        [مهامي المسندة إليّ] for the specialist and
        [العملاء المحتملون / مصفوفة العملاء] for sales. app.js sets the wording
-       from the role summary, so the deck's own section name is painted. -->
-  <section class="role-section view" data-view="dashboard" id="roleSection" hidden>
+       from the role summary, so the deck's own section name is painted.
+       Both the role follow-up list and (for a company manager) the smart brief
+       live in this one band: they are separate grid rows only in the deck, and
+       two siblings that both claim grid-area "role" would paint on top of each
+       other. The band is the single grid child; its contents stack. -->
+  <div class="role-band view" data-view="dashboard" id="roleBand">
+  <section class="role-section" id="roleSection" hidden>
     <div class="role-section-head">
       <h2 id="roleSectionTitle"></h2>
       <!-- Deck slides 7-11: every role follow-up block carries [عرض الكل]. -->
@@ -278,7 +283,7 @@
        states one fact and one advice, then offers [نعم، اطلب خطة] / [لا، شكرًا].
        app.js fills it from live figures; the AI role ends at the summary -- the
        plan request is handed to Business Development. -->
-  <section class="role-section view" data-view="dashboard" id="smartBriefSection" hidden>
+  <section class="role-section" id="smartBriefSection" hidden>
     <div class="av-panel">
       <h3><span class="ar">ملخص ذكي قصير لمدير الشركة</span><span class="en">Short smart brief for the company manager</span></h3>
       <p class="note-block" id="sbIntro"></p>
@@ -294,6 +299,7 @@
       </div>
     </div>
   </section>
+  </div>
 
   <!-- ============== KPI STRIP ============== -->
   <section class="kpis view" data-view="dashboard" id="holdingKpis" data-perm="dashboard.holding dashboard.company">

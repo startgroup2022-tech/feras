@@ -10,6 +10,7 @@ touching a live server.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,70 @@ def test_postgresql_url_selects_psycopg_dialect():
         assert engine.dialect.driver == "psycopg"
     finally:
         engine.dispose()
+
+
+# --------------------------------------------------------------------------
+# live PostgreSQL migration parity (opt-in)
+# --------------------------------------------------------------------------
+def _live_pg_url() -> str | None:
+    """A real PostgreSQL URL to migrate against, or None when unavailable.
+
+    Set ``SAFIR_TEST_POSTGRES_URL`` to run the migration chain against a live
+    server. The suite stays green on a machine without one; when the variable is
+    set, the check is real, because ``alembic check`` is the only thing that
+    catches a constraint that exists in the models but was silently dropped by a
+    backend-specific migration (exactly what happened to the knowledge
+    current-version foreign key).
+    """
+    return os.environ.get("SAFIR_TEST_POSTGRES_URL") or None
+
+
+@pytest.mark.skipif(
+    _live_pg_url() is None,
+    reason="SAFIR_TEST_POSTGRES_URL not set; live PostgreSQL parity not requested",
+)
+def test_migrated_postgresql_schema_matches_models():
+    """The migrated PostgreSQL schema must equal the model metadata, exactly.
+
+    This is the regression guard for the ``use_alter`` foreign key the AI
+    knowledge migration dropped on PostgreSQL while SQLite kept it inline.
+
+    Runs in a subprocess: ``settings`` is frozen at import with the suite's
+    SQLite URL, so the only way to migrate a real PostgreSQL database is to give
+    the child process its own ``DATABASE_URL``.
+    """
+    import subprocess
+    import sys
+
+    url = _live_pg_url()
+    script = (
+        "import os, sys\n"
+        "from alembic import command\n"
+        "from alembic.config import Config\n"
+        "from alembic.autogenerate import compare_metadata\n"
+        "from alembic.runtime.migration import MigrationContext\n"
+        "from sqlalchemy import create_engine\n"
+        "from backend.db.models import Base\n"
+        "cfg = Config('alembic.ini')\n"
+        "command.upgrade(cfg, 'head')\n"
+        "eng = create_engine(os.environ['DATABASE_URL'])\n"
+        "with eng.connect() as conn:\n"
+        "    diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)\n"
+        "eng.dispose()\n"
+        "print(diffs)\n"
+        "sys.exit(1 if diffs else 0)\n"
+    )
+    env = dict(os.environ, DATABASE_URL=url, APP_ENV="development")
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(PROJECT_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (
+        "PostgreSQL schema drift:\n" + proc.stdout + proc.stderr
+    )
 
 
 def test_sqlite_url_still_selects_sqlite_dialect():
@@ -156,7 +221,9 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # build on top of it. The company setup wizard (deck slides 50-52) adds the
     # wizard fields on top of the investment valuation summary, and the deck
     # slides 25-26/46 opportunity study + plan requests build on the wizard.
-    assert head == "e1b2c3d4f5a6"
+    # The knowledge current-version FK repair builds on top of that.
+    assert head == "f7a1c2e3d4b5"
+    assert revisions["f7a1c2e3d4b5"] == "e1b2c3d4f5a6"
     assert revisions["e1b2c3d4f5a6"] == "dda8c6a19971"
     assert revisions["dda8c6a19971"] == "f49eb1554901"
     assert revisions["f49eb1554901"] == "9950bdb57824"

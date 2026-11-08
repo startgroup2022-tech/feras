@@ -154,10 +154,25 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
   endpoint probe and the browser probes. Regenerate rather than hand-edit.
 - `visual_parity.py` — pixel/DOM comparison of the rendered deck PNGs against
   the live app frame (`artifacts/visual_parity.json`); needs Pillow.
+- `deck_visual_parity.py` — per-slide visual parity: for every slide the matrix
+  maps to a screen, compares the deck's rendered PNG frame (light surface, RTL
+  rail where the deck draws one, non-empty content, multi-tile KPI strip on the
+  role slides) against that screen's rendered pixels
+  (`artifacts/deck/visual_parity_slides.json`). Text extraction cannot prove
+  this; the matrix carries the result as its **Visual** column. Needs Pillow and
+  an Arabic (`--lang ar`) `view_audit.py` run for the screenshots.
 - `view_audit.py --lang ar|en` — crawls every view per role, records
   `dir`/`lang`, writes `view_audit.json` + `view_audit_<lang>.json`.
 - `role_dashboard_probe.py` — signs in per role, screenshots the dashboard, and
   records the rendered strip labels and page title.
+- `deck_controls_probe.py` — drives the browser to each data state the deck's
+  bracketed controls need, then reads the rendered label; 18/18 named controls
+  verified. `company_wizard_probe.py` / `company_file_probe.py` cover slides
+  50-52 and the company file.
+- `verify_functional.py` — end-to-end browser→API→PostgreSQL proof that each
+  primary write commits a row (13/13 operations). Needs a live PG and the
+  `--pg-dsn` URL; asserts the row, not just the HTTP status. This is the
+  "rendered button ≠ working button, 200 ≠ committed row" check.
 
 ## Frontend: real app (auth-gated, live data)
 

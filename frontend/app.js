@@ -7457,8 +7457,8 @@
             '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
             dual("إضافة عميل محتمل", "Add lead") + "</button></div></form>"
           : "";
-        host.innerHTML = panel("العملاء المحتملون", "Leads", create);
-        renderPaged(host, "leads", list, leadRow, function (h) {
+        host.innerHTML = panel("العملاء المحتملون", "Leads", create + '<div id="leadList"></div>');
+        renderPaged(byId("leadList"), "leads", list, leadRow, function (h) {
           h.querySelectorAll("[data-lead]").forEach(function (row) {
             row.addEventListener("click", function () {
               openLead(parseInt(row.getAttribute("data-lead"), 10));
@@ -8153,8 +8153,8 @@
       // Deck slide 101 names [تقرير الموظفين] next to [موظف جديد] and [فتح الملف].
       // The report is the caller's own filtered, scoped list exported as CSV --
       // it introduces no data access beyond what the list already shows.
-      host.innerHTML = panel("الموظفون", "Employees", create);
-      renderPaged(host, "employees", list, employeeRow, function (h) {
+      host.innerHTML = panel("الموظفون", "Employees", create + '<div id="empList"></div>');
+      renderPaged(byId("empList"), "employees", list, employeeRow, function (h) {
         bindRowClicks(h, "emp", openEmployee);
       }, spec);
       if (has("employee.read")) {
@@ -9028,8 +9028,8 @@
           byIdAsc(a, b)
         );
       });
-      host.innerHTML = panel("المهام", "Tasks", create);
-      renderPaged(host, "tasks", list, taskRow, function (h) {
+      host.innerHTML = panel("المهام", "Tasks", create + '<div id="taskList"></div>');
+      renderPaged(byId("taskList"), "tasks", list, taskRow, function (h) {
         bindRowClicks(h, "task", openTask);
       }, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
@@ -9408,8 +9408,8 @@
       list.sort(function (a, b) {
         return String(a.start_date || "9999").localeCompare(String(b.start_date || "9999")) || byIdAsc(a, b);
       });
-      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create);
-      renderPaged(host, "campaigns", list, campaignRow, null, spec);
+      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + '<div id="campaignList"></div>');
+      renderPaged(byId("campaignList"), "campaigns", list, campaignRow, null, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -9701,8 +9701,8 @@
               '<button class="btn-outline" data-act="dec-open" data-id="' + d.id + '">' + dual("فتح القرار", "Open decision") + "</button>" +
               "</div>" + controls + reply + "</div>";
       };
-      host.innerHTML = panel("قرارات المالك", "Owner decisions", create);
-      renderPaged(host, "decisions", list, decRow, function (h) {
+      host.innerHTML = panel("قرارات المالك", "Owner decisions", create + '<div id="decList"></div>');
+      renderPaged(byId("decList"), "decisions", list, decRow, function (h) {
         h.querySelectorAll('[data-act="dec-open"]').forEach(function (btn) {
           btn.addEventListener("click", function () {
             var did = parseInt(btn.getAttribute("data-id"), 10);
@@ -10176,8 +10176,8 @@
           statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
           "</div>" + controls + "</div>";
       };
-      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create);
-      renderPaged(host, "projects", filtered, projectRow, function (h) {
+      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create + '<div id="projList"></div>');
+      renderPaged(byId("projList"), "projects", filtered, projectRow, function (h) {
         bindRowClicks(h, "proj", function (r) { openProjectStudy(r); });
         h.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
           btn.addEventListener("click", function () {

@@ -269,6 +269,23 @@ def create_company(
         localization_rule_effective_from=payload.localization_rule_effective_from,
     )
     db.add(company)
+    db.flush()  # assign company.id before linking the creator's grant
+
+    # The actor who registers a subsidiary must be able to operate on it.
+    # Holding-wide scope widens *reads* only -- a write needs an explicit
+    # user_company_access row (see ``can_write_company``) -- so without this the
+    # owner who just created a company is refused every write against it (403).
+    # Only COMPANY_MANAGE holders reach this endpoint, so the grant cannot
+    # escalate anyone beyond the permission they already hold.
+    db.add(
+        UserCompanyAccess(
+            user_id=actor.id,
+            company_id=company.id,
+            can_read=True,
+            can_write=True,
+            is_primary=False,
+        )
+    )
     db.commit()
     db.refresh(company)
 

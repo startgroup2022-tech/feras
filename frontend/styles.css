@@ -218,14 +218,16 @@ html.lang-en .profile{padding:4px 12px 4px 4px;}
   padding:12px 20px 11px;
   display:grid;
   grid-template-columns:298px minmax(0,1fr) 340px;
-  grid-template-rows:74px 124px minmax(0,1fr) minmax(0,1fr) 272px;
+  grid-template-rows:74px 124px auto minmax(158px,1fr) minmax(210px,1fr) 272px;
   grid-template-areas:
     "head  head      head"
     "kpis  kpis      kpis"
+    "role  role      role"
     "ai    attention rel"
     "aii   reports   rel"
     "aii   support   rel";
   gap:11px;
+  overflow-y:auto;
 }
 
 /* ---------- generic card ---------- */
@@ -272,10 +274,25 @@ h1.page-title{font-family:var(--f-display);font-size:22px;font-weight:600;color:
    KPI STRIP
    ============================================================ */
 .kpis{grid-area:kpis;display:grid;grid-template-columns:repeat(6,1fr);gap:11px;}
+/* The role strip and the holding strip share grid-area "kpis"; exactly one is
+   visible, so the hidden one must not render. Without this rule
+   ``.kpis{display:grid}`` beats the UA ``[hidden]`` rule and the hidden strip
+   paints on top of the visible one (deck slides 7-11). */
+.kpis[hidden]{display:none;}
 /* Role strip: four tiles, so the grid is four columns; the holding strip keeps
    six. ``hidden`` must win over the grid display. */
 .role-kpis{grid-template-columns:repeat(4,1fr);}
 .role-kpis[hidden]{display:none;}
+/* The role follow-up band owns a full-width board row (grid area "role") so it
+   grows the board instead of being auto-placed into an implicit row that
+   shrinks the report card beside it. It holds the role follow-up list and, for
+   a company manager, the smart brief; as the single grid child its contents
+   stack rather than both claiming the same area. It collapses when both its
+   sections are hidden so it never adds a dead gap. */
+.role-band{grid-area:role;display:flex;flex-direction:column;min-height:0;gap:11px;}
+.role-band:not(:has(.role-section:not([hidden]))){display:none;}
+.role-section{display:flex;flex-direction:column;min-height:0;gap:8px;}
+.role-section[hidden]{display:none;}
 .role-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;}
 .role-section-head h2{margin:0;}
 .role-shortcuts[hidden]{display:none;}
@@ -378,7 +395,7 @@ html.lang-en .ask-box{padding:4px 13px 4px 4px;}
    MONTHLY REPORTS  (centre top)
    ============================================================ */
 .reports{grid-area:reports;}
-.rep-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:9px;flex:1;min-height:0;}
+.rep-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:max-content;gap:9px;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;align-content:start;}
 .rep{
   border:1px solid var(--line);border-radius:12px;padding:10px 11px;
   background:linear-gradient(160deg,#FFFFFF,#FAFCFF);transition:.24s cubic-bezier(.2,.7,.3,1);
@@ -983,7 +1000,7 @@ body:not(.authed) .stage-wrap{display:none;}
   .board{
     grid-template-columns:1fr;
     grid-template-rows:none;
-    grid-template-areas:"head" "kpis" "attention" "ai" "reports" "support" "aii" "rel";
+    grid-template-areas:"head" "kpis" "role" "attention" "ai" "reports" "support" "aii" "rel";
     overflow-y:auto;
   }
   .kpis{grid-template-columns:repeat(2,1fr);}
