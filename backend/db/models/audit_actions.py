@@ -11,6 +11,8 @@ class AuditAction:
     LOGIN_FAILED = "auth.login_failed"
     LOGOUT = "auth.logout"
     TOKEN_REFRESH = "auth.token_refresh"
+    PASSWORD_CHANGED = "auth.password_changed"
+    PASSWORD_RESET = "auth.password_reset"
 
     # administration
     USER_CREATED = "user.created"

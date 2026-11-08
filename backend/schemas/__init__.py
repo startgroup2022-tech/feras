@@ -34,6 +34,8 @@ from backend.schemas.models import (  # noqa: F401
     HoldingOut,
     HoldingUpdateRequest,
     BrandingOut,
+    AdminSetPasswordRequest,
+    ChangePasswordRequest,
     LoginRequest,
     MonthlyReportCreateRequest,
     MonthlyReportOut,
@@ -99,6 +101,8 @@ from backend.schemas.models import (  # noqa: F401
 )
 
 __all__ = [
+    "AdminSetPasswordRequest",
+    "ChangePasswordRequest",
     "LoginRequest",
     "RefreshRequest",
     "TokenResponse",

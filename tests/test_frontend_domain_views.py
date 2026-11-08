@@ -993,3 +993,72 @@ def test_paged_domain_lists_do_not_overwrite_their_panel_header():
         assert not re.search(
             r"renderPaged\(host, \"%s\"" % key, APP_JS
         ), f"{key} must not page into the panel element (header would be lost)"
+
+
+# --------------------------------------------------------------------------
+# frontend -> backend route contract
+# --------------------------------------------------------------------------
+# The admin Users screen used to PATCH ``/api/v1/admin/users/{id}`` while the
+# route that exists is ``/api/v1/users/{id}``; the button rendered fine and the
+# matrix passed, but every Save/Activate click returned 405. These tests parse
+# the literal ``/api/v1/...`` calls in ``app.js`` and require each one to match
+# a mounted route with the same method, so a drifted path fails in CI instead
+# of silently at runtime.
+
+_METHOD_MAP = {
+    "get": "get",
+    "softGet": "get",
+    "post": "post",
+    "softPost": "post",
+    "patch": "patch",
+    "put": "put",
+    "del": "delete",
+}
+
+_CALL_RE = re.compile(
+    r'\b(get|post|patch|put|del|softGet|softPost)\("(/api/v1/[^"]*)"'
+)
+
+
+def _frontend_calls():
+    for fn, path in _CALL_RE.findall(APP_JS):
+        yield _METHOD_MAP[fn], path.split("?")[0]
+
+
+def test_every_frontend_api_call_matches_a_mounted_route():
+    from backend.main import app
+
+    spec = app.openapi()
+    paths = spec["paths"]
+    misses = []
+    for verb, path in _frontend_calls():
+        if path.endswith("/"):
+            # A prefix the frontend concatenates with an id at runtime.
+            family = [q for q in paths if q.startswith(path) and len(q) > len(path)]
+            if not family:
+                misses.append(f"{verb.upper()} {path} (no route family)")
+            elif not any(verb in paths[q] for q in family):
+                misses.append(f"{verb.upper()} {path} (family has no {verb})")
+            continue
+        if path in paths:
+            if verb not in paths[path]:
+                misses.append(f"{verb.upper()} {path} (path has no {verb})")
+            continue
+        # A literal path may still match a parameterised route (id inlined).
+        pattern = re.sub(r"\{[^}]+\}", "[^/]+", path)
+        matching = [q for q in paths if re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", q), pattern)]
+        if matching and any(verb in paths[q] for q in matching):
+            continue
+        misses.append(f"{verb.upper()} {path} (no matching route)")
+
+    assert misses == [], "frontend calls routes that do not exist: " + "; ".join(
+        sorted(set(misses))
+    )
+
+
+def test_admin_users_actions_use_the_real_user_routes():
+    # Regression guard for the 405: the admin Users row actions must target the
+    # mounted ``/api/v1/users`` routes, never ``/api/v1/admin/users``.
+    assert '"/api/v1/admin/users/" + id' not in APP_JS
+    assert 'patch("/api/v1/users/" + id' in APP_JS
+    assert 'post("/api/v1/users/" + userId + "/password"' in APP_JS

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from backend.api.deps import CurrentUser, DbSession, require
 from backend.core.errors import NotFoundError
@@ -15,6 +15,7 @@ from backend.rbac.authorization import (
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import CompanyRepository
 from backend.schemas import (
+    AdminSetPasswordRequest,
     CompanyAccessRequest,
     CompanyCreateRequest,
     CompanyOut,
@@ -72,6 +73,37 @@ def update_user(
         user_agent=ctx["user_agent"],
     )
     return UserOut(**_user_payload(updated))
+
+
+@router.post(
+    "/users/{user_id}/password",
+    status_code=204,
+    response_class=Response,
+    tags=["users"],
+)
+def set_user_password(
+    user_id: int,
+    payload: AdminSetPasswordRequest,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.USER_MANAGE)),
+) -> Response:
+    """Set a temporary password for another account (owner/administrator).
+
+    Used when a user is locked out and cannot change their own password. The
+    change is audited; the actor never sees or sets the target's old password.
+    """
+    ctx = audit_service.request_context(request)
+    target = admin_service.get_user(db, user=actor, user_id=user_id)
+    auth_service.set_password(
+        db,
+        actor=actor,
+        target=target,
+        new_password=payload.new_password,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return Response(status_code=204)
 
 
 @router.post(

@@ -583,6 +583,19 @@ async def probe(base: str, made: dict) -> dict:
                  if (t) t.click(); }"""
         )
         await page.wait_for_timeout(1500)
+        # Slide 37 also draws a four-tile summary above the table. Prove each
+        # tile's label is painted in the live DOM (not merely present in source).
+        tab_text = await page.evaluate(
+            """() => (document.querySelector('#adminContent')||{}).innerText || ''"""
+        )
+        for key, deck in (
+            ("slide37_stat_active", "المستخدمون النشطون"),
+            ("slide37_stat_pending", "الدعوات المعلقة"),
+            ("slide37_stat_roles", "أدوار مخصصة"),
+            ("slide37_stat_log", "سجل العمل"),
+        ):
+            note(key, deck, deck if deck in tab_text else None,
+                 deck in tab_text, "rendered in the users tab summary strip")
         add_user = await page.evaluate(
             """() => { const b = [...document.querySelectorAll('#adminContent button')]
                  .find(x => (x.innerText||'').trim() === 'إضافة مستخدم');

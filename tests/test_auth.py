@@ -175,3 +175,128 @@ def test_login_is_audited(client, db, make_user):
 
     actions = [row.action for row in db.query(AuditLog).filter(AuditLog.actor_user_id == user.id)]
     assert AuditAction.LOGIN in actions
+
+
+# --------------------------------------------------------------------------
+# self-service password change (D11 account access)
+# --------------------------------------------------------------------------
+CHANGE = "/api/v1/auth/change-password"
+
+
+def test_change_password_rotates_the_credential(client, login, make_user):
+    make_user("owner@holding.sa", "holding_owner")
+    headers = login("owner@holding.sa")
+
+    response = client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "TestPass!2027", "new_password": "NewSecret!2028"},
+    )
+    assert response.status_code == 204
+
+    old = client.post(LOGIN, json={"email": "owner@holding.sa", "password": "TestPass!2027"})
+    new = client.post(LOGIN, json={"email": "owner@holding.sa", "password": "NewSecret!2028"})
+    assert old.status_code == 401
+    assert new.status_code == 200
+
+
+def test_change_password_requires_the_current_password(client, login, make_user):
+    make_user("owner@holding.sa", "holding_owner")
+    headers = login("owner@holding.sa")
+
+    response = client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "wrong-password", "new_password": "NewSecret!2028"},
+    )
+    assert response.status_code == 401
+    # The credential is untouched.
+    assert client.post(LOGIN, json={"email": "owner@holding.sa", "password": "TestPass!2027"}).status_code == 200
+
+
+def test_change_password_rejects_short_and_identical(client, login, make_user):
+    make_user("owner@holding.sa", "holding_owner")
+    headers = login("owner@holding.sa")
+
+    short = client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "TestPass!2027", "new_password": "short"},
+    )
+    assert short.status_code == 422  # schema minimum
+
+    same = client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "TestPass!2027", "new_password": "TestPass!2027"},
+    )
+    assert same.status_code == 422
+
+
+def test_change_password_requires_authentication(client):
+    response = client.post(
+        CHANGE,
+        json={"current_password": "x", "new_password": "NewSecret!2028"},
+    )
+    assert response.status_code == 401
+
+
+def test_change_password_is_audited(client, db, login, make_user):
+    from backend.db.models.audit_actions import AuditAction
+    from backend.db.models import AuditLog
+
+    user = make_user("owner@holding.sa", "holding_owner")
+    headers = login("owner@holding.sa")
+    client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "TestPass!2027", "new_password": "NewSecret!2028"},
+    )
+
+    assert (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.actor_user_id == user.id,
+            AuditLog.action == AuditAction.PASSWORD_CHANGED,
+        )
+        .count()
+        == 1
+    )
+
+
+def test_admin_can_set_a_temporary_password(client, db, auth, make_user):
+    from backend.db.models.audit_actions import AuditAction
+    from backend.db.models import AuditLog
+
+    owner = make_user("owner@holding.sa", "holding_owner")
+    target = make_user("manager@holding.sa", "company_manager")
+
+    response = client.post(
+        f"/api/v1/users/{target.id}/password",
+        headers=auth(owner),
+        json={"new_password": "TempReset!2027"},
+    )
+    assert response.status_code == 204
+
+    assert client.post(LOGIN, json={"email": "manager@holding.sa", "password": "TempReset!2027"}).status_code == 200
+    assert (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.actor_user_id == owner.id,
+            AuditLog.action == AuditAction.PASSWORD_RESET,
+        )
+        .count()
+        == 1
+    )
+
+
+def test_set_password_requires_user_manage(client, auth, make_user):
+    manager = make_user("manager@holding.sa", "company_manager")
+    target = make_user("other@holding.sa", "company_manager")
+
+    response = client.post(
+        f"/api/v1/users/{target.id}/password",
+        headers=auth(manager),
+        json={"new_password": "TempReset!2027"},
+    )
+    assert response.status_code == 403

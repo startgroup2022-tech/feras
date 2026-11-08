@@ -57,7 +57,10 @@ MAPPING: list[dict] = [
          view=None, signals=[("login", "deck-controls")],
          note="Login gate: email + password + [تذكرني على هذا الجهاز] + "
               "[تسجيل الدخول] + [نسيت كلمة المرور؟] + language toggle. Recovery "
-              "is admin-mediated (no self-service email-reset endpoint in Phase 3)."),
+              "is admin-mediated (no self-service email-reset endpoint in Phase 3); "
+              "the signed-in user changes their own password from the header "
+              "profile block and an administrator sets a temporary password from "
+              "Admin ▸ Users (D11 account access)."),
     # 07-11 role dashboards
     dict(slides=[7], title="لوحة المالك", family="role dashboard",
          view="dashboard",
@@ -174,7 +177,16 @@ MAPPING: list[dict] = [
     dict(slides=[36], title="التنبيهات وسجل النشاط", family="BI", view="inbox",
          signals=[("view", "inbox"), ("deck-control", "slide36_open_form")]),
     dict(slides=[37], title="المستخدمون والصلاحيات", family="CFG", view="admin",
-         signals=[("view", "admin"), ("deck-control", "slide37_add_user")]),
+         signals=[("view", "admin"), ("deck-control", "slide37_add_user"),
+                  ("deck-control", "slide37_stat_active"),
+                  ("deck-control", "slide37_stat_pending"),
+                  ("deck-control", "slide37_stat_roles"),
+                  ("deck-control", "slide37_stat_log")],
+         note="Users tab: [إضافة مستخدم] opens the create form, and the deck's "
+              "four-tile summary renders above the table with live counts "
+              "(active users, pending/inactive accounts, custom roles, work-log "
+              "entries) -- each from its own scoped query, and '—' rather than a "
+              "fake 0 where the caller lacks the read permission."),
     # 38-47 shared states / responsive / workflows
     dict(slides=[38], title="حالات الواجهة المشتركة", family="components",
          view=None, signals=[("ui", "emptyHtml"), ("ui", "loadingHtml"), ("ui", "data-retry"),
@@ -626,6 +638,12 @@ def _check(sig, inv, api_probe, role_probe=None, parity=None,
             "lang-toggle": 'data-lang="en"' in html,
             "storage-split": "localStorage" in auth and "sessionStorage" in auth,
             "forgot-handler": "setLoginNotice" in js,
+            # Password management (deck slide 6 names recovery; the register
+            # D11 requirement is a working account-access path): the signed-in
+            # user changes their own password, and an administrator sets a
+            # temporary one for a locked-out account.
+            "self-change": '"/api/v1/auth/change-password"' in js and 'id="pwSave"' in js,
+            "admin-set": '"/password"' in js and 'id="spSave"' in js,
         }
         ok = all(parts.values())
         detail = ", ".join(f"{k}={'ok' if v else 'MISSING'}" for k, v in parts.items())

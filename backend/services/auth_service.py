@@ -167,6 +167,70 @@ def logout(
     )
 
 
+def _validate_new_password(password: str) -> None:
+    """Shared policy check for every password write path."""
+    if not password_is_valid_length(password):
+        raise ValidationError("Password must not exceed 72 bytes.")
+    if len(password) < 8:
+        raise ValidationError("Password must be at least 8 characters.")
+
+
+def change_password(
+    db: Session,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Self-service password change. Verifies the current password first.
+
+    A wrong current password is an :class:`AuthenticationError` (401), so the
+    endpoint cannot be used to probe a password by holding a valid token.
+    """
+    if not verify_password(current_password, user.hashed_password):
+        raise AuthenticationError("Current password is incorrect.")
+    _validate_new_password(new_password)
+    if verify_password(new_password, user.hashed_password):
+        raise ValidationError("New password must differ from the current one.")
+    user.hashed_password = hash_password(new_password)
+    db.commit()
+    audit_service.record(
+        db,
+        action=AuditAction.PASSWORD_CHANGED,
+        actor_user_id=user.id,
+        entity_type="user",
+        entity_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+
+def set_password(
+    db: Session,
+    *,
+    actor: User,
+    target: User,
+    new_password: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Administrator sets a temporary password for another account."""
+    _validate_new_password(new_password)
+    target.hashed_password = hash_password(new_password)
+    db.commit()
+    audit_service.record(
+        db,
+        action=AuditAction.PASSWORD_RESET,
+        actor_user_id=actor.id,
+        entity_type="user",
+        entity_id=target.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+
 def create_user(
     db: Session,
     *,
@@ -179,10 +243,7 @@ def create_user(
 ) -> User:
     """Create a user with a hashed password. Used by admin API and seed script."""
     email = email.strip().lower()
-    if not password_is_valid_length(password):
-        raise ValidationError("Password must not exceed 72 bytes.")
-    if len(password) < 8:
-        raise ValidationError("Password must be at least 8 characters.")
+    _validate_new_password(password)
     if get_user_by_email(db, email) is not None:
         raise ConflictError("A user with this email already exists.")
 

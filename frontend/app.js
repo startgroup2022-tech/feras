@@ -12890,10 +12890,16 @@
       softGet("/api/v1/admin/roles"),
       ensureCompanies(),
       softGet("/api/v1/admin/departments"),
+      softGet("/api/v1/admin/users?limit=1&is_active=true"),
+      softGet("/api/v1/admin/users?limit=1&is_active=false"),
+      softGet("/api/v1/admin/audit-logs?limit=1"),
     ]).then(function (res) {
       var data = res[0];
       var roles = res[1];
       var departments = res[3];
+      var activeUsers = res[4] && typeof res[4].total === "number" ? res[4].total : null;
+      var pendingUsers = res[5] && typeof res[5].total === "number" ? res[5].total : null;
+      var workLog = res[6] && typeof res[6].total === "number" ? res[6].total : null;
       page.total = data.total;
       var roleOptions = roles.map(function (r) { return { value: r.code, label: STATE.lang === "ar" ? r.name_ar : r.name_en }; });
       var deptOptions = [{ value: "", label: "—" }].concat(departments.map(function (d) { return { value: d.id, label: d.code + " · " + (STATE.lang === "ar" ? d.name_ar : d.name_en) }; }));
@@ -12905,6 +12911,7 @@
             selectInput("uRole" + u.id, roleOptions, u.role_code) +
             selectInput("uDept" + u.id, deptOptions, u.department_id || "") +
             '<button class="btn-outline" data-admin-action="save-user" data-id="' + u.id + '">' + dual("حفظ", "Save") + "</button>" +
+            '<button class="btn-outline" data-admin-action="reset-user-password" data-id="' + u.id + '">' + dual("تعيين كلمة مرور", "Set password") + "</button>" +
             '<button class="btn-outline" data-admin-action="toggle-user" data-id="' + u.id + '" data-active="' + (u.is_active ? "1" : "0") + '">' +
             (u.is_active ? dual("إيقاف", "Deactivate") : dual("تفعيل", "Activate")) + "</button>" +
             "</div>"
@@ -12933,7 +12940,25 @@
         ? '<div class="av-actions"><button class="btn-solid" data-admin-action="user-create">' +
           dual("إضافة مستخدم", "Add user") + "</button></div>"
         : "";
-      host.innerHTML = adminPanel("المستخدمون", "Users", addAction + adminUserFiltersHtml(page, roles) + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
+      // Deck slide 37 draws a four-tile summary above the user table. Each tile
+      // is a live count, never a hard-coded figure; a metric the caller cannot
+      // read (e.g. the work log without audit.read) shows "—" rather than 0.
+      var customRoles = roles.filter(function (r) { return !r.is_system; }).length;
+      var statTile = function (ar, en, v) {
+        return (
+          '<div class="av-panel"><h3>' + dual(ar, en) + "</h3>" +
+          '<div class="kpi-val num" style="font-size:22px">' +
+          (v === null ? "—" : plainNum(v)) + "</div></div>"
+        );
+      };
+      var stats =
+        '<div class="av-grid cols-4" style="margin-bottom:12px">' +
+        statTile("المستخدمون النشطون", "Active users", activeUsers) +
+        statTile("الدعوات المعلقة", "Pending invites", pendingUsers) +
+        statTile("أدوار مخصصة", "Custom roles", customRoles) +
+        statTile("سجل العمل", "Work log", workLog) +
+        "</div>";
+      host.innerHTML = adminPanel("المستخدمون", "Users", addAction + adminUserFiltersHtml(page, roles) + stats + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
     });
   }
 
@@ -13014,6 +13039,54 @@
           });
         },
       });
+    });
+  }
+
+  // Owner/administrator sets a temporary password for a locked-out account
+  // (deck slide 37/38: user management). The actor never sees the old password;
+  // the target can change it again from their own profile block.
+  function openAdminSetPasswordForm(userId) {
+    openModal({
+      title: dual("تعيين كلمة مرور", "Set password"),
+      body:
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور المؤقتة الجديدة", "New temporary password") +
+        '</label><input class="av-input" type="password" id="spNew" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("تأكيد كلمة المرور", "Confirm password") +
+        '</label><input class="av-input" type="password" id="spConfirm" style="width:100%"></div>' +
+        '<p class="note-block">' +
+        dual("٨ أحرف على الأقل. سلّمها للمستخدم ليقوم بتغييرها.", "At least 8 characters. Hand it to the user to change.") +
+        "</p>",
+      footer:
+        '<button class="btn-outline" id="spCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="spSave">' + dual("حفظ", "Save") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#spCancel").addEventListener("click", closeModal);
+        root.querySelector("#spSave").addEventListener("click", function () {
+          var btn = this;
+          var next = root.querySelector("#spNew").value;
+          var confirm = root.querySelector("#spConfirm").value;
+          if (!next || next.length < 8) {
+            toast(dual("كلمة المرور ٨ أحرف على الأقل.", "Password must be at least 8 characters."), "warn");
+            return;
+          }
+          if (next !== confirm) {
+            toast(dual("كلمتا المرور غير متطابقتين.", "The passwords do not match."), "warn");
+            return;
+          }
+          busy(btn, true);
+          post("/api/v1/users/" + userId + "/password", { new_password: next })
+            .then(function () {
+              toast(dual("تم تعيين كلمة المرور.", "Password set."), "ok");
+              closeModal();
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
     });
   }
 
@@ -14790,10 +14863,14 @@
 
     if (action === "toggle-user") {
       var active = el.getAttribute("data-active") === "1";
-      return patch("/api/v1/admin/users/" + id, { is_active: !active }).then(function () {
+      return patch("/api/v1/users/" + id, { is_active: !active }).then(function () {
         toast(STATE.lang === "ar" ? "تم تحديث المستخدم." : "User updated.", "ok");
         return renderAdminUsers();
       }).catch(adminError);
+    }
+
+    if (action === "reset-user-password") {
+      return openAdminSetPasswordForm(id);
     }
 
     if (action === "save-user") {
@@ -14802,7 +14879,7 @@
       var payload = {};
       if (roleCode) payload.role_code = roleCode.value;
       if (deptId && deptId.value) payload.department_id = parseInt(deptId.value, 10);
-      return patch("/api/v1/admin/users/" + id, payload).then(function () {
+      return patch("/api/v1/users/" + id, payload).then(function () {
         toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
         return renderAdminUsers();
       }).catch(adminError);
@@ -15772,6 +15849,84 @@
     });
   }
 
+  // Self-service password change (D11 account access). Reachable from the
+  // header profile block so any signed-in user can rotate their own password
+  // without an administrator.
+  function openChangePassword() {
+    openModal({
+      title: dual("تغيير كلمة المرور", "Change password"),
+      body:
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور الحالية", "Current password") +
+        '</label><input class="av-input" type="password" id="pwCurrent" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور الجديدة", "New password") +
+        '</label><input class="av-input" type="password" id="pwNew" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("تأكيد كلمة المرور الجديدة", "Confirm new password") +
+        '</label><input class="av-input" type="password" id="pwConfirm" style="width:100%"></div>' +
+        '<p class="note-block">' +
+        dual("٨ أحرف على الأقل، و٧٢ بايت كحد أقصى.", "At least 8 characters, 72 bytes maximum.") +
+        "</p>",
+      footer:
+        '<button class="btn-outline" id="pwCancel">' +
+        dual("إلغاء", "Cancel") +
+        '</button><button class="btn-solid" id="pwSave">' +
+        dual("حفظ", "Save") +
+        "</button>",
+      onMount: function (root) {
+        root.querySelector("#pwCancel").addEventListener("click", closeModal);
+        root.querySelector("#pwSave").addEventListener("click", function () {
+          var btn = root.querySelector("#pwSave");
+          var current = valOf("pwCurrent");
+          var next = valOf("pwNew");
+          var confirm = valOf("pwConfirm");
+          if (!current || !next) {
+            toast(dual("املأ الحقول المطلوبة.", "Fill in the required fields."), "warn");
+            return;
+          }
+          if (next !== confirm) {
+            toast(dual("كلمتا المرور غير متطابقتين.", "The passwords do not match."), "warn");
+            return;
+          }
+          if (next.length < 8) {
+            toast(dual("كلمة المرور ٨ أحرف على الأقل.", "Password must be at least 8 characters."), "warn");
+            return;
+          }
+          busy(btn, true);
+          post("/api/v1/auth/change-password", {
+            current_password: current,
+            new_password: next,
+          })
+            .then(function () {
+              closeModal();
+              toast(dual("تم تغيير كلمة المرور.", "Password changed."), "ok");
+            })
+            .catch(function (err) {
+              domainError(err);
+            })
+            .then(function () { busy(btn, false); });
+        });
+      },
+    });
+  }
+
+  function bindProfileMenu() {
+    var profile = document.querySelector(".profile");
+    if (!profile) return;
+    profile.style.cursor = "pointer";
+    profile.setAttribute("role", "button");
+    profile.setAttribute("tabindex", "0");
+    profile.setAttribute("title", STATE.lang === "ar" ? "الحساب" : "Account");
+    profile.addEventListener("click", openChangePassword);
+    profile.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openChangePassword();
+      }
+    });
+  }
+
   // ---- session expiry --------------------------------------------------
   var toastShown = false;
   function sessionExpired() {
@@ -15816,6 +15971,7 @@
         bindAskBox();
         bindKnowledgeAskBox();
         bindLogout();
+        bindProfileMenu();
         bindHeaderActions();
         bindNav();
         bindIndicatorDrills();

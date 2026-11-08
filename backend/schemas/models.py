@@ -84,6 +84,23 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=10)
 
 
+class ChangePasswordRequest(BaseModel):
+    """Self-service password change (D11 account access).
+
+    The current password is required so a stolen access token alone cannot be
+    used to take over the account.
+    """
+
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+class AdminSetPasswordRequest(BaseModel):
+    """Owner/administrator sets a temporary password for another account."""
+
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

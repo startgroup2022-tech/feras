@@ -282,6 +282,60 @@ async def _run(browser, base: str, dsn: str) -> dict:
     except Exception as exc:  # noqa: BLE001
         checks.fail("user.create", repr(exc))
 
+    # ---- admin sets a temporary password (deck slide 37 control) --------
+    # The owner's [تعيين كلمة مرور] button on a user row opens the dialog; the
+    # save is proven three ways: the API returns 204, the target's audit trail
+    # gets an auth.password_reset row, and the target can then log in with it.
+    try:
+        target_email = email
+        await _open_admin_tab(page, "users")
+        await page.evaluate(
+            """(mail) => {
+                const rows = [...document.querySelectorAll('#adminContent .av-row')];
+                const row = rows.find(r => (r.innerText||'').includes(mail));
+                if (row) {
+                    const b = row.querySelector('[data-admin-action="reset-user-password"]');
+                    if (b) b.click();
+                }
+            }""",
+            target_email,
+        )
+        await page.wait_for_selector("#spSave", timeout=10000)
+        admin_temp = "AdminTemp!2027"
+        await page.fill("#spNew", admin_temp)
+        await page.fill("#spConfirm", admin_temp)
+        async with page.expect_response(
+            lambda r: r.url.endswith("/password") and r.request.method == "POST"
+        ) as info:
+            await page.click("#spSave")
+        status = (await info.value).status
+        await page.wait_for_timeout(500)
+        rotated = await page.evaluate(
+            """async (payload) => {
+                const res = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload),
+                });
+                return res.ok;
+            }""",
+            {"email": target_email, "password": admin_temp},
+        )
+        row = _pg_row(
+            dsn,
+            "SELECT id FROM audit_logs WHERE action = %s ORDER BY id DESC LIMIT 1",
+            ("auth.password_reset",),
+        )
+        checks.record(
+            "admin.set_password",
+            ui=True,
+            api=status,
+            db=row is not None and bool(rotated),
+            detail=f"target login ok={rotated}, audit_row={row}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.fail("admin.set_password", repr(exc))
+
     # ---- financial summary create ---------------------------------------
     # Uses the company this run just created, so its (company, year, month)
     # period is always new -- a period already holding a version is a 409, which
@@ -637,6 +691,68 @@ async def _run(browser, base: str, dsn: str) -> dict:
         )
     except Exception as exc:  # noqa: BLE001
         checks.fail("workflow.support.create", repr(exc))
+
+    # ---- account: self-service password change --------------------------
+    # The header profile block opens the change-password dialog. The change is
+    # confirmed three ways: the API returns 204, a fresh login with the new
+    # password succeeds, and the audit row lands in PostgreSQL. The password is
+    # then restored so the seeded demo account keeps working for later runs.
+    temp_password = "TempVerify!2027"
+    try:
+        await _settle_modals(page)
+        await page.evaluate("() => { const el=document.querySelector('.profile'); if (el) el.click(); }")
+        await page.wait_for_selector("#pwSave", timeout=10000)
+        await page.fill("#pwCurrent", PASSWORD)
+        await page.fill("#pwNew", temp_password)
+        await page.fill("#pwConfirm", temp_password)
+        async with page.expect_response(
+            lambda r: r.url.endswith("/api/v1/auth/change-password")
+            and r.request.method == "POST"
+        ) as info:
+            await page.click("#pwSave")
+        status = (await info.value).status
+        await page.wait_for_timeout(600)
+
+        rotated = await page.evaluate(
+            """async (pw) => {
+                const res = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: 'owner@demo.safir.local', password: pw}),
+                });
+                return res.ok;
+            }""",
+            temp_password,
+        )
+        row = _pg_row(
+            dsn,
+            "SELECT id FROM audit_logs WHERE action = %s ORDER BY id DESC LIMIT 1",
+            ("auth.password_changed",),
+        )
+        checks.record(
+            "account.change_password",
+            ui=bool(rotated),
+            api=status,
+            db=row is not None,
+            detail=f"new login ok={rotated}, audit_row={row}",
+        )
+
+        # Restore the original password through the API so the demo seed holds.
+        await page.evaluate(
+            """async (payload) => {
+                const raw = localStorage.getItem('safir.session.v1');
+                const tok = raw ? (JSON.parse(raw) || {}).access_token : null;
+                await fetch('/api/v1/auth/change-password', {
+                    method: 'POST',
+                    headers: Object.assign({'Content-Type': 'application/json'},
+                        tok ? {Authorization: 'Bearer ' + tok} : {}),
+                    body: JSON.stringify(payload),
+                });
+            }""",
+            {"current_password": temp_password, "new_password": PASSWORD},
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.fail("account.change_password", repr(exc))
 
     await ctx.close()
     return checks.summary()

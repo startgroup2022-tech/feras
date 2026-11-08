@@ -102,7 +102,21 @@ scenario; do not widen `world` for a single test — build the extra rows locall
 
 Suites: `test_auth`, `test_isolation`, `test_rbac`, `test_reports`, `test_support`,
 `test_dashboard`, `test_ai`, `test_admin`, `test_schemas`, `test_ai_providers`,
-`test_insights`.
+`test_insights`, `test_frontend_domain_views`.
+
+`test_frontend_domain_views` also holds the **frontend→backend route contract**:
+it parses every literal `/api/v1/...` call in `frontend/app.js` and requires each
+one to match a mounted route with the same HTTP method. This exists because the
+Admin ▸ Users Save/Activate buttons once PATCHed `/api/v1/admin/users/{id}`
+(which does not exist) instead of `/api/v1/users/{id}` — the buttons rendered and
+the text matrix passed, but every click returned 405. A drifted path now fails in
+CI rather than silently at runtime.
+
+**Password management (D11 account access):** the signed-in user changes their
+own password via `POST /api/v1/auth/change-password` (current password required);
+an owner/administrator sets a temporary one via `POST /api/v1/users/{id}/password`
+(`user.manage`). Both validate length (8–72 bytes) and write an audit row
+(`auth.password_changed` / `auth.password_reset`). Covered by `test_auth`.
 
 Browser harnesses live in `scripts/` (`e2e_smoke.py`, `e2e_roles.py`) and
 `scripts/audit/`; they drive a locally served app with Playwright, not pytest.
@@ -166,11 +180,13 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
 - `role_dashboard_probe.py` — signs in per role, screenshots the dashboard, and
   records the rendered strip labels and page title.
 - `deck_controls_probe.py` — drives the browser to each data state the deck's
-  bracketed controls need, then reads the rendered label; 18/18 named controls
+  bracketed controls need, then reads the rendered label; 31/31 named controls
   verified. `company_wizard_probe.py` / `company_file_probe.py` cover slides
   50-52 and the company file.
 - `verify_functional.py` — end-to-end browser→API→PostgreSQL proof that each
-  primary write commits a row (13/13 operations). Needs a live PG and the
+  primary write commits a row (15/15 operations, including the self-service
+  password change, the admin temporary-password set, and their audit rows).
+  Needs a live PG and the
   `--pg-dsn` URL; asserts the row, not just the HTTP status. This is the
   "rendered button ≠ working button, 200 ≠ committed row" check.
 
