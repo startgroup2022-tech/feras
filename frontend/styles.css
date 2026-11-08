@@ -185,6 +185,9 @@ html.lang-ar .brand-sub{letter-spacing:.02em;}
 .scope-pick{display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--ink-400);border-radius:7px;transition:.18s;}
 .scope-pick:hover{background:#fff;color:var(--navy-700);box-shadow:var(--shadow-xs);}
 .scope-pick svg{flex:0 0 auto;}
+/* Deck slide 4: the header names the control [الشركة / المجموعة ▾]. The label
+   stays visible beside the select, which still opens on click. */
+.scope-lbl{font-size:9.5px;font-weight:600;letter-spacing:.2px;white-space:nowrap;}
 .scope-pick select{
   border:none;background:transparent;outline:none;cursor:pointer;
   font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-800);
@@ -273,6 +276,12 @@ h1.page-title{font-family:var(--f-display);font-size:22px;font-weight:600;color:
    six. ``hidden`` must win over the grid display. */
 .role-kpis{grid-template-columns:repeat(4,1fr);}
 .role-kpis[hidden]{display:none;}
+.role-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;}
+.role-section-head h2{margin:0;}
+.role-shortcuts[hidden]{display:none;}
+.role-shortcuts .shortcut{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow-xs);cursor:pointer;transition:.18s;text-align:start;font:inherit;color:inherit;}
+.role-shortcuts .shortcut:hover{border-color:var(--navy-300);box-shadow:var(--shadow-sm);transform:translateY(-1px);}
+.role-shortcuts .shortcut .sc-t{font-weight:600;color:var(--navy-900);font-size:12.5px;}
 .kpi{
   background:#fff;border:1px solid var(--line);border-radius:14px;
   padding:10px 13px 9px;position:relative;overflow:hidden;transition:.26s cubic-bezier(.2,.7,.3,1);
@@ -660,6 +669,7 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
 .av-grid{display:grid;gap:11px;}
 .av-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.av-grid.cols-4{grid-template-columns:repeat(4,1fr);}
 .av-grid.cols-2{grid-template-columns:repeat(2,1fr);}
 .av-panel{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-sm);padding:14px 16px;}
 .av-panel h3{font-family:var(--f-display);font-size:12.5px;font-weight:600;color:var(--navy-900);margin:0 0 10px;}
@@ -829,6 +839,41 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-form .av-field{flex:1 1 190px;margin-bottom:0;}
 .av-form-inline{padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--bg-2);margin-bottom:12px;}
 .av-form-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;}
+/* Deck slide 37 [إضافة مستخدم]: the primary add action sits above the list. */
+.av-actions{display:flex;justify-content:flex-end;margin-bottom:12px;}
+.av-checklist{display:flex;flex-wrap:wrap;gap:8px 16px;}
+.av-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-700);cursor:pointer;}
+/* ---- company setup wizard (deck slides 50-52) ---- */
+.co-wiz{margin-bottom:2px;}
+/* Deck slides 50-52: a two-column form with the step rail on the right
+   (RTL), not a row of pills. The rail carries "الخطوة N من 3" and its notes. */
+.co-wiz-body{display:flex;gap:16px;align-items:flex-start;}
+.co-wiz-form{flex:1 1 auto;min-width:0;display:block;}
+.co-wiz-rail{flex:0 0 216px;display:flex;flex-direction:column;gap:10px;}
+.co-wiz-railcard{border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 12px;}
+.co-wiz-railcard h4{margin:0 0 7px;font-size:11.5px;color:var(--navy-900);font-weight:700;}
+.co-wiz-railstep{margin:0 0 3px;font-size:10.5px;color:var(--ink-500);font-weight:600;}
+.co-wiz-railname{margin:0;font-size:11px;color:var(--navy-700);font-weight:600;}
+.co-wiz-railnotes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;}
+.co-wiz-railnote{border:1px solid var(--line);border-radius:10px;background:var(--bg-2);padding:8px 10px;font-size:10.5px;color:var(--ink-700);}
+.co-wiz-note{font-size:10.5px;color:var(--ink-500);margin:0 0 12px;}
+.co-wiz-pane{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:12px 14px;}
+.co-wiz-pane[hidden]{display:none;}
+.co-wiz-pane .av-field{flex:1 1 calc(50% - 14px);margin-bottom:0;}
+.co-wiz-pane .av-field .hint{display:block;margin-top:4px;font-size:10px;color:var(--ink-400);}
+.co-wiz-inline{display:flex;gap:8px;}
+.co-wiz-inline .av-select{flex:1 1 0;min-width:0;}
+.co-wiz-pane select[multiple]{height:auto;min-height:80px;padding:6px;}
+.co-wiz-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;margin-top:4px;}
+.co-wiz-review{flex:1 1 100%;border:1px solid var(--line);border-radius:12px;background:var(--bg-2);padding:10px 12px;}
+.co-wiz-rrow{display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:4px 0;border-bottom:1px dashed var(--line);}
+.co-wiz-rrow:last-child{border-bottom:0;}
+.co-wiz-rrow span{color:var(--ink-500);}
+.co-wiz-rrow b{color:var(--navy-900);font-weight:600;}
+.co-wiz-confirm{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-700);}
+.co-wiz-footer{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px;font-size:10.5px;color:var(--ink-500);}
+
+
 /* ---- Website branding (logo) panel ---- */
 .branding-box{display:flex;flex-direction:column;gap:11px;}
 .brand-preview{display:block;max-height:64px;max-width:220px;width:auto;height:auto;object-fit:contain;
@@ -943,7 +988,7 @@ body:not(.authed) .stage-wrap{display:none;}
   }
   .kpis{grid-template-columns:repeat(2,1fr);}
   .rel{grid-template-rows:auto auto;}
-  .rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr 1fr;}
+  .rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2,.av-grid.cols-4{grid-template-columns:1fr 1fr;}
   .ai,.aii,.card{min-height:auto;}
   .head-row{flex-direction:column;align-items:flex-start;gap:12px;}
   .head-right{width:100%;justify-content:space-between;}
@@ -955,7 +1000,7 @@ body:not(.authed) .stage-wrap{display:none;}
   .app-view{position:static;inset:auto;min-height:calc(100vh - 120px);padding:14px 14px 22px;}
 }
 @media (max-width:560px){
-  .kpis,.rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr;}
+  .kpis,.rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2,.av-grid.cols-4{grid-template-columns:1fr;}
   .modal-backdrop{padding:12px;}
   .av-head{flex-direction:column;align-items:flex-start;}
   .av-toolbar{width:100%;}

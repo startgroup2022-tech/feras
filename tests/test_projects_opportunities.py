@@ -264,3 +264,106 @@ def test_record_can_link_to_an_owner_decision(client, proj_world, auth):
     )
     assert created.status_code == 201, created.text
     assert created.json()["owner_decision_id"] == decision_id
+
+
+# --------------------------------------------------------------------------
+# deck slide 26: the opportunity study
+# --------------------------------------------------------------------------
+def test_opportunity_study_is_persisted_and_returned(client, proj_world, auth):
+    created = client.post(
+        "/api/v1/operations/projects",
+        json={
+            "name": "فرصة دراسة",
+            "company_id": proj_world["alpha"].id,
+            "stage": "feasibility",
+            "market_customers": "قطاع التجزئة",
+            "information_source": "تقرير السوق الداخلي",
+            "expected_revenue": "٢٠٠ ألف ر.س",
+            "key_risks": "تأخر التوريد",
+            "alternatives": "شراكة مع موزّع",
+            "recommendation": "التنفيذ التدريجي",
+            "study_sources": "مقابلات + بيانات السوق",
+        },
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["stage"] == "feasibility"
+    assert body["market_customers"] == "قطاع التجزئة"
+    assert body["recommendation"] == "التنفيذ التدريجي"
+    assert body["study_sources"] == "مقابلات + بيانات السوق"
+
+    # The study is updated through the same PATCH, and only the supplied field
+    # changes.
+    patched = client.patch(
+        f"/api/v1/operations/projects/{body['id']}",
+        json={"stage": "decision", "recommendation": "الاعتماد مع متابعة شهرية"},
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["stage"] == "decision"
+    assert patched.json()["recommendation"] == "الاعتماد مع متابعة شهرية"
+    assert patched.json()["market_customers"] == "قطاع التجزئة"
+
+
+def test_unknown_opportunity_stage_is_rejected(client, proj_world, auth):
+    refused = client.post(
+        "/api/v1/operations/projects",
+        json={"name": "مرحلة خاطئة", "company_id": proj_world["alpha"].id, "stage": "not_a_stage"},
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert refused.status_code == 422, refused.text
+
+
+def test_raise_to_owner_opens_a_linked_decision(client, proj_world, auth, db):
+    """Deck slide 26 [رفع للمالك عند الحاجة]: the record joins an owner topic.
+
+    The decision is created open (no executor), the record points at it, and the
+    owner is notified -- no approval chain blocks the record.
+    """
+    created = client.post(
+        "/api/v1/operations/projects",
+        json={
+            "name": "فرصة تحتاج قرارًا",
+            "company_id": proj_world["alpha"].id,
+            "recommendation": "التوسع في خدمة جديدة",
+        },
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert created.status_code == 201, created.text
+    record_id = created.json()["id"]
+
+    raised = client.post(
+        f"/api/v1/operations/projects/{record_id}/raise-to-owner",
+        json={},
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert raised.status_code == 200, raised.text
+    decision_id = raised.json()["owner_decision_id"]
+    assert decision_id is not None
+
+    # The topic is visible to the owner as an open decision carrying the
+    # recommendation as its body.
+    decisions = client.get(
+        "/api/v1/operations/owner-decisions", headers=auth(proj_world["owner_all"])
+    )
+    assert decisions.status_code == 200, decisions.text
+    match = [d for d in decisions.json() if d["id"] == decision_id]
+    assert match and match[0]["status"] == "open"
+    assert "التوسع" in (match[0]["body"] or "")
+
+
+def test_raise_to_owner_refuses_another_company(client, proj_world, auth, make_user):
+    owner = proj_world["owner_all"]
+    record = client.post(
+        "/api/v1/operations/projects",
+        json={"name": "فرصة بيتا", "company_id": proj_world["beta"].id},
+        headers=auth(owner),
+    ).json()
+    # bd_alpha is scoped to alpha only, so raising a beta record is refused.
+    refused = client.post(
+        f"/api/v1/operations/projects/{record['id']}/raise-to-owner",
+        json={},
+        headers=auth(proj_world["bd_alpha"]),
+    )
+    assert refused.status_code in (403, 404), refused.text

@@ -162,6 +162,16 @@ class CompanyOut(BaseModel):
     phone: str | None = None
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = None
+    trade_name_en: str | None = None
+    activity: str | None = None
+    capital_amount: Decimal | None = None
+    fiscal_year_start_month: int | None = None
+    fiscal_year_end_month: int | None = None
+    default_language: str = "ar"
+    template_effective_from: date | None = None
+    access_scope: str | None = None
     # Localization setup (deck slides 105/106): the per-entity target and the
     # calculation-rule edition. Null means unset -> the board shows غير مُعدّ.
     localization_target_pct: Decimal | None = None
@@ -194,10 +204,38 @@ class CompanyCreateRequest(BaseModel):
     # AC-03: the founding date and the monitoring-start date are distinct.
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # The wizard's step 2 records the company's status (S03: نشطة/معلقة/مؤرشفة).
+    status: str = Field(default=CompanyStatus.ACTIVE.value, max_length=20)
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = Field(default=None, max_length=180)
+    trade_name_en: str | None = Field(default=None, max_length=180)
+    activity: str | None = Field(default=None, max_length=300)
+    capital_amount: Decimal | None = Field(default=None, ge=0)
+    fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    default_language: str = Field(default="ar", max_length=8)
+    template_effective_from: date | None = None
+    access_scope: str | None = Field(default=None, max_length=40)
     # Localization setup (deck slides 105/106).
     localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
     localization_rule_version: str | None = Field(default=None, max_length=120)
     localization_rule_effective_from: date | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _valid_create_status(cls, value: str) -> str:
+        allowed = {s.value for s in CompanyStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+    @field_validator("default_language")
+    @classmethod
+    def _valid_default_language(cls, value: str) -> str:
+        allowed = {"ar", "en", "both"}
+        if value not in allowed:
+            raise ValueError(f"default_language must be one of {sorted(allowed)}")
+        return value
 
     @field_validator("company_type")
     @classmethod
@@ -227,10 +265,30 @@ class CompanyUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = Field(default=None, max_length=180)
+    trade_name_en: str | None = Field(default=None, max_length=180)
+    activity: str | None = Field(default=None, max_length=300)
+    capital_amount: Decimal | None = Field(default=None, ge=0)
+    fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    default_language: str | None = Field(default=None, max_length=8)
+    template_effective_from: date | None = None
+    access_scope: str | None = Field(default=None, max_length=40)
     # Localization setup (deck slides 105/106).
     localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
     localization_rule_version: str | None = Field(default=None, max_length=120)
     localization_rule_effective_from: date | None = None
+
+    @field_validator("default_language")
+    @classmethod
+    def _valid_default_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {"ar", "en", "both"}
+        if value not in allowed:
+            raise ValueError(f"default_language must be one of {sorted(allowed)}")
+        return value
 
     @field_validator("health")
     @classmethod
@@ -709,6 +767,14 @@ class RoleKpiOut(BaseModel):
     tone: str = "navy"
 
 
+class RoleShortcutOut(BaseModel):
+    """One role-dashboard shortcut tile (deck slides 7-11)."""
+
+    label_ar: str
+    label_en: str
+    view: str
+
+
 class RoleSummaryOut(BaseModel):
     """The caller's role dashboard: a titled, role-specific KPI strip.
 
@@ -718,8 +784,19 @@ class RoleSummaryOut(BaseModel):
 
     title_ar: str
     title_en: str
+    # Deck slide 46 keys the manager's smart brief on the caller's role, so the
+    # role code travels with the summary rather than being guessed client-side.
+    role_code: str = ""
     greeting_ar: str = ""
     greeting_en: str = ""
+    # Deck slides 7-11: the follow-up section heading ("قرارات بانتظار الاعتماد",
+    # "مهامي المسندة إليّ", ...), the [عرض الكل] target and the role's shortcut
+    # grid. The service has always computed the section wording; it was being
+    # dropped here, so the client could not paint it.
+    section_ar: str = ""
+    section_en: str = ""
+    view_all: str | None = None
+    shortcuts: list["RoleShortcutOut"] = []
     kpis: list[RoleKpiOut] = []
 
 
@@ -1098,7 +1175,9 @@ class GroupStructureNode(BaseModel):
     company_id: int
     code: str
     name_ar: str
-    name_en: str
+    # English name is optional (spec S03: الاسم الإنجليزي optional), so a
+    # company created without one must not break the structure tree.
+    name_en: str | None = None
     sector: str | None
     status: str
     parent_company_id: int | None

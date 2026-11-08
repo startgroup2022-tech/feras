@@ -131,6 +131,26 @@ class Company(Base, TimestampMixin):
     localization_rule_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
     localization_rule_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # ---- company setup wizard (deck slides 50-52) ----
+    # Fields the deck's three-step wizard collects that the record previously
+    # had no home for. All nullable/additive so no existing row is disturbed.
+    trade_name_ar: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    trade_name_en: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    activity: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    capital_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    # The fiscal year is stored as a start/end month pair (1..12); the deck
+    # requires a start and end month, not a full date.
+    fiscal_year_start_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fiscal_year_end_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_language: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="ar", server_default="ar"
+    )
+    # Step 3 of the wizard: the sector template's effective date and the access
+    # scope (one company / linked roles). Both are captured at activation so the
+    # chosen configuration is recorded and audited.
+    template_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    access_scope: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     users: Mapped[list["UserCompanyAccess"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"
     )

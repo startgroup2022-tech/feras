@@ -80,6 +80,85 @@ ROLE_NAMES = {
     "marketing": ("موظف المبيعات", "Sales"),
 }
 
+# Deck slides 7-11 name the follow-up list under the role's tiles after the role
+# itself: the owner sees [قرارات بانتظار الاعتماد], BD [طلبات ومهام القابضة], the
+# company manager [متابعة شركتك], the specialist [مهامي المسندة إليّ] and sales
+# [العملاء المحتملون / مصفوفة العملاء]. The dashboard paints this exact heading
+# above the shared attention list so the deck's own section name is present.
+ROLE_SECTIONS = {
+    "holding_owner": ("قرارات بانتظار الاعتماد", "Decisions awaiting approval"),
+    "super_admin": ("قرارات بانتظار الاعتماد", "Decisions awaiting approval"),
+    "business_development": ("طلبات ومهام القابضة", "Holding requests and tasks"),
+    "company_manager": ("متابعة شركتك", "Follow up your company"),
+    "company_owner": ("متابعة شركتك", "Follow up your company"),
+    "designer": ("مهامي المسندة إليّ", "Tasks assigned to me"),
+    "marketing": ("العملاء المحتملون / مصفوفة العملاء",
+                  "Leads / lead matrix"),
+}
+
+
+# Deck slides 7-11 each draw a shortcut strip under the tiles -- "اختصارات
+# الشركة" (manager), "أدواتي" (specialist), "أولويات الأسبوع" (BD) and the
+# unlabelled owner/sales grids. Every card is a jump into a section the role can
+# already open, so the strip adds navigation, never access: the target view is
+# still gated by ``canView`` in the client and by the permission on its routes.
+ROLE_SHORTCUTS: dict[str, list[tuple[str, str, str]]] = {
+    "holding_owner": [
+        ("مؤشرات المجموعة", "Group indicators", "dashboard"),
+        ("الشركات التابعة", "Subsidiaries", "subsidiaries"),
+        ("حالة المديرين", "Manager status", "employees"),
+        ("الفرص ورأس المال", "Opportunities & capital", "investments"),
+    ],
+    "super_admin": [
+        ("مؤشرات المجموعة", "Group indicators", "dashboard"),
+        ("الشركات التابعة", "Subsidiaries", "subsidiaries"),
+        ("حالة المديرين", "Manager status", "employees"),
+        ("الفرص ورأس المال", "Opportunities & capital", "investments"),
+    ],
+    "business_development": [
+        ("الشركات", "Companies", "subsidiaries"),
+        ("الموظفون", "Employees", "employees"),
+        ("الفرص", "Opportunities", "projects"),
+        ("تقرير المالك", "Owner report", "reports"),
+    ],
+    "company_manager": [
+        ("أداء الشركة", "Company performance", "dashboard"),
+        ("التقرير الشهري", "Monthly report", "reports"),
+        ("الموظفون", "Employees", "employees"),
+        ("العملاء", "Leads", "leads"),
+    ],
+    "company_owner": [
+        ("أداء الشركة", "Company performance", "dashboard"),
+        ("التقرير الشهري", "Monthly report", "reports"),
+        ("الموظفون", "Employees", "employees"),
+        ("العملاء", "Leads", "leads"),
+    ],
+    "designer": [
+        ("المهام الجديدة", "New tasks", "operations"),
+        ("قيد التنفيذ", "In progress", "operations"),
+        ("الأعمال المكتملة", "Completed work", "operations"),
+        ("تقاريري", "My reports", "reports"),
+    ],
+    "marketing": [
+        ("إضافة عميل", "Add lead", "leads"),
+        ("مصفوفة العملاء", "Lead matrix", "leads"),
+        ("الفرص", "Opportunities", "leads"),
+        ("التقرير الأسبوعي", "Weekly report", "reports"),
+    ],
+}
+
+# Where the deck's [عرض الكل] ("View all") sends each role: the "all" list of
+# that role's follow-up section.
+ROLE_VIEW_ALL: dict[str, str] = {
+    "holding_owner": "decisions",
+    "super_admin": "decisions",
+    "business_development": "requests",
+    "company_manager": "reports",
+    "company_owner": "reports",
+    "designer": "operations",
+    "marketing": "leads",
+}
+
 
 def _greeting(role: str) -> tuple[str, str]:
     name_ar, name_en = ROLE_NAMES.get(role, ("المستخدم", "User"))
@@ -408,10 +487,20 @@ def build_role_summary(
         return None
     title_ar, title_en = ROLE_TITLES.get(role, ("لوحة القيادة", "Dashboard"))
     greet_ar, greet_en = _greeting(role)
+    section_ar, section_en = ROLE_SECTIONS.get(role, ("", ""))
+    shortcuts = [
+        {"label_ar": a, "label_en": b, "view": v}
+        for a, b, v in ROLE_SHORTCUTS.get(role, [])
+    ]
     return {
+        "role_code": role,
         "title_ar": title_ar,
         "title_en": title_en,
         "greeting_ar": greet_ar,
         "greeting_en": greet_en,
+        "section_ar": section_ar,
+        "section_en": section_en,
+        "shortcuts": shortcuts,
+        "view_all": ROLE_VIEW_ALL.get(role),
         "kpis": kpis,
     }

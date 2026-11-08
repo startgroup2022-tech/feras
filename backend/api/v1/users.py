@@ -243,6 +243,7 @@ def create_company(
         name_ar=payload.name_ar,
         name_en=payload.name_en,
         sector=payload.sector,
+        status=payload.status,
         contact_email=str(payload.contact_email) if payload.contact_email else None,
         legal_name_ar=payload.legal_name_ar,
         legal_name_en=payload.legal_name_en,
@@ -254,6 +255,18 @@ def create_company(
         phone=payload.phone,
         founded_on=payload.founded_on,
         tracking_start_date=payload.tracking_start_date,
+        trade_name_ar=payload.trade_name_ar,
+        trade_name_en=payload.trade_name_en,
+        activity=payload.activity,
+        capital_amount=payload.capital_amount,
+        fiscal_year_start_month=payload.fiscal_year_start_month,
+        fiscal_year_end_month=payload.fiscal_year_end_month,
+        default_language=payload.default_language,
+        template_effective_from=payload.template_effective_from,
+        access_scope=payload.access_scope,
+        localization_target_pct=payload.localization_target_pct,
+        localization_rule_version=payload.localization_rule_version,
+        localization_rule_effective_from=payload.localization_rule_effective_from,
     )
     db.add(company)
     db.commit()

@@ -40,6 +40,9 @@ PROBES = [
     ("GET", "/api/v1/accounting/kpis/evaluations", None),
     ("GET", "/api/v1/admin/permissions/catalogue", None),
     ("GET", "/api/v1/analytics/holding", None),
+    ("GET", "/api/v1/analytics/investments",
+     {"year": 2027, "month": 10}),
+    ("GET", "/api/v1/admin/holding/structure", None),
     ("GET", "/api/v1/admin/ownerships", None),
     # Deck slides 107-109: the investment valuation register (read path; the
     # write path is PATCH and would mutate, so it is not probed).

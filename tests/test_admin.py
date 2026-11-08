@@ -476,6 +476,83 @@ def test_update_company_localization_target_is_bounded(client, world, auth):
     assert response.status_code == 422
 
 
+def test_create_company_persists_wizard_and_localization_fields(client, world, auth):
+    """Deck slides 50-52/105: the create endpoint must persist every field the
+    wizard sends. The localization setup was previously accepted by the schema
+    but silently dropped on create (regression guard)."""
+    response = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-1",
+            "name_ar": "شركة المعالج",
+            "sector": "Technology",
+            "currency": "SAR",
+            "activity": "أنشطة التقنية",
+            "capital_amount": "5000000.00",
+            "fiscal_year_start_month": 1,
+            "fiscal_year_end_month": 12,
+            "default_language": "ar",
+            "template_effective_from": "2027-01-01",
+            "access_scope": "single_company",
+            "localization_target_pct": "40.000",
+            "localization_rule_version": "SA-2027-v1",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["activity"] == "أنشطة التقنية"
+    assert body["capital_amount"] == "5000000.00"
+    assert body["fiscal_year_start_month"] == 1
+    assert body["fiscal_year_end_month"] == 12
+    assert body["default_language"] == "ar"
+    assert body["template_effective_from"] == "2027-01-01"
+    assert body["access_scope"] == "single_company"
+    assert body["localization_target_pct"] == "40.000"
+    assert body["localization_rule_version"] == "SA-2027-v1"
+
+
+def test_create_company_rejects_invalid_wizard_values(client, world, auth):
+    """The wizard's enumerated fields are validated, not stored blindly."""
+    month = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-2",
+            "name_ar": "شركة",
+            "sector": "Technology",
+            "fiscal_year_start_month": 13,
+        },
+    )
+    assert month.status_code == 422
+    language = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-3",
+            "name_ar": "شركة",
+            "sector": "Technology",
+            "default_language": "fr",
+        },
+    )
+    assert language.status_code == 422
+
+
+def test_structure_survives_a_company_without_an_english_name(client, world, auth):
+    """The English name is optional (S03), so a company created without one must
+    not break the group structure tree (regression: it returned 500)."""
+    created = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={"code": "NOEN-1", "name_ar": "شركة بلا اسم إنجليزي", "sector": "Technology"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["name_en"] is None
+    response = client.get("/api/v1/admin/holding/structure", headers=auth(world["owner"]))
+    assert response.status_code == 200, response.text
+    assert any(n["code"] == "NOEN-1" for n in response.json())
+
+
 def _valuation_payload(**over):
     base = {
         "currency": "SAR",

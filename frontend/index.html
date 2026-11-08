@@ -121,6 +121,7 @@
       <div class="scope-ctl" id="scopeCtl">
         <label class="scope-pick" title="الجهة / Entity">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/></svg>
+          <span class="scope-lbl"><span class="ar">الشركة / المجموعة ▾</span><span class="en">Company / Group ▾</span></span>
           <select id="scopeCompany" aria-label="الجهة / Entity"></select>
         </label>
         <label class="scope-pick" title="الفترة / Period">
@@ -256,6 +257,43 @@
        strip. Populated by hydrateRoleSummary() from the API's role_summary;
        hidden (so the holding strip shows) when the role has no summary. -->
   <section class="kpis role-kpis view" data-view="dashboard" id="roleKpis" hidden></section>
+
+  <!-- Deck slides 7-11: under the role's tiles the deck names the follow-up
+       list after the role -- [قرارات بانتظار الاعتماد] for the owner,
+       [طلبات ومهام القابضة] for BD, [متابعة شركتك] for the manager,
+       [مهامي المسندة إليّ] for the specialist and
+       [العملاء المحتملون / مصفوفة العملاء] for sales. app.js sets the wording
+       from the role summary, so the deck's own section name is painted. -->
+  <section class="role-section view" data-view="dashboard" id="roleSection" hidden>
+    <div class="role-section-head">
+      <h2 id="roleSectionTitle"></h2>
+      <!-- Deck slides 7-11: every role follow-up block carries [عرض الكل]. -->
+      <button class="btn-outline view-all-btn" id="roleViewAll" type="button" hidden></button>
+    </div>
+    <div class="av-grid cols-4 role-shortcuts" id="roleShortcuts" hidden></div>
+  </section>
+
+  <!-- Deck slide 46: the company manager's short smart brief. Shown only after
+       the period's management report is approved ("التقرير معتمد"). The brief
+       states one fact and one advice, then offers [نعم، اطلب خطة] / [لا، شكرًا].
+       app.js fills it from live figures; the AI role ends at the summary -- the
+       plan request is handed to Business Development. -->
+  <section class="role-section view" data-view="dashboard" id="smartBriefSection" hidden>
+    <div class="av-panel">
+      <h3><span class="ar">ملخص ذكي قصير لمدير الشركة</span><span class="en">Short smart brief for the company manager</span></h3>
+      <p class="note-block" id="sbIntro"></p>
+      <p id="sbStatus"></p>
+      <div class="kv">
+        <div class="kv-row"><div class="k"><span class="ar">وضع الشركة</span><span class="en">Company status</span></div><div class="v" id="sbFact">—</div></div>
+        <div class="kv-row"><div class="k"><span class="ar">نصيحة الشهر القادم</span><span class="en">Advice for next month</span></div><div class="v" id="sbAdvice">—</div></div>
+      </div>
+      <p id="sbQuestion"></p>
+      <div class="pbtns">
+        <button class="btn-solid" id="sbPlan" type="button" hidden></button>
+        <button class="btn-outline" id="sbDecline" type="button" hidden></button>
+      </div>
+    </div>
+  </section>
 
   <!-- ============== KPI STRIP ============== -->
   <section class="kpis view" data-view="dashboard" id="holdingKpis" data-perm="dashboard.holding dashboard.company">
@@ -404,7 +442,7 @@
           <h2><span class="ar">التقارير الشهرية للشركات</span><span class="en">Monthly Company Reports</span></h2>
         </div>
       </div>
-      <span class="link-more" data-nav="reports"><span class="ar">عرض جميع التقارير</span><span class="en">View all reports</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
+      <span class="link-more" data-nav="reports"><span class="ar">عرض الكل</span><span class="en">View all</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
     </div>
     <div class="card-body">
       <div class="rep-grid">
@@ -422,7 +460,7 @@
           <h2><span class="ar">طلبات الدعم من الشركات</span><span class="en">Support Requests</span></h2>
         </div>
       </div>
-      <span class="link-more" data-nav="support"><span class="ar">جميع الطلبات</span><span class="en">All requests</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
+      <span class="link-more" data-nav="support"><span class="ar">عرض الكل</span><span class="en">View all</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></span>
     </div>
     <div class="card-body">
       <table class="table">
@@ -658,6 +696,9 @@
     <div>
       <h1><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></h1>
       <p><span class="ar">تحليل الأداء والرؤى التنفيذية المولّدة آليًا.</span><span class="en">Performance analysis and auto-generated executive insights.</span></p>
+    </div>
+    <div class="av-toolbar">
+      <button class="btn-solid" id="biSummarize"><span class="ar">إعداد ملخص</span><span class="en">Prepare summary</span></button>
     </div>
   </div>
   <div id="biContent"></div>

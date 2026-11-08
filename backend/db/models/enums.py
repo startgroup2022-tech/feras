@@ -192,6 +192,7 @@ class AIMessageRole(str, enum.Enum):
 
 
 class CompanyStatus(str, enum.Enum):
+    SETUP = "setup"
     ACTIVE = "active"
     INACTIVE = "inactive"
     ARCHIVED = "archived"
@@ -777,6 +778,34 @@ class ProjectRecordType(str, enum.Enum):
 
     OPPORTUNITY = "opportunity"
     PROJECT = "project"
+
+
+class ProjectStage(str, enum.Enum):
+    """S20 / deck slide 25-26: the opportunity pipeline stage.
+
+    The deck names four stages ("مراحل الفرصة": جديدة، تقييم أولي، دراسة جدوى،
+    قرار/تنفيذ/إغلاق). The stage is a label the BD manager sets; the deck's
+    "no automatic transition" rule (spec §7) means moving a record to a project
+    is still an explicit ``record_type`` change, never derived from the stage.
+    """
+
+    NEW = "new"  # جديدة
+    INITIAL_REVIEW = "initial_review"  # تقييم أولي
+    FEASIBILITY = "feasibility"  # دراسة جدوى
+    DECISION = "decision"  # قرار / تنفيذ / إغلاق
+
+
+class PlanRequestStatus(str, enum.Enum):
+    """Deck slide 46: the manager's plan request, answered by BD by hand.
+
+    Not an approval: the AI's role ends at the summary, so the request is a
+    plain hand-off that BD either answers (``answered``) or dismisses
+    (``declined``). It never blocks the manager.
+    """
+
+    REQUESTED = "requested"
+    ANSWERED = "answered"
+    DECLINED = "declined"
 
 
 class ManagementBriefStatus(str, enum.Enum):

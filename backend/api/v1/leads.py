@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from backend.api.deps import CurrentUser, DbSession, require
 from backend.rbac.permissions import Perm
 from backend.schemas import (
+    LeadCreateRequest,
     LeadNoteCreateRequest,
     LeadNoteOut,
     LeadOut,
@@ -51,6 +52,26 @@ def list_leads(
             offset=offset,
         )
     )
+
+
+@router.post("", response_model=LeadOut, status_code=201)
+def create_lead(
+    payload: LeadCreateRequest,
+    request: Request,
+    db: DbSession,
+    user=Depends(require(Perm.LEAD_MANAGE)),
+) -> LeadOut:
+    """Record a lead inside the platform (deck slide 14).
+
+    The Holding records the client once; the manager or their team follows up.
+    Routing, priority and the public reference are derived server-side, exactly
+    as for a website submission, so an internally-recorded lead is
+    indistinguishable downstream -- only ``source`` marks where it came from.
+    """
+    lead = website_lead_service.create_internal_lead(
+        db, payload=payload, actor=user, request=request
+    )
+    return LeadOut(**website_lead_service.serialise_lead(lead))
 
 
 @router.get("/opportunities")

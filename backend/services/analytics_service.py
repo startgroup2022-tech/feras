@@ -530,7 +530,7 @@ def investment_report(db: Session, *, user: User, year: int, month: int) -> dict
             & (MonthlyReport.period_month == month)
             & (MonthlyReport.status != ReportStatus.DRAFT.value),
         )
-        .order_by(Company.name_en)
+        .order_by(Company.name_en.is_(None), Company.name_en, Company.name_ar)
     )
     stmt = _scope(stmt, Company.id, user)
     rows = list(db.execute(stmt))

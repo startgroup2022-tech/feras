@@ -141,7 +141,10 @@ async def audit_role(
 
     visible_nav = await page.eval_on_selector_all(
         ".nav-item",
-        "els => els.filter(e => e.offsetParent !== null).map(e => e.dataset.view)",
+        # ``offsetParent`` is null for anything inside a fixed-position sidebar,
+        # so use the browser's own visibility test and fall back to geometry.
+        "els => els.filter(e => (e.checkVisibility ? e.checkVisibility() : true) "
+        "&& e.getBoundingClientRect().width > 0).map(e => e.dataset.view)",
     )
 
     result: dict = {

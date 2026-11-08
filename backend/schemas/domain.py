@@ -29,6 +29,7 @@ from backend.db.models.enums import (
     OpeningBalanceKind,
     OwnerDecisionStatus,
     ProjectRecordType,
+    ProjectStage,
     TaskLifecycleStatus,
     TaskPriority,
 )
@@ -202,6 +203,12 @@ class TaskStatusRequest(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class TaskNoteRequest(BaseModel):
+    """Deck slide 20 [إضافة سؤال]: a clarification note with no transition."""
+
+    note: str = Field(min_length=1, max_length=2000)
+
+
 # --------------------------------------------------------------------------
 # weekly reports
 # --------------------------------------------------------------------------
@@ -340,6 +347,15 @@ class ProjectRecordCreateRequest(BaseModel):
     currency: str = Field(default="SAR", max_length=8)
     status: str = Field(default="open", max_length=20)
     owner_decision_id: int | None = None
+    # ---- slide 26: opportunity study ----
+    stage: ProjectStage | None = None
+    market_customers: str | None = Field(default=None, max_length=8000)
+    information_source: str | None = Field(default=None, max_length=8000)
+    expected_revenue: str | None = Field(default=None, max_length=8000)
+    key_risks: str | None = Field(default=None, max_length=8000)
+    alternatives: str | None = Field(default=None, max_length=8000)
+    recommendation: str | None = Field(default=None, max_length=8000)
+    study_sources: str | None = Field(default=None, max_length=8000)
 
 
 class ProjectRecordUpdateRequest(BaseModel):
@@ -356,6 +372,15 @@ class ProjectRecordUpdateRequest(BaseModel):
     currency: str | None = Field(default=None, max_length=8)
     status: str | None = Field(default=None, max_length=20)
     owner_decision_id: int | None = None
+    # ---- slide 26: opportunity study ----
+    stage: ProjectStage | None = None
+    market_customers: str | None = Field(default=None, max_length=8000)
+    information_source: str | None = Field(default=None, max_length=8000)
+    expected_revenue: str | None = Field(default=None, max_length=8000)
+    key_risks: str | None = Field(default=None, max_length=8000)
+    alternatives: str | None = Field(default=None, max_length=8000)
+    recommendation: str | None = Field(default=None, max_length=8000)
+    study_sources: str | None = Field(default=None, max_length=8000)
 
 
 # --------------------------------------------------------------------------
@@ -375,6 +400,24 @@ class ManagementBriefSaveRequest(BaseModel):
     axis_decisions: str | None = Field(default=None, max_length=8000)
     source_report_ids: list[int] | None = None
     urgency: ManagementBriefUrgency = ManagementBriefUrgency.MONTHLY
+
+
+# --------------------------------------------------------------------------
+# deck slide 46: the manager's smart-brief plan request
+# --------------------------------------------------------------------------
+class PlanRequestCreateRequest(BaseModel):
+    """The manager answers the smart brief's plan offer with yes.
+
+    The payload is only a company + period: the summary and advice the brief
+    showed are rebuilt server-side from the approved report, so a client cannot
+    fabricate the figures BD is asked to plan against.
+    """
+
+    company_id: int | None = None
+    period_year: int = Field(ge=2000, le=2100)
+    period_month: int = Field(ge=1, le=12)
+    summary: str | None = Field(default=None, max_length=4000)
+    advice: str | None = Field(default=None, max_length=4000)
 
 
 # --------------------------------------------------------------------------

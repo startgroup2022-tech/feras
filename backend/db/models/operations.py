@@ -42,6 +42,7 @@ from backend.db.models.enums import (
     ManagementBriefStatus,
     ManagementBriefUrgency,
     OwnerDecisionStatus,
+    PlanRequestStatus,
     ProjectRecordType,
     TaskLifecycleStatus,
     TaskPriority,
@@ -467,6 +468,20 @@ class ProjectRecord(Base, TimestampMixin):
     results: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource_estimate: Mapped[str | None] = mapped_column(Text, nullable=True)
     estimated_value: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    # ---- slide 26: the opportunity study (S20 "عرض الحقائق والافتراضات والمخاطر
+    # والتوصية قبل رفع القرار") ------------------------------------------------
+    # Free-text study fields captured before an opportunity is raised to the
+    # owner. They are descriptive only -- the deck's "no automatic feasibility
+    # engine" rule means nothing here is computed or gated on a formula. All
+    # nullable/additive so existing rows are untouched.
+    stage: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)
+    market_customers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    information_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expected_revenue: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_risks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alternatives: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    study_sources: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The estimate carries its own currency (spec §7: "العملة ظاهرة في التقديرات").
     # It is never summed into the ledger; it is a tracking figure only.
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="SAR")
@@ -562,3 +577,39 @@ class ManagementBrief(Base, TimestampMixin):
     created_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class PlanRequest(Base, TimestampMixin):
+    """Deck slide 46: a manager's request for a plan, handed to BD.
+
+    After the period's management report is approved the manager may answer the
+    smart brief's "هل ترغب بطلب خطة؟" with yes. The deck is explicit that the AI
+    role ends at the summary -- it never creates the plan and never launches
+    tasks ("لا ينشئ الخطة ولا يطلق مهامًا؛ مطور الأعمال يراجع الطلب ويعدّ الخطة
+    بشريًا"). This row is therefore only a hand-off: a request with a status and
+    the summary/advice it was raised against, plus a notification to BD.
+    """
+
+    __tablename__ = "plan_requests"
+    __table_args__ = (
+        Index("ix_plan_requests_company", "company_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The fact and the advice the brief showed, kept so BD sees exactly what the
+    # manager was responding to (the report itself is never modified).
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    advice: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=PlanRequestStatus.REQUESTED.value, index=True
+    )
+    requested_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    company: Mapped["Company"] = relationship()

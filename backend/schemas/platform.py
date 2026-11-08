@@ -196,7 +196,8 @@ class ComplianceReportOut(BaseModel):
 class InvestmentCompanyOut(BaseModel):
     company_id: int
     name_ar: str
-    name_en: str
+    # F-01/S03: the English name is optional on a company, so it is optional here.
+    name_en: str | None = None
     code: str
     sector: str | None = None
     health: str

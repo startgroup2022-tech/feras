@@ -896,3 +896,22 @@ def test_investment_register_carries_the_deck_slide_107_actions():
 
     bind = _fn_body("bindPortfolioActions")
     assert 'exportListCsv("investments", rows)' in bind
+
+
+def test_admin_users_carries_the_deck_slide_37_add_user_control():
+    """Deck slide 37 names [إضافة مستخدم] on the Users & Permissions screen.
+    The control appears only for a role that holds ``user.manage`` (the
+    permission the POST /api/v1/users endpoint enforces) and opens a form that
+    posts the deck's fields to that endpoint."""
+    users = _fn_body("renderAdminUsers")
+    assert 'dual("إضافة مستخدم", "Add user")' in users
+    assert 'has("user.manage")' in users
+    assert 'data-admin-action="user-create"' in users
+
+    form = _fn_body("openCreateUserForm")
+    assert 'post("/api/v1/users"' in form
+    for fld in ("full_name_ar", "full_name_en", "role_code", "company_ids", "password"):
+        assert fld in form, f"create-user payload missing {fld}"
+
+    # The action is wired into the admin dispatcher.
+    assert 'action === "user-create"' in APP_JS

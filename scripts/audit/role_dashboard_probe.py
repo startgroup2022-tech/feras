@@ -108,7 +108,9 @@ async def main() -> int:
 
     results: dict[str, dict] = {}
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch()
+        browser = await pw.chromium.launch(
+            executable_path="/usr/bin/chromium", args=["--no-sandbox"]
+        )
         for role, email in ROLES:
             print(f"probing {role} ...")
             results[role] = await _probe_role(browser, args.base, role, email)

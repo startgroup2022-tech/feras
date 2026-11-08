@@ -89,6 +89,29 @@ def test_investment_report_uses_reported_figures(client, world, auth):
     assert body["opportunities_reported"] == 0
 
 
+def test_investment_report_tolerates_a_company_with_no_english_name(
+    client, world, auth, db
+):
+    """A company created through the deck's wizard may carry only an Arabic name
+    (S03: "الاسم الإنجليزي | اختياري"), so the investment lens must not 500."""
+    from backend.db.models.identity import Company
+
+    company = db.get(Company, world["alpha"].id)
+    company.name_en = None
+    db.add(company)
+    db.commit()
+
+    body = client.get(
+        f"{BASE}/investments?year=2027&month=10", headers=auth(world["owner"])
+    )
+    assert body.status_code == 200
+    alpha = next(
+        c for c in body.json()["companies"] if c["company_id"] == world["alpha"].id
+    )
+    assert alpha["name_ar"] == "شركة ألفا"
+    assert alpha["name_en"] is None
+
+
 def test_investment_report_flags_opportunity_from_data(client, world, auth, db):
     report = db.get(MonthlyReport, world["alpha_report"].id)
     report.new_opportunities = "توسع في السوق الشمالي"

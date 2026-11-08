@@ -30,7 +30,10 @@ from backend.db.models.enums import (
     NotificationPriority,
     NotificationType,
     OwnerDecisionStatus,
+    PlanRequestStatus,
     ProjectRecordType,
+    ProjectStage,
+    ReportApprovalStatus,
     TaskLifecycleStatus,
     WeeklyReportStatus,
 )
@@ -45,6 +48,7 @@ from backend.db.models.operations import (
     ManagementBrief,
     OwnerDecision,
     OwnerDecisionEvent,
+    PlanRequest,
     ProjectRecord,
     Task,
     TaskEvent,
@@ -59,6 +63,7 @@ from backend.rbac.authorization import (
     require_company_access,
     require_permission,
 )
+from backend.db.models.report import MonthlyReport
 from backend.rbac.permissions import Perm
 from backend.services import audit_service, confidential_access_service, notification_service
 
@@ -184,6 +189,33 @@ def change_task_status(
         recipient_ids=[uid for uid in (task.created_by_id, task.reviewer_id) if uid],
         task_id=task.id, company_id=task.company_id, task_title=task.title,
         status_ar=status_ar, status_en=status_en, actor_user_id=user.id,
+    )
+    return task
+
+
+def note_task(
+    db: Session, *, user: User, task_id: int, note: str,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> Task:
+    """Deck slide 20: [إضافة سؤال] records a clarification on the task log.
+
+    The task does not change state -- the specialist is asking while it stays
+    where it is -- so this appends a same-state event with the question as its
+    note. A note is a question, not a transition: the status history therefore
+    shows ``X -> X`` with the text, which is exactly the append-only audit the
+    deck asks for.
+    """
+    require_permission(user, Perm.TASK_STATUS_CHANGE)
+    task = _get_task(db, user=user, task_id=task_id)
+    require_company_access(user, task.company_id, write=True)
+
+    _add_task_event(db, task=task, actor=user, from_status=task.status,
+                    to_status=task.status, note=note)
+    audit_service.record(
+        db, action=AuditAction.TASK_STATUS_CHANGED, actor_user_id=user.id,
+        entity_type="task", entity_id=task.id, company_id=task.company_id,
+        ip_address=ip_address, user_agent=user_agent,
+        metadata={"from": task.status, "to": task.status, "note": note},
     )
     return task
 
@@ -1015,6 +1047,10 @@ def create_project_record(
     results: str | None = None, resource_estimate: str | None = None,
     estimated_value=None, currency: str = "SAR", status: str = "open",
     owner_decision_id: int | None = None,
+    stage: str | None = None, market_customers: str | None = None,
+    information_source: str | None = None, expected_revenue: str | None = None,
+    key_risks: str | None = None, alternatives: str | None = None,
+    recommendation: str | None = None, study_sources: str | None = None,
     ip_address: str | None = None, user_agent: str | None = None,
 ) -> ProjectRecord:
     require_permission(user, Perm.PROJECT_MANAGE)
@@ -1022,6 +1058,8 @@ def create_project_record(
         require_company_access(user, company_id, write=True)
     if record_type not in {t.value for t in ProjectRecordType}:
         raise ValidationError("Unknown record type.")
+    if stage is not None and stage not in {s.value for s in ProjectStage}:
+        raise ValidationError("Unknown opportunity stage.")
     _validate_project_period(period_start, period_end)
 
     record = ProjectRecord(
@@ -1038,6 +1076,14 @@ def create_project_record(
         currency=currency or "SAR",
         status=status,
         owner_decision_id=owner_decision_id,
+        stage=stage,
+        market_customers=market_customers,
+        information_source=information_source,
+        expected_revenue=expected_revenue,
+        key_risks=key_risks,
+        alternatives=alternatives,
+        recommendation=recommendation,
+        study_sources=study_sources,
         created_by_id=user.id,
     )
     db.add(record)
@@ -1047,6 +1093,67 @@ def create_project_record(
         db, action=AuditAction.PROJECT_RECORD_CREATED, actor_user_id=user.id,
         entity_type="project_record", entity_id=record.id, company_id=company_id,
         ip_address=ip_address, user_agent=user_agent,
+    )
+    return record
+
+
+def raise_project_to_owner(
+    db: Session, *, user: User, record_id: int,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> ProjectRecord:
+    """Deck slide 26 [رفع للمالك عند الحاجة] / spec §7 Table 21 "رفع للمالك".
+
+    An opportunity the BD manager cannot decide within its own authority is
+    raised as an owner *decision topic*. The deck is explicit about the shape:
+    a topic is opened for the owner, and the record is linked to the decision it
+    produced (AC-20 "السجل يربط بالقرار نفسه").
+
+    The decision is created ``open`` with no executor -- the owner assigns one
+    when issuing the actual decision -- and the record's ``owner_decision_id``
+    points at it, so the two stay joined. This is deliberately *not* an approval
+    chain: nothing is blocked, and the owner may still decide informally.
+    """
+    require_permission(user, Perm.PROJECT_MANAGE)
+    record = db.get(ProjectRecord, record_id)
+    if record is None:
+        raise NotFoundError("Project or opportunity not found.")
+    if record.company_id is not None:
+        require_company_access(user, record.company_id, write=True)
+
+    decision = OwnerDecision(
+        number=f"OPP-{record.id}",
+        company_id=record.company_id,
+        title=record.name,
+        body=record.recommendation or record.objective or record.description,
+        status=OwnerDecisionStatus.OPEN.value,
+        created_by_id=user.id,
+        decided_at=utcnow(),
+    )
+    db.add(decision)
+    db.flush()
+    record.owner_decision_id = decision.id
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    audit_service.record(
+        db, action=AuditAction.OWNER_DECISION_CREATED, actor_user_id=user.id,
+        entity_type="owner_decision", entity_id=decision.id,
+        company_id=record.company_id, ip_address=ip_address, user_agent=user_agent,
+        metadata={"raised_from": "project_record", "project_record_id": record.id},
+    )
+    notification_service.notify(
+        db,
+        recipient_ids=_owner_recipient_ids(db),
+        type=NotificationType.SYSTEM.value,
+        title_ar="موضوع مرفوع من تطوير الأعمال",
+        title_en="Topic raised by Business Development",
+        message_ar=f"رفع تطوير الأعمال «{record.name}» لموضوع قرار.",
+        message_en=f"Business Development raised “{record.name}” as a decision topic.",
+        priority=NotificationPriority.HIGH.value,
+        entity_type="owner_decision", entity_id=decision.id,
+        company_id=record.company_id,
+        actor_user_id=user.id,
     )
     return record
 
@@ -1071,6 +1178,10 @@ def update_project_record(
     if "record_type" in changes and changes["record_type"] is not None:
         if changes["record_type"] not in {t.value for t in ProjectRecordType}:
             raise ValidationError("Unknown record type.")
+
+    if changes.get("stage") is not None:
+        if changes["stage"] not in {s.value for s in ProjectStage}:
+            raise ValidationError("Unknown opportunity stage.")
 
     period_start = changes.get("period_start", record.period_start)
     period_end = changes.get("period_end", record.period_end)
@@ -1139,7 +1250,173 @@ def serialise_project_record(r: ProjectRecord) -> dict:
         "resource_estimate": r.resource_estimate,
         "estimated_value": r.estimated_value, "currency": r.currency,
         "status": r.status, "owner_decision_id": r.owner_decision_id,
+        "stage": r.stage,
+        "market_customers": r.market_customers,
+        "information_source": r.information_source,
+        "expected_revenue": r.expected_revenue,
+        "key_risks": r.key_risks,
+        "alternatives": r.alternatives,
+        "recommendation": r.recommendation,
+        "study_sources": r.study_sources,
         "created_by_id": r.created_by_id, "created_at": r.created_at,
+    }
+
+
+# --------------------------------------------------------------------------
+# deck slide 46: the manager's smart-brief plan request
+# --------------------------------------------------------------------------
+def _bd_recipient_ids(db: Session) -> list[int]:
+    """Active Business Development ids (the plan request's sole reader)."""
+    return list(
+        db.execute(
+            select(User.id)
+            .join(Role, Role.id == User.role_id)
+            .where(
+                User.is_active.is_(True),
+                Role.code == RoleCode.BUSINESS_DEVELOPMENT.value,
+            )
+        ).scalars()
+    )
+
+
+def request_plan(
+    db: Session, *, user: User, period_year: int, period_month: int,
+    company_id: int | None = None,
+    ip_address: str | None = None, user_agent: str | None = None,
+) -> PlanRequest:
+    """Deck slide 46 [نعم، اطلب خطة]: the manager asks BD for a plan.
+
+    Only a company manager (of the company, or the owner acting for it) may
+    raise the request, and only after the period's report is approved -- the
+    brief itself only appears then. The request is a hand-off, never an approval
+    chain: the AI's role ends at the summary, so BD answers the plan by hand.
+    The stored summary/advice are rebuilt server-side from the approved report
+    so a client cannot fabricate the figures.
+    """
+    require_permission(user, Perm.SUPPORT_CREATE)  # the manager's own capability
+    target_company = company_id
+    if target_company is None:
+        permitted = user.permitted_company_ids
+        if len(permitted) == 1:
+            target_company = permitted[0]
+    if target_company is None:
+        raise ValidationError("A company is required to request a plan.")
+    require_company_access(user, target_company, write=False)
+    _validate_brief_period(period_year, period_month)
+
+    report = db.execute(
+        select(MonthlyReport).where(
+            MonthlyReport.company_id == target_company,
+            MonthlyReport.period_year == period_year,
+            MonthlyReport.period_month == period_month,
+            MonthlyReport.is_live.is_(True),
+        )
+    ).scalar_one_or_none()
+    if report is None:
+        raise ValidationError("No report exists for this company and period.")
+    if report.approval_status != ReportApprovalStatus.APPROVED.value:
+        raise ValidationError("The report must be approved before a plan can be requested.")
+
+    summary, advice = _smart_brief_text(report)
+    # One open request per company/period: re-asking just returns the existing
+    # row rather than piling up duplicates for BD.
+    existing = db.execute(
+        select(PlanRequest).where(
+            PlanRequest.company_id == target_company,
+            PlanRequest.period_year == period_year,
+            PlanRequest.period_month == period_month,
+            PlanRequest.status == PlanRequestStatus.REQUESTED.value,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    request = PlanRequest(
+        company_id=target_company,
+        period_year=period_year,
+        period_month=period_month,
+        summary=summary,
+        advice=advice,
+        status=PlanRequestStatus.REQUESTED.value,
+        requested_by_id=user.id,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    audit_service.record(
+        db, action=AuditAction.PLAN_REQUEST_CREATED, actor_user_id=user.id,
+        entity_type="plan_request", entity_id=request.id, company_id=target_company,
+        ip_address=ip_address, user_agent=user_agent,
+    )
+    notification_service.notify(
+        db,
+        recipient_ids=_bd_recipient_ids(db),
+        type=NotificationType.SYSTEM.value,
+        title_ar="طلب خطة من مدير شركة",
+        title_en="Plan requested by a company manager",
+        message_ar=f"طلب مدير الشركة خطة للفترة {period_year}-{period_month:02d}.",
+        message_en=f"A company manager requested a plan for {period_year}-{period_month:02d}.",
+        priority=NotificationPriority.NORMAL.value,
+        entity_type="plan_request", entity_id=request.id,
+        company_id=target_company,
+        actor_user_id=user.id,
+    )
+    return request
+
+
+def _smart_brief_text(report: MonthlyReport) -> tuple[str, str]:
+    """The one fact + one advice the manager's brief shows (deck slide 46).
+
+    Deterministic, built from the approved report's own figures, so the brief
+    can never cite a number the manager cannot already read. Returns
+    ``(summary_ar, advice_ar)``.
+    """
+    revenue = report.revenue
+    expenses = report.expenses
+    net = report.net_result
+    if net is None and revenue is not None and expenses is not None:
+        net = revenue - expenses
+    if net is not None and net < 0:
+        summary = "نتيجة الشهر سالبة؛ راجعوا المصروفات."
+    elif revenue is not None and expenses is not None and expenses > revenue:
+        summary = "المصروفات تجاوزت الإيراد هذا الشهر."
+    elif revenue is not None:
+        summary = "الإيراد مسجل لهذا الشهر؛ استكملوا التحصيل."
+    else:
+        summary = "التقرير المعتمد متاح للمراجعة."
+
+    if report.outstanding_receivables is not None and report.outstanding_receivables > 0:
+        advice = "راجعوا المستحقات المتأخرة وحددوا موعد متابعة لكل منها."
+    elif report.support_required:
+        advice = f"تابعوا الدعم المطلوب: {report.support_required}"
+    else:
+        advice = "حافظوا على وتيرة الإيراد وراجعوا المصروفات المتكررة."
+    return summary, advice
+
+
+def list_plan_requests(
+    db: Session, *, user: User, company_id: int | None = None,
+    status: str | None = None,
+) -> list[PlanRequest]:
+    require_permission(user, Perm.PROJECT_READ)
+    stmt = select(PlanRequest).order_by(PlanRequest.created_at.desc())
+    allowed = accessible_company_ids(user)
+    if allowed is not None:
+        stmt = stmt.where(PlanRequest.company_id.in_(allowed))
+    if company_id is not None:
+        stmt = stmt.where(PlanRequest.company_id == company_id)
+    if status is not None:
+        stmt = stmt.where(PlanRequest.status == status)
+    return list(db.execute(stmt).scalars())
+
+
+def serialise_plan_request(r: PlanRequest) -> dict:
+    return {
+        "id": r.id, "company_id": r.company_id,
+        "period_year": r.period_year, "period_month": r.period_month,
+        "summary": r.summary, "advice": r.advice, "status": r.status,
+        "requested_by_id": r.requested_by_id, "created_at": r.created_at,
     }
 
 

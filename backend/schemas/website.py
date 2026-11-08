@@ -392,6 +392,27 @@ class LeadUpdateRequest(BaseModel):
     internal_notes: str | None = Field(default=None, max_length=_TEXT_MAX)
 
 
+class LeadCreateRequest(BaseModel):
+    """A lead recorded inside the platform (S13, deck slide 14).
+
+    The public website is the usual source, but the Holding also records a lead
+    it hears about directly ("تسجل القابضة العميل مرة واحدة"). This is the
+    internal counterpart: the contact block is required, the routing is derived
+    by the server exactly as it is for a public submission, and the source is
+    forced to ``platform`` so an internal entry is never mistaken for a website
+    submission.
+    """
+
+    full_name: str = Field(min_length=1, max_length=_NAME_MAX)
+    email: EmailStr
+    phone: str | None = Field(default=None, max_length=_PHONE_MAX)
+    company_name: str | None = Field(default=None, max_length=_SHORT_MAX)
+    service_type: WebsiteServiceType
+    market: Market
+    message: str | None = Field(default=None, max_length=_TEXT_MAX)
+    priority: LeadPriority | None = None
+
+
 class OpportunityReviewRequest(BaseModel):
     """Approve/reject a submitted listing, and optionally publish it."""
 

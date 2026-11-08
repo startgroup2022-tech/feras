@@ -12,60 +12,60 @@ Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG pixels vs live D
 |---|---|---|---|---|---|
 | 1 | START UPSPHERE HOLDING  |  منصة سفير القابضة | cover | - | REF | Deck cover; no screen. |
 | 2 | مبادئ تصميم المنصة | principles | - | REF | Design principles; no single screen. |
-| 3 | خريطة الوحدات الرئيسية | module map | dashboard | OK | view dashboard renders (4085 chars); Six modules map to the six primary sidebar sections. |
-| 4 | قالب الشاشة الموحد | screen template | dashboard | OK | view dashboard renders (4085 chars); header entity+period control (entity-select=ok, period-select=ok, entity-wired=ok, live-probe=ok); RTL sidebar right, fixed top bar, header entity+period selector. |
+| 3 | خريطة الوحدات الرئيسية | module map | dashboard | OK | view dashboard renders (6341 chars); Six modules map to the six primary sidebar sections. |
+| 4 | قالب الشاشة الموحد | screen template | dashboard | OK | view dashboard renders (6341 chars); header entity+period control (entity-select=ok, period-select=ok, entity-wired=ok, live-probe=ok); RTL sidebar right, fixed top bar, header entity+period selector. |
 | 5 | العربية والإنجليزية والاستجابة للشاشات | i18n | dashboard | OK | en: 7 roles crawled, dir=ltr, nav entries 113; ar: 7 roles crawled, dir=rtl, nav entries 113; AR RTL / EN LTR; both crawled clean. |
 | 6 | تسجيل الدخول | login | - | OK | sign-in controls (remember=ok, forgot=ok, notice=ok, lang-toggle=ok, storage-split=ok, forgot-handler=ok); Login gate: email + password + [تذكرني على هذا الجهاز] + [تسجيل الدخول] + [نسيت كلمة المرور؟] + language toggle. Recovery is admin-mediated (no self-service email-reset endpoint in Phase 3). |
-| 7 | لوحة المالك | role dashboard | dashboard | OK | view dashboard renders (4085 chars); role holding_owner: ar nav=21, en nav=21; role holding_owner: 4 tiles ['profit_trend', 'operating_cash', 'liquidity_risk', 'pending_decisions']; role holding_owner: strip painted; Browser probe: title «لوحة القيادة للمجموعة», greeting «مرحبًا المالك | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['اتجاه الأرباح', 'النقد التشغيلي', 'مخاطر السيولة', 'قرارات معلقة'].; Owner strip: profit trend, operating cash, liquidity risk, pending decisions. |
+| 7 | لوحة المالك | role dashboard | dashboard | OK | view dashboard renders (6341 chars); role holding_owner: ar nav=21, en nav=21; role holding_owner: 4 tiles ['profit_trend', 'operating_cash', 'liquidity_risk', 'pending_decisions']; role holding_owner: strip painted; Browser probe: title «لوحة القيادة للمجموعة», greeting «مرحبًا المالك | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['اتجاه الأرباح', 'النقد التشغيلي', 'مخاطر السيولة', 'قرارات معلقة'].; Owner strip: profit trend, operating cash, liquidity risk, pending decisions. |
 | 8 | لوحة مدير تطوير الأعمال | role dashboard | dashboard | OK | role business_development: ar nav=20, en nav=20; role business_development: 4 tiles ['awaiting_assignment', 'tasks_in_progress', 'active_opportunities', 'reports_follow_up']; role business_development: strip painted; Browser probe: title «لوحة تطوير الأعمال», greeting «مرحبًا مدير تطوير الأعمال | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['طلبات بانتظار الإسناد', 'مهام قيد التنفيذ', 'فرص نشطة', 'تقارير تحتاج متابعة'].; BD strip: awaiting assignment, tasks in progress, active opportunities, reports to follow up. |
 | 9 | لوحة مدير الشركة التابعة | role dashboard | dashboard | OK | role company_manager: ar nav=17, en nav=17; role company_manager: 3 tiles ['month_result', 'cash_balance', 'support_requests']; role company_manager: strip painted; Browser probe: title «لوحة الشركة», greeting «مرحبًا مدير الشركة | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['نتيجة الشهر', 'الرصيد النقدي', 'طلبات الدعم'].; Company strip: month result, cash balance, support requests. The deck's fourth tile (prospective clients) is gated on website_lead.read, which company_manager deliberately does not hold -- the tile is absent rather than faked, and reappears automatically if that boundary is relaxed (S13 AC-13). |
 | 10 | لوحة الموظف المختص | role dashboard | dashboard | OK | role designer: ar nav=14, en nav=14; role designer: 4 tiles ['my_open_tasks', 'overdue', 'awaiting_info', 'completed_month']; role designer: strip painted; Browser probe: title «مساحة عملي», greeting «مرحبًا موظف مختص | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['مهامي المفتوحة', 'متأخرة', 'بانتظار معلومات', 'مكتملة هذا الشهر'].; Specialist strip counts only tasks assigned to the caller. |
 | 11 | لوحة موظف المبيعات | role dashboard | dashboard | OK | role marketing: ar nav=17, en nav=17; role marketing: 4 tiles ['new_leads', 'awaiting_contact', 'qualified_leads', 'follow_up_week']; role marketing: strip painted; Browser probe: title «العملاء والفرص», greeting «مرحبًا موظف المبيعات | يعرض النظام البيانات المسموح بها لدورك», 4-col strip 1602x124 labels ['عملاء جدد', 'بانتظار التواصل', 'فرص مؤهلة', 'متابعة هذا الأسبوع'].; Sales strip: new leads, awaiting contact, qualified leads, follow up this week. |
-| 12 | قائمة الشركات التابعة | ORG | subsidiaries | OK | view subsidiaries renders (932 chars); subsidiaries.filterbar=1 |
-| 13 | ملف الشركة التابعة | ORG | subsidiaries | OK | subsidiaries detail: openCompany() present |
+| 12 | قائمة الشركات التابعة | ORG | subsidiaries | OK | view subsidiaries renders (1864 chars); subsidiaries.filterbar=1 |
+| 13 | ملف الشركة التابعة | ORG | subsidiaries | OK | subsidiaries detail: openCompany() present; company file (edit-button=ok, label=ok, fields=ok, saves=ok, clean-console=ok) |
 | 14 | واجهة العملاء المحتملين | ORG | leads | OK | view leads renders (1278 chars); leads.filterbar=1 |
 | 15 | تفاصيل العميل المحتمل | ORG | leads | OK | leads detail: openLead() present |
 | 16 | الحملات التسويقية | ORG | operations | OK | operations/campaigns.buttons=4 |
-| 17 | مركز الطلبات | ORG | requests | OK | view requests renders (694 chars) |
-| 18 | نموذج طلب دعم جديد | ORG | requests | OK | requests detail: openSubmission() present |
+| 17 | مركز الطلبات | ORG | requests | OK | view requests renders (886 chars); requests detail: openSubmission() present |
+| 18 | نموذج طلب دعم جديد | ORG | support | OK | view support renders (1146 chars); deck control slide18_save_draft: app label 'حفظ مسودة' (deck 'حفظ مسودة'); deck control slide18_send_request: app label 'إرسال الطلب' (deck 'إرسال الطلب'); The deck's new-support-request form is the Support view's create dialog; both named controls now render. The deck draws a richer field set (goal, priority, requested date, estimated budget) than the app's form, which follows the Word spec's Table 48 (company, service type, description, date, dimensions/platform, reference link) -- the spec wins for field business rules. |
 | 19 | إسناد الطلب ومراجعته | ORG | support | OK | support detail: openSupport() present |
-| 20 | مساحة تنفيذ المهمة | ORG | operations | OK | operations/tasks.buttons=4 |
+| 20 | مساحة تنفيذ المهمة | ORG | operations | OK | operations/tasks.buttons=4; deck control slide20_start: app label 'بدء التنفيذ' (deck 'بدء التنفيذ') |
 | 21 | التغذية الراجعة | ORG | feedback | OK | view feedback renders (917 chars) |
-| 22 | التقرير الإداري الشهري | FRM | reports | OK | view reports renders (1478 chars) |
-| 23 | الملخص المالي الشهري للشركة | HF | financial | OK | view financial renders (1105 chars) |
+| 22 | التقرير الإداري الشهري | FRM | reports | OK | view reports renders (1670 chars); deck control slide22_save_submit: app label 'حفظ وإرسال' (deck 'حفظ وإرسال') |
+| 23 | الملخص المالي الشهري للشركة | HF | financial | OK | view financial renders (2192 chars); deck control slide23_save_draft: app label 'حفظ مسودة' (deck 'حفظ مسودة'); deck control slide23_submit_review: app label 'إرسال للمراجعة' (deck 'إرسال للمراجعة'); deck control slide23_send_accountant: app label 'إرسال للمحاسب' (deck 'إرسال للمحاسب') |
 | 24 | مراجعة المحاسب للتقرير المالي | HF | financial | OK | GET /api/v1/monthly-reports -> 200 |
-| 25 | الفرص والمشاريع | ORG | projects | OK | view projects renders (810 chars) |
-| 26 | تفاصيل وتقييم الفرصة | ORG | projects | OK | projects detail: openOpportunity() present |
-| 27 | قائمة قرارات المالك | ORG | decisions | OK | view decisions renders (424 chars) |
+| 25 | الفرص والمشاريع | ORG | projects | OK | view projects renders (1002 chars) |
+| 26 | تفاصيل وتقييم الفرصة | ORG | projects | OK | projects detail: openOpportunity() present; deck control slide26_save_study: app label 'حفظ الدراسة' (deck 'حفظ الدراسة'); deck control slide26_raise_owner: app label 'رفع للمالك عند الحاجة' (deck 'رفع للمالك عند الحاجة') |
+| 27 | قائمة قرارات المالك | ORG | decisions | OK | view decisions renders (616 chars) |
 | 28 | تفاصيل القرار | ORG | decisions | OK | decisions detail: openDecision() present |
-| 29 | سجل القرار ومتابعة التنفيذ | ORG | decisions | OK | decision lifecycle (status=ok, reply=ok) |
+| 29 | سجل القرار ومتابعة التنفيذ | ORG | decisions | OK | decision lifecycle (status=ok, reply=ok); deck control slide29_decision_log: app label 'عرض سجل القرار' (deck 'عرض سجل القرار') |
 | 30 | توجيهات المالك لمدير الشركة | ORG | decisions | OK | decision lifecycle (status=ok, reply=ok) |
-| 31 | شكاوى العملاء | ORG | confidential | OK | view confidential renders (427 chars) |
-| 32 | مالية القابضة | HF | accounting | OK | view accounting renders (632 chars) |
-| 33 | الموظفون والتطوير | EMP | employees | OK | view employees renders (2645 chars) |
-| 34 | مساحة المستشار الخارجي | EMP | employees | OK | employees detail: openEmployee() present; role external_consultant: ar nav=8, en nav=8 |
-| 35 | التقارير والتحليل الذكي | BI | bi | OK | view bi renders (1027 chars) |
-| 36 | التنبيهات وسجل النشاط | BI | inbox | OK | view inbox renders (650 chars) |
-| 37 | المستخدمون والصلاحيات | CFG | admin | OK | view admin renders (1194 chars) |
-| 38 | حالات الواجهة المشتركة | components | - | OK | hook emptyHtml present; hook loadingHtml present; hook data-retry present; Empty / loading / correction / error states with the deck's [إعادة المحاولة] retry control. |
+| 31 | شكاوى العملاء | ORG | confidential | OK | view confidential renders (619 chars); complaint register action='تسجيل إجراء' |
+| 32 | مالية القابضة | HF | accounting | OK | view accounting renders (824 chars) |
+| 33 | الموظفون والتطوير | EMP | employees | OK | view employees renders (2837 chars) |
+| 34 | مساحة المستشار الخارجي | EMP | employees | OK | employees detail: openEmployee() present; role external_consultant: ar nav=8, en nav=8; deck control slide34_assignment_scope: app label 'نطاق التكليف ▾' (deck 'نطاق التكليف') |
+| 35 | التقارير والتحليل الذكي | BI | bi | OK | view bi renders (1571 chars); deck control slide35_prepare_summary: app label 'إعداد ملخص' (deck 'إعداد ملخص') |
+| 36 | التنبيهات وسجل النشاط | BI | inbox | OK | view inbox renders (650 chars); deck control slide36_open_form: app label 'فتح الاستمارة' (deck 'فتح الاستمارة') |
+| 37 | المستخدمون والصلاحيات | CFG | admin | OK | view admin renders (2265 chars); deck control slide37_add_user: app label 'إضافة مستخدم' (deck 'إضافة مستخدم') |
+| 38 | حالات الواجهة المشتركة | components | - | OK | hook emptyHtml present; hook loadingHtml present; hook data-retry present; deck control slide38_open_correction: app label 'فتح للتصحيح' (deck 'فتح للتصحيح'); deck control slide38_create_request: app label 'إنشاء طلب' (deck 'إنشاء طلب'); Empty / loading / correction / error states with the deck's [إعادة المحاولة] retry control. |
 | 39 | نموذج الهاتف | responsive | dashboard | OK | ☰ drawer @390px (toggle=ok, scrim=ok, drawer-css=ok, drawer-js=ok) |
-| 40 | تدفق طلب الدعم | workflow | support | OK | view support renders (954 chars) |
-| 41 | مساران مستقلان للمالية والقرارات | workflow | support | OK | view support renders (954 chars) |
+| 40 | تدفق طلب الدعم | workflow | support | OK | view support renders (1146 chars) |
+| 41 | مساران مستقلان للمالية والقرارات | workflow | support | OK | view support renders (1146 chars) |
 | 42 | ملخص الوصول وخريطة التفصيل | governance | - | REF | Access-summary and acceptance-checklist reference; enforced by the RBAC matrix (slides 74-83) and the acceptance suite (slides 137-138), not by a single screen. |
 | 43 | قائمة الاعتماد: الأساس والتفصيل | governance | - | REF | Access-summary and acceptance-checklist reference; enforced by the RBAC matrix (slides 74-83) and the acceptance suite (slides 137-138), not by a single screen. |
-| 44 | الاستمارات: نواة مشتركة + قطاع + إضافة خاصة | FRM | requests | OK | view requests renders (694 chars) |
+| 44 | الاستمارات: نواة مشتركة + قطاع + إضافة خاصة | FRM | requests | OK | view requests renders (886 chars); field types present: 6/6 |
 | 45 | الرصيد الافتتاحي: إدخال تأسيسي مرة واحدة | FRM | accounting | OK | GET /api/v1/accounting/opening-balances -> 200 |
-| 46 | ملخص ذكي قصير لمدير الشركة | BI | bi | OK | GET /api/v1/ai/insights -> 200 |
+| 46 | ملخص ذكي قصير لمدير الشركة | BI | bi | OK | GET /api/v1/ai/insights -> 200; deck control slide46_plan: app label 'نعم، اطلب خطة' (deck 'نعم، اطلب خطة'); deck control slide46_decline: app label 'لا، شكرًا' (deck 'لا، شكرًا') |
 | 47 | حدود وصول المستشار الخارجي | governance | employees | OK | role external_consultant: ar nav=8, en nav=8; role external_consultant: 7 perms; Enforced by RBAC (external_consultant, D04): sees only its assigned sessions and the employees on them, adds advice, and holds no sector form, opening balance, ledger or approval permission. |
 | 48 | خريطة الوصول التنفيذية المحدثة | registry | - | REF | Updated access map; the live equivalent is the RBAC matrix (slides 74-83) re-verified by the AR/EN role crawl. |
 | 49 | سجل الشاشات ومفاتيح الربط | registry | - | REF | Screen registry with link keys; the keys are the data-* hooks the compliance matrix scores per view (app_inventory.json). |
-| 50 | معالج إضافة شركة: تعريف الجهة | ORG | admin | OK | GET /api/v1/companies -> 200; Company create is API + admin tab; no multi-step browser wizard. |
-| 51 | معالج إضافة شركة: الملكية والمتابعة | ORG | admin | OK | GET /api/v1/companies -> 200; Company create is API + admin tab; no multi-step browser wizard. |
-| 52 | معالج إضافة شركة: القالب والتفعيل | ORG | admin | OK | GET /api/v1/companies -> 200; Company create is API + admin tab; no multi-step browser wizard. |
+| 50 | معالج إضافة شركة: تعريف الجهة | ORG | admin | OK | company setup wizard (three-steps=ok, step-names=ok, next=ok, prev=ok, draft=ok, activate=ok, walks=ok, activates=ok, no-access-on-draft=ok, review=ok, rail-right=ok, two-column=ok, deck-labels=ok, deck-order=ok, clean-console=ok); Three-step browser wizard (الهوية والقطاع → الملكية والمتابعة → القالب والتفعيل) with [السابق]/[حفظ مسودة]/[التالي]/[تفعيل الشركة]; activation links the manager and the holding stake, and a draft grants no access. Driven end-to-end by scripts/audit/company_wizard_probe.py. |
+| 51 | معالج إضافة شركة: الملكية والمتابعة | ORG | admin | OK | company setup wizard (three-steps=ok, step-names=ok, next=ok, prev=ok, draft=ok, activate=ok, walks=ok, activates=ok, no-access-on-draft=ok, review=ok, rail-right=ok, two-column=ok, deck-labels=ok, deck-order=ok, clean-console=ok); Three-step browser wizard (الهوية والقطاع → الملكية والمتابعة → القالب والتفعيل) with [السابق]/[حفظ مسودة]/[التالي]/[تفعيل الشركة]; activation links the manager and the holding stake, and a draft grants no access. Driven end-to-end by scripts/audit/company_wizard_probe.py. |
+| 52 | معالج إضافة شركة: القالب والتفعيل | ORG | admin | OK | company setup wizard (three-steps=ok, step-names=ok, next=ok, prev=ok, draft=ok, activate=ok, walks=ok, activates=ok, no-access-on-draft=ok, review=ok, rail-right=ok, two-column=ok, deck-labels=ok, deck-order=ok, clean-console=ok); Three-step browser wizard (الهوية والقطاع → الملكية والمتابعة → القالب والتفعيل) with [السابق]/[حفظ مسودة]/[التالي]/[تفعيل الشركة]; activation links the manager and the holding stake, and a draft grants no access. Driven end-to-end by scripts/audit/company_wizard_probe.py. |
 | 53 | قواعد تأسيس الشركة وتغيير إعداداتها | governance | - | REF | Company-founding and settings-change rules; enforced by the company create/update service and the audit log, verified in tests/test_admin. |
-| 54 | دليل الاستمارات: قواعد التنفيذ المشتركة | FRM | requests | OK | view requests renders (694 chars) |
-| 55 | النواة المالية المشتركة: الحقول الفعلية | HF | financial | OK | view financial renders (1105 chars) |
-| 56 | النواة الإدارية والإثباتات المشتركة | FRM | reports | OK | view reports renders (1478 chars) |
+| 54 | دليل الاستمارات: قواعد التنفيذ المشتركة | FRM | requests | OK | view requests renders (886 chars) |
+| 55 | النواة المالية المشتركة: الحقول الفعلية | HF | financial | OK | view financial renders (2192 chars) |
+| 56 | النواة الإدارية والإثباتات المشتركة | FRM | reports | OK | view reports renders (1670 chars) |
 | 57 | استمارة قطاع التجارة | FRM | admin | OK | admin/builder.buttons=2 |
 | 58 | حقول قطاع التجارة وتعريفاتها | FRM | admin | OK | admin/builder.buttons=2 |
 | 59 | تحقق قطاع التجارة ومؤشراته | FRM | admin | OK | admin/builder.buttons=2 |
@@ -100,9 +100,9 @@ Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG pixels vs live D
 | 88 | خريطة واجهة المنصب: المستشار الخارجي / مسؤول النظام | governance | dashboard | OK | role external_consultant: ar nav=8, en nav=8 |
 | 89 | الهاتف: المالك والمحاسب ومدير الشركة | responsive | dashboard | OK | ☰ drawer @390px (toggle=ok, scrim=ok, drawer-css=ok, drawer-js=ok) |
 | 90 | الهاتف: التنفيذ والتسويق والمستشار | responsive | dashboard | OK | ☰ drawer @390px (toggle=ok, scrim=ok, drawer-css=ok, drawer-js=ok) |
-| 91 | لوحة مالية القابضة | HF | accounting | OK | view accounting renders (632 chars) |
+| 91 | لوحة مالية القابضة | HF | accounting | OK | view accounting renders (824 chars) |
 | 92 | إضافة عملية مالية للقابضة | HF | - | OK | GET /api/v1/accounting/journals -> 200 |
-| 93 | الإيرادات والفواتير الصادرة | HF | accounting | OK | accounting/invoices renders (683 chars) |
+| 93 | الإيرادات والفواتير الصادرة | HF | accounting | OK | accounting/invoices renders (1067 chars) |
 | 94 | المصروفات والموردون والفواتير الواردة | HF | - | OK | GET /api/v1/accounting/parties -> 200 |
 | 95 | الذمم والتحصيل والسداد | HF | - | OK | GET /api/v1/accounting/receivables -> 200 |
 | 96 | الحسابات البنكية والصندوق | HF | - | OK | GET /api/v1/accounting/accounts -> 200 |
@@ -116,10 +116,10 @@ Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG pixels vs live D
 | 104 | قواعد بيانات الموظفين ودورة الملف | spec | - | REF | Employee-data rules and file lifecycle; enforced by hr_service (employee.create/update, movement decision) and tests/test_hr. |
 | 105 | لوحة التوطين لكل جهة | EMP | employees | OK | hook function renderLocalizationBoard present; hook لوحة التوطين لكل جهة present; hook localization_target_pct present; hook قاعدة الاحتساب present; hook function openLocalizationEdit present; Per-entity board computed from active employees: country, total, citizens, non-citizens, included, current rate, target, applied calculation rule and a below-target follow-up flag; the target and rule are editable administration data (slide 106). |
 | 106 | إعداد التوطين والتقرير المجمع | spec | - | REF | Localization setup and aggregate report; the per-entity target and calculation-rule edition live on the company record and are surfaced on slide 105's board. |
-| 107 | قائمة محفظة الملكية والاستثمارات | INV | investments | OK | view investments renders (744 chars); hook function loadInvestmentPortfolio present; hook سجل محفظة الملكية والاستثمارات present; hook إضافة استثمار present; hook فتح التفاصيل present; hook رفع قرار present; hook تقرير المحفظة present; hook حالة الاستثمار present; hook العملة الأصلية present; GET /api/v1/admin/ownerships -> 200; The register renders real ownership rows (owner, %, effective date, status) with the deck's four actions: [إضافة استثمار] and [رفع قرار] appear only for the roles that hold ownership.manage / owner_decision.manage (the permissions their endpoints enforce), and [تقرير المحفظة] exports the register the caller is already reading. The register also carries the deck's own filter columns (حالة الاستثمار، العملة الأصلية) plus search, sort and paging (slides 134-136). |
+| 107 | قائمة محفظة الملكية والاستثمارات | INV | investments | OK | view investments renders (2264 chars); hook function loadInvestmentPortfolio present; hook سجل محفظة الملكية والاستثمارات present; hook إضافة استثمار present; hook فتح التفاصيل present; hook رفع قرار present; hook تقرير المحفظة present; hook حالة الاستثمار present; hook العملة الأصلية present; GET /api/v1/admin/ownerships -> 200; The register renders real ownership rows (owner, %, effective date, status) with the deck's four actions: [إضافة استثمار] and [رفع قرار] appear only for the roles that hold ownership.manage / owner_decision.manage (the permissions their endpoints enforce), and [تقرير المحفظة] exports the register the caller is already reading. The register also carries the deck's own filter columns (حالة الاستثمار، العملة الأصلية) plus search, sort and paging (slides 134-136). |
 | 108 | تفاصيل الاستثمار والقرار المرتبط | INV | investments | OK | hook function openInvestment present; hook القيمة الدفترية وتاريخها present; hook التقييم المعتمد present; hook القرار المرتبط present; hook function openInvestmentEdit present; hook has_valuation present; GET /api/v1/admin/investment-valuations -> 200; Detail shows ownership %, original value, contributions, financing, distributions, the entered book value with its date and source, the yes/no valuation (no invented zero) and the linked owner decision; figures are entered as approved, not summed (deck slide 109). |
 | 109 | الاستثمار: الحقول المحسوبة والوصول | INV | investments | OK | hook function openInvestment present; hook القيمة الدفترية وتاريخها present; hook التقييم المعتمد present; hook القرار المرتبط present; hook function openInvestmentEdit present; hook has_valuation present; GET /api/v1/admin/investment-valuations -> 200; Detail shows ownership %, original value, contributions, financing, distributions, the entered book value with its date and source, the yes/no valuation (no invented zero) and the linked owner decision; figures are entered as approved, not summed (deck slide 109). |
-| 110 | إعداد العملات وسعر التحويل | FX | admin | OK | admin/structure.buttons=5 |
+| 110 | إعداد العملات وسعر التحويل | FX | admin | OK | admin/structure.buttons=10 |
 | 111 | التقرير المجمع متعدد العملات | FX | - | OK | GET /api/v1/accounting/financial-reports/group -> 200 |
 | 112 | قواعد تجميع العملات والفترات | spec | - | REF | Currency/period aggregation rules; enforced by the group financial report service (per-currency, no cross-currency summing) and tests/test_accounting. |
 | 113 | سجل المؤشرات: إعداد المؤشر | KPI | - | OK | GET /api/v1/accounting/kpis -> 200 |
@@ -136,7 +136,7 @@ Visual frame parity (`scripts/audit/visual_parity.py`, deck PNG pixels vs live D
 | 124 | مسار خدمة وقرار دون خلط الصلاحيات | workflow | - | REF | Service path and decision path kept on separate permissions: a routine request is assigned and closed by support_request.*, while an out-of-authority/budget subject routes to the owner decision path (owner_decision.*). Enforced in support/decision services; covered by tests/test_support and tests/test_rbac. |
 | 125 | طلب التصحيح ومقارنة القيم | VER | reports | OK | hook function loadCorrectionComparison present; hook مقارنة قبل وبعد present; hook id="repCompare" present; GET /api/v1/monthly-reports/1/versions -> 200; A correction version renders the original next to it, field by field (قبل/بعد), with the correction reason, requester and reviewer decision. Read-only; the original stays locked (D03). |
 | 126 | سجل النسخ وتحديث المخرجات | VER | - | REF | Version register and output refresh; the report version history (GET /monthly-reports/{id}/versions) is scored on slides 123/125; this slide adds no separate screen. |
-| 127 | مركز إعدادات النظام | CFG | admin | OK | view admin renders (1194 chars) |
+| 127 | مركز إعدادات النظام | CFG | admin | OK | view admin renders (2265 chars) |
 | 128 | إعدادات: التغيير والنشر والإيقاف | spec | - | REF | Settings change/publish/deactivate rules; enforced by the admin service (user update, company-access grant/revoke) and the audit log, covered by tests/test_admin. |
 | 129 | قاموس الإشعارات: الحدث والمستلم | spec | - | REF | Notification dictionary (event -> recipient); enforced by the notification service and the owner-decision/assessment events, covered by tests/test_operations. |
 | 130 | كتالوج التقارير والطباعة والتصدير 1 | RPT | bi | OK | GET /api/v1/analytics/holding -> 200 |

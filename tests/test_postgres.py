@@ -153,8 +153,12 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # initial schema -- no branches. The Phase 3 AI knowledge base builds on the
     # S11 localization field; the deck v3 employee restricted fields/localization
     # setup, company localization target, and the investment valuation summary
-    # build on top of it.
-    assert head == "f49eb1554901"
+    # build on top of it. The company setup wizard (deck slides 50-52) adds the
+    # wizard fields on top of the investment valuation summary, and the deck
+    # slides 25-26/46 opportunity study + plan requests build on the wizard.
+    assert head == "e1b2c3d4f5a6"
+    assert revisions["e1b2c3d4f5a6"] == "dda8c6a19971"
+    assert revisions["dda8c6a19971"] == "f49eb1554901"
     assert revisions["f49eb1554901"] == "9950bdb57824"
     assert revisions["9950bdb57824"] == "b27b32d9905b"
     assert revisions["b27b32d9905b"] == "2b7c225bbb32"

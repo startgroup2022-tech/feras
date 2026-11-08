@@ -99,7 +99,7 @@ MAPPING: list[dict] = [
          view="subsidiaries",
          signals=[("view", "subsidiaries"), ("filterbar", "subsidiaries")]),
     dict(slides=[13], title="ملف الشركة التابعة", family="ORG",
-         view="subsidiaries", signals=[("detail", "subsidiaries:openCompany")]),
+         view="subsidiaries", signals=[("detail", "subsidiaries:openCompany"), ("company-file", "edit")]),
     dict(slides=[14], title="واجهة العملاء المحتملين", family="ORG",
          view="leads", signals=[("view", "leads"), ("filterbar", "leads")]),
     dict(slides=[15], title="تفاصيل العميل المحتمل", family="ORG", view="leads",
@@ -107,50 +107,70 @@ MAPPING: list[dict] = [
     dict(slides=[16], title="الحملات التسويقية", family="ORG", view="operations",
          signals=[("control", "operations:campaigns:buttons")]),
     dict(slides=[17], title="مركز الطلبات", family="ORG", view="requests",
-         signals=[("view", "requests")]),
-    dict(slides=[18], title="نموذج طلب دعم جديد", family="ORG", view="requests",
-         signals=[("detail", "requests:openSubmission")]),
+         signals=[("view", "requests"), ("detail", "requests:openSubmission")]),
+    dict(slides=[18], title="نموذج طلب دعم جديد", family="ORG", view="support",
+         signals=[("view", "support"),
+                  ("deck-control", "slide18_save_draft"),
+                  ("deck-control", "slide18_send_request")],
+         note="The deck's new-support-request form is the Support view's create "
+              "dialog; both named controls now render. The deck draws a richer "
+              "field set (goal, priority, requested date, estimated budget) than "
+              "the app's form, which follows the Word spec's Table 48 "
+              "(company, service type, description, date, dimensions/platform, "
+              "reference link) -- the spec wins for field business rules."),
     dict(slides=[19], title="إسناد الطلب ومراجعته", family="ORG", view="support",
          signals=[("detail", "support:openSupport")]),
     dict(slides=[20], title="مساحة تنفيذ المهمة", family="ORG", view="operations",
-         signals=[("control", "operations:tasks:buttons")]),
+         signals=[("control", "operations:tasks:buttons"),
+                  ("deck-control", "slide20_start")]),
     dict(slides=[21], title="التغذية الراجعة", family="ORG", view="feedback",
          signals=[("view", "feedback")]),
     dict(slides=[22], title="التقرير الإداري الشهري", family="FRM", view="reports",
-         signals=[("view", "reports")]),
+         signals=[("view", "reports"),
+                  ("deck-control", "slide22_save_submit")]),
     dict(slides=[23], title="الملخص المالي الشهري للشركة", family="HF",
-         view="financial", signals=[("view", "financial")]),
+         view="financial",
+         signals=[("view", "financial"),
+                  ("deck-control", "slide23_save_draft"),
+                  ("deck-control", "slide23_submit_review"),
+                  ("deck-control", "slide23_send_accountant")]),
     dict(slides=[24], title="مراجعة المحاسب للتقرير المالي", family="HF",
          view="financial", signals=[("api", "GET /api/v1/monthly-reports")]),
     dict(slides=[25], title="الفرص والمشاريع", family="ORG", view="projects",
          signals=[("view", "projects")]),
     dict(slides=[26], title="تفاصيل وتقييم الفرصة", family="ORG", view="projects",
-         signals=[("detail", "projects:openOpportunity")]),
+         signals=[("detail", "projects:openOpportunity"),
+                  ("deck-control", "slide26_save_study"),
+                  ("deck-control", "slide26_raise_owner")]),
     dict(slides=[27], title="قائمة قرارات المالك", family="ORG", view="decisions",
          signals=[("view", "decisions")]),
     dict(slides=[28], title="تفاصيل القرار", family="ORG", view="decisions",
          signals=[("detail", "decisions:openDecision")]),
     dict(slides=[29], title="سجل القرار ومتابعة التنفيذ", family="ORG",
-         view="decisions", signals=[("decision-actions", "decisions")]),
+         view="decisions", signals=[("decision-actions", "decisions"),
+                                    ("deck-control", "slide29_decision_log")]),
     dict(slides=[30], title="توجيهات المالك لمدير الشركة", family="ORG",
          view="decisions", signals=[("decision-actions", "decisions")]),
     dict(slides=[31], title="شكاوى العملاء", family="ORG", view="confidential",
-         signals=[("view", "confidential")]),
+         signals=[("view", "confidential"), ("company-file", "complaint")]),
     dict(slides=[32], title="مالية القابضة", family="HF", view="accounting",
          signals=[("view", "accounting")]),
     dict(slides=[33], title="الموظفون والتطوير", family="EMP", view="employees",
          signals=[("view", "employees")]),
     dict(slides=[34], title="مساحة المستشار الخارجي", family="EMP", view="employees",
-         signals=[("detail", "employees:openEmployee"), ("role", "external_consultant")]),
+         signals=[("detail", "employees:openEmployee"), ("role", "external_consultant"),
+                  ("deck-control", "slide34_assignment_scope")]),
     dict(slides=[35], title="التقارير والتحليل الذكي", family="BI", view="bi",
-         signals=[("view", "bi")]),
+         signals=[("view", "bi"), ("deck-control", "slide35_prepare_summary")]),
     dict(slides=[36], title="التنبيهات وسجل النشاط", family="BI", view="inbox",
-         signals=[("view", "inbox")]),
+         signals=[("view", "inbox"), ("deck-control", "slide36_open_form")]),
     dict(slides=[37], title="المستخدمون والصلاحيات", family="CFG", view="admin",
-         signals=[("view", "admin")]),
+         signals=[("view", "admin"), ("deck-control", "slide37_add_user")]),
     # 38-47 shared states / responsive / workflows
     dict(slides=[38], title="حالات الواجهة المشتركة", family="components",
-         view=None, signals=[("ui", "emptyHtml"), ("ui", "loadingHtml"), ("ui", "data-retry")],
+         view=None, signals=[("ui", "emptyHtml"), ("ui", "loadingHtml"), ("ui", "data-retry"),
+                             ("deck-control", "slide38_open_correction"),
+                             ("deck-control", "slide38_create_request")],
          note="Empty / loading / correction / error states with the deck's "
               "[إعادة المحاولة] retry control."),
     dict(slides=[39], title="نموذج الهاتف", family="responsive", view="dashboard",
@@ -163,11 +183,14 @@ MAPPING: list[dict] = [
               "RBAC matrix (slides 74-83) and the acceptance suite (slides 137-138), "
               "not by a single screen."),
     dict(slides=[44], title="الاستمارات: نواة مشتركة + قطاع + إضافة خاصة",
-         family="FRM", view="requests", signals=[("view", "requests")]),
+         family="FRM", view="requests",
+         signals=[("view", "requests"), ("field-types", "addFieldForm")]),
     dict(slides=[45], title="الرصيد الافتتاحي", family="FRM", view="accounting",
          signals=[("api", "GET /api/v1/accounting/opening-balances")]),
     dict(slides=[46], title="ملخص ذكي قصير لمدير الشركة", family="BI",
-         view="bi", signals=[("api", "GET /api/v1/ai/insights")]),
+         view="bi", signals=[("api", "GET /api/v1/ai/insights"),
+                             ("deck-control", "slide46_plan"),
+                             ("deck-control", "slide46_decline")]),
     dict(slides=[47], title="حدود وصول المستشار الخارجي", family="governance",
          view="employees",
          signals=[("role", "external_consultant"),
@@ -193,8 +216,12 @@ MAPPING: list[dict] = [
               "compliance matrix scores per view (app_inventory.json)."),
     # 50-53 company wizard
     dict(slides=[50, 51, 52], title="معالج إضافة شركة", family="ORG",
-         view="admin", signals=[("api", "GET /api/v1/companies")],
-         note="Company create is API + admin tab; no multi-step browser wizard."),
+         view="admin", signals=[("wizard", "company-setup")],
+         note="Three-step browser wizard (الهوية والقطاع → الملكية والمتابعة → "
+              "القالب والتفعيل) with [السابق]/[حفظ مسودة]/[التالي]/[تفعيل الشركة]; "
+              "activation links the manager and the holding stake, and a draft "
+              "grants no access. Driven end-to-end by "
+              "scripts/audit/company_wizard_probe.py."),
     dict(slides=[53], title="قواعد تأسيس الشركة وتغيير إعداداتها", family="governance",
          view=None, status="REF",
          note="Company-founding and settings-change rules; enforced by the company "
@@ -496,7 +523,8 @@ def _strip_note(role: str, rendered: dict) -> str:
 
 
 def _check(sig, inv, api_probe, role_probe=None, parity=None,
-           rendered=None) -> tuple[bool, str]:
+           rendered=None, wizard_probe=None, company_file_probe=None,
+           deck_controls=None) -> tuple[bool, str]:
     kind, key = sig
     if kind == "view":
         e = _inv_entry(inv, key)
@@ -631,6 +659,35 @@ def _check(sig, inv, api_probe, role_probe=None, parity=None,
         e = _inv_entry(inv, view, tab)
         n = (e or {}).get("chars", 0) if e else 0
         return (n or 0) >= 100, f"{view}/{tab} renders ({n} chars)"
+    if kind == "field-types":
+        # Deck slide 44: the field builder offers [رقم] [نص/سؤال] [مبلغ] [تاريخ]
+        # [قائمة] [رابط خارجي] and no file type. Read the builder's own source
+        # rather than a rendered crawl, because the builder is inside the admin
+        # form designer the role crawl does not open.
+        js = (pathlib.Path(__file__).resolve().parents[2]
+              / "frontend" / "app.js").read_text(encoding="utf-8")
+        start = js.find("function addFieldForm")
+        block = js[start:start + 1600] if start >= 0 else ""
+        wanted = ["رقم", "نص/سؤال", "مبلغ", "تاريخ", "قائمة", "رابط خارجي"]
+        missing = [w for w in wanted if w not in block]
+        has_file = "ملف" in block or 'value: "file"' in block
+        ok = not missing and not has_file
+        detail = (f"field types present: {len(wanted) - len(missing)}/{len(wanted)}"
+                  + (f"; MISSING {missing}" if missing else "")
+                  + ("; unexpected file type" if has_file else ""))
+        return ok, detail
+    if kind == "deck-control":
+        # Deck slides that name a control only reachable in a data state the
+        # seeded demo is not in. A source-string match proves nothing; the
+        # browser probe (scripts/audit/deck_controls_probe.py) drives each
+        # state and reads the rendered label. Score the probe's own result.
+        entry = (deck_controls or {}).get(key)
+        if not entry:
+            return False, f"deck control {key}: not probed"
+        ok = bool(entry.get("ok"))
+        return ok, (f"deck control {key}: app label {entry.get('app_label')!r} "
+                    f"(deck {entry.get('deck_label')!r})" if ok
+                    else f"deck control {key}: MISSING (deck {entry.get('deck_label')!r})")
     if kind == "control":
         view, tab, field = key.split(":")
         e = _inv_entry(inv, view, tab)
@@ -648,6 +705,60 @@ def _check(sig, inv, api_probe, role_probe=None, parity=None,
         return _rbac_role(role, must_have, must_lack)
     if kind == "api":
         return api_probe(key)
+    if kind == "wizard":
+        # Deck slides 50-52: the browser actually renders and drives the
+        # three-step wizard, not just an API-only admin form. Read the live
+        # Playwright probe artifact rather than asserting the markup exists.
+        w = (wizard_probe or {})
+        if not w:
+            return False, "wizard probe artifact missing"
+        steps = w.get("steps") or []
+        actions = w.get("actions") or []
+        parts = {
+            "three-steps": w.get("rail_step") == "الخطوة 1 من 3"
+                          and w.get("rail_step_on_3") == "الخطوة 3 من 3",
+            "step-names": w.get("rail_name") == "الهوية والقطاع",
+            "next": "التالي" in actions,
+            "prev": "السابق" in actions,
+            "draft": "حفظ مسودة" in actions,
+            "activate": "تفعيل الشركة" in actions,
+            "walks": bool(w.get("pane2_visible_after_next"))
+                     and bool(w.get("pane3_visible_after_next")),
+            "activates": (w.get("create_status") in (200, 201)),
+            "no-access-on-draft": bool(w.get("draft_created_no_access")),
+            "review": bool(w.get("review_has_deck_rows")),
+            "rail-right": bool(w.get("rail_on_right")),
+            "two-column": bool(w.get("two_column_grid")),
+            "deck-labels": not (w.get("missing_deck_labels") or []),
+            "deck-order": not (w.get("order_mismatch") or []),
+            "clean-console": not (w.get("console") or []),
+        }
+        ok = all(parts.values())
+        detail = ", ".join(f"{k}={'ok' if v else 'MISSING'}" for k, v in parts.items())
+        return ok, f"company setup wizard ({detail})"
+    if kind == "company-file":
+        # Deck slide 13's [تعديل البيانات] and slide 31's [تسجيل إجراء], driven in
+        # the browser and confirmed to persist / paint, not just present in the
+        # markup. Read the live Playwright artifact.
+        cf = (company_file_probe or {})
+        if not cf:
+            return False, "company file probe artifact missing"
+        if key == "edit":
+            parts = {
+                "edit-button": bool(cf.get("edit_button_present")),
+                "label": cf.get("edit_button_label") == "تعديل البيانات",
+                "fields": len(cf.get("edit_form_fields") or []) >= 4,
+                "saves": cf.get("edit_status") in (200, 201),
+                "clean-console": not (cf.get("console") or []),
+            }
+            ok = all(parts.values())
+            detail = ", ".join(f"{k}={'ok' if v else 'MISSING'}" for k, v in parts.items())
+            return ok, f"company file ({detail})"
+        if key == "complaint":
+            return cf.get("complaint_action_label") == "تسجيل إجراء", (
+                f"complaint register action={cf.get('complaint_action_label')!r}"
+            )
+        return False, f"unknown company-file key {key}"
     return False, f"unknown signal {kind}"
 
 
@@ -658,6 +769,9 @@ def main() -> int:
     ap.add_argument("--role-summaries", default="artifacts/role_summaries.json")
     ap.add_argument("--role-dashboards", default="artifacts/role_dashboards.json")
     ap.add_argument("--visual-parity", default="artifacts/visual_parity.json")
+    ap.add_argument("--wizard-probe", default="artifacts/company_wizard.json")
+    ap.add_argument("--company-file-probe", default="artifacts/company_file.json")
+    ap.add_argument("--deck-controls", default="artifacts/deck_controls.json")
     ap.add_argument("--deck-text", default="artifacts/deck/slides_text.json")
     ap.add_argument("--out", default="docs/audit/PPTX_V3_COMPLIANCE_MATRIX.md")
     args = ap.parse_args()
@@ -672,6 +786,12 @@ def main() -> int:
     rendered = json.loads(dash_path.read_text()) if dash_path.exists() else {}
     parity_path = pathlib.Path(args.visual_parity)
     parity = json.loads(parity_path.read_text()) if parity_path.exists() else {}
+    wiz_path = pathlib.Path(args.wizard_probe)
+    wizard_probe = json.loads(wiz_path.read_text()) if wiz_path.exists() else {}
+    cf_path = pathlib.Path(args.company_file_probe)
+    company_file_probe = json.loads(cf_path.read_text()) if cf_path.exists() else {}
+    dc_path = pathlib.Path(args.deck_controls)
+    deck_controls = (json.loads(dc_path.read_text()).get("controls") or {}) if dc_path.exists() else {}
     text_path = pathlib.Path(args.deck_text)
     deck_text = json.loads(text_path.read_text()) if text_path.exists() else {}
 
@@ -691,7 +811,9 @@ def main() -> int:
             if m.get("signals"):
                 oks = []
                 for sig in m["signals"]:
-                    ok, msg = _check(sig, inv, api_probe, role_probe, parity, rendered)
+                    ok, msg = _check(sig, inv, api_probe, role_probe, parity,
+                                     rendered, wizard_probe, company_file_probe,
+                                     deck_controls)
                     oks.append(ok)
                     ev.append(msg)
                 status = "OK" if all(oks) else "PARTIAL"
