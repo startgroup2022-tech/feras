@@ -50,8 +50,78 @@ def _login(page, email: str) -> bool:
     return page.evaluate("() => !!document.querySelector('.nav-item')")
 
 
+def _api(page, method: str, path: str, body=None):
+    """Call the API from the page context using the live session token.
+
+    The roles editor is exercised through real clicks, but restoring the state
+    afterwards must not depend on the UI, so this talks to the same endpoints
+    the UI does with the token the page already holds.
+    """
+    return page.evaluate(
+        """async ([method, path, body]) => {
+            let tok = null;
+            try {
+                const raw = localStorage.getItem('safir.session.v1')
+                    || sessionStorage.getItem('safir.session.v1');
+                tok = raw ? (JSON.parse(raw) || {}).access_token : null;
+            } catch (e) { /* storage disabled */ }
+            const res = await fetch(path, {
+                method,
+                headers: Object.assign(
+                    { 'Content-Type': 'application/json' },
+                    tok ? { Authorization: 'Bearer ' + tok } : {},
+                ),
+                body: body === null ? undefined : JSON.stringify(body),
+            });
+            let data = null;
+            try { data = await res.json(); } catch (e) { /* no body */ }
+            return { status: res.status, data };
+        }""",
+        [method, path, body],
+    )
+
+
+def _role_permissions(page, code: str):
+    """The permission codes currently stored for ``code`` (None if unknown)."""
+    res = _api(page, "GET", "/api/v1/admin/roles")
+    if res["status"] != 200 or not isinstance(res["data"], list):
+        return None
+    for role in res["data"]:
+        if role.get("code") == code:
+            return list(role.get("permissions") or [])
+    return None
+
+
+def _catalogue_permissions(code: str):
+    """The permission set the static RBAC catalogue defines for ``code``.
+
+    Used as the restore target so this probe is self-healing: it repairs a role
+    that a previous run (or any manual edit) had already left short, not merely
+    a role it changed itself.
+    """
+    try:
+        from backend.rbac.permissions import ROLE_PERMISSIONS
+    except Exception:
+        return None
+    perms = ROLE_PERMISSIONS.get(code)
+    return sorted(perms) if perms else None
+
+
 def _open_admin_roles(page) -> bool:
-    page.locator('.nav-item[data-view="admin"]:visible').first.click()
+    # Administration lives inside the collapsed "More" group (the deck keeps only
+    # six primary sections expanded), so the group must be opened before its
+    # items are clickable.
+    if page.locator("#sbMoreToggle").count():
+        expanded = page.eval_on_selector(
+            "#sbMoreToggle", "e => e.getAttribute('aria-expanded')"
+        )
+        if expanded != "true":
+            page.click("#sbMoreToggle")
+            page.wait_for_timeout(300)
+    item = page.locator('.nav-item[data-view="admin"]')
+    if item.count() == 0:
+        return False
+    item.first.click()
     page.wait_for_timeout(800)
     tab = page.locator('[data-admin-tab="roles"]:visible')
     if tab.count() == 0:
@@ -104,6 +174,35 @@ def run() -> int:
             browser.close()
             return _finish(report)
         report.note("owner sees the roles editor")
+
+        # The editor opens the first role in the list (holding_owner, the actor
+        # itself). The save path must not be exercised on the actor's own role:
+        # the server's anti-escalation guard forbids an actor granting a
+        # permission to itself, so a restore would be impossible. Switch to a
+        # different role and snapshot it; it is restored at the end.
+        open_role = page.eval_on_selector(
+            "#permEditor", "e => e.getAttribute('data-role')"
+        )
+        switched = False
+        for chip in page.query_selector_all('[data-admin-action="role-open"]'):
+            code = chip.get_attribute("data-code")
+            if code and code != open_role:
+                chip.click()
+                page.wait_for_timeout(700)
+                open_role = code
+                switched = True
+                break
+        if not switched:
+            report.fail("could not switch to a non-actor role for the save test")
+        report.note(f"editing role '{open_role}'")
+
+        original_perms = _catalogue_permissions(open_role)
+        if original_perms is None:
+            original_perms = _role_permissions(page, open_role)
+        if original_perms is None:
+            report.fail(f"could not determine permissions for role '{open_role}'")
+        else:
+            report.note(f"restore target: {len(original_perms)} permissions for {open_role}")
 
         # Bilingual grouped cards.
         cards = page.query_selector_all(".perm-card")
@@ -222,6 +321,32 @@ def run() -> int:
             report.fail("English labels not shown after switching to EN")
         else:
             report.note("AR/EN switch ok and labels localise")
+
+        # Restore the exact permission set the role had before this probe.
+        if original_perms is not None:
+            restored = _api(
+                page,
+                "PUT",
+                "/api/v1/admin/roles/"
+                + open_role.replace("/", "%2F")
+                + "/permissions",
+                {"permissions": original_perms},
+            )
+            if restored["status"] != 200:
+                report.fail(
+                    f"could not restore '{open_role}' permissions "
+                    f"(HTTP {restored['status']})"
+                )
+            else:
+                now = _role_permissions(page, open_role)
+                if now is None or sorted(now) != sorted(original_perms):
+                    report.fail(
+                        f"'{open_role}' permissions not restored to the snapshot"
+                    )
+                else:
+                    report.note(
+                        f"restored {len(original_perms)} permissions for {open_role}"
+                    )
 
         if errors:
             report.fail("page JS errors: " + "; ".join(errors[:5]))

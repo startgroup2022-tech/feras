@@ -118,6 +118,16 @@ def run() -> int:
                 continue
             report.note(f"[{role}] login ok")
 
+            # The deck keeps only six primary sections expanded; the rest live
+            # inside the collapsed "More" group, so open it before enumerating.
+            if page.locator("#sbMoreToggle").count():
+                expanded = page.eval_on_selector(
+                    "#sbMoreToggle", "e => e.getAttribute('aria-expanded')"
+                )
+                if expanded != "true":
+                    page.click("#sbMoreToggle")
+                    page.wait_for_timeout(300)
+
             # Enumerate the nav items the role can actually see, then open each.
             visible_views = page.evaluate(
                 """() => Array.from(document.querySelectorAll('.nav-item'))
