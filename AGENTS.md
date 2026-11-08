@@ -104,6 +104,14 @@ Suites: `test_auth`, `test_isolation`, `test_rbac`, `test_reports`, `test_suppor
 `test_dashboard`, `test_ai`, `test_admin`, `test_schemas`, `test_ai_providers`,
 `test_insights`.
 
+Browser harnesses live in `scripts/` (`e2e_smoke.py`, `e2e_roles.py`) and
+`scripts/audit/`; they drive a locally served app with Playwright, not pytest.
+Any harness that mutates server state must be **self-healing**: restore from the
+static catalogue (`ROLE_PERMISSIONS`) rather than a run-time snapshot, so it
+repairs a role a previous run left short instead of trusting it. `e2e_roles.py`
+is the reference — it edits a **non-actor** role because the server's
+anti-escalation guard blocks an actor granting a permission to itself.
+
 ## Known gaps
 
 Add these in a later phase rather than papering over them in tests:
