@@ -1,17 +1,18 @@
 """Prove the deck's *named* controls actually render and act in the live SPA.
 
 ``control_labels.py`` diffs the deck's bracketed labels against every visible
-label the app paints. Ten labels came back with no counterpart, but most of
-them are gated on a data state the seeded demo does not happen to be in (a task
-in ``new``, a ``returned`` report, a ``done`` decision, an approved report for
-the manager's smart brief). A label that only appears in a state the demo never
-reaches is *not* proof of a gap -- and neither is a string match on the source.
-This probe settles it the only way that counts: it drives the real browser to
-each state, then reads the rendered label.
+label the app paints. The labels it cannot find are gated on a data state the
+seeded demo does not happen to be in (a task in ``new``, a ``returned`` report,
+a ``done`` decision, an owner decision at all, a complaint, an approved report
+for the manager's smart brief). A label that only appears in a state the demo
+never reaches is *not* proof of a gap -- and neither is a string match on the
+source. This probe settles it the only way that counts: it drives the real
+browser to each state, then reads the rendered label.
 
 Per control it records the deck label, the app label it found, and whether the
 control was actually clickable. It writes ``artifacts/deck_controls.json`` and
-screenshots each state.
+screenshots each state. Twenty-seven controls across slides 18, 20, 22, 23, 26,
+27, 28, 29, 31, 34, 35, 36, 37, 38 and 46 are covered.
 
     python scripts/audit/deck_controls_probe.py --base http://127.0.0.1:12000
 
@@ -103,6 +104,48 @@ def prepare(base: str) -> dict:
     else:
         made.setdefault("errors", []).append(f"decision {d.status_code}: {d.text[:120]}")
 
+    # Slide 27 [فتح القرار] and slide 28's [اعتماد] [رفض] [طلب معلومات] [تأجيل]
+    # paint on the decisions list and in the decision detail. The seeded demo has
+    # no owner decisions at all, so the labels are absent until one exists. One
+    # open decision is enough: the list row and the detail modal render from it.
+    # Reuse the row when a prior run already made it, so re-probing does not
+    # pile up duplicates.
+    existing = owner.get("/api/v1/operations/owner-decisions").json()
+    d2 = next((x for x in existing if x["number"] == "DEC-PROBE-2"), None)
+    if d2 is None:
+        r = owner.post(
+            "/api/v1/operations/owner-decisions",
+            json={"number": "DEC-PROBE-2", "title": "قرار برهان خيارات التفصيل",
+                  "company_id": cid},
+        )
+        if r.status_code in (200, 201):
+            d2 = r.json()
+            made["created"].append(f"decision:{d2['id']}")
+        else:
+            made.setdefault("errors", []).append(f"open decision {r.status_code}: {r.text[:120]}")
+    if d2:
+        made["open_decision_id"] = d2["id"]
+
+    # Slide 31 [إحالة] [اتخاذ إجراء] [طلب معلومات] [تأجيل مع سبب] render only on a
+    # complaint row, and only for a user holding complaint.decide. The seeded
+    # demo carries no complaint, so the four actions never paint. Reuse on
+    # re-probe as above.
+    comps = owner.get("/api/v1/operations/complaints").json()
+    comp = next((c for c in comps if c.get("subject") == "شكوى برهان الإجراءات"), None)
+    if comp is None:
+        r = owner.post(
+            "/api/v1/operations/complaints",
+            json={"subject": "شكوى برهان الإجراءات", "body": "نص برهان العرض",
+                  "company_id": cid},
+        )
+        if r.status_code in (200, 201):
+            comp = r.json()
+            made["created"].append(f"complaint:{comp['id']}")
+        else:
+            made.setdefault("errors", []).append(f"complaint {r.status_code}: {r.text[:120]}")
+    if comp:
+        made["complaint_id"] = comp["id"]
+
     # Slides 22 + 38: the company manager needs a *draft* report for the
     # [حفظ وإرسال] form, and a *returned* report for [فتح للتصحيح]. The SPA's
     # reports view is year-scoped to the reporting period, so the rows must live
@@ -110,8 +153,15 @@ def prepare(base: str) -> dict:
     # fresh row every run would drift the demo -- and only fall back to creating
     # one in 2027 when the seed lacks that state.
     mgr = _api(base, MANAGER)
+    # The company manager is scoped to its own subsidiary, while the owner (and
+    # the designer/BD) see every company. The manager's report and financial
+    # writes must target a company the manager actually holds, or they 403 and
+    # the draft/returned states the probe needs never exist.
+    mgr_companies = mgr.get("/api/v1/companies").json()
+    mcid = mgr_companies[0]["id"] if mgr_companies else cid
+    made["manager_company_id"] = mcid
     rows = mgr.get("/api/v1/monthly-reports").json()
-    live_2027 = [r for r in rows if r["company_id"] == cid and r["period_year"] == 2027]
+    live_2027 = [r for r in rows if r["company_id"] == mcid and r["period_year"] == 2027]
 
     def _free_month_2027() -> int | None:
         taken = {r["period_month"] for r in live_2027}
@@ -123,13 +173,17 @@ def prepare(base: str) -> dict:
     def _mk_2027(month: int) -> int | None:
         r = mgr.post(
             "/api/v1/monthly-reports",
-            json={"company_id": cid, "period_year": 2027, "period_month": month,
+            json={"company_id": mcid, "period_year": 2027, "period_month": month,
                   "revenue": "120000.00", "expenses": "80000.00",
                   "net_result": "40000.00", "major_problems": "برهان العرض"},
         )
         if r.status_code in (200, 201):
-            made["created"].append(f"report:{r.json()['id']}")
-            return r.json()["id"]
+            rep = r.json()
+            made["created"].append(f"report:{rep['id']}")
+            # Keep the free-month view current: a second call must not pick the
+            # month this call just consumed, or the server answers 409.
+            live_2027.append(rep)
+            return rep["id"]
         made.setdefault("errors", []).append(f"report {r.status_code}: {r.text[:160]}")
         return None
 
@@ -158,7 +212,7 @@ def prepare(base: str) -> dict:
     # report is approved. Approve the manager's 2027-10 report.
     reports = owner.get("/api/v1/monthly-reports").json()
     live = [r for r in reports
-            if r["company_id"] == cid and r["period_year"] == 2027
+            if r["company_id"] == mcid and r["period_year"] == 2027
             and r["period_month"] == 10 and r["is_live"]]
     if live:
         rid = live[0]["id"]
@@ -175,7 +229,7 @@ def prepare(base: str) -> dict:
     # period for the row to render.
     s = mgr.post(
         "/api/v1/financial/summaries",
-        json={"company_id": cid, "period_year": 2027, "period_month": 10,
+        json={"company_id": mcid, "period_year": 2027, "period_month": 10,
               "submitted_revenue": "150000.00", "submitted_expenses": "90000.00",
               "closing_bank_balance": "40000.00", "closing_cash_balance": "10000.00",
               "manager_notes": "برهان مسودة الملخص"},
@@ -192,7 +246,7 @@ def prepare(base: str) -> dict:
         # ``version_id`` yet, so match on either.
         rep = mgr.get("/api/v1/financial/report?year=2027&month=10").json()
         for c in rep.get("companies", []):
-            if c.get("company_id") == cid and (c.get("version_id") or c.get("period_id")):
+            if c.get("company_id") == mcid and (c.get("version_id") or c.get("period_id")):
                 made["fin_summary_id"] = c.get("version_id")
                 made["fin_period_id"] = c.get("period_id")
                 break
@@ -407,6 +461,25 @@ async def probe(base: str, made: dict) -> dict:
         note("slide18_send_request", "إرسال الطلب", s18_send, s18_send is not None,
              f"buttons={support_labels}")
         await page.screenshot(path=str(SHOTS / "probe-slide18-support-form.png"))
+        await page.evaluate(
+            """() => { const x = document.querySelector('.modal-x'); if (x) x.click(); }"""
+        )
+        await page.wait_for_timeout(400)
+
+        # slide 36 -- the deck draws this screen for the company manager, whose
+        # inbox carries the report-submitted notification ([فتح الاستمارة]). The
+        # owner's inbox holds only lead/system alerts, so its row action reads
+        # [فتح التنبيه] instead.
+        await click_view(page, "inbox")
+        await page.wait_for_timeout(1200)
+        mgr_inbox = await page.evaluate(
+            """() => [...document.querySelectorAll('#inboxContent button, #notifList button, ' +
+                 '#inboxList button')].map(b => (b.innerText||'').replace(/\\s+/g,' ').trim())"""
+        )
+        mgr_form = next((l for l in mgr_inbox if l == "فتح الاستمارة"), None)
+        note("slide36_open_form", "فتح الاستمارة", mgr_form, mgr_form is not None,
+             f"actions={mgr_inbox}")
+        await page.screenshot(path=str(SHOTS / "probe-slide36-inbox.png"))
         await ctx.close()
 
         # ---- BD: slide 26 (opportunity study) + slide 38 correction -------
@@ -461,16 +534,46 @@ async def probe(base: str, made: dict) -> dict:
         note("slide29_decision_log", "عرض سجل القرار", log, log is not None, "")
         await page.screenshot(path=str(SHOTS / "probe-slide29-decisions.png"))
 
-        # slide 36 -- the inbox row action is named after the record.
-        await click_view(page, "inbox")
-        inbox_actions = await page.evaluate(
-            """() => [...document.querySelectorAll('#inboxContent button, #notifList button, ' +
-                 '#inboxList button')].map(b => (b.innerText||'').replace(/\\s+/g,' ').trim())"""
+        # slide 27 [فتح القرار] on the list, then slide 28's four detail
+        # outcomes. Both render only once a decision exists.
+        open_dec = await page.evaluate(
+            """() => { const b = [...document.querySelectorAll('#decContent button')]
+                 .find(x => (x.innerText||'').trim() === 'فتح القرار');
+                 return b ? b.innerText.trim() : null; }"""
         )
-        open_form = next((l for l in inbox_actions if l == "فتح الاستمارة"), None)
-        note("slide36_open_form", "فتح الاستمارة", open_form, open_form is not None,
-             f"actions={inbox_actions}")
-        await page.screenshot(path=str(SHOTS / "probe-slide36-inbox.png"))
+        note("slide27_open_decision", "فتح القرار", open_dec, open_dec is not None, "")
+        detail_labels: list[str] = []
+        if open_dec:
+            await page.evaluate(
+                """() => { const b = [...document.querySelectorAll('#decContent button')]
+                     .find(x => (x.innerText||'').trim() === 'فتح القرار'); if (b) b.click(); }"""
+            )
+            await page.wait_for_timeout(1300)
+            detail_labels = await modal_labels(page)
+            await page.evaluate(
+                """() => { const x = document.querySelector('.modal-x'); if (x) x.click(); }"""
+            )
+            await page.wait_for_timeout(500)
+        for key, deck in (("slide28_approve", "اعتماد القرار"), ("slide28_reject", "رفض"),
+                          ("slide28_request_info", "طلب معلومات"), ("slide28_defer", "تأجيل")):
+            got = next((l for l in detail_labels if l == deck), None)
+            note(key, deck, got, got is not None, f"buttons={detail_labels}")
+        await page.screenshot(path=str(SHOTS / "probe-slide28-decision-detail.png"))
+
+        # slide 31 -- the owner's four complaint actions. They paint on a
+        # complaint row for a holder of complaint.decide.
+        await click_view(page, "confidential")
+        await page.wait_for_timeout(1400)
+        conf_labels = await page.evaluate(
+            """() => [...document.querySelectorAll('#confContent button')]
+                 .map(b => (b.innerText||'').replace(/\\s+/g,' ').trim())"""
+        )
+        for key, deck in (("slide31_refer", "إحالة"), ("slide31_action", "اتخاذ إجراء"),
+                          ("slide31_request_info", "طلب معلومات"),
+                          ("slide31_defer", "تأجيل مع سبب")):
+            got = next((l for l in conf_labels if l == deck), None)
+            note(key, deck, got, got is not None, f"buttons={conf_labels}")
+        await page.screenshot(path=str(SHOTS / "probe-slide31-complaints.png"))
 
         # slide 37 -- [إضافة مستخدم] is the owner's add-user control on the
         # admin "users" tab. Prove it renders and opens its form.

@@ -38,11 +38,11 @@ Per-slide visual parity (`scripts/audit/deck_visual_parity.py`, deck PNG frame v
 | 24 | مراجعة المحاسب للتقرير المالي | HF | financial | OK | OK | GET /api/v1/monthly-reports -> 200 |
 | 25 | الفرص والمشاريع | ORG | projects | OK | OK | view projects renders (1598 chars) |
 | 26 | تفاصيل وتقييم الفرصة | ORG | projects | OK | OK | projects detail: openOpportunity() present; deck control slide26_save_study: app label 'حفظ الدراسة' (deck 'حفظ الدراسة'); deck control slide26_raise_owner: app label 'رفع للمالك عند الحاجة' (deck 'رفع للمالك عند الحاجة') |
-| 27 | قائمة قرارات المالك | ORG | decisions | OK | OK | view decisions renders (2693 chars) |
-| 28 | تفاصيل القرار | ORG | decisions | OK | OK | decisions detail: openDecision() present |
+| 27 | قائمة قرارات المالك | ORG | decisions | OK | OK | view decisions renders (2693 chars); deck control slide27_open_decision: app label 'فتح القرار' (deck 'فتح القرار') |
+| 28 | تفاصيل القرار | ORG | decisions | OK | OK | decisions detail: openDecision() present; deck control slide28_approve: app label 'اعتماد القرار' (deck 'اعتماد القرار'); deck control slide28_reject: app label 'رفض' (deck 'رفض'); deck control slide28_request_info: app label 'طلب معلومات' (deck 'طلب معلومات'); deck control slide28_defer: app label 'تأجيل' (deck 'تأجيل') |
 | 29 | سجل القرار ومتابعة التنفيذ | ORG | decisions | OK | OK | decision lifecycle (status=ok, reply=ok); deck control slide29_decision_log: app label 'عرض سجل القرار' (deck 'عرض سجل القرار') |
 | 30 | توجيهات المالك لمدير الشركة | ORG | decisions | OK | OK | decision lifecycle (status=ok, reply=ok) |
-| 31 | شكاوى العملاء | ORG | confidential | OK | OK | view confidential renders (834 chars); complaint register action='تسجيل إجراء' |
+| 31 | شكاوى العملاء | ORG | confidential | OK | OK | view confidential renders (834 chars); complaint register action='تسجيل إجراء'; deck control slide31_refer: app label 'إحالة' (deck 'إحالة'); deck control slide31_action: app label 'اتخاذ إجراء' (deck 'اتخاذ إجراء'); deck control slide31_request_info: app label 'طلب معلومات' (deck 'طلب معلومات'); deck control slide31_defer: app label 'تأجيل مع سبب' (deck 'تأجيل مع سبب') |
 | 32 | مالية القابضة | HF | accounting | OK | OK | view accounting renders (884 chars) |
 | 33 | الموظفون والتطوير | EMP | employees | OK | OK | view employees renders (3348 chars) |
 | 34 | مساحة المستشار الخارجي | EMP | employees | OK | OK | employees detail: openEmployee() present; role external_consultant: ar nav=8, en nav=8; deck control slide34_assignment_scope: app label 'نطاق التكليف ▾' (deck 'نطاق التكليف') |
