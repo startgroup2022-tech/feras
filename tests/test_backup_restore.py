@@ -126,3 +126,16 @@ def test_drill_reports_a_failed_restore_when_the_source_is_corrupt(tmp_path):
     result = backup.run_restore_drill(dest, tmp_path / "scratch")
     assert result["ok"] is False
     assert result["problems"]
+
+
+def test_libpq_url_strips_the_sqlalchemy_driver_qualifier():
+    # pg_dump/pg_restore speak plain libpq and reject the "+driver" suffix that
+    # DATABASE_URL carries, so the backup must hand them a stripped URL.
+    assert (
+        backup._libpq_url("postgresql+psycopg://u:p@h:5432/db")
+        == "postgresql://u:p@h:5432/db"
+    )
+    # A URL without a driver qualifier is returned unchanged.
+    assert backup._libpq_url("postgresql://u:p@h/db") == "postgresql://u:p@h/db"
+    # A non-URL string is passed through untouched.
+    assert backup._libpq_url("not-a-url") == "not-a-url"

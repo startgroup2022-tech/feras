@@ -97,6 +97,39 @@ sudo rm -rf /var/lib/safir/uploads_restore
 A restoration is only proven once the scratch instance answers `/ready` with
 `{"status":"ready"}` and a login against a restored user succeeds.
 
+### 4.1 Automated drill (`scripts/backup.py`)
+
+The manual steps above are scripted so the monthly drill is repeatable and its
+result is machine-checkable. The script takes the database and uploads snapshot
+together, writes a SHA-256 integrity manifest, and can then prove the restore in
+isolation:
+
+```bash
+# Take a backup (database dump + uploads) and record the integrity manifest.
+DATABASE_URL="$DATABASE_URL" python -m scripts.backup create \
+    --dest /backup/safir_$(date -u +%Y%m%dT%H%M%SZ) --uploads "$UPLOAD_DIR"
+
+# Re-check every digest without restoring anything.
+python -m scripts.backup verify --source /backup/safir_<STAMP>
+
+# Prove the restore into an isolated scratch database (never the live one).
+sudo -u postgres psql -c "CREATE DATABASE safir_restore OWNER safir_staging;"
+python -m scripts.backup drill --source /backup/safir_<STAMP> \
+    --scratch /var/lib/safir/uploads_restore \
+    --scratch-database-url "postgresql://safir_staging@127.0.0.1/safir_restore"
+sudo -u postgres psql -c "DROP DATABASE safir_restore;"
+```
+
+For a PostgreSQL backup, passing `--scratch-database-url` loads the dump with
+`pg_restore` and compares the `companies`, `users`, `monthly_reports` and
+`support_requests` row counts against the manifest — the drill is `ok` only when
+every count matches. Without it, the archive is still validated with
+`pg_restore --list` so a corrupt dump is caught, but row-count proof is skipped.
+
+The script strips the SQLAlchemy driver qualifier (`+psycopg`) from
+`DATABASE_URL` before calling `pg_dump`/`pg_restore`, which speak plain libpq and
+reject that suffix.
+
 ---
 
 ## 5. Schedule (operational, not created here)

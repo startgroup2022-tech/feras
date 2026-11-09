@@ -56,6 +56,21 @@ def _is_sqlite(database_url: str) -> bool:
     return database_url.startswith("sqlite")
 
 
+def _libpq_url(database_url: str) -> str:
+    """Strip the SQLAlchemy driver qualifier for libpq tools.
+
+    ``DATABASE_URL`` is a SQLAlchemy URL (``postgresql+psycopg://...``), but
+    ``pg_dump``/``pg_restore``/``psql`` speak plain libpq and reject the
+    ``+driver`` suffix. Removing it keeps the documented configuration working
+    for backups without asking operators to maintain a second URL.
+    """
+    scheme, sep, rest = database_url.partition("://")
+    if not sep:
+        return database_url
+    base = scheme.split("+", 1)[0]
+    return f"{base}://{rest}"
+
+
 def _sqlite_path(database_url: str) -> Path:
     # sqlite:///./safir.db  ->  ./safir.db
     _, _, raw = database_url.partition(":///")
@@ -94,6 +109,23 @@ def _row_counts(db_path: Path) -> dict[str, int]:
             counts[table] = int(row[0]) if row else 0
     finally:
         connection.close()
+    return counts
+
+
+def _pg_row_counts(database_url: str) -> dict[str, int]:
+    """Row counts for the drill tables on a live PostgreSQL database."""
+    import psycopg
+
+    counts: dict[str, int] = {}
+    with psycopg.connect(_libpq_url(database_url), autocommit=True) as connection:
+        for table in DRILL_TABLES:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    row = cursor.fetchone()
+                counts[table] = int(row[0]) if row else 0
+            except psycopg.Error:
+                continue
     return counts
 
 
@@ -137,14 +169,16 @@ def create_backup(*, database_url: str, upload_dir: str, dest_dir: str | Path) -
         # PostgreSQL: custom-format dump, compressed and selectively restorable.
         with dump.open("wb") as handle:
             result = subprocess.run(
-                ["pg_dump", "-Fc", "--no-owner", database_url],
+                ["pg_dump", "-Fc", "--no-owner", _libpq_url(database_url)],
                 stdout=handle, stderr=subprocess.PIPE,
             )
         if result.returncode != 0:
             raise RuntimeError(
                 f"pg_dump failed: {result.stderr.decode(errors='replace')}"
             )
-        row_counts = {}
+        # Record live row counts so the drill can prove the restore, not just
+        # the file's integrity.
+        row_counts = _pg_row_counts(database_url)
         kind = "postgresql"
 
     manifest = BackupManifest(
@@ -188,13 +222,24 @@ def verify_backup(backup_dir: str | Path) -> dict:
     return {"ok": not problems, "problems": problems, "backup_dir": str(backup)}
 
 
-def run_restore_drill(backup_dir: str | Path, scratch_dir: str | Path) -> dict:
+def run_restore_drill(
+    backup_dir: str | Path,
+    scratch_dir: str | Path,
+    *,
+    scratch_database_url: str | None = None,
+) -> dict:
     """Restore a backup into an isolated scratch location and prove it.
 
     The restore never touches the source database: the dump and uploads are
     placed under ``scratch_dir`` and verified there. A drill is only ``ok`` when
     every recorded table's row count matches and every uploads file is present
     with the recorded digest.
+
+    For a PostgreSQL backup, pass ``scratch_database_url`` (an empty database
+    the caller has created) to prove the dump actually restores: it is loaded
+    with ``pg_restore`` and the row counts are compared against the manifest.
+    Without it, the archive is validated with ``pg_restore --list`` so a corrupt
+    dump is still caught; row-count proof is skipped and reported as such.
     """
     backup = Path(backup_dir)
     scratch = Path(scratch_dir)
@@ -219,6 +264,26 @@ def run_restore_drill(backup_dir: str | Path, scratch_dir: str | Path) -> dict:
                     problems.append(
                         f"row count mismatch for {table}: expected {expected}, got {got}"
                     )
+    elif scratch_database_url:
+        restored_counts = _restore_pg_dump(restored_db, scratch_database_url, problems)
+        for table, expected in manifest.row_counts.items():
+            got = restored_counts.get(table)
+            if got != expected:
+                problems.append(
+                    f"row count mismatch for {table}: expected {expected}, got {got}"
+                )
+    else:
+        # No scratch database supplied: at least prove the archive is readable
+        # so a corrupt dump is caught beyond the checksum.
+        listed = subprocess.run(
+            ["pg_restore", "--list", str(restored_db)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+        if listed.returncode != 0:
+            problems.append(
+                "pg_restore could not read the dump: "
+                + listed.stderr.decode(errors="replace").strip()
+            )
 
     uploads_ok = 0
     for entry in manifest.uploads:
@@ -236,3 +301,24 @@ def run_restore_drill(backup_dir: str | Path, scratch_dir: str | Path) -> dict:
         "uploads_restored": uploads_ok,
         "uploads_expected": len(manifest.uploads),
     }
+
+
+def _restore_pg_dump(
+    dump: Path, scratch_database_url: str, problems: list[str]
+) -> dict[str, int]:
+    """Load ``dump`` into the scratch database and return its row counts."""
+    result = subprocess.run(
+        ["pg_restore", "--no-owner", "--clean", "--if-exists",
+         "-d", _libpq_url(scratch_database_url), str(dump)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    # pg_restore reports a non-zero code for benign warnings (e.g. a newer
+    # client's SET that the server ignores), so verify by reading the data back
+    # rather than trusting the exit code alone.
+    counts = _pg_row_counts(scratch_database_url)
+    if not counts:
+        problems.append(
+            "pg_restore produced no readable tables: "
+            + result.stderr.decode(errors="replace").strip()
+        )
+    return counts
