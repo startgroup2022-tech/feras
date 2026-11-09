@@ -22,7 +22,7 @@ function returns ``None`` and the dashboard falls back to the holding strip.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -277,9 +277,13 @@ def _lead_counts(db: Session, user: User) -> dict | None:
 
 
 def _leads_created(db: Session, user: User, year: int, month: int) -> int:
+    # A half-open month range, not ``strftime``: the SQLite date function does
+    # not exist on PostgreSQL, where it raises UndefinedFunction.
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    end = datetime(year + (month // 12), (month % 12) + 1, 1, tzinfo=timezone.utc)
     stmt = select(func.count(WebsiteLead.id)).where(
-        func.strftime("%Y", WebsiteLead.created_at) == f"{year:04d}",
-        func.strftime("%m", WebsiteLead.created_at) == f"{month:02d}",
+        WebsiteLead.created_at >= start,
+        WebsiteLead.created_at < end,
     )
     return int(db.execute(stmt).scalar_one())
 

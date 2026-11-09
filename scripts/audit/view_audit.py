@@ -114,6 +114,10 @@ async def audit_role(
         await page.reload(wait_until="networkidle")
         await page.wait_for_timeout(2500)
 
+    # Screenshots are namespaced by language so the English crawl cannot
+    # overwrite the Arabic ones the deck visual-parity probe reads (RTL).
+    shot_prefix = role if lang == "ar" else f"{role}-{lang}"
+
     # On a phone the rail is a ☰ drawer (deck slides 39/89/90); open it so the
     # entries are clickable. On desktop the toggle is hidden and this is a no-op.
     async def _ensure_drawer():
@@ -182,7 +186,7 @@ async def audit_role(
             entry["snippet"] = text[:200].replace("\n", " | ")
             entry["sections"] = await page.locator(f"{section} .av-row, {section} tbody tr").count()
 
-            await page.screenshot(path=str(SHOTS / f"{role}-{view}.png"), full_page=True)
+            await page.screenshot(path=str(SHOTS / f"{shot_prefix}-{view}.png"), full_page=True)
 
             # Tabbed views render one panel at a time; a tab that throws or
             # returns nothing is invisible to a single-view crawl.
@@ -238,7 +242,7 @@ async def audit_role(
                         "console_errors": console_errors[c0:],
                     }
                     await page.screenshot(
-                        path=str(SHOTS / f"{role}-{view}-{tab}.png"), full_page=True
+                        path=str(SHOTS / f"{shot_prefix}-{view}-{tab}.png"), full_page=True
                     )
 
             if view in SUBVIEW_GROUPS:
@@ -261,7 +265,7 @@ async def audit_role(
                         "console_errors": console_errors[c0:],
                     }
                     await page.screenshot(
-                        path=str(SHOTS / f"{role}-{view}-{sub}.png"), full_page=True
+                        path=str(SHOTS / f"{shot_prefix}-{view}-{sub}.png"), full_page=True
                     )
         else:
             # A hidden view must not leak content to a role that lacks the perm.

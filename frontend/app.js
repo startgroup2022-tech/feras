@@ -5672,7 +5672,7 @@
                 .then(function () {
                   closeModal();
                   toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
-                  loadSubmissionDetail(s.id);
+                  openSubmission(s.id);
                 })
                 .catch(function (err) {
                   toast(errText(err), "err");
@@ -15808,7 +15808,19 @@
           return enterApp();
         })
         .catch(function (err) {
-          setLoginError(errText(err, STATE.lang === "ar" ? "تعذّر تسجيل الدخول. تحقّق من البريد وكلمة المرور." : "Sign-in failed. Check your email and password."));
+          // On the sign-in form a 401 means the email/password pair is wrong,
+          // not that an existing session expired; the shared 401 wording would
+          // otherwise be shown here and mislead the user.
+          var credentialMsg =
+            STATE.lang === "ar"
+              ? "تعذّر تسجيل الدخول. تحقّق من البريد وكلمة المرور."
+              : "Sign-in failed. Check your email and password.";
+          var status = err && err.status;
+          var message =
+            status === 401 || status === 400 || status === 422 || !status
+              ? credentialMsg
+              : errText(err, credentialMsg);
+          setLoginError(message);
         })
         .then(function () {
           if (btn) {

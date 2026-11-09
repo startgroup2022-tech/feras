@@ -140,6 +140,9 @@ def test_sales_summary_reflects_the_lead_funnel(client, world, auth, db, make_us
     ]
     assert _values(summary)["qualified_leads"] == "1"
     assert _values(summary)["awaiting_contact"] == "1"
+    # Both seeded leads are created inside the requested month; the tile must
+    # count them through a portable range filter, not SQLite's strftime.
+    assert _values(summary)["new_leads"] == "2"
 
 
 def test_bd_summary_has_its_own_tile_set(client, world, auth, make_user):

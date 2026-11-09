@@ -1062,3 +1062,22 @@ def test_admin_users_actions_use_the_real_user_routes():
     assert '"/api/v1/admin/users/" + id' not in APP_JS
     assert 'patch("/api/v1/users/" + id' in APP_JS
     assert 'post("/api/v1/users/" + userId + "/password"' in APP_JS
+
+
+def test_signin_failure_reports_credentials_not_an_expired_session():
+    # A rejected sign-in is a 401, but the shared 401 mapping says "session
+    # expired", which is wrong on the sign-in form -- there is no session yet.
+    # The login handler must special-case 401/400/422 to the credential wording.
+    handler = APP_JS.split("api\n        .login(email, password, remember)", 1)[1]
+    handler = handler.split(".then(function () {\n          if (btn)", 1)[0]
+    assert "credentialMsg" in handler
+    assert "status === 401" in handler
+    assert "كلمة المرور" in handler
+
+
+def test_submission_edit_reopens_the_detail_instead_of_a_removed_modal():
+    # Saving an edited request closes the edit dialog; the detail view must be
+    # reopened, not reloaded into the modal node closeModal() just removed.
+    assert 'openSubmission(s.id);' in APP_JS
+    assert "closeModal();\n                  toast" in APP_JS
+    assert "loadSubmissionDetail(s.id);\n                })\n                .catch" not in APP_JS

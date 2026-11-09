@@ -89,6 +89,11 @@ Request flow: `api/v1/*` (thin routers) → `services/*` (all business rules) �
   See `tests/test_schemas.py`.
 - **SQLAlchemy gotcha**: do not add a single-column `Index(...)` that duplicates
   `index=True` on the same column — the duplicate name breaks `create_all`.
+- **Portable-SQL gotcha**: never use SQLite-only date functions (`strftime`,
+  `julianday`) in a query — PostgreSQL raises `UndefinedFunction`. Filter on a
+  half-open `datetime` range instead; `_leads_created` in
+  `services/role_summary_service.py` is the reference. Tests run on SQLite, so
+  this only surfaces against a live PostgreSQL.
 - **Arabic-first**: user-facing strings, seeded data, and AI output are Arabic.
   `full_name_ar` is required; `full_name_en` is optional.
 - Money is `Decimal`/`Numeric(18, 2)`; losses are negative and allowed.
@@ -189,6 +194,13 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
   Needs a live PG and the
   `--pg-dsn` URL; asserts the row, not just the HTTP status. This is the
   "rendered button ≠ working button, 200 ≠ committed row" check.
+- `scripts/verify_journeys.py` — the edit/approve journeys `verify_functional.py`
+  does not cover: the sign-in gate plus edit/save and approve/reject for
+  companies, users, reports, support requests, leads and owner decisions, and a
+  self-provisioning approvals journey. Drives the rendered control, then reads
+  PostgreSQL to confirm the change landed. Needs a live PG (`--pg-dsn`); the
+  `user.edit.save` journey restores the seed user's role in a `finally` so a run
+  never leaves the role probe contaminated.
 
 ## Frontend: real app (auth-gated, live data)
 
