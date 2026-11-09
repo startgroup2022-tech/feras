@@ -26,6 +26,11 @@ import json
 import os
 import sys
 
+# Support both ``python -m scripts.verify_openrouter_live`` (run from the repo
+# root) and ``python scripts/verify_openrouter_live.py`` (where sys.path[0] is
+# the scripts directory), so the documented one-off run never needs PYTHONPATH.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from backend.ai.openrouter import FREE_ROUTER_ID, OpenRouterClient, OpenRouterProvider
 from backend.core.config import settings
 

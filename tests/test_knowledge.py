@@ -340,6 +340,31 @@ def test_multi_term_query_matches_on_any_term_not_all(client, world, auth):
     assert hits, "a query whose terms are only partially present must still match"
 
 
+def test_english_body_is_retrievable(client, world, auth):
+    """A bilingual document is retrievable by its English text.
+
+    The Arabic body is required, but when an English body is supplied it must be
+    indexed too, otherwise an English query can never retrieve the document and
+    the bilingual promise is only half kept.
+    """
+    document = _create_document(
+        client, auth, world["owner"],
+        slug="bilingual-leave",
+        title_ar="سياسة الإجازات",
+        title_en="Leave policy",
+        body_ar="يمنح الموظف إجازة سنوية مدفوعة مدتها ثلاثون يوماً.",
+        body_en="Employees receive thirty days of paid annual leave per year.",
+        sensitivity="holding",
+    )
+    _approve_latest(client, auth, world["owner"], document["id"])
+
+    hits = client.get(
+        SEARCH, headers=auth(world["owner"]), params={"q": "annual leave"}
+    ).json()
+    assert hits, "the English body must be indexed and retrievable"
+    assert any("annual leave" in h["excerpt"].lower() for h in hits)
+
+
 def test_fts_query_or_joins_terms():
     """The PostgreSQL tsquery must OR its terms, never AND them.
 

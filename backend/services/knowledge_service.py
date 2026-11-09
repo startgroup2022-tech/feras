@@ -535,28 +535,36 @@ def approve_version(
 
 
 def _index_version(db: Session, document: KnowledgeDocument, version: KnowledgeVersion) -> None:
-    """Create the searchable chunks for an approved version."""
-    body = version.body_ar or ""
-    if document.language == "en" and version.body_en:
-        body = version.body_en
-    pieces = chunk_text(
-        body,
-        size=settings.AI_KNOWLEDGE_CHUNK_CHARS,
-        overlap=settings.AI_KNOWLEDGE_CHUNK_OVERLAP,
-    )
-    for index, piece in enumerate(pieces):
-        db.add(
-            KnowledgeChunk(
-                document_id=document.id,
-                version_id=version.id,
-                chunk_index=index,
-                content=piece,
-                search_text=normalize_arabic(piece).lower(),
-                token_count=len(tokenize(piece)),
-                company_id=document.company_id,
-                sensitivity=document.sensitivity,
+    """Create the searchable chunks for an approved version.
+
+    A document is Arabic-first (``body_ar`` is required) but may also carry an
+    English body. Both are indexed so an English query can retrieve an English
+    document; the excerpt returned in a citation is always text the caller may
+    see, so the two languages are chunked separately rather than concatenated.
+    """
+    bodies = [version.body_ar or ""]
+    if version.body_en and version.body_en.strip() and version.body_en != version.body_ar:
+        bodies.append(version.body_en)
+    index = 0
+    for body in bodies:
+        for piece in chunk_text(
+            body,
+            size=settings.AI_KNOWLEDGE_CHUNK_CHARS,
+            overlap=settings.AI_KNOWLEDGE_CHUNK_OVERLAP,
+        ):
+            db.add(
+                KnowledgeChunk(
+                    document_id=document.id,
+                    version_id=version.id,
+                    chunk_index=index,
+                    content=piece,
+                    search_text=normalize_arabic(piece).lower(),
+                    token_count=len(tokenize(piece)),
+                    company_id=document.company_id,
+                    sensitivity=document.sensitivity,
+                )
             )
-        )
+            index += 1
 
 
 def _chunk_count(db: Session, document_id: int) -> int:

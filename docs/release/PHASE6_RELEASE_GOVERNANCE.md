@@ -334,22 +334,17 @@ release-gate checklist built on top of them.
 | P5 | D01/D02/D09 data supplied | owner records | approved policy records exist, not drafts |
 | P6 | Rollback target recorded | `git rev-parse` of current staging + prod HEADs | two immutable SHAs written down |
 
-### 6.2 The deployment guide targets the wrong line — fix before use
+### 6.2 The deployment guide targets the wrong line — RESOLVED
 
-`docs/DEPLOYMENT.md` is **not stale** — it is internally correct, but it targets
-**`phase2-functional-v1`** (commit `ec77588`, "the approved Phase 2 application"),
-and its expected revision `55d2d244bc1b` is verified correct for that branch
-(it has exactly one migration, whose head is `55d2d244bc1b`).
+`docs/DEPLOYMENT.md` originally targeted **`phase2-functional-v1`** (commit
+`ec77588`, "the approved Phase 2 application") with expected revision
+`55d2d244bc1b`. That was internally correct for that branch, but the guide
+deployed the wrong line.
 
-The problem is scope, not accuracy: the guide deploys **Phase 2**, whereas the
-release under consideration is the **Phase 3/4 line** on
-`frontend-app-conversion` / `feature/phase3-functional`, whose migration head is
-**`3473d285d919`** across **31 revisions**. Following the guide as written would
-check out `phase2-functional-v1` and deploy the wrong code.
-
-**Required before use:** either re-point the guide at the integration branch (and
-update the expected revision to `3473d285d919`), or write a separate release
-runbook for the Phase 3/4 line. This is a documentation task, not a code change.
+**Resolved:** the guide now targets the release line (`feature/phase3-functional`,
+PR #7 → `frontend-app-conversion`), checks out that branch, and expects the
+current single Alembic head **`f7a1c2e3d4b5`** across **39 revisions**. Confirm
+with `alembic heads` before deploying.
 
 ### 6.3 Staging validation sequence
 
@@ -369,7 +364,7 @@ Follow `docs/DEPLOYMENT.md` §§2–11, with these additions:
    python -m alembic upgrade head --sql          # inspect, no writes
    python -c "from backend.core.config import settings; print(settings.DATABASE_URL)"
    python -m alembic upgrade head
-   python -m alembic current                     # expect 3473d285d919
+   python -m alembic current                     # expect f7a1c2e3d4b5
    python -m alembic check                       # "No new upgrade operations detected."
    ```
 5. **Health probes:** `/health` → `{"status":"ok"}`; `/ready` → database + uploads
@@ -450,7 +445,7 @@ without the owner's written approval and a verified recent backup (D10).
 | B4 | **PR #2 can reach `master` unverified** — zero checks on its head | ✅ owner | §1.1; re-sync after §3. |
 | B5 | **Production load test not run** | ✅ needs staging access | §6.3.8. |
 | B6 | **Production backup/restore drill not run** on the production target | ✅ needs prod access | Tooling exists and was exercised on isolated scratch DBs; the production target has not been touched, by design. |
-| B7 | **`docs/DEPLOYMENT.md` targets `phase2-functional-v1`**, not the Phase 3/4 release line; following it deploys the wrong code | agent | Doc fix (§6.2). Its `55d2d244bc1b` pin is correct *for that branch*. |
+| ~~B7~~ | ~~`docs/DEPLOYMENT.md` targets `phase2-functional-v1`~~ **RESOLVED** — guide re-pointed to `feature/phase3-functional`, expected head `f7a1c2e3d4b5` (§6.2) | agent | Done. |
 | B8 | **PowerPoint visual parity UNVERIFIED** | ✅ owner must supply the deck | See §7.3. |
 
 ### 7.2 What *is* proven

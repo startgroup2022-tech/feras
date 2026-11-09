@@ -1,8 +1,11 @@
 # Safir Holding 2027 — Staging Deployment Guide
 
-This guide prepares the approved Phase 2 application (`phase2-functional-v1`,
-commit `ec77588`) for a staging environment. It does not itself deploy
-anything, and it never touches production.
+This guide prepares the Phase 3/4 release candidate (`feature/phase3-functional`,
+PR #7 → `frontend-app-conversion`) for a staging environment. It does not itself
+deploy anything, and it never touches production.
+
+The release line carries **39 migrations**; its single Alembic head is
+`f7a1c2e3d4b5` (verify with `alembic heads`, below).
 
 > **Never run `scripts/seed_demo.py` on staging.** Demo data is for local
 > development only. Use `scripts/bootstrap_owner.py` for the first real owner.
@@ -40,8 +43,8 @@ sudo chmod 750 /var/lib/safir/uploads
 ```bash
 sudo -u safir git clone https://github.com/startgroup2022-tech/feras.git /opt/safir/app
 cd /opt/safir/app
-sudo -u safir git checkout phase2-functional-v1
-sudo -u safir git rev-parse HEAD        # expect ec77588...
+sudo -u safir git checkout feature/phase3-functional
+sudo -u safir git rev-parse HEAD        # expect 1e10fbe...
 ```
 
 ---
@@ -116,7 +119,7 @@ export $(grep -v '^#' /etc/safir/staging.env | xargs)   # or: set -a; . /etc/saf
 /opt/safir/venv/bin/python -m alembic upgrade head
 
 # 4) Verify.
-/opt/safir/venv/bin/python -m alembic current   # expect 55d2d244bc1b
+/opt/safir/venv/bin/python -m alembic current   # expect f7a1c2e3d4b5
 /opt/safir/venv/bin/python -m alembic check      # expect "No new upgrade operations detected."
 ```
 
