@@ -77,6 +77,17 @@ def tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(normalize_arabic(text))]
 
 
+def _fts_query(tokens) -> str:
+    """A PostgreSQL ``to_tsquery`` string that matches on *any* term.
+
+    Terms are OR-ed so the PostgreSQL path agrees with the portable lexical
+    fallback (which scores any shared token). ``plainto_tsquery`` would AND the
+    terms instead, silently making multi-word queries stricter on production
+    PostgreSQL than on SQLite.
+    """
+    return " | ".join(sorted(t for t in tokens if t))
+
+
 # --------------------------------------------------------------------------
 # chunking
 # --------------------------------------------------------------------------
@@ -243,7 +254,13 @@ def retrieve(
     results: list[RetrievedChunk] = []
 
     if dialect == "postgresql":
-        tsquery = func.plainto_tsquery("simple", " ".join(query_tokens))
+        # Match on *any* query term, not all of them. ``plainto_tsquery`` ANDs
+        # its terms, which would make a multi-word Arabic query (e.g.
+        # "اعتماد المشتريات") miss a chunk that contains only "المشتريات",
+        # diverging from the lexical fallback below and from the documented
+        # "consistent across backends" contract. Joining the terms with ``|``
+        # gives the same any-term semantics on both backends.
+        tsquery = func.to_tsquery("simple", _fts_query(query_tokens))
         tsv = func.to_tsvector("simple", KnowledgeChunk.search_text)
         rank = func.ts_rank(tsv, tsquery)
         stmt = (

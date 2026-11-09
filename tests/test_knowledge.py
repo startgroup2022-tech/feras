@@ -311,6 +311,46 @@ def test_empty_query_returns_nothing(client, world, auth):
     assert hits == []
 
 
+def test_multi_term_query_matches_on_any_term_not_all(client, world, auth):
+    """A multi-word query must match a chunk containing only one of its terms.
+
+    The lexical fallback (SQLite) scores on *any* shared token, and the suite's
+    own isolation test relies on this: the query "اعتماد المشتريات" must match a
+    body that contains only "المشتريات". The PostgreSQL full-text path must use
+    the same any-term semantics -- ``plainto_tsquery`` ANDs its terms and would
+    return nothing here, diverging from the documented cross-backend contract.
+    """
+    _create_document(
+        client, auth, world["owner"],
+        slug="any-term",
+        title_ar="تعليمات عامة",
+        body_ar="إجراء خاص بشركة ألفا لاعتماد المشتريات.",
+        sensitivity="holding",
+    )
+    _approve_latest(
+        client, auth, world["owner"],
+        client.get(DOCUMENTS, headers=auth(world["owner"])).json()[0]["id"],
+    )
+
+    # Only "المشتريات" is present in the body; "اعتماد" is a variant of
+    # "لاعتماد" and must not be required.
+    hits = client.get(
+        SEARCH, headers=auth(world["owner"]), params={"q": "اعتماد المشتريات"}
+    ).json()
+    assert hits, "a query whose terms are only partially present must still match"
+
+
+def test_fts_query_or_joins_terms():
+    """The PostgreSQL tsquery must OR its terms, never AND them.
+
+    This is the backend-independent guard: the SQLite suite cannot exercise the
+    PostgreSQL ``to_tsquery`` path, so the string it builds is asserted directly.
+    """
+    assert knowledge_service._fts_query({"اعتماد", "المشتريات"}) == "اعتماد | المشتريات"
+    assert "&" not in knowledge_service._fts_query({"a", "b", "c"})
+    assert knowledge_service._fts_query(set()) == ""
+
+
 # --------------------------------------------------------------------------
 # OpenRouter provider: never a paid model
 # --------------------------------------------------------------------------
