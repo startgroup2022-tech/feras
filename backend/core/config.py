@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # unchanged.
     SPLIT_PUBLIC_SITE: bool = False
     PLATFORM_PATH: str = "/platform"
+    # Prefix for the developer-package public website contract
+    # (00-shared/api-contract.openapi.yaml). Distinct from ``/api/v1/public``,
+    # which is the platform's own internal lead-capture surface.
+    PUBLIC_SITE_API_PREFIX: str = "/api/public"
 
     # ---- attachments ----
     UPLOAD_DIR: str = "./uploads"

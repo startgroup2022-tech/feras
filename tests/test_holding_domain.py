@@ -690,7 +690,9 @@ def test_campaign_round_trip_records_results_and_is_audited(client, domain_world
 
     actions = {
         row.action for row in db.query(AuditLog)
-        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == body["id"])
+        # ``entity_id`` is a string column; compare as text so the filter is
+        # portable to PostgreSQL (which rejects varchar = integer).
+        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == str(body["id"]))
     }
     assert {"campaign.created", "campaign.updated"} <= actions
 

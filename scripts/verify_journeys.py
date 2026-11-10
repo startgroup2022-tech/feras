@@ -334,10 +334,12 @@ async def _run(browser, base: str, dsn: str) -> dict:
 
     # ---- report approve --------------------------------------------------
     try:
-        # find a report in a state that allows approval (reviewed)
+        # find a report in a state that allows approval (reviewed) that is not
+        # already approved — an approved report offers Lock, not Approve.
         rep = _pg_row(
             dsn,
-            "SELECT id, status FROM monthly_reports WHERE status IN ('reviewed','under_review','submitted') ORDER BY id LIMIT 1",
+            "SELECT id, status FROM monthly_reports WHERE status IN ('reviewed','under_review','submitted') "
+            "AND approval_status != 'approved' ORDER BY id LIMIT 1",
             (),
         )
         rid = rep[0]
@@ -360,6 +362,43 @@ async def _run(browser, base: str, dsn: str) -> dict:
         )
     except Exception as exc:  # noqa: BLE001
         checks.record("report.approve", ok=False, detail=repr(exc))
+    finally:
+        await _settle_modals(page)
+
+    # ---- report lock (developer-package rule 1: approved -> locked) ------
+    # The terminal transition: only a report already approved (reviewed +
+    # approval_status=approved) offers the lock control, and once locked the
+    # report must never change again.
+    try:
+        rep = _pg_row(
+            dsn,
+            "SELECT id, status, approval_status FROM monthly_reports "
+            "WHERE status = 'reviewed' AND approval_status = 'approved' ORDER BY id LIMIT 1",
+            (),
+        )
+        if rep is None:
+            checks.record("report.lock", ok=False, detail="no approved report to lock")
+        else:
+            rid = rep[0]
+            await _open_view(page, "reports")
+            await page.wait_for_selector(f'[data-report="{rid}"]', timeout=15000)
+            await page.click(f'[data-report="{rid}"]')
+            await page.wait_for_selector("#repLock", timeout=10000)
+            await page.click("#repLock")
+            await _click_confirm(page, "#cfOk")
+            await page.wait_for_timeout(1500)
+            after = _pg_row(
+                dsn,
+                "SELECT status, locked_by_id, locked_at FROM monthly_reports WHERE id = %s",
+                (int(rid),),
+            )
+            checks.record(
+                "report.lock",
+                ok=bool(after and after[0] == "locked" and after[1] and after[2]),
+                detail=f"before={rep[1]} after(status,locked_by,locked_at)={after}",
+            )
+    except Exception as exc:  # noqa: BLE001
+        checks.record("report.lock", ok=False, detail=repr(exc))
     finally:
         await _settle_modals(page)
 
@@ -489,7 +528,17 @@ async def _run(browser, base: str, dsn: str) -> dict:
         await _open_view(page, "requests")
         await page.click("#reqNew")
         await page.wait_for_selector("#nrSave", timeout=10000)
-        await page.select_option("#nrForm", "1")
+        # pick the first published form offered (its id is seed-dependent)
+        form_id = await page.evaluate(
+            """() => {
+              const s = document.querySelector('#nrForm');
+              const o = Array.from(s.options).find(x => x.value);
+              return o ? o.value : null;
+            }"""
+        )
+        if not form_id:
+            raise RuntimeError("no form option available in #nrForm")
+        await page.select_option("#nrForm", form_id)
         await page.select_option("#nrCompany", str(co))
         await page.fill("#nrTitle", f"طلب اعتماد تحقق {stamp}")
         await page.click("#nrSave")

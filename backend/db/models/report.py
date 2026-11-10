@@ -119,6 +119,12 @@ class MonthlyReport(Base, TimestampMixin):
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Developer-package parity: the terminal "locked" state identity/timestamp.
+    # A locked report is final and is never editable again.
+    locked_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ---- financial fields (submitted by the company) ----
     revenue: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
@@ -146,6 +152,7 @@ class MonthlyReport(Base, TimestampMixin):
     returned_by: Mapped["User | None"] = relationship(foreign_keys=[returned_by_id])
     approved_by: Mapped["User | None"] = relationship(foreign_keys=[approved_by_id])
     cancelled_by: Mapped["User | None"] = relationship(foreign_keys=[cancelled_by_id])
+    locked_by: Mapped["User | None"] = relationship(foreign_keys=[locked_by_id])
     corrects_report: Mapped["MonthlyReport | None"] = relationship(
         remote_side=[id], foreign_keys=[corrects_report_id]
     )

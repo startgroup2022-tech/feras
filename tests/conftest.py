@@ -14,7 +14,12 @@ from decimal import Decimal
 # Must happen before importing anything from ``backend``.
 _TMP_DIR = tempfile.mkdtemp(prefix="safir-tests-")
 os.environ["APP_ENV"] = "test"
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DIR}/test.db"
+# Default to a throwaway SQLite file. ``SAFIR_TEST_DATABASE_URL`` opts into a
+# real server (e.g. PostgreSQL) so the same suite can prove the queries and
+# constraints are not SQLite-specific.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "SAFIR_TEST_DATABASE_URL", f"sqlite:///{_TMP_DIR}/test.db"
+)
 os.environ["SECRET_KEY"] = "test-secret-key-not-used-in-production"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 

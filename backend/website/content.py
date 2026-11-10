@@ -45,9 +45,9 @@ MARKET_LABELS: dict[str, dict[str, str]] = {
 # translated or derived from the phone number.
 # --------------------------------------------------------------------------
 HOLDING: dict[str, object] = {
-    "name_ar": "شركة ستارت أب سفير القابضة ذ.م.م",
+    "name_ar": "شركة ستارت اب سفير القابضة ذ.م.م",
     "name_en": "START UPSPHERE HOLDING CO W.L.L",
-    "brand_ar": "ستارت أب سفير القابضة",
+    "brand_ar": "ستارت اب سفير القابضة",
     "brand_en": "Start Upsphere Holding",
     "address_ar": "السيف – مملكة البحرين",
     "address_en": "Seef – Kingdom of Bahrain",
@@ -55,8 +55,11 @@ HOLDING: dict[str, object] = {
     "phone_href": "+97317626990",
     "email": "Info@sup-edu.com",
     "whatsapp": "97317626990",
-    "tagline_ar": "نطوّر شركات المجموعة ونعمل على تنمية محفظتنا من الشركات والاستثمارات في قطاعات متعددة.",
-    "tagline_en": "We develop our group companies and grow our portfolio of companies and investments across diverse sectors.",
+    # Official brand slogan (developer package §"الشعار النصي").
+    "tagline_ar": "نصنع فرص النمو",
+    "tagline_en": "We Build Growth Opportunities",
+    "intro_ar": "نطوّر شركات المجموعة ونعمل على تنمية محفظتنا من الشركات والاستثمارات في قطاعات متعددة.",
+    "intro_en": "We develop our group companies and grow our portfolio of companies and investments across diverse sectors.",
 }
 
 # --------------------------------------------------------------------------
@@ -93,7 +96,7 @@ PAGE_TEXT: dict[str, object] = {
     },
     "about": {
         "intro": {
-            "ar": "شركة ستارت أب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من "
+            "ar": "شركة ستارت اب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من "
                   "الشركات والاستثمارات في قطاعات متعددة، وتعمل على تطوير شركات المجموعة "
                   "وتنمية محفظتها.",
             "en": "START UPSPHERE HOLDING CO W.L.L is based in Bahrain and holds a "
@@ -144,12 +147,12 @@ PAGE_TEXT: dict[str, object] = {
         },
     },
     "careers": {
-        "title": {"ar": "انضم إلى فريق ستارت أب سفير", "en": "Join the Startup Safeer Team"},
+        "title": {"ar": "انضم إلى فريق ستارت اب سفير القابضة", "en": "Join the Start Upsphere Holding Team"},
         "intro": {
-            "ar": "نبحث عن كفاءات طموحة تشاركنا بناء المرحلة القادمة من نمو ستارت أب سفير "
+            "ar": "نبحث عن كفاءات طموحة تشاركنا بناء المرحلة القادمة من نمو ستارت اب سفير "
                   "وشركات المجموعة.",
             "en": "We welcome ambitious professionals who want to help build the next "
-                  "stage of growth for Startup Safeer and its group companies.",
+                  "stage of growth for Start Upsphere Holding and its group companies.",
         },
         "submit": {
             "ar": "أرسل سيرتك الذاتية للنظر فيها عند توفر فرصة مناسبة.",
@@ -241,7 +244,7 @@ TERMS_SECTIONS: list[dict] = [
     {
         "heading": {"ar": "عن الموقع", "en": "About This Website"},
         "body": {
-            "ar": ["هذا الموقع تابع لشركة ستارت أب سفير القابضة ذ.م.م، ويعرّف بالقابضة وشركات المجموعة، ويستقبل طلبات الخدمات والتوظيف، ويتيح عرض المشاريع المعروضة للبيع."],
+            "ar": ["هذا الموقع تابع لشركة ستارت اب سفير القابضة ذ.م.م، ويعرّف بالقابضة وشركات المجموعة، ويستقبل طلبات الخدمات والتوظيف، ويتيح عرض المشاريع المعروضة للبيع."],
             "en": ["This website belongs to START UPSPHERE HOLDING CO W.L.L. It introduces the holding company and its group companies, receives service enquiries and job applications, and allows businesses for sale to be listed."],
         },
     },
@@ -395,11 +398,11 @@ MARKET_CONTENT: dict[str, dict] = {
         "meta": {
             "ar": {
                 "title": "البحرين",
-                "description": "خدمات الأعمال والاستثمار في مملكة البحرين عبر سفير القابضة.",
+                "description": "خدمات الأعمال والاستثمار في مملكة البحرين عبر ستارت اب سفير القابضة.",
             },
             "en": {
                 "title": "Bahrain",
-                "description": "Business and investment services in the Kingdom of Bahrain with Safir Holding.",
+                "description": "Business and investment services in the Kingdom of Bahrain with Start Upsphere Holding.",
             },
         },
         "intro": {
@@ -423,11 +426,11 @@ MARKET_CONTENT: dict[str, dict] = {
         "meta": {
             "ar": {
                 "title": "المملكة العربية السعودية",
-                "description": "خدمات الأعمال والاستثمار في المملكة العربية السعودية عبر سفير القابضة.",
+                "description": "خدمات الأعمال والاستثمار في المملكة العربية السعودية عبر ستارت اب سفير القابضة.",
             },
             "en": {
                 "title": "Saudi Arabia",
-                "description": "Business and investment services in Saudi Arabia with Safir Holding.",
+                "description": "Business and investment services in Saudi Arabia with Start Upsphere Holding.",
             },
         },
         "intro": {
@@ -912,11 +915,11 @@ SERVICE_MARKET_CONTENT: dict[str, dict[str, dict]] = {
             "meta": {
                 "ar": {
                     "title": "فرص استثمارية في البحرين",
-                    "description": "فرص استثمارية وشراكات في مملكة البحرين عبر سفير القابضة، مع توجيه الطلب داخليًا ومتابعته.",
+                    "description": "فرص استثمارية وشراكات في مملكة البحرين عبر ستارت اب سفير القابضة، مع توجيه الطلب داخليًا ومتابعته.",
                 },
                 "en": {
                     "title": "Investment Opportunities in Bahrain",
-                    "description": "Investment and partnership opportunities in the Kingdom of Bahrain with Safir Holding, routed internally and followed up.",
+                    "description": "Investment and partnership opportunities in the Kingdom of Bahrain with Start Upsphere Holding, routed internally and followed up.",
                 },
             },
             "intro": {
@@ -986,11 +989,11 @@ SERVICE_MARKET_CONTENT: dict[str, dict[str, dict]] = {
             "meta": {
                 "ar": {
                     "title": "فرص استثمارية في السعودية",
-                    "description": "فرص استثمارية وشراكات في المملكة العربية السعودية عبر سفير القابضة، مع توجيه الطلب داخليًا ومتابعته.",
+                    "description": "فرص استثمارية وشراكات في المملكة العربية السعودية عبر ستارت اب سفير القابضة، مع توجيه الطلب داخليًا ومتابعته.",
                 },
                 "en": {
                     "title": "Investment Opportunities in Saudi Arabia",
-                    "description": "Investment and partnership opportunities in Saudi Arabia with Safir Holding, routed internally and followed up.",
+                    "description": "Investment and partnership opportunities in Saudi Arabia with Start Upsphere Holding, routed internally and followed up.",
                 },
             },
             "intro": {
@@ -1105,7 +1108,8 @@ GROUP_COMPANIES: list[dict] = [
 
 # Navigation. ``path`` is the canonical English route; ``path_ar`` is its
 # Arabic mirror. The order and set follow the approved handoff exactly
-# (الرئيسية · من نحن · شركات المجموعة · الفرص التجارية · الوظائف · تواصل معنا).
+# (الرئيسية · من نحن · شركات المجموعة · الفرص التجارية · الوظائف · الأسئلة
+# الشائعة · تواصل معنا).
 # ``services`` is a valid, indexable page and stays reachable from content and
 # the footer, but is not part of the primary handoff navigation.
 NAV: list[dict] = [
@@ -1135,12 +1139,65 @@ NAV: list[dict] = [
         "label": {"ar": "الوظائف", "en": "Careers"},
     },
     {
+        "key": "faq",
+        "path": "/faq",
+        "path_ar": "/ar/الأسئلة-الشائعة",
+        "label": {"ar": "الأسئلة الشائعة", "en": "FAQ"},
+    },
+    {
         "key": "contact",
         "path": "/contact",
         "path_ar": "/ar/تواصل",
         "label": {"ar": "تواصل معنا", "en": "Contact"},
     },
 ]
+
+# The standalone FAQ page (dev brief "صفحات الموقع المطلوبة": ...الأسئلة
+# الشائعة...). The nine answers are the approved content set; each is generic
+# and non-committal, so nothing here promises a number, a fee or a timeline.
+FAQ_ITEMS: dict[str, list[tuple[str, str]]] = {
+    "ar": [
+        ("ما هي شركة ستارت اب سفير القابضة؟",
+         "شركة قابضة تقود مجموعة من الشركات، وتبني فرص نمو وشراكات."),
+        ("ما الذي تقدمه شركات المجموعة؟",
+         "تقدم شركات المجموعة خدمات متنوعة، ويمكنك الاطلاع عليها في صفحتي «شركات المجموعة» و«خدمات الأعمال»."),
+        ("ما الفرص التي تستقبلها المجموعة؟",
+         "نستقبل أنشطة للبيع، وفرص شراكة، ومشاريع واعدة."),
+        ("كيف أرسل نشاطي أو فرصتي؟",
+         "من صفحة «الفرص التجارية» اضغط «اعرض شركتك»، واكتب وصفًا مختصرًا وأضف بيانات التواصل، ومرفق دراسة إن توفر."),
+        ("هل هناك رسوم على إرسال نشاطي؟",
+         "لا، لا توجد رسوم على تقديم الفرصة."),
+        ("هل يعني إرسال الطلب قبوله؟",
+         "لا. كل طلب يُراجع، وإرساله لا يعني قبوله أو التزامنا بالاستثمار فيه."),
+        ("متى أتلقى ردًا؟",
+         "سنراجع طلبك ونتواصل معك إذا كان مناسبًا."),
+        ("كيف أطلب خدمة؟",
+         "من صفحة «خدمات الأعمال» اختر الخدمة وأرسل النموذج، وسنوجّه طلبك للجهة المناسبة."),
+        ("هل أستطيع التقديم على وظيفة؟",
+         "نعرض الوظائف عند وجود شاغر، ويمكنك إرسال سيرتك الذاتية من صفحة «الوظائف»، ونحتفظ بها 6 أشهر."),
+    ],
+    "en": [
+        ("What is START UPSPHERE HOLDING CO W.L.L?",
+         "A holding company that leads a group of companies and builds growth opportunities and partnerships."),
+        ("What do the group companies offer?",
+         "Our group companies offer a range of services, which you can see on the Group Companies and Business Services pages."),
+        ("What opportunities does the group receive?",
+         "Businesses for sale, partnership opportunities, and promising projects."),
+        ("How do I submit my business or opportunity?",
+         "On the Business Opportunities page, click List Your Business, write a short description, add your contact details, and attach a study if available."),
+        ("Is there a fee for submitting my business?",
+         "No, there is no fee for submitting an opportunity."),
+        ("Does submitting a request mean it is accepted?",
+         "No. Every request is reviewed, and submitting it does not mean acceptance or a commitment to invest."),
+        ("When will I get a reply?",
+         "We will review your request and contact you if it is a good fit."),
+        ("How do I request a service?",
+         "From the Business Services page, choose the service and send the form, and we will direct your request to the right party."),
+        ("Can I apply for a job?",
+         "We list positions when vacancies are available, and you can send your CV from the Careers page. We keep it for 6 months."),
+    ],
+}
+
 
 # Top-level page keys and their localized paths, used by the router and sitemap.
 PAGE_PATHS: dict[str, dict[str, str]] = {
@@ -1149,6 +1206,7 @@ PAGE_PATHS: dict[str, dict[str, str]] = {
     "group": {"ar": "/ar/شركات-المجموعة", "en": "/group-companies"},
     "opportunities": {"ar": "/ar/الفرص-التجارية", "en": "/opportunities"},
     "careers": {"ar": "/ar/الوظائف", "en": "/careers"},
+    "faq": {"ar": "/ar/الأسئلة-الشائعة", "en": "/faq"},
     "contact": {"ar": "/ar/تواصل", "en": "/contact"},
     "services": {"ar": "/ar/خدمات-الأعمال", "en": "/services"},
     "list-your-business": {"ar": "/ar/اعرض-شركتك", "en": "/list-your-business"},

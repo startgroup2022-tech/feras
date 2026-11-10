@@ -343,7 +343,7 @@ deployed the wrong line.
 
 **Resolved:** the guide now targets the release line (`feature/phase3-functional`,
 PR #7 → `frontend-app-conversion`), checks out that branch, and expects the
-current single Alembic head **`a9c1e2f3b4d6`** across **40 revisions**. Confirm
+current single Alembic head **`d04621f4f9bd`** across **41 revisions**. Confirm
 with `alembic heads` before deploying.
 
 ### 6.3 Staging validation sequence
@@ -364,7 +364,7 @@ Follow `docs/DEPLOYMENT.md` §§2–11, with these additions:
    python -m alembic upgrade head --sql          # inspect, no writes
    python -c "from backend.core.config import settings; print(settings.DATABASE_URL)"
    python -m alembic upgrade head
-   python -m alembic current                     # expect a9c1e2f3b4d6
+   python -m alembic current                     # expect d04621f4f9bd
    python -m alembic check                       # "No new upgrade operations detected."
    ```
 5. **Health probes:** `/health` → `{"status":"ok"}`; `/ready` → database + uploads
@@ -445,7 +445,7 @@ without the owner's written approval and a verified recent backup (D10).
 | B4 | **PR #2 can reach `master` unverified** — zero checks on its head | ✅ owner | §1.1; re-sync after §3. |
 | B5 | **Production load test not run** | ✅ needs staging access | §6.3.8. |
 | B6 | **Production backup/restore drill not run** on the production target | ✅ needs prod access | Tooling exists and was exercised on isolated scratch DBs; the production target has not been touched, by design. |
-| ~~B7~~ | ~~`docs/DEPLOYMENT.md` targets `phase2-functional-v1`~~ **RESOLVED** — guide re-pointed to `feature/phase3-functional`, expected head `a9c1e2f3b4d6` (§6.2) | agent | Done. |
+| ~~B7~~ | ~~`docs/DEPLOYMENT.md` targets `phase2-functional-v1`~~ **RESOLVED** — guide re-pointed to `feature/phase3-functional`, expected head `d04621f4f9bd` (§6.2) | agent | Done. |
 | B8 | **PowerPoint visual parity UNVERIFIED** | ✅ owner must supply the deck | See §7.3. |
 
 ### 7.2 What *is* proven

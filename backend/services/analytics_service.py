@@ -204,7 +204,9 @@ def _reporting_compliance(db: Session, *, user: User, year: int, month: int) -> 
                 select(func.count(func.distinct(MonthlyReport.company_id))).where(
                     MonthlyReport.period_year == year,
                     MonthlyReport.period_month == month,
-                    MonthlyReport.status == ReportStatus.REVIEWED.value,
+                    MonthlyReport.status.in_(
+                        [ReportStatus.REVIEWED.value, ReportStatus.LOCKED.value]
+                    ),
                 ),
                 MonthlyReport.company_id,
                 user,

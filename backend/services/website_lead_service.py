@@ -67,9 +67,20 @@ from backend.schemas.website import (
     GroupServiceSubmission,
     OpportunityInterestSubmission,
 )
+from backend.core import storage
 from backend.services import audit_service
 
 logger = logging.getLogger("safir.website")
+
+# Holding contact facts for the developer-package site contract. These are the
+# owner-approved public values (phone is the approved holding number); any
+# field left empty is hidden by the website rather than shown as a placeholder.
+HOLDING_NAME_AR = "شركة ستارت اب سفير القابضة ذ.م.م"
+HOLDING_NAME_EN = "START UPSPHERE HOLDING CO W.L.L"
+HOLDING_EMAIL = "Info@sup-edu.com"
+HOLDING_PHONE = "+973 17626990"
+HOLDING_ADDRESS = None
+HOLDING_HOURS = "الأحد – الخميس، ٩ صباحًا – ٥ مساءً"
 
 
 # --------------------------------------------------------------------------
@@ -1134,6 +1145,46 @@ def lead_stats(db: Session, *, user: User) -> dict:
     }
 
 
+async def persist_public_uploads(
+    db: Session,
+    *,
+    lead: WebsiteLead,
+    files,
+    validator=storage.validate_upload,
+    is_public: bool = False,
+) -> None:
+    """Validate and store public attachments for a persisted lead.
+
+    Shared by every public form that carries files (business listing, careers,
+    and the developer-package site contract) so the upload discipline -- count
+    cap, content-type allow-list, opaque storage key -- cannot diverge between
+    transports. ``validator`` selects the allow-list and size cap for the
+    purpose; ``is_public`` marks photos that may be shown once a listing is
+    published. A honeypot-dropped lead has no id and stores nothing.
+    """
+    if lead.id is None:
+        return
+    for upload in files:
+        if not upload.filename:
+            continue
+        content = await upload.read()
+        extension = validator(
+            filename=upload.filename,
+            content_type=upload.content_type,
+            size=len(content),
+        )
+        key = storage.store_bytes(data=content, extension=extension)
+        add_attachment(
+            db,
+            lead=lead,
+            original_filename=upload.filename,
+            storage_key=key,
+            content_type=upload.content_type,
+            size_bytes=len(content),
+            is_public=is_public,
+        )
+
+
 def add_attachment(
     db: Session,
     *,
@@ -1170,6 +1221,7 @@ __all__ = [
     "list_public_opportunities",
     "public_opportunity_photo",
     "add_attachment",
+    "persist_public_uploads",
     "list_lead_notes",
     "add_lead_note",
     "routed_team_for",

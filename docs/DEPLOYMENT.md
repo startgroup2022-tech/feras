@@ -4,8 +4,8 @@ This guide prepares the Phase 3/4 release candidate (`feature/phase3-functional`
 PR #7 → `frontend-app-conversion`) for a staging environment. It does not itself
 deploy anything, and it never touches production.
 
-The release line carries **40 migrations**; its single Alembic head is
-`a9c1e2f3b4d6` (verify with `alembic heads`, below).
+The release line carries **41 migrations**; its single Alembic head is
+`d04621f4f9bd` (verify with `alembic heads`, below).
 
 > **Never run `scripts/seed_demo.py` on staging.** Demo data is for local
 > development only. Use `scripts/bootstrap_owner.py` for the first real owner.
@@ -119,7 +119,7 @@ export $(grep -v '^#' /etc/safir/staging.env | xargs)   # or: set -a; . /etc/saf
 /opt/safir/venv/bin/python -m alembic upgrade head
 
 # 4) Verify.
-/opt/safir/venv/bin/python -m alembic current   # expect a9c1e2f3b4d6
+/opt/safir/venv/bin/python -m alembic current   # expect d04621f4f9bd
 /opt/safir/venv/bin/python -m alembic check      # expect "No new upgrade operations detected."
 ```
 

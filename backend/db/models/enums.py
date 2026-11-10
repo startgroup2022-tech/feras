@@ -56,6 +56,10 @@ class ReportStatus(str, enum.Enum):
     # ---- D03 additions ----
     RETURNED = "returned"  # أُعيد للتصحيح
     CANCELLED = "cancelled"  # ملغى (owner only)
+    # Developer-package parity: the terminal state after the owner approves.
+    # ``reviewed`` is the approved-but-open state; ``locked`` is final and is
+    # never editable again (business rule 1: "المقفل لا يُعدَّل").
+    LOCKED = "locked"  # مقفل
 
 
 class ReportApprovalStatus(str, enum.Enum):
@@ -84,6 +88,7 @@ class ReportLifecycleAction(str, enum.Enum):
     RETURNED = "returned"
     APPROVED = "approved"
     CANCELLED = "cancelled"
+    LOCKED = "locked"
 
 
 class FinancialReviewStatus(str, enum.Enum):
@@ -429,6 +434,7 @@ class NotificationType(str, enum.Enum):
     REPORT_RETURNED = "report.returned"
     REPORT_RESUBMITTED = "report.resubmitted"
     REPORT_APPROVED = "report.approved"
+    REPORT_LOCKED = "report.locked"
     REPORT_CANCELLED = "report.cancelled"
     SYSTEM = "system"
 

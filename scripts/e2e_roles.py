@@ -25,6 +25,7 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:12000").rstrip("/")
 PLATFORM = BASE + "/platform/"
 PASSWORD = "SafirDemo!2027"
+CHROMIUM = os.environ.get("CHROMIUM", "/usr/bin/chromium")
 OWNER = "owner@demo.safir.local"
 MANAGER = "manager.tech@demo.safir.local"
 
@@ -134,7 +135,7 @@ def _open_admin_roles(page) -> bool:
 def run() -> int:
     report = Report()
     with sync_playwright() as p:
-        browser = p.chromium.launch(args=["--no-sandbox"])
+        browser = p.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"])
 
         # 1. A company manager must not be able to edit roles.
         ctx = browser.new_context(viewport={"width": 1440, "height": 900})

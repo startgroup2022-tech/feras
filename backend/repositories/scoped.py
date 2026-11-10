@@ -214,6 +214,7 @@ class MonthlyReportRepository:
                     ReportStatus.SUBMITTED.value,
                     ReportStatus.UNDER_REVIEW.value,
                     ReportStatus.REVIEWED.value,
+                    ReportStatus.LOCKED.value,
                 ]
             ),
         )

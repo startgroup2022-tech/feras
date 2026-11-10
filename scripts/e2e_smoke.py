@@ -27,6 +27,7 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("BASE_URL", "http://127.0.0.1:12000")
 PLATFORM = BASE + "/platform/"
 PASSWORD = "SafirDemo!2027"
+CHROMIUM = os.environ.get("CHROMIUM", "/usr/bin/chromium")
 
 # Seeded roles exercised in the sweep. The reachable screens are enumerated
 # from the live DOM (nav items the role can see), not hardcoded here.
@@ -83,7 +84,7 @@ def _open_view(page, view: str) -> bool:
 def run() -> int:
     report = Report()
     with sync_playwright() as p:
-        browser = p.chromium.launch(args=["--no-sandbox"])
+        browser = p.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"])
         for role, email in ROLES.items():
             ctx = browser.new_context(viewport={"width": 1440, "height": 900})
             page = ctx.new_page()

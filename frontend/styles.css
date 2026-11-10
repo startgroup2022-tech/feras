@@ -3,36 +3,39 @@
    Arabic-first RTL · deep navy · white · soft gray · gold
    ============================================================ */
 :root{
-  --navy-900:#060E1F;
-  --navy-800:#0A1730;
-  --navy-700:#0E2044;
-  --navy-600:#132C5C;
-  --navy-500:#1B3D7A;
-  --navy-400:#2C57A0;
-  --navy-300:#5C82C4;
+  /* Brand — teal ramp per the developer package design tokens
+     (--brand:#176b78 on --bg:#f4f7f9; the navy-* names are kept so the rest
+     of the sheet needs no change). */
+  --navy-900:#0B2F36;
+  --navy-800:#0F3F48;
+  --navy-700:#12505B;
+  --navy-600:#155F6C;
+  --navy-500:#176B78;
+  --navy-400:#2F8B98;
+  --navy-300:#63B3BD;
 
-  --gold-700:#8A6820;
-  --gold-600:#AF892F;
-  --gold-500:#C9A54E;
-  --gold-400:#DCBE72;
-  --gold-300:#EBD49B;
-  --gold-100:#F7EFDC;
+  --gold-700:#8A6320;
+  --gold-600:#A5772E;
+  --gold-500:#BC8840;
+  --gold-400:#CFA062;
+  --gold-300:#E0C091;
+  --gold-100:#F7EFE1;
 
-  --ink-900:#0B1424;
-  --ink-700:#22314C;
-  --ink-500:#5A6A85;
-  --ink-400:#7C8AA0;
-  --ink-300:#9DAABD;
+  --ink-900:#152B3A;
+  --ink-700:#2B4250;
+  --ink-500:#607382;
+  --ink-400:#7D8F9C;
+  --ink-300:#A3B1BB;
 
   --paper:#FFFFFF;
-  --bg:#F4F6FA;
-  --bg-2:#EDF1F7;
-  --line:#E4E9F1;
-  --line-2:#EEF2F7;
+  --bg:#F4F7F9;
+  --bg-2:#E5F3F4;
+  --line:#DBE4E9;
+  --line-2:#EAF0F3;
 
-  --green:#1F9D6B;  --green-soft:#E7F6EF;
-  --amber:#C98A16;  --amber-soft:#FBF2DF;
-  --red:#C4483F;    --red-soft:#FBECEA;
+  --green:#24764A;  --green-soft:#E5F4EA;
+  --amber:#BC8840;  --amber-soft:#FFF3DF;
+  --red:#A54343;    --red-soft:#FAE9E9;
   --violet:#5C4CB0; --blue-soft:#EAF1FB;
 
   --shadow-xs:0 1px 2px rgba(11,20,36,.05);

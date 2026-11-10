@@ -60,6 +60,7 @@ class AuditAction:
     REPORT_CORRECTION_CREATED = "monthly_report.correction_created"
     REPORT_APPROVED = "monthly_report.approved"
     REPORT_CANCELLED = "monthly_report.cancelled"
+    REPORT_LOCKED = "monthly_report.locked"
 
     # Execution 02: subsidiary financial summary workflow
     FINANCIAL_PERIOD_CREATED = "financial_period.created"

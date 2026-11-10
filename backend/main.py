@@ -139,6 +139,14 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
+    # Developer-package public website contract (00-shared/api-contract). It
+    # lives under its own prefix (not ``/api/v1``) because the marketing site
+    # consumes it directly; the platform's ``/api/v1/public`` surface stays the
+    # internal lead-capture API.
+    from backend.api.v1 import site as site_contract
+
+    app.include_router(site_contract.router)
+
     @app.get("/api/v1", include_in_schema=False)
     def api_root() -> JSONResponse:
         """Discovery endpoint listing the versioned API surface."""

@@ -446,6 +446,25 @@ def test_market_service_pages_differ_between_markets():
             assert bh["meta"][lang]["description"] != sa["meta"][lang]["description"]
 
 
+def test_faq_page_renders_every_answer_in_both_languages(public_client):
+    for path, lang in (("/faq", "en"), ("/ar/الأسئلة-الشائعة", "ar")):
+        html = public_client.get(path).text
+        assert 'class="faq"' in html
+        for question, _answer in C.FAQ_ITEMS[lang]:
+            assert question in html
+        # The FAQ page carries its own FAQPage structured data.
+        assert '"@type": "FAQPage"' in html
+        assert '"@type": "BreadcrumbList"' in html
+
+
+def test_faq_page_is_in_the_nav_and_sitemap(public_client):
+    html = public_client.get("/faq").text
+    assert 'href="/faq"' in html
+    sitemap = public_client.get("/sitemap.xml").text
+    assert "/faq" in sitemap
+    assert "/ar/الأسئلة-الشائعة" in sitemap
+
+
 def test_market_service_page_emits_service_and_faq_structured_data(public_client):
     html = public_client.get("/bahrain/company-formation").text
     assert '"@type": "Service"' in html
@@ -626,8 +645,8 @@ def test_careers_page_has_a_cv_form_no_vacancies_list(public_client):
     assert 'data-multipart="1"' in en
     assert 'type="file"' in en
     assert "/api/v1/public/leads/careers" in en
-    assert "Join the Startup Safeer Team" in en
-    assert "انضم إلى فريق ستارت أب سفير" in ar
+    assert "Join the Start Upsphere Holding Team" in en
+    assert "انضم إلى فريق ستارت اب سفير القابضة" in ar
 
 
 def test_terms_and_privacy_pages_render_their_approved_sections(public_client):
@@ -732,8 +751,8 @@ def test_revision_brief_careers_heading_is_not_duplicated_and_has_other_country(
     ar = public_client.get("/ar/الوظائف").text
     # Item 17: one clear section heading; the form gets a functional heading.
     # (The phrase also appears in <title>/JSON-LD, so count the rendered <h1>.)
-    assert en.count("Join the Startup Safeer Team</h1>") == 1
-    assert ar.count("انضم إلى فريق ستارت أب سفير</h1>") == 1
+    assert en.count("Join the Start Upsphere Holding Team</h1>") == 1
+    assert ar.count("انضم إلى فريق ستارت اب سفير القابضة</h1>") == 1
     assert "Application details" in en
     assert "بيانات التقديم" in ar
     # Item 13: an "other country" choice reveals a required country-name field.

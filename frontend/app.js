@@ -1,5 +1,5 @@
 /*
- * Safir Holding 2027 — live data bridge.
+ * Start Upsphere Holding 2027 — live data bridge.
  *
  * This file binds the executive dashboard to the real FastAPI backend. It is
  * no longer a standalone mockup: every figure on screen is loaded from the API
@@ -231,12 +231,13 @@
       draft: { ar: "مسودة", en: "Draft" },
       returned: { ar: "أُعيد للتصحيح", en: "Returned for correction" },
       cancelled: { ar: "ملغى", en: "Cancelled" },
+      locked: { ar: "مقفل", en: "Locked" },
     };
     return map[status] || { ar: "بانتظار التقرير", en: "Awaiting report" };
   }
 
   function statusClass(status) {
-    if (status === "reviewed" || status === "submitted") return "ok";
+    if (status === "reviewed" || status === "submitted" || status === "locked") return "ok";
     if (status === "under_review" || status === "returned") return "late";
     return "miss";
   }
@@ -1741,8 +1742,8 @@
   function applyDocTitle() {
     var brand =
       STATE.lang === "ar"
-        ? "سفير القابضة ٢٠٢٧ — "
-        : "Safir Holding 2027 — ";
+        ? "ستارت اب سفير القابضة ٢٠٢٧ — "
+        : "Start Upsphere Holding 2027 — ";
     var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
     var t = VIEW_TITLES[view];
     document.title = brand + (t ? (STATE.lang === "ar" ? t.ar : t.en) : "");
@@ -2341,6 +2342,9 @@
           { value: "submitted", ar: "مُرسل", en: "Submitted" },
           { value: "under_review", ar: "قيد المراجعة", en: "Under review" },
           { value: "reviewed", ar: "تمت المراجعة", en: "Reviewed" },
+          { value: "returned", ar: "أُعيد للتصحيح", en: "Returned" },
+          { value: "locked", ar: "مقفل", en: "Locked" },
+          { value: "cancelled", ar: "ملغى", en: "Cancelled" },
         ] },
       { key: "period", ar: "الفترة", en: "Period", options: periods,
         resolve: function (r) { return r.period_year + "-" + r.period_month; } },
@@ -3526,6 +3530,7 @@
     returned: ["\u0625\u0639\u0627\u062f\u0629 \u0644\u0644\u062a\u0635\u062d\u064a\u062d", "Returned"],
     approved: ["\u0627\u0639\u062a\u0645\u0627\u062f", "Approved"],
     cancelled: ["\u0625\u0644\u063a\u0627\u0621", "Cancelled"],
+    locked: ["\u0642\u0641\u0644", "Locked"],
   };
 
   function reportVersionsBlock(r) {
@@ -3707,6 +3712,26 @@
     });
   }
 
+  function lockReport(id, btn) {
+    confirmDialog({
+      title: dual("\u0642\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Lock report"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u064a\u064f\u0642\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0646\u0647\u0627\u0626\u064a\u064b\u0627 \u0648\u0644\u0627 \u064a\u0645\u0643\u0646 \u062a\u0639\u062f\u064a\u0644\u0647 \u0628\u0639\u062f \u0630\u0644\u0643."
+          : "The report is locked permanently and can no longer be changed.",
+      confirmLabel: dual("\u0642\u0641\u0644", "Lock"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/lock")
+        .then(function () {
+          toast(dual("\u0642\u064f\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631.", "Report locked."), "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
   function cancelReportForm(id, btn) {
     promptDialog({
       title: dual("\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Cancel report"),
@@ -3833,13 +3858,14 @@
         var rec = money(r.outstanding_receivables);
         var fr = r.financial_review;
         var canSubmit = has("monthly_report.submit") && (r.status === "draft" || r.status === "under_review");
-        var canReview = has("financial_review.write") && r.status !== "draft";
+        var canReview = has("financial_review.write") && r.status !== "draft" && r.status !== "locked";
         var canDelete = has("monthly_report.delete") && r.status === "draft";
         var reviewable = ["submitted", "under_review", "reviewed"].indexOf(r.status) >= 0;
         var canReturn = has("monthly_report.review") && r.is_live && reviewable;
         var canCorrect = has("monthly_report.update") && r.is_live && r.status === "returned";
-        var canApprove = has("monthly_report.approve") && r.is_live && reviewable;
-        var canCancel = has("monthly_report.approve") && r.status !== "cancelled";
+        var canApprove = has("monthly_report.approve") && r.is_live && reviewable && r.approval_status !== "approved";
+        var canLock = has("monthly_report.approve") && r.is_live && r.status === "reviewed" && r.approval_status === "approved";
+        var canCancel = has("monthly_report.approve") && r.status !== "cancelled" && r.status !== "locked";
 
         body.innerHTML =
           '<div class="kv">' +
@@ -3953,6 +3979,9 @@
         if (canApprove) {
           btns.push('<button class="btn-solid gold" id="repApprove">' + dual("اعتماد التقرير", "Approve report") + "</button>");
         }
+        if (canLock) {
+          btns.push('<button class="btn-solid gold" id="repLock">' + dual("قفل التقرير", "Lock report") + "</button>");
+        }
         if (canCancel) {
           btns.push('<button class="btn-solid danger" id="repCancel">' + dual("إلغاء التقرير", "Cancel report") + "</button>");
         }
@@ -3966,6 +3995,7 @@
         if (byId("repReturn")) byId("repReturn").addEventListener("click", function () { returnReportForm(id, this); });
         if (byId("repCorrect")) byId("repCorrect").addEventListener("click", function () { correctReportForm(id, this); });
         if (byId("repApprove")) byId("repApprove").addEventListener("click", function () { approveReport(id, this); });
+        if (byId("repLock")) byId("repLock").addEventListener("click", function () { lockReport(id, this); });
         if (byId("repCancel")) byId("repCancel").addEventListener("click", function () { cancelReportForm(id, this); });
       })
       .catch(function (err) {
@@ -15360,7 +15390,7 @@
     var change = STATE.dashboard.change_vs_previous || {};
     var rows = STATE.dashboard.companies_performance || [];
     var lines = [];
-    lines.push(["Safir Holding 2027 — Executive Report"]);
+    lines.push(["Start Upsphere Holding 2027 — Executive Report"]);
     lines.push(["Period", (STATE.year || "") + "-" + String(STATE.month || "").padStart(2, "0")]);
     lines.push(["Generated", new Date().toISOString()]);
     lines.push([]);

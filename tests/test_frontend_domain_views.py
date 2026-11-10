@@ -345,7 +345,7 @@ def test_document_title_follows_the_active_language_and_view():
     # switch and kept in sync with the view, including an English brand.
     assert "function applyDocTitle" in APP_JS
     assert "VIEW_TITLES" in APP_JS
-    assert "Safir Holding 2027" in APP_JS  # English brand present
+    assert "Start Upsphere Holding 2027" in APP_JS  # English brand present
     assert re.search(r"applyI18n\(\);\s*\n\s*applyDocTitle\(\);", APP_JS)
     assert re.search(r"applyDocTitle\(\);\s*\n\s*var board", APP_JS)
 

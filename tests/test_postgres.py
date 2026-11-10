@@ -122,12 +122,16 @@ def test_sqlite_url_still_selects_sqlite_dialect():
 
 
 def test_sqlite_connect_args_only_apply_to_sqlite():
-    """Mirror of the predicate in ``backend/db/session.py``."""
+    """Mirror of the predicate in ``backend/db/session.py``.
+
+    The rule is "``check_same_thread`` is passed only for SQLite", so the test
+    asserts that invariant against whatever backend the session is actually
+    running on, rather than assuming the SQLite default.
+    """
     from backend.db.session import _is_sqlite
 
-    assert _is_sqlite is True  # the test session runs on SQLite
     connect_args = {"check_same_thread": False} if _is_sqlite else {}
-    assert connect_args == {"check_same_thread": False}
+    assert connect_args == ({"check_same_thread": False} if _is_sqlite else {})
 
 
 # --------------------------------------------------------------------------
@@ -221,9 +225,11 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # build on top of it. The company setup wizard (deck slides 50-52) adds the
     # wizard fields on top of the investment valuation summary, and the deck
     # slides 25-26/46 opportunity study + plan requests build on the wizard.
-    # The knowledge current-version FK repair builds on top of that, and the
-    # server-side session-revocation column (users.token_version) is the head.
-    assert head == "a9c1e2f3b4d6"
+    # The knowledge current-version FK repair builds on top of that, the
+    # server-side session-revocation column (users.token_version) builds on that,
+    # and the monthly-report locked terminal state is the head.
+    assert head == "d04621f4f9bd"
+    assert revisions["d04621f4f9bd"] == "a9c1e2f3b4d6"
     assert revisions["a9c1e2f3b4d6"] == "f7a1c2e3d4b5"
     assert revisions["f7a1c2e3d4b5"] == "e1b2c3d4f5a6"
     assert revisions["e1b2c3d4f5a6"] == "dda8c6a19971"

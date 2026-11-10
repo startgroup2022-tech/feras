@@ -216,6 +216,29 @@ def approve_report(
     return _to_out(report, db, user)
 
 
+@router.post("/{report_id}/lock", response_model=MonthlyReportOut)
+def lock_report(
+    report_id: int,
+    request: Request,
+    user: CurrentUser,
+    db: DbSession,
+) -> MonthlyReportOut:
+    """Owner-only: lock an approved report into its final, immutable state.
+
+    Developer-package parity (business rule 1): the lifecycle ends
+    ``approved -> locked`` and a locked report can never be changed again.
+    """
+    ctx = audit_service.request_context(request)
+    report = report_service.lock_report(
+        db,
+        user=user,
+        report_id=report_id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return _to_out(report, db, user)
+
+
 @router.post("/{report_id}/cancel", response_model=MonthlyReportOut)
 def cancel_report(
     report_id: int,

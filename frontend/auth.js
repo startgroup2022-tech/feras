@@ -1,5 +1,5 @@
 /*
- * Safir Holding 2027 — session + API client.
+ * Start Upsphere Holding 2027 — session + API client.
  *
  * Thin wrapper around the backend's existing JWT authentication. The access and
  * refresh tokens live in localStorage under one key; every API call attaches

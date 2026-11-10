@@ -510,6 +510,7 @@ class MonthlyReportOut(BaseModel):
     approved_at: datetime | None = None
     cancelled_at: datetime | None = None
     cancel_reason: str | None = None
+    locked_at: datetime | None = None
     revenue: Decimal | None
     expenses: Decimal | None
     net_result: Decimal | None

@@ -30,7 +30,7 @@ from backend.website import group_companies
 from backend.website import seo
 from backend.website.content import PageMeta
 
-BRAND_AR = "ستارت أب سفير القابضة"
+BRAND_AR = "ستارت اب سفير القابضة"
 BRAND_EN = "Start Upsphere Holding"
 
 # The original owner-supplied logo, shipped as a static asset (handoff §1,
@@ -798,7 +798,7 @@ def _form_section(
     action = f"/api/v1/public/leads/{form_key}"
     titles = {
         "group-service": _t("كيف يمكننا مساعدتك؟", "How Can We Help?", lang),
-        "careers": _t("انضم إلى فريق ستارت أب سفير", "Join the Startup Safeer Team", lang),
+        "careers": _t("انضم إلى فريق ستارت اب سفير القابضة", "Join the Start Upsphere Holding Team", lang),
     }
     title = heading or titles.get(form_key) or _t("أكمل الطلب", "Complete your request", lang)
 
@@ -1507,6 +1507,32 @@ def _careers_body(lang: str) -> str:
 {_form_section(lang, "careers", "gulf", None, heading=_t('بيانات التقديم', 'Application details', lang))}"""
 
 
+def _faq_body(lang: str) -> str:
+    """The standalone FAQ page: one collapsible answer per approved question."""
+    items = "".join(
+        f"""<details class="faq-item">
+  <summary>{e(question)}<span class="faq-caret" aria-hidden="true"></span></summary>
+  <p>{e(answer)}</p>
+</details>"""
+        for question, answer in C.FAQ_ITEMS[lang]
+    )
+    return f"""
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(_t('الأسئلة الشائعة', 'Frequently asked questions', lang))}</h1>
+    <p class="section-lead">{e(_t(
+        'أجوبة عن أكثر الأسئلة تكرارًا حول القابضة وشركات المجموعة والفرص والخدمات والوظائف.',
+        'Answers to the questions most often asked about the Holding, its group companies, opportunities, services and careers.',
+        lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container narrow">
+    <div class="faq">{items}</div>
+  </div>
+</section>"""
+
+
 def _legal_sections(lang: str, sections: list[dict]) -> str:
     blocks = []
     for section in sections:
@@ -1543,7 +1569,7 @@ def _privacy_body(lang: str) -> str:
         lang,
         title_ar="سياسة الخصوصية",
         title_en="Privacy Policy",
-        intro_ar="توضح هذه السياسة كيفية تعامل شركة ستارت أب سفير القابضة ذ.م.م مع البيانات الشخصية المقدمة عبر الموقع.",
+        intro_ar="توضح هذه السياسة كيفية تعامل شركة ستارت اب سفير القابضة ذ.م.م مع البيانات الشخصية المقدمة عبر الموقع.",
         intro_en="This policy explains how START UPSPHERE HOLDING CO W.L.L handles personal data submitted through this website.",
         sections=C.PRIVACY_SECTIONS,
     )
@@ -1554,7 +1580,7 @@ def _terms_body(lang: str) -> str:
         lang,
         title_ar="الشروط والأحكام",
         title_en="Terms and Conditions",
-        intro_ar="شروط استخدام موقع شركة ستارت أب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع.",
+        intro_ar="شروط استخدام موقع شركة ستارت اب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع.",
         intro_en="The terms of use for the START UPSPHERE HOLDING website, covering service and career requests and the listing of businesses.",
         sections=C.TERMS_SECTIONS,
     )
@@ -1710,6 +1736,8 @@ def _body_for(meta: PageMeta, cms=None) -> str:
         body = _about_body(lang)
     elif route == "careers":
         body = _careers_body(lang)
+    elif route == "faq":
+        body = _faq_body(lang)
     elif route == "terms":
         body = _terms_body(lang)
     elif route == "privacy":

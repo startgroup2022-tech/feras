@@ -74,7 +74,7 @@ def render_meta_tags(meta: C.PageMeta) -> str:
         f'<meta property="og:description" content="{_esc(meta.description)}">',
         f'<meta property="og:url" content="{_esc(canonical)}">',
         f'<meta property="og:locale" content="{"ar_SA" if meta.lang == "ar" else "en_US"}">',
-        f'<meta property="og:site_name" content="{"سفير القابضة" if meta.lang == "ar" else "Safir Holding"}">',
+        f'<meta property="og:site_name" content="{"ستارت اب سفير القابضة" if meta.lang == "ar" else "Start Upsphere Holding"}">',
         '<meta name="twitter:card" content="summary_large_image">',
         f'<meta name="twitter:title" content="{_esc(meta.title)}">',
         f'<meta name="twitter:description" content="{_esc(meta.description)}">',
@@ -89,8 +89,8 @@ def organization_jsonld(lang: str) -> dict:
     date, logo and social profiles are deliberately omitted because they are
     not verified project data.
     """
-    name = "سفير القابضة" if lang == "ar" else "Safir Holding"
-    alt = "Safir Holding" if lang == "ar" else "سفير القابضة"
+    name = "ستارت اب سفير القابضة" if lang == "ar" else "Start Upsphere Holding"
+    alt = "Start Upsphere Holding" if lang == "ar" else "ستارت اب سفير القابضة"
     node = {
         "@context": "https://schema.org",
         "@type": "Organization",
@@ -139,7 +139,7 @@ def service_jsonld(meta: C.PageMeta) -> dict | None:
         "description": meta.description,
         "provider": {
             "@type": "Organization",
-            "name": "سفير القابضة" if meta.lang == "ar" else "Safir Holding",
+            "name": "ستارت اب سفير القابضة" if meta.lang == "ar" else "Start Upsphere Holding",
             "url": absolute("/"),
         },
         "areaServed": {"@type": "Country", "name": market_name},
@@ -148,13 +148,22 @@ def service_jsonld(meta: C.PageMeta) -> dict | None:
 
 
 def faq_jsonld(meta: C.PageMeta) -> dict | None:
-    """A ``FAQPage`` node built from the page's real on-page FAQ."""
-    if not meta.market or not meta.service_slug:
+    """A ``FAQPage`` node built from the page's real on-page FAQ.
+
+    Two sources qualify: a market/service page (its own localised FAQ) and the
+    standalone FAQ page (``C.FAQ_ITEMS``). Both describe questions actually
+    rendered on the page, so the structured data never asserts anything a
+    visitor cannot read.
+    """
+    if meta.route == "faq":
+        pairs = C.FAQ_ITEMS.get(meta.lang, [])
+    elif meta.market and meta.service_slug:
+        content = C.service_market_content(meta.service_slug, meta.market)
+        if not content:
+            return None
+        pairs = content.get("faq", {}).get(meta.lang, [])
+    else:
         return None
-    content = C.service_market_content(meta.service_slug, meta.market)
-    if not content:
-        return None
-    pairs = content.get("faq", {}).get(meta.lang, [])
     if not pairs:
         return None
     return {

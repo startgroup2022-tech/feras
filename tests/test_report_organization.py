@@ -148,7 +148,8 @@ def test_organization_is_audited(client, world, auth, db):
         db.query(AuditLog)
         .filter(
             AuditLog.action == AuditAction.AI_TEXT_ORGANIZED,
-            AuditLog.entity_id == report_id,
+            # ``entity_id`` is a string column; compare as text for PostgreSQL.
+            AuditLog.entity_id == str(report_id),
         )
         .all()
     )
