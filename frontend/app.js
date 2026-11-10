@@ -15912,7 +15912,14 @@
           })
             .then(function () {
               closeModal();
-              toast(dual("تم تغيير كلمة المرور.", "Password changed."), "ok");
+              // Changing the password revokes every outstanding token, including
+              // the one in this tab. Drop the local session and return to the
+              // login screen so the next call is not a guaranteed 401.
+              USER = null;
+              api.logout();
+              toast(dual("تم تغيير كلمة المرور. سجّل الدخول من جديد.", "Password changed. Please sign in again."), "ok");
+              showLogin();
+              window.scrollTo(0, 0);
             })
             .catch(function (err) {
               domainError(err);

@@ -213,6 +213,11 @@ a failure shows an explicit error/empty state.
   transparent single refresh on 401, and `get/post/patch`. Tokens live in
   `localStorage` under `safir.session.v1`; they are never put in the URL or
   HTML. `setBase()` exists but the app runs same-origin (empty base).
+- Sessions are server-revocable without a session store: every token carries a
+  `tv` claim = `users.token_version`. Logout, a self-service password change and
+  an admin reset bump that column (`auth_service.revoke`), so all tokens issued
+  before the bump 401 on next use. A password change also signs the tab out
+  locally, since its own token is now stale.
 - Login gate: `.login-screen` (fixed, z-index 1000) covers the app until the
   backend authenticates the user; `.stage-wrap` is hidden via
   `body:not(.authed)`. `#loginForm`, `#loginEmail`, `#loginPassword`,

@@ -221,8 +221,10 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # build on top of it. The company setup wizard (deck slides 50-52) adds the
     # wizard fields on top of the investment valuation summary, and the deck
     # slides 25-26/46 opportunity study + plan requests build on the wizard.
-    # The knowledge current-version FK repair builds on top of that.
-    assert head == "f7a1c2e3d4b5"
+    # The knowledge current-version FK repair builds on top of that, and the
+    # server-side session-revocation column (users.token_version) is the head.
+    assert head == "a9c1e2f3b4d6"
+    assert revisions["a9c1e2f3b4d6"] == "f7a1c2e3d4b5"
     assert revisions["f7a1c2e3d4b5"] == "e1b2c3d4f5a6"
     assert revisions["e1b2c3d4f5a6"] == "dda8c6a19971"
     assert revisions["dda8c6a19971"] == "f49eb1554901"

@@ -4,9 +4,13 @@ Passwords are hashed with bcrypt directly. ``passlib`` is deliberately not used:
 its last release predates bcrypt 4.1 and it emits spurious version errors
 against current bcrypt, whereas the ``bcrypt`` API is small and stable.
 
-Tokens are signed JWTs carrying only the subject (user id), token type and
-expiry -- never roles or company scope, so that authorization is always
-re-evaluated server-side from the database on every request.
+Tokens are signed JWTs carrying only the subject (user id), token type, expiry
+and the account's session generation (``tv``) -- never roles or company scope, so
+that authorization is always re-evaluated server-side from the database on every
+request. ``tv`` is compared against ``users.token_version``; bumping that column
+(see :func:`backend.services.auth_service.revoke`) invalidates every token issued
+before the bump, which is how logout and password changes take effect
+immediately rather than at token expiry.
 """
 
 from __future__ import annotations
@@ -72,20 +76,37 @@ def _create_token(
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_access_token(user_id: int | str) -> str:
+def create_access_token(user_id: int | str, token_version: int = 0) -> str:
     return _create_token(
         str(user_id),
         "access",
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        {"tv": int(token_version)},
     )
 
 
-def create_refresh_token(user_id: int | str) -> str:
+def create_refresh_token(user_id: int | str, token_version: int = 0) -> str:
     return _create_token(
         str(user_id),
         "refresh",
         timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        {"tv": int(token_version)},
     )
+
+
+def token_version_of(payload: dict[str, Any]) -> int:
+    """Return the session generation carried by a decoded token.
+
+    Tokens minted before the ``tv`` claim existed have no value; they are treated
+    as generation ``0`` so an account that has never been revoked keeps working.
+    A missing claim on an account whose ``token_version`` is above zero will not
+    match, so legacy tokens are refused once the account is revoked.
+    """
+    value = payload.get("tv", 0)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def decode_token(token: str, expected_type: str = "access") -> dict[str, Any]:

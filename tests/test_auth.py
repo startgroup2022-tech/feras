@@ -300,3 +300,122 @@ def test_set_password_requires_user_manage(client, auth, make_user):
         json={"new_password": "TempReset!2027"},
     )
     assert response.status_code == 403
+
+
+# --------------------------------------------------------------------------
+# Server-side session revocation (logout + refresh rotation)
+# --------------------------------------------------------------------------
+def _tokens(client, email: str, password: str = "TestPass!2027") -> dict:
+    response = client.post(LOGIN, json={"email": email, "password": password})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_logout_revokes_the_access_token(client, make_user):
+    """A logged-out access token must not reach a protected endpoint."""
+    make_user("owner@holding.sa", "holding_owner")
+    tokens = _tokens(client, "owner@holding.sa")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
+    # Same token, now revoked server-side.
+    revoked = client.get("/api/v1/auth/me", headers=headers)
+    assert revoked.status_code == 401
+    assert revoked.json()["error"]["code"] == "unauthenticated"
+
+
+def test_logout_revokes_the_refresh_token(client, make_user):
+    """A logged-out refresh token must not mint a new access token."""
+    make_user("owner@holding.sa", "holding_owner")
+    tokens = _tokens(client, "owner@holding.sa")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
+
+    response = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert response.status_code == 401
+
+
+def test_refresh_rotates_the_refresh_token(client, make_user):
+    """Each refresh returns a new refresh token; the new one keeps working."""
+    make_user("owner@holding.sa", "holding_owner")
+    tokens = _tokens(client, "owner@holding.sa")
+
+    rotated = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert rotated.status_code == 200
+    new_refresh = rotated.json()["refresh_token"]
+    assert new_refresh and new_refresh != tokens["refresh_token"]
+
+    # The rotated token is itself valid for the next exchange.
+    again = client.post("/api/v1/auth/refresh", json={"refresh_token": new_refresh})
+    assert again.status_code == 200
+
+
+def test_change_password_revokes_previous_access_token(client, login, make_user):
+    """A stolen token must stop working once the password is changed."""
+    make_user("owner@holding.sa", "holding_owner")
+    headers = login("owner@holding.sa")
+
+    changed = client.post(
+        CHANGE,
+        headers=headers,
+        json={"current_password": "TestPass!2027", "new_password": "NewSecret!2028"},
+    )
+    assert changed.status_code == 204
+
+    # The token minted before the change is now refused.
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
+    # The new credential mints a working token.
+    fresh = _tokens(client, "owner@holding.sa", "NewSecret!2028")
+    assert (
+        client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {fresh['access_token']}"},
+        ).status_code
+        == 200
+    )
+
+
+def test_admin_reset_revokes_the_targets_sessions(client, auth, make_user):
+    """An administrator password reset cuts off the target's live session."""
+    owner = make_user("owner@holding.sa", "holding_owner")
+    target = make_user("manager@holding.sa", "company_manager")
+    target_tokens = _tokens(client, "manager@holding.sa")
+    target_headers = {"Authorization": f"Bearer {target_tokens['access_token']}"}
+
+    assert client.get("/api/v1/auth/me", headers=target_headers).status_code == 200
+    reset = client.post(
+        f"/api/v1/users/{target.id}/password",
+        headers=auth(owner),
+        json={"new_password": "TempReset!2027"},
+    )
+    assert reset.status_code == 204
+
+    assert client.get("/api/v1/auth/me", headers=target_headers).status_code == 401
+    assert (
+        client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": target_tokens["refresh_token"]}
+        ).status_code
+        == 401
+    )
+
+
+def test_legacy_token_without_tv_is_rejected_once_revoked(client, db, make_user):
+    """Tokens minted before ``tv`` existed keep working until a revocation."""
+    user = make_user("owner@holding.sa", "holding_owner")
+    # A token with no ``tv`` claim (as minted before this feature).
+    legacy = create_access_token(user.id)
+    headers = {"Authorization": f"Bearer {legacy}"}
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+
+    user.token_version = 1
+    db.add(user)
+    db.commit()
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401

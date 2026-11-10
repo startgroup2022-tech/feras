@@ -448,7 +448,9 @@ def auth():
     """Return an ``Authorization`` header dict for a user."""
 
     def _auth(user: User) -> dict[str, str]:
-        return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+        return {
+            "Authorization": f"Bearer {create_access_token(user.id, user.token_version)}"
+        }
 
     return _auth
 

@@ -738,15 +738,23 @@ async def _run(browser, base: str, dsn: str) -> dict:
         )
 
         # Restore the original password through the API so the demo seed holds.
+        # The change above revoked the session's token, so re-authenticate with
+        # the temporary password first; the old token would now be a 401.
         await page.evaluate(
             """async (payload) => {
-                const raw = localStorage.getItem('safir.session.v1');
-                const tok = raw ? (JSON.parse(raw) || {}).access_token : null;
+                const res = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: 'owner@demo.safir.local',
+                                          password: payload.current_password}),
+                });
+                const tok = res.ok ? (await res.json()).access_token : null;
                 await fetch('/api/v1/auth/change-password', {
                     method: 'POST',
                     headers: Object.assign({'Content-Type': 'application/json'},
                         tok ? {Authorization: 'Bearer ' + tok} : {}),
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify({current_password: payload.current_password,
+                                          new_password: payload.new_password}),
                 });
             }""",
             {"current_password": temp_password, "new_password": PASSWORD},

@@ -199,6 +199,14 @@ class User(Base, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Server-side session generation. Every access and refresh token carries the
+    # value that was current when it was minted (claim ``tv``); a request whose
+    # token predates the current value is refused. Logout, password change and
+    # an admin password reset all increment this counter, which invalidates every
+    # outstanding token for the account without a per-token denylist.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     role: Mapped[Role] = relationship(back_populates="users", lazy="joined")
     company_access: Mapped[list["UserCompanyAccess"]] = relationship(

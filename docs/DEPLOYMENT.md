@@ -4,8 +4,8 @@ This guide prepares the Phase 3/4 release candidate (`feature/phase3-functional`
 PR #7 → `frontend-app-conversion`) for a staging environment. It does not itself
 deploy anything, and it never touches production.
 
-The release line carries **39 migrations**; its single Alembic head is
-`f7a1c2e3d4b5` (verify with `alembic heads`, below).
+The release line carries **40 migrations**; its single Alembic head is
+`a9c1e2f3b4d6` (verify with `alembic heads`, below).
 
 > **Never run `scripts/seed_demo.py` on staging.** Demo data is for local
 > development only. Use `scripts/bootstrap_owner.py` for the first real owner.
@@ -44,7 +44,7 @@ sudo chmod 750 /var/lib/safir/uploads
 sudo -u safir git clone https://github.com/startgroup2022-tech/feras.git /opt/safir/app
 cd /opt/safir/app
 sudo -u safir git checkout feature/phase3-functional
-sudo -u safir git rev-parse HEAD        # expect 1e10fbe...
+sudo -u safir git rev-parse HEAD        # expect the release commit recorded in PR #7
 ```
 
 ---
@@ -119,7 +119,7 @@ export $(grep -v '^#' /etc/safir/staging.env | xargs)   # or: set -a; . /etc/saf
 /opt/safir/venv/bin/python -m alembic upgrade head
 
 # 4) Verify.
-/opt/safir/venv/bin/python -m alembic current   # expect f7a1c2e3d4b5
+/opt/safir/venv/bin/python -m alembic current   # expect a9c1e2f3b4d6
 /opt/safir/venv/bin/python -m alembic check      # expect "No new upgrade operations detected."
 ```
 
@@ -237,3 +237,4 @@ removes all tables. Prefer restoring from backup (see
 * [ ] Upload limits (allowed types, 10 MiB) are unchanged.
 * [ ] No `.env` file or credential is committed.
 * [ ] Exactly one uvicorn worker.
+* [ ] Session revocation is live: logout and password change bump `users.token_version`, so old tokens 401 immediately (verify `POST /api/v1/auth/logout` then reuse the access token → `401`).
