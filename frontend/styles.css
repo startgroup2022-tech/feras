@@ -1442,13 +1442,16 @@ body{font-size:15px;line-height:1.6;}
 .header::after{display:none;}
 .header-inner{min-height:68px;padding:12px 22px;gap:12px;}
 
-/* Rail: 235px, white, on the LEFT of the content column, matching the
-   reference `.layout{direction:ltr;grid-template-columns:235px 1fr}` where the
-   sidebar is the first child. The container runs LTR so the rail keeps the left
-   edge in both AR and EN; the rail and content set their own direction back. */
-.stage-body.with-sidebar{flex-direction:row;direction:ltr;}
+/* Rail: 235px, white, on the inline-start edge — the right in Arabic (RTL),
+   the left in English (LTR). The container inherits its direction from
+   <html dir>, and the rail is the first flex child (order:-1) so it always
+   sits on the start edge, matching the reference `.layout` where the sidebar
+   is the first child. */
+.stage-body.with-sidebar{flex-direction:row;}
+html[dir="rtl"] .stage-body.with-sidebar{direction:rtl;}
+html[dir="ltr"] .stage-body.with-sidebar{direction:ltr;}
 .sidebar{
-  flex:0 0 235px;order:0;direction:rtl;
+  flex:0 0 235px;order:-1;
   background:var(--paper);color:var(--ink-500);
   border-inline-end:0;border-inline-start:1px solid var(--line);
 }
@@ -1491,6 +1494,10 @@ html.lang-en .app-view{direction:ltr;}
 h1.page-title{font-family:var(--f-body);font-size:26px;font-weight:600;color:var(--ink-900);}
 .av-head h1{font-size:26px;color:var(--ink-900);}
 
-/* Brand line in the rail: the reference wordmark, single line. */
+/* Brand line in the rail: the reference wordmark, following the language. */
 .sb-name .en{display:none;}
 .sb-sub .en{display:none;}
+html.lang-en .sb-name .en{display:inline;}
+html.lang-en .sb-sub .en{display:inline;}
+html.lang-en .sb-name .ar,
+html.lang-en .sb-sub .ar{display:none;}

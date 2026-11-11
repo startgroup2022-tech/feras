@@ -1066,6 +1066,16 @@
       box.innerHTML = "";
       if (section) section.hidden = true;
       if (holding) holding.hidden = false;
+      // A role with no summary of its own keeps the holding strip; the heading
+      // stays "لوحة القيادة" and the sub line falls back to the prototype's
+      // generic wording rather than the owner's holding summary.
+      if (title) title.innerHTML = dual("لوحة القيادة", "Dashboard");
+      if (sub) {
+        sub.innerHTML = dual(
+          "ملخص الأعمال المرتبطة بدورك",
+          "Summary of the work related to your role",
+        );
+      }
       return;
     }
     box.innerHTML = summary.kpis.map(roleKpiCard).join("");
@@ -1716,7 +1726,7 @@
   // Keep the document title in the active language (and in sync with the
   // current view) instead of leaving the server-rendered Arabic title forever.
   var VIEW_TITLES = {
-    dashboard: { ar: "لوحة القيادة التنفيذية", en: "Executive Dashboard" },
+    dashboard: { ar: "لوحة القيادة", en: "Dashboard" },
     feedback: { ar: "التغذية الراجعة", en: "Feedback" },
     subsidiaries: { ar: "الشركات التابعة", en: "Subsidiaries" },
     reports: { ar: "التقارير الشهرية", en: "Monthly Reports" },

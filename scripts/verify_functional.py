@@ -131,19 +131,25 @@ async def _open_view(page, view: str) -> None:
         view,
     )
     await page.wait_for_timeout(200)
-    await page.evaluate(
+    clicked = await page.evaluate(
         """(view) => {
           const item = document.querySelector(`.nav-item[data-view="${view}"]`);
-          if (item) item.click();
+          if (item) { item.click(); return true; }
+          return false;
         }""",
         view,
     )
+    if not clicked:
+        # Views that left the rail (the prototype's thirteen sections replaced
+        # the older ones) stay reachable by deep link; drive the same hash
+        # routing ``bindNav`` wires for a real user following a link.
+        await page.evaluate("(view) => { location.hash = '#' + view; }", view)
     await page.wait_for_timeout(900)
     await _settle_modals(page)
 
 
 async def _open_admin_tab(page, tab: str) -> None:
-    await _open_view(page, "admin")
+    await _open_view(page, "group")
     await page.evaluate(
         """(tab) => {
           const t = document.querySelector(`[data-admin-tab="${tab}"]`);

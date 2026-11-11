@@ -56,19 +56,28 @@ MANAGER_ROLES = {"company_manager", "company_owner"}
 SPECIALIST_ROLES = {"designer"}
 SALES_ROLES = {"marketing"}
 
-# Deck slides 7-11 each carry a role title and the greeting line
-# "مرحبًا <role> | يعرض النظام البيانات المسموح بها لدورك" above the tiles. The
-# title is the deck's own wording (slide 9's "شركة نموذجية" is the sample
-# company name, so the generic "لوحة الشركة" is used for a real tenant).
+# The prototype's dashboard heading is the single word "لوحة القيادة" for every
+# role; what changes per role is the one-line summary beneath it. The tile set
+# below the heading is what actually differs by role (deck slides 7-11).
 ROLE_TITLES = {
-    "holding_owner": ("لوحة القيادة للمجموعة", "Holding Dashboard"),
-    "super_admin": ("لوحة القيادة للمجموعة", "Holding Dashboard"),
-    "business_development": ("لوحة تطوير الأعمال", "Business Development Dashboard"),
-    "company_manager": ("لوحة الشركة", "Company Dashboard"),
-    "company_owner": ("لوحة الشركة", "Company Dashboard"),
-    "designer": ("مساحة عملي", "My Workspace"),
-    "marketing": ("العملاء والفرص", "Leads and Opportunities"),
+    "holding_owner": ("لوحة القيادة", "Dashboard"),
+    "super_admin": ("لوحة القيادة", "Dashboard"),
+    "business_development": ("لوحة القيادة", "Dashboard"),
+    "company_manager": ("لوحة القيادة", "Dashboard"),
+    "company_owner": ("لوحة القيادة", "Dashboard"),
+    "designer": ("لوحة القيادة", "Dashboard"),
+    "marketing": ("لوحة القيادة", "Dashboard"),
 }
+
+# The prototype's role-specific dashboard subtitle (dashboard() in
+# platform_prototype_v15.html): owner, manager, and every other role.
+DASHBOARD_SUBTITLES = {
+    "holding_owner": ("ملخص القابضة والشركات التابعة", "Holding and subsidiaries summary"),
+    "super_admin": ("ملخص القابضة والشركات التابعة", "Holding and subsidiaries summary"),
+    "company_manager": ("ملخص شركتك والمهام المطلوبة", "Your company summary and the tasks required"),
+    "company_owner": ("ملخص شركتك والمهام المطلوبة", "Your company summary and the tasks required"),
+}
+_DEFAULT_SUBTITLE = ("ملخص الأعمال المرتبطة بدورك", "Summary of the work related to your role")
 
 ROLE_NAMES = {
     "holding_owner": ("المالك", "Owner"),
@@ -161,11 +170,10 @@ ROLE_VIEW_ALL: dict[str, str] = {
 
 
 def _greeting(role: str) -> tuple[str, str]:
-    name_ar, name_en = ROLE_NAMES.get(role, ("المستخدم", "User"))
-    return (
-        f"مرحبًا {name_ar} | يعرض النظام البيانات المسموح بها لدورك",
-        f"Welcome, {name_en} | The system shows the data permitted for your role",
-    )
+    # The prototype's role-specific dashboard subtitle sits directly under the
+    # "لوحة القيادة" heading; the system-permission line it also prints is the
+    # static helper, so the subtitle alone travels with the summary.
+    return DASHBOARD_SUBTITLES.get(role, _DEFAULT_SUBTITLE)
 
 
 def _scoped(stmt, column, user: User):

@@ -56,9 +56,10 @@ def test_owner_gets_the_holding_role_summary(client, world, auth):
         "liquidity_risk",
         "pending_decisions",
     ]
-    # The deck's slide-7 heading and greeting line, not the holding one.
-    assert summary["title_ar"] == "لوحة القيادة للمجموعة"
-    assert summary["greeting_ar"].startswith("مرحبًا المالك")
+    # The prototype's dashboard heading is the single "لوحة القيادة" for every
+    # role, with a role-specific one-line summary beneath it.
+    assert summary["title_ar"] == "لوحة القيادة"
+    assert summary["greeting_ar"] == "ملخص القابضة والشركات التابعة"
 
 
 def test_company_manager_summary_is_company_scoped(client, world, auth):

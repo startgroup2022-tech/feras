@@ -575,10 +575,14 @@ def test_every_sidebar_nav_item_keeps_its_permission_gate():
 
 
 def test_sidebar_rail_matches_the_prototype_labels():
-    # The rail is single-language (Arabic), as the prototype is: each label is
-    # the prototype's own text, with no bilingual toggle inside the item.
+    # The rail mirrors the prototype's thirteen sections. Each label is
+    # bilingual (Arabic + English) so the language switch reaches the rail too;
+    # the Arabic text is the prototype's own wording, in its order.
     rail = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S).group(1)
-    labels = re.findall(r'<span class="sb-txt">([^<]+)</span>', rail)
+    labels = re.findall(
+        r'<span class="sb-txt"><span class="ar">([^<]+)</span><span class="en">[^<]+</span></span>',
+        rail,
+    )
     assert labels == [
         "لوحة القيادة", "العملاء المحتملون", "الطلبات", "التوصيات والاستشارات",
         "الفرص الاستثمارية", "القرارات", "التقارير الشهرية", "ملفات الموظفين",
