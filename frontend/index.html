@@ -160,11 +160,11 @@
 
   <div class="stage-body with-sidebar" id="stageBody">
 
-  <!-- ================= SIDEBAR (right, RTL) =================
-       Six primary sections the brief asks for; the remaining operational
-       views stay reachable (and permission-gated) under "المزيد". Every item
-       keeps its original data-view / data-perm so the RBAC contract, the
-       click/keyboard binding and the aria-current logic are unchanged. -->
+  <!-- ================= SIDEBAR (left, RTL rail) =================
+       The thirteen sections of the approved prototype, in its order: twelve
+       under "القائمة الرئيسية" and the owner-only "إدارة المجموعة" under
+       "إدارة المالك". Every item keeps a data-perm so the RBAC contract, the
+       click/keyboard binding and the aria-current logic stay intact. -->
   <aside class="sidebar" id="sidebar" aria-label="التنقل الرئيسي">
     <div class="sb-brand">
       <div class="sb-mark">
@@ -181,43 +181,29 @@
     </div>
 
     <div class="sb-section">
-      <div class="sb-label"><span class="ar">الأقسام الرئيسية</span><span class="en">Main sections</span></div>
+      <div class="sb-label">القائمة الرئيسية</div>
       <nav class="sb-nav" id="mainNav">
-        <div class="nav-item active" data-view="dashboard" data-perm="dashboard.holding dashboard.company" role="button" tabindex="0" aria-current="page"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="sb-txt"><span class="ar">لوحة القيادة</span><span class="en">Dashboard</span></span></div>
-        <div class="nav-item" data-view="leads" data-perm="website_lead.read" role="button" tabindex="0"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="sb-txt"><span class="ar">العملاء المحتملون</span><span class="en">Leads</span></span></div>
-        <div class="nav-item" data-view="requests" data-perm="form.read" role="button" tabindex="0"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg><span class="sb-txt"><span class="ar">الطلبات</span><span class="en">Requests</span></span></div>
-        <div class="nav-item" data-view="feedback" data-perm="weekly_report.read_own weekly_report.read_all management_brief.read monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-3.9-.9L3 20.5l1.5-4.9a8.4 8.4 0 0 1-1-4.1 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.5 8.4Z"/><path d="M8 10h8M8 13.5h5"/></svg><span class="sb-txt"><span class="ar">التغذية الراجعة</span><span class="en">Feedback</span></span></div>
-        <div class="nav-item" data-view="projects" data-perm="project.read" role="button" tabindex="0"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg><span class="sb-txt"><span class="ar">الفرص</span><span class="en">Opportunities</span></span></div>
-        <div class="nav-item" data-view="decisions" data-perm="owner_decision.read" role="button" tabindex="0"><svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="sb-txt"><span class="ar">القرارات</span><span class="en">Decisions</span></span></div>
+        <div class="nav-item active" data-view="dashboard" data-perm="dashboard.holding dashboard.company" role="button" tabindex="0" aria-current="page"><span class="sb-ico">◫</span><span class="sb-txt">لوحة القيادة</span></div>
+        <div class="nav-item" data-view="leads" data-perm="website_lead.read" role="button" tabindex="0"><span class="sb-ico">◎</span><span class="sb-txt">العملاء المحتملون</span></div>
+        <div class="nav-item" data-view="requests" data-perm="form.read" role="button" tabindex="0"><span class="sb-ico">⇄</span><span class="sb-txt">الطلبات</span></div>
+        <div class="nav-item" data-view="advisory" data-perm="advisor.read advisor.session.read_own" role="button" tabindex="0"><span class="sb-ico">✦</span><span class="sb-txt">التوصيات والاستشارات</span></div>
+        <div class="nav-item" data-view="opportunities" data-perm="project.read" role="button" tabindex="0"><span class="sb-ico">◇</span><span class="sb-txt">الفرص الاستثمارية</span></div>
+        <div class="nav-item" data-view="decisions" data-perm="owner_decision.read" role="button" tabindex="0"><span class="sb-ico">✓</span><span class="sb-txt">القرارات</span></div>
+        <div class="nav-item" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><span class="sb-ico">▤</span><span class="sb-txt">التقارير الشهرية</span></div>
+        <div class="nav-item" data-view="employees" data-perm="employee.read assessment.read" role="button" tabindex="0"><span class="sb-ico">♧</span><span class="sb-txt">ملفات الموظفين</span></div>
+        <div class="nav-item" data-view="hr" data-perm="employee.read employee.movement.read" role="button" tabindex="0"><span class="sb-ico">♙</span><span class="sb-txt">الموارد البشرية</span></div>
+        <div class="nav-item" data-view="assets" data-perm="asset.read" role="button" tabindex="0"><span class="sb-ico">◆</span><span class="sb-txt">أصول القابضة</span></div>
+        <div class="nav-item" data-view="site" data-perm="website.manage website.content.read website_lead.read" role="button" tabindex="0"><span class="sb-ico">◐</span><span class="sb-txt">إدارة الموقع</span></div>
+        <div class="nav-item" data-view="aiReview" data-perm="ai.knowledge.approve ai.knowledge.manage ai.knowledge.read" role="button" tabindex="0"><span class="sb-ico">✦</span><span class="sb-txt">تعلّم المساعد</span></div>
       </nav>
     </div>
 
-    <div class="sb-section sb-group" id="sbMore">
-      <div class="sb-label"><span class="ar">المزيد</span><span class="en">More</span></div>
-      <button type="button" class="sb-group-toggle" id="sbMoreToggle" aria-expanded="false">
-        <svg class="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
-        <span class="sb-txt"><span class="ar">أدوات إضافية</span><span class="en">Additional tools</span></span>
-        <svg class="sb-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
-      <div class="sb-group-items" id="sbMoreItems">
-        <div class="nav-item" data-view="subsidiaries" data-perm="company.read" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الشركات التابعة</span><span class="en">Subsidiaries</span></span></div>
-        <div class="nav-item" data-view="reports" data-perm="monthly_report.read_own monthly_report.read_all" role="button" tabindex="0"><span class="sb-txt"><span class="ar">التقارير الشهرية</span><span class="en">Monthly Reports</span></span></div>
-        <div class="nav-item" data-view="financial" data-perm="financial_summary.read_own financial_summary.read_all" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الملخص المالي</span><span class="en">Financial Summary</span></span></div>
-        <div class="nav-item" data-view="investments" data-perm="dashboard.holding" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الاستثمارات</span><span class="en">Investments</span></span></div>
-        <div class="nav-item" data-view="support" data-perm="support_request.read_own support_request.read_all" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الدعم والخدمات</span><span class="en">Support</span></span></div>
-        <div class="nav-item" data-view="approvals" data-perm="approval.read_own approval.read_all" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الموافقات</span><span class="en">Approvals</span></span></div>
-        <div class="nav-item" data-view="documents" data-perm="document.read" role="button" tabindex="0"><span class="sb-txt"><span class="ar">المستندات</span><span class="en">Documents</span></span></div>
-        <div class="nav-item" data-view="bi" data-perm="dashboard.holding dashboard.company" role="button" tabindex="0"><span class="sb-txt"><span class="ar">ذكاء الأعمال</span><span class="en">Business Intelligence</span></span></div>
-        <div class="nav-item" data-view="analytics" data-perm="analytics.holding analytics.company analytics.operations analytics.compliance" role="button" tabindex="0"><span class="sb-txt"><span class="ar">التحليلات</span><span class="en">Analytics</span></span></div>
-        <div class="nav-item" data-view="inbox" data-perm="notification.read_own" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الإشعارات</span><span class="en">Notifications</span></span></div>
-        <div class="nav-item" data-view="employees" data-perm="employee.read assessment.read advisor.read advisor.session.read_own" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الموظفون والتقييم</span><span class="en">Employees &amp; Assessment</span></span></div>
-        <div class="nav-item" data-view="operations" data-perm="task.read_own task.read_all weekly_report.read_own weekly_report.read_all campaign.read" role="button" tabindex="0"><span class="sb-txt"><span class="ar">العمليات والمهام</span><span class="en">Operations &amp; Tasks</span></span></div>
-        <div class="nav-item" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read" role="button" tabindex="0"><span class="sb-txt"><span class="ar">مالية القابضة</span><span class="en">Holding Finance</span></span></div>
-        <div class="nav-item" data-view="confidential" data-perm="complaint.read_own complaint.decide complaint.create" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الشكاوى والسرية</span><span class="en">Complaints &amp; Confidential</span></span></div>
-        <div class="nav-item" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="sb-txt"><span class="ar">الإدارة</span><span class="en">Administration</span></span></div>
-      </div>
+    <div class="sb-section">
+      <div class="sb-label">إدارة المالك</div>
+      <nav class="sb-nav" id="ownerNav">
+        <div class="nav-item" data-view="group" data-perm="company.read ownership.read department.read user.read_all role.read" role="button" tabindex="0"><span class="sb-ico">⚙</span><span class="sb-txt">إدارة المجموعة</span></div>
+      </nav>
     </div>
-
     <div class="sb-foot">
       <div class="sb-user">
         <div class="sb-avatar" id="sbAvatar">ع</div>
@@ -836,7 +822,7 @@
   <div id="feedbackList" class="av-list"></div>
 </section>
 
-<section class="app-view view-hidden" id="view-projects" data-view="projects" data-perm="project.read">
+<section class="app-view view-hidden" id="view-opportunities" data-view="opportunities" data-perm="project.read">
   <div class="av-head">
     <div>
       <h1><span class="ar">المشاريع والفرص</span><span class="en">Projects &amp; Opportunities</span></h1>
@@ -844,6 +830,72 @@
     </div>
   </div>
   <div id="projContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-advisory" data-view="advisory" data-perm="advisor.read advisor.session.read_own">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">التوصيات والاستشارات</span><span class="en">Advisory &amp; Consultations</span></h1>
+      <p><span class="ar">توصيات المستشار وجلساته وتقاريره الشهرية لكل شركة.</span><span class="en">Advisor recommendations, sessions and monthly reports per company.</span></p>
+    </div>
+    <div class="av-toolbar" id="advTabs">
+      <button class="chip on" data-adv-tab="sessions" data-perm="advisor.session.read_own"><span class="ar">الجلسات</span><span class="en">Sessions</span></button>
+      <button class="chip" data-adv-tab="reports" data-perm="advisor.read"><span class="ar">تقارير المستشار</span><span class="en">Advisor reports</span></button>
+    </div>
+  </div>
+  <div id="advContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-hr" data-view="hr" data-perm="employee.read employee.movement.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">الموارد البشرية</span><span class="en">Human Resources</span></h1>
+      <p><span class="ar">الإجازات والعهد والإنذارات وحركات الموظفين ومسار اعتمادها.</span><span class="en">Leave, custody, warnings and employee movements with their approval path.</span></p>
+    </div>
+    <div class="av-toolbar" id="hrTabs">
+      <button class="chip on" data-hr-tab="movements" data-perm="employee.movement.read"><span class="ar">حركات الموظفين</span><span class="en">Movements</span></button>
+      <button class="chip" data-hr-tab="employees" data-perm="employee.read"><span class="ar">الموظفون</span><span class="en">Employees</span></button>
+    </div>
+  </div>
+  <div id="hrContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-assets" data-view="assets" data-perm="asset.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">أصول القابضة</span><span class="en">Holding Assets</span></h1>
+      <p><span class="ar">أصول القابضة (ذهب، عقار، …) بقيمتها وتاريخ تقييمها وحالتها، مجمّعة لكل عملة على حدة.</span><span class="en">Holding assets (gold, property, …) with value, valuation history and status, totalled per currency.</span></p>
+    </div>
+  </div>
+  <div id="assetsContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-site" data-view="site" data-perm="website.manage website.content.read website_lead.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">إدارة الموقع</span><span class="en">Website Management</span></h1>
+      <p><span class="ar">نشر الشركات والفرص ورفضها أو طلب معلومات، ومتابعة طلبات الموقع وبيانات مقدميها.</span><span class="en">Publish, reject or request information on companies and opportunities, and follow website submissions with submitter details.</span></p>
+    </div>
+    <div class="av-toolbar" id="siteTabs">
+      <button class="chip on" data-site-tab="listings" data-perm="website.manage website_lead.read"><span class="ar">الطلبات والعروض</span><span class="en">Submissions</span></button>
+      <button class="chip" data-site-tab="content" data-perm="website.content.read"><span class="ar">محتوى الموقع</span><span class="en">Site content</span></button>
+    </div>
+  </div>
+  <div id="siteContent" class="av-grid cols-1"></div>
+</section>
+
+<section class="app-view view-hidden" id="view-aiReview" data-view="aiReview" data-perm="ai.knowledge.approve ai.knowledge.manage ai.knowledge.read">
+  <div class="av-head">
+    <div>
+      <h1><span class="ar">تعلّم المساعد</span><span class="en">Assistant Learning</span></h1>
+      <p><span class="ar">اعتماد أو رفض ما يقترحه المساعد ليتعلمه، وإدارة قاعدة المعرفة المعتمدة ومصادرها.</span><span class="en">Approve or reject what the assistant proposes to learn, and manage the approved knowledge base and its sources.</span></p>
+    </div>
+    <div class="av-toolbar" id="aiRevTabs">
+      <button class="chip on" data-airev-tab="proposals" data-perm="ai.knowledge.approve ai.knowledge.read"><span class="ar">المقترحات</span><span class="en">Proposals</span></button>
+      <button class="chip" data-airev-tab="documents" data-perm="ai.knowledge.read"><span class="ar">قاعدة المعرفة</span><span class="en">Knowledge base</span></button>
+    </div>
+  </div>
+  <div id="aiRevContent" class="av-grid cols-1"></div>
 </section>
 
 <section class="app-view view-hidden" id="view-accounting" data-view="accounting" data-perm="account.read journal.read invoice.read asset.read budget.read opening_balance.read kpi.read">
@@ -896,7 +948,7 @@
   <div id="confContent" class="av-grid cols-1"></div>
 </section>
 
-<section class="app-view view-hidden" id="view-admin" data-view="admin" data-perm="company.read ownership.read department.read user.read_all role.read">
+<section class="app-view view-hidden" id="view-group" data-view="group" data-perm="company.read ownership.read department.read user.read_all role.read">
   <div class="av-head">
     <div>
       <h1><span class="ar">إدارة المجموعة</span><span class="en">Group Administration</span></h1>

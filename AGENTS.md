@@ -860,3 +860,32 @@ permission or scope check changed. Report:
 - **Only add a filter the payload can back.** Dimensions the deck names but the
   row has no column for (a cost centre on an invoice, احتساب on an employee row,
   a month/quarter on a budget) are omitted rather than shown as dead controls.
+
+## Prototype nav parity — thirteen sections (`feature/phase3-functional`)
+
+The sidebar rail now mirrors the approved prototype
+(`.agent_tmp/pkg/01-platform/prototype/platform_prototype_v15.html`) literally:
+**thirteen** Arabic-only sections, in the prototype's order and with its own
+glyphs.
+
+- **Rail:** twelve items under "القائمة الرئيسية" — لوحة القيادة، العملاء
+  المحتملون، الطلبات، التوصيات والاستشارات، الفرص الاستثمارية، القرارات،
+  التقارير الشهرية، ملفات الموظفين، الموارد البشرية، أصول القابضة، إدارة
+  الموقع، تعلّم المساعد — plus the owner-only "إدارة المجموعة" under
+  "إدارة المالك" (`<nav id="ownerNav">`). The old "المزيد" disclosure group is
+  gone; `bindMoreGroup`/`syncMoreGroup` no-op safely when its markup is absent.
+- **View keys:** `projects → opportunities` and `admin → group` were renamed so
+  the rail, `VIEWS`, `NAV_PERM`, `loadView` and the section ids agree.
+- **Five new views** back the new tabs, each gated by the read permission its
+  endpoint enforces and reading only already-scoped rows: `advisory`
+  (advisor sessions/reports), `hr` (employee movements + decision), `assets`
+  (holding assets totalled per currency), `site` (submitted listings + CMS
+  overview) and `aiReview` (knowledge proposals + approved documents).
+- **Legacy views** (`feedback`, `subsidiaries`, `financial`, `investments`,
+  `support`, `approvals`, `documents`, `bi`, `analytics`, `inbox`,
+  `operations`, `accounting`, `confidential`) stay in `VIEWS` and keep their
+  sections, so deep links and internal shortcuts still work; they are simply no
+  longer in the rail. Do not delete their renderers.
+- **Contract test:** `tests/test_frontend_domain_views.py` pins the rail to the
+  prototype's exact order and labels (`RAIL_VIEWS`); legacy views are asserted
+  at the section level only.

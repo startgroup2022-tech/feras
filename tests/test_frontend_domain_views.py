@@ -30,9 +30,32 @@ NEW_VIEWS = [
     "employees",
     "operations",
     "decisions",
-    "projects",
+    "opportunities",
     "accounting",
     "confidential",
+    "advisory",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+]
+
+# The prototype's thirteen rail sections, in order: twelve under the main list
+# plus the owner-only group section. These carry a sidebar nav item.
+RAIL_VIEWS = [
+    "dashboard",
+    "leads",
+    "requests",
+    "advisory",
+    "opportunities",
+    "decisions",
+    "reports",
+    "employees",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+    "group",
 ]
 
 NEW_ENDPOINTS = [
@@ -82,7 +105,9 @@ def test_every_new_view_section_is_gated():
 
 
 def test_every_new_nav_item_is_gated():
-    for view in NEW_VIEWS:
+    # Rail views carry a gated nav item; legacy views are reached by deep link
+    # only, so they are checked at the section level instead.
+    for view in RAIL_VIEWS:
         item = re.search(
             r'class="nav-item[^"]*"[^>]*data-view="' + view + r'"[^>]*>', INDEX
         )
@@ -187,14 +212,9 @@ def test_confidential_grant_requires_an_expiry():
 
 def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
     # `GET /ai/insights` is gated by `dashboard.*`, so the Business Intelligence
-    # nav/section must use the same gate. Gating on `ai.*` let a custom role
-    # with AI-only access see the view and then receive a 403.
-    bi_nav = re.search(
-        r'class="nav-item[^"]*"[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
-    )
-    assert bi_nav, "BI nav item not found"
-    assert set(bi_nav.group(1).split()) == {"dashboard.holding", "dashboard.company"}
-
+    # section must use the same gate. Gating on `ai.*` let a custom role
+    # with AI-only access see the view and then receive a 403. BI is a legacy
+    # view (not in the prototype rail), reached by deep link.
     bi_section = re.search(
         r'<section[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
     )
@@ -519,21 +539,25 @@ def test_executive_shell_uses_a_sidebar_with_the_content_area():
     assert 'id="board"' in INDEX
 
 
-def test_sidebar_shows_the_six_primary_sections():
-    # The brief names six core sections. They are the sidebar's top level; the
-    # operational views live behind the "More" group so the owner sees a short,
-    # calm list rather than the full catalogue.
+def test_sidebar_shows_the_thirteen_prototype_sections():
+    # The rail mirrors the approved prototype literally: twelve sections under
+    # "القائمة الرئيسية" plus "إدارة المجموعة" under "إدارة المالك", in the
+    # prototype's order. Legacy views stay reachable by deep link but are not in
+    # the rail.
     primary = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S)
     assert primary, "sidebar primary nav not found"
-    for view in ("dashboard", "leads", "requests", "feedback", "projects", "decisions"):
+    for view in ("dashboard", "leads", "requests", "advisory", "opportunities",
+                 "decisions", "reports", "employees", "hr", "assets", "site",
+                 "aiReview"):
         assert f'data-view="{view}"' in primary.group(1), f"{view} is not a primary section"
-    # And the operational views are grouped, still present and still gated.
-    more = re.search(r'id="sbMoreItems">(.*?)</div>\s*</div>', INDEX, re.S)
-    assert more, "More group not found"
-    for view in ("subsidiaries", "reports", "financial", "support", "approvals",
-                 "documents", "bi", "analytics", "inbox", "employees",
-                 "operations", "accounting", "confidential", "admin"):
-        assert f'data-view="{view}"' in more.group(1), f"{view} missing from More group"
+    owner = re.search(r'<nav class="sb-nav" id="ownerNav">(.*?)</nav>', INDEX, re.S)
+    assert owner, "owner nav not found"
+    assert 'data-view="group"' in owner.group(1)
+    # The rail carries exactly the thirteen prototype sections.
+    rail = re.findall(r'class="nav-item[^"]*"[^>]*data-view="([^"]+)"', primary.group(1) + owner.group(1))
+    assert rail == ["dashboard", "leads", "requests", "advisory", "opportunities",
+                    "decisions", "reports", "employees", "hr", "assets", "site",
+                    "aiReview", "group"]
 
 
 def test_every_sidebar_nav_item_keeps_its_permission_gate():
@@ -542,20 +566,24 @@ def test_every_sidebar_nav_item_keeps_its_permission_gate():
     sidebar = re.search(r'<aside class="sidebar".*?</aside>', INDEX, re.S)
     assert sidebar, "sidebar not found"
     items = re.findall(r'<div class="nav-item[^"]*"[^>]*data-view="([^"]+)"[^>]*>', sidebar.group(0))
-    assert set(items) == set(re.findall(r'"([a-z]+)"', re.search(r"var VIEWS = \[(.*?)\];", APP_JS, re.S).group(1)))
+    # Every rail item is a known view.
+    views = set(re.findall(r'"([A-Za-z]+)"', re.search(r"var VIEWS = \[(.*?)\];", APP_JS, re.S).group(1)))
+    assert set(items).issubset(views)
+    assert len(items) == 13
     for item in re.finditer(r'<div class="nav-item[^"]*"[^>]*>', sidebar.group(0)):
         assert "data-perm=" in item.group(0), f"ungated nav item: {item.group(0)[:80]}"
 
 
-def test_more_group_is_collapsible_and_auto_opens_for_its_views():
-    # The group is a real disclosure control (aria-expanded) and opens itself
-    # when the active view lives inside it, so a deep link is never hidden.
-    assert 'id="sbMoreToggle"' in INDEX
-    assert 'aria-expanded="false"' in INDEX
-    assert "function bindMoreGroup(" in APP_JS
-    assert "function syncMoreGroup(" in APP_JS
-    assert "syncMoreGroup(view)" in APP_JS
-    assert 'classList.toggle("open")' in APP_JS
+def test_sidebar_rail_matches_the_prototype_labels():
+    # The rail is single-language (Arabic), as the prototype is: each label is
+    # the prototype's own text, with no bilingual toggle inside the item.
+    rail = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S).group(1)
+    labels = re.findall(r'<span class="sb-txt">([^<]+)</span>', rail)
+    assert labels == [
+        "لوحة القيادة", "العملاء المحتملون", "الطلبات", "التوصيات والاستشارات",
+        "الفرص الاستثمارية", "القرارات", "التقارير الشهرية", "ملفات الموظفين",
+        "الموارد البشرية", "أصول القابضة", "إدارة الموقع", "تعلّم المساعد",
+    ]
 
 
 def test_attention_panel_uses_the_brief_title_and_direct_actions():
@@ -592,24 +620,22 @@ def test_feedback_view_is_gated_rendered_and_wired():
     assert 'id="feedbackList"' in INDEX
 
 
-def test_feedback_nav_gate_matches_the_permissions_its_endpoints_enforce():
+def test_feedback_view_gate_matches_the_permissions_its_endpoints_enforce():
     # The view calls weekly-report, management-brief and monthly-report reads;
     # its gate must be exactly those read permissions, or a role could see the
-    # section and then get a 403 from one of the calls.
-    nav = re.search(
-        r'class="nav-item[^"]*"[^>]*data-view="feedback"[^>]*data-perm="([^"]+)"', INDEX
-    )
-    assert nav, "feedback nav item not found"
+    # section and then get a 403 from one of the calls. Feedback is a legacy view
+    # (not in the prototype rail) reached by deep link, so the gate lives on the
+    # section and in NAV_PERM.
     expected = {
         "weekly_report.read_own", "weekly_report.read_all",
         "management_brief.read",
         "monthly_report.read_own", "monthly_report.read_all",
     }
-    assert set(nav.group(1).split()) == expected
     nav_perm = re.search(r'feedback: \[(.*?)\]', APP_JS, re.S)
     assert nav_perm, "NAV_PERM.feedback not found"
     assert set(re.findall(r'"([^"]+)"', nav_perm.group(1))) == expected
     section = re.search(r'<section[^>]*data-view="feedback"[^>]*data-perm="([^"]+)"', INDEX)
+    assert section, "feedback section missing"
     assert set(section.group(1).split()) == expected
 
 
@@ -979,7 +1005,7 @@ def test_paged_domain_lists_do_not_overwrite_their_panel_header():
         ("tasks", "taskList"),
         ("campaigns", "campaignList"),
         ("decisions", "decList"),
-        ("projects", "projList"),
+        ("opportunities", "projList"),
     ]:
         # The rows go into an element with the id the panel created...
         assert re.search(

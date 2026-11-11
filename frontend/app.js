@@ -1760,7 +1760,7 @@
   function refreshActiveView() {
     if (!USER) return;
     var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
-    if (view === "admin" && typeof renderAdminTab === "function") {
+    if (view === "group" && typeof renderAdminTab === "function") {
       renderAdminTab(STATE.adminTab);
       return;
     }
@@ -2965,11 +2965,20 @@
     "dashboard",
     "leads",
     "requests",
-    "feedback",
-    "projects",
+    "advisory",
+    "opportunities",
     "decisions",
-    "subsidiaries",
     "reports",
+    "employees",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+    "group",
+    // Legacy views kept reachable (deep links / internal shortcuts) but no
+    // longer in the rail, which mirrors the approved prototype's 13 sections.
+    "feedback",
+    "subsidiaries",
     "financial",
     "investments",
     "support",
@@ -2978,11 +2987,9 @@
     "bi",
     "analytics",
     "inbox",
-    "employees",
     "operations",
     "accounting",
     "confidential",
-    "admin",
   ];
   var NAV_PERM = {
     dashboard: ["dashboard.holding", "dashboard.company"],
@@ -3033,7 +3040,19 @@
       "campaign.read",
     ],
     decisions: ["owner_decision.read"],
-    projects: ["project.read"],
+    opportunities: ["project.read"],
+    // Advisory / HR / Assets / Website / Assistant-learning sections mirror the
+    // approved prototype tabs; each is gated by the read capability its
+    // endpoint enforces.
+    advisory: ["advisor.read", "advisor.session.read_own"],
+    hr: ["employee.read", "employee.movement.read"],
+    assets: ["asset.read"],
+    site: ["website.manage", "website.content.read", "website_lead.read"],
+    aiReview: [
+      "ai.knowledge.approve",
+      "ai.knowledge.manage",
+      "ai.knowledge.read",
+    ],
     accounting: [
       "account.read",
       "journal.read",
@@ -3046,7 +3065,7 @@
       "financial_report.read",
     ],
     confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
-    admin: [
+    group: [
       "company.read",
       "ownership.read",
       "department.read",
@@ -3201,10 +3220,15 @@
     if (view === "employees") return renderEmployeesView();
     if (view === "operations") return renderOperationsView();
     if (view === "decisions") return renderDecisionsView();
-    if (view === "projects") return renderProjectsView();
+    if (view === "opportunities") return renderProjectsView();
     if (view === "accounting") return renderAccountingView();
     if (view === "confidential") return renderConfidentialView();
-    if (view === "admin") return renderAdmin();
+    if (view === "group") return renderAdmin();
+    if (view === "advisory") return renderAdvisoryView();
+    if (view === "hr") return renderHrView();
+    if (view === "assets") return renderAssetsView();
+    if (view === "site") return renderSiteView();
+    if (view === "aiReview") return renderAiReviewView();
     return Promise.resolve();
   }
 
@@ -7048,8 +7072,8 @@
     policy_proposal: { view: "accounting" },
     currency_change_request: { view: "accounting" },
     management_brief: { view: "operations" },
-    user: { view: "admin" },
-    role: { view: "admin" },
+    user: { view: "group" },
+    role: { view: "group" },
   };
 
   // Deck slide 36 names the row action after the record the alert is about: a
@@ -10353,6 +10377,221 @@
   // ======================================================================
   // S04/S26/S27/S28 -- Holding accounting (D01/D07/D08)
   // ======================================================================
+
+  // ---- Advisory (prototype tab "advisory") -------------------------------
+  // Advisor sessions and monthly advisor reports, exactly the two records the
+  // prototype's advisory tab lists. Both endpoints already scope rows by the
+  // caller, so the view adds no data access.
+  function renderAdvisoryView() {
+    var host = byId("advContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return Promise.all([
+      softGet("/api/v1/operations/advisory-sessions"),
+      softGet("/api/v1/operations/advisor-reports"),
+    ]).then(function (res) {
+      var sessions = res[0] || [];
+      var reports = res[1] || [];
+      host.innerHTML =
+        panel("جلسات المستشار", "Advisor sessions",
+          sessions.length
+            ? '<div class="av-list">' + sessions.map(function (s) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(s.specialty || s.advisor_name || dual("جلسة استشارية", "Advisory session")) + '</div>' +
+                  '<div class="s">' + escapeHtml((s.scheduled_at || s.date || "") + " · " + (s.status || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد جلسات مسجّلة.", "No sessions recorded.")) +
+        panel("تقارير المستشار", "Advisor reports",
+          reports.length
+            ? '<div class="av-list">' + reports.map(function (r) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(r.title || dual("تقرير المستشار", "Advisor report")) + '</div>' +
+                  '<div class="s">' + escapeHtml((r.period_year || "") + "-" + String(r.period_month || "").padStart(2, "0") + " · " + (r.status || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد تقارير بعد.", "No reports yet."));
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- HR movements (prototype tab "hr") --------------------------------
+  // HR movements (leave, custody, warning, …) across the employees the caller
+  // may see, with the approve/reject action the prototype's HR tab offers.
+  function renderHrView() {
+    var host = byId("hrContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/employees").then(function (emps) {
+      if (!emps || !emps.length) {
+        host.innerHTML = panel("حركات الموظفين", "Employee movements",
+          noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope."));
+        return;
+      }
+      return Promise.all(emps.slice(0, 50).map(function (e) {
+        return softGet("/api/v1/employees/" + e.id + "/movements").then(function (rows) {
+          return (rows || []).map(function (m) { m._emp = e; return m; });
+        });
+      })).then(function (lists) {
+        var all = [];
+        lists.forEach(function (l) { all = all.concat(l); });
+        all.sort(function (a, b) { return (b.id || 0) - (a.id || 0); });
+        host.innerHTML = panel("حركات الموظفين", "Employee movements",
+          all.length
+            ? '<div class="av-list">' + all.map(function (m) {
+                var emp = m._emp;
+                var canDecide = has("employee.movement.approve") && (m.status === "pending" || m.status === "submitted");
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml((emp ? (STATE.lang === "ar" ? emp.full_name_ar : emp.full_name_en || emp.full_name_ar) : "") + " · " + (m.movement_type || "")) + '</div>' +
+                  '<div class="s">' + escapeHtml((m.start_date || m.effective_date || "") + " · " + (m.status || "")) + '</div>' +
+                  '</div>' +
+                  (canDecide
+                    ? '<button class="chip" data-hr-approve="' + m.id + '">' + dual("اعتماد", "Approve") + '</button>' +
+                      '<button class="chip" data-hr-reject="' + m.id + '">' + dual("رفض", "Reject") + '</button>'
+                    : "") +
+                  '</div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد حركات.", "No movements."));
+        host.querySelectorAll("[data-hr-approve],[data-hr-reject]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var approve = btn.hasAttribute("data-hr-approve");
+            var id = parseInt(btn.getAttribute(approve ? "data-hr-approve" : "data-hr-reject"), 10);
+            post("/api/v1/employees/movements/" + id + "/decision", { approve: approve, note: null })
+              .then(function () { toast(dual("تم تحديث الحركة.", "Movement updated."), "ok"); return renderHrView(); })
+              .catch(function (err) { domainError(err); });
+          });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- Holding assets (prototype tab "assets") --------------------------
+  // The holding's own assets (gold, property, …), totalled per currency --
+  // the prototype never converts between currencies.
+  function renderAssetsView() {
+    var host = byId("assetsContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/accounting/assets").then(function (rows) {
+      rows = rows || [];
+      var totals = {};
+      rows.forEach(function (a) {
+        var c = a.currency || "BHD";
+        var v = Number(a.current_value || a.purchase_value || 0);
+        totals[c] = (totals[c] || 0) + v;
+      });
+      var totalHtml = Object.keys(totals).length
+        ? '<div class="av-list">' + Object.keys(totals).map(function (c) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              dec(totals[c]) + " " + escapeHtml(c) + '</div><div class="s">' +
+              dual("إجمالي قيمة الأصول", "Total asset value") + '</div></div></div>';
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أصول مسجّلة.", "No assets recorded.");
+      host.innerHTML =
+        panel("قيمة أصول القابضة", "Holding asset value", totalHtml) +
+        panel("سجل الأصول", "Asset register",
+          rows.length
+            ? '<div class="av-list">' + rows.map(function (a) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(a.name || a.type || "") + '</div>' +
+                  '<div class="s">' + escapeHtml((a.type || "") + " · " + dec(a.current_value || a.purchase_value) + " " + (a.currency || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد أصول مسجّلة.", "No assets recorded."));
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- Website management (prototype tab "site") ------------------------
+  // The platform side of the site: submitted listings to review/publish and the
+  // CMS overview. Submitter contact details are shown here only (the site never
+  // publishes them), which is why this view needs website/lead permissions.
+  function renderSiteView() {
+    var host = byId("siteContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    var canLeads = has("website_lead.read");
+    var canCms = has("website.content.read");
+    return Promise.all([
+      canLeads ? softGet("/api/v1/leads/opportunities") : Promise.resolve(null),
+      canCms ? softGet("/api/v1/website/overview") : Promise.resolve(null),
+    ]).then(function (res) {
+      var opps = res[0] || [];
+      var cms = res[1];
+      var html = "";
+      if (canLeads) {
+        html += panel("العروض المقدَّمة من الموقع", "Listings submitted from the site",
+          opps.length
+            ? '<div class="av-list">' + opps.map(function (o) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(o.description ? o.description.slice(0, 80) : dual("عرض", "Listing")) + '</div>' +
+                  '<div class="s">' + escapeHtml((o.sector || "") + " · " + (o.market || "") + " · " + (o.currency || "") + " " + dec(o.value_max)) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد عروض مقدَّمة.", "No listings submitted."));
+      }
+      if (canCms && cms) {
+        html += panel("نظرة عامة على الموقع", "Website overview",
+          '<div class="av-list">' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.visible_companies) + " / " + dec(cms.companies) + '</div><div class="s">' + dual("الشركات الظاهرة", "Visible companies") + '</div></div></div>' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
+          '</div>');
+      }
+      host.innerHTML = html || noticeHtml("ليست لديك صلاحية عرض بيانات الموقع.", "You cannot view website data.");
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- Assistant learning (prototype tab "aiReview") --------------------
+  // Owner-only review of what the assistant proposes to learn plus the approved
+  // knowledge base. Approval is what moves a proposal into the KB, exactly the
+  // prototype's aiReview control.
+  function renderAiReviewView() {
+    var host = byId("aiRevContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    var canApprove = has("ai.knowledge.approve");
+    return Promise.all([
+      softGet("/api/v1/ai/knowledge/proposals"),
+      softGet("/api/v1/ai/knowledge/documents"),
+    ]).then(function (res) {
+      var proposals = res[0] || [];
+      var docs = res[1] || [];
+      host.innerHTML =
+        panel("مقترحات المساعد", "Assistant proposals",
+          proposals.length
+            ? '<div class="av-list">' + proposals.map(function (p) {
+                var pending = (p.status || "pending") === "pending";
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(p.title || p.question || dual("مقترح", "Proposal")) + '</div>' +
+                  '<div class="s">' + escapeHtml(p.status || "") + '</div>' +
+                  '</div>' +
+                  (canApprove && pending
+                    ? '<button class="chip" data-kb-approve="' + p.id + '">' + dual("اعتماد", "Approve") + '</button>' +
+                      '<button class="chip" data-kb-reject="' + p.id + '">' + dual("رفض", "Reject") + '</button>'
+                    : "") +
+                  '</div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد مقترحات بانتظار الاعتماد.", "No proposals awaiting approval.")) +
+        panel("قاعدة المعرفة المعتمدة", "Approved knowledge base",
+          docs.length
+            ? '<div class="av-list">' + docs.map(function (d) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(d.title || d.name || "") + '</div>' +
+                  '<div class="s">' + escapeHtml(d.status || "") + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد مستندات معتمدة بعد.", "No approved documents yet."));
+      host.querySelectorAll("[data-kb-approve],[data-kb-reject]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var approve = btn.hasAttribute("data-kb-approve");
+          var id = parseInt(btn.getAttribute(approve ? "data-kb-approve" : "data-kb-reject"), 10);
+          post("/api/v1/ai/knowledge/proposals/" + id + "/resolve", { decision: approve ? "approve" : "reject" })
+            .then(function () { toast(dual("تم تحديث المقترح.", "Proposal updated."), "ok"); return renderAiReviewView(); })
+            .catch(function (err) { domainError(err); });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function renderAccountingView() {
     var host = byId("acctContent");
     if (!host) return Promise.resolve();
