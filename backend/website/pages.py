@@ -51,11 +51,11 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     },
     "opportunities": {
         "ar": {
-            "title": "الفرص التجارية | ستارت اب سفير القابضة",
+            "title": "الفرص والاستثمار | ستارت اب سفير القابضة",
             "description": "استكشف مشاريع قائمة معروضة للبيع في دول الخليج، أو قدّم مشروعك للمراجعة والنشر.",
         },
         "en": {
-            "title": "Business Opportunities | Start Upsphere Holding",
+            "title": "Opportunities & Investment | Start Upsphere Holding",
             "description": "Explore existing businesses offered for sale across the Gulf, or submit your project for review and publication.",
         },
     },
@@ -101,11 +101,11 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     },
     "list-your-business": {
         "ar": {
-            "title": "اعرض شركتك أو مشروعك | ستارت اب سفير القابضة",
+            "title": "أرسل نشاطك | ستارت اب سفير القابضة",
             "description": "قدّم شركتك أو مشروعك للبيع أو الشراكة أو الاستثمار عبر ستارت اب سفير القابضة.",
         },
         "en": {
-            "title": "List Your Business | Start Upsphere Holding",
+            "title": "Submit Your Business | Start Upsphere Holding",
             "description": "Offer your business or project for sale, partnership or investment through Start Upsphere Holding.",
         },
     },

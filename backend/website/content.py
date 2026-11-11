@@ -1108,7 +1108,7 @@ GROUP_COMPANIES: list[dict] = [
 
 # Navigation. ``path`` is the canonical English route; ``path_ar`` is its
 # Arabic mirror. The order and set follow the approved handoff exactly
-# (الرئيسية · من نحن · شركات المجموعة · الفرص التجارية · الوظائف · الأسئلة
+# (الرئيسية · من نحن · شركات المجموعة · الفرص والاستثمار · الوظائف · الأسئلة
 # الشائعة · تواصل معنا).
 # ``services`` is a valid, indexable page and stays reachable from content and
 # the footer, but is not part of the primary handoff navigation.
@@ -1130,7 +1130,7 @@ NAV: list[dict] = [
         "key": "opportunities",
         "path": "/opportunities",
         "path_ar": "/ar/الفرص-التجارية",
-        "label": {"ar": "الفرص التجارية", "en": "Business Opportunities"},
+        "label": {"ar": "الفرص والاستثمار", "en": "Opportunities & Investment"},
     },
     {
         "key": "careers",
@@ -1164,7 +1164,7 @@ FAQ_ITEMS: dict[str, list[tuple[str, str]]] = {
         ("ما الفرص التي تستقبلها المجموعة؟",
          "نستقبل أنشطة للبيع، وفرص شراكة، ومشاريع واعدة."),
         ("كيف أرسل نشاطي أو فرصتي؟",
-         "من صفحة «الفرص التجارية» اضغط «اعرض شركتك»، واكتب وصفًا مختصرًا وأضف بيانات التواصل، ومرفق دراسة إن توفر."),
+         "من صفحة «الفرص والاستثمار» اضغط «أرسل نشاطك»، واكتب وصفًا مختصرًا وأضف بيانات التواصل، ومرفق دراسة إن توفر."),
         ("هل هناك رسوم على إرسال نشاطي؟",
          "لا، لا توجد رسوم على تقديم الفرصة."),
         ("هل يعني إرسال الطلب قبوله؟",
@@ -1184,7 +1184,7 @@ FAQ_ITEMS: dict[str, list[tuple[str, str]]] = {
         ("What opportunities does the group receive?",
          "Businesses for sale, partnership opportunities, and promising projects."),
         ("How do I submit my business or opportunity?",
-         "On the Business Opportunities page, click List Your Business, write a short description, add your contact details, and attach a study if available."),
+         "On the Opportunities & Investment page, click Submit Your Business, write a short description, add your contact details, and attach a study if available."),
         ("Is there a fee for submitting my business?",
          "No, there is no fee for submitting an opportunity."),
         ("Does submitting a request mean it is accepted?",

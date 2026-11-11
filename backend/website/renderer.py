@@ -510,14 +510,14 @@ def _home_body(lang: str, cms_companies=None) -> str:
 
 <section class="section section-alt" id="opportunities">
   <div class="container">
-    <h2 class="section-title">{e(_t('الفرص التجارية', 'Business Opportunities', lang))}</h2>
+    <h2 class="section-title">{e(_t('الفرص والاستثمار', 'Opportunities & Investment', lang))}</h2>
     <p class="section-lead">{e(C.PAGE_TEXT['opportunities']['intro'][lang])}</p>
     <div class="opp-list" data-opportunities data-limit="3">
       <p class="state">{e(_t('جارٍ تحميل الفرص…', 'Loading opportunities…', lang))}</p>
     </div>
     <div class="opp-cta">
-      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('عرض جميع الفرص', 'View All Opportunities', lang))}</a>
-      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('اكتشف الفرص', 'Explore opportunities', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</a>
     </div>
   </div>
 </section>
@@ -1041,7 +1041,7 @@ def _opportunities_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
-    <h1>{e(_t('الفرص والمشاريع', 'Opportunities & Projects', lang))}</h1>
+    <h1>{e(_t('الفرص والاستثمار', 'Opportunities & Investment', lang))}</h1>
     <p>{e(_t('استعرض المشاريع المعروضة للبيع في دول الخليج.', 'Browse businesses offered for sale across the Gulf.', lang))}</p>
   </div>
 </section>
@@ -1055,10 +1055,10 @@ def _opportunities_body(lang: str) -> str:
 </section>
 <section class="section section-alt">
   <div class="container">
-    <h2 class="section-title">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</h2>
-    <p class="section-sub">{e(_t('أرسل بيانات مشروعك لعرضه للبيع في دول الخليج، بعد المراجعة والموافقة.',
-                                 'Send your project details to be listed for sale in the Gulf, after review and approval.', lang))}</p>
-    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+    <h2 class="section-title">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</h2>
+    <p class="section-sub">{e(_t('شاركنا تفاصيل نشاطك أو فرصتك، وسنعرضها للبيع في دول الخليج بعد المراجعة والموافقة.',
+                                 'Send your business or opportunity details to be listed for sale in the Gulf, after review and approval.', lang))}</p>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</a>
   </div>
 </section>"""
 
@@ -1083,9 +1083,9 @@ def _list_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
-    <h1>{e(_t('اعرض شركتك أو مشروعك', 'List your business or project', lang))}</h1>
-    <p>{e(_t('مسار لجذب المستثمرين وأصحاب الشركات والوسطاء إلى القابضة.',
-             'A path bringing investors, business owners and intermediaries to the Holding.', lang))}</p>
+    <h1>{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</h1>
+    <p>{e(_t('شاركنا تفاصيل نشاطك أو فرصتك لمراجعتها، وقد نعرضها للبيع في دول الخليج.',
+             'Share your business or opportunity details for review; we may list it for sale across the Gulf.', lang))}</p>
   </div>
 </section>
 

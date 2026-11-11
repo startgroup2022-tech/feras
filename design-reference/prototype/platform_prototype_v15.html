@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>سفير القابضة | النموذج الوظيفي 1.5 TEST</title>
+<style>
+:root{--bg:#f4f7f9;--paper:#fff;--ink:#152b3a;--muted:#607382;--line:#dbe4e9;--brand:#176b78;--soft:#e5f3f4;--gold:#bc8840;--warn:#fff3df;--red:#a54343;--green:#24764a;--shadow:0 8px 26px #1a40500c}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Segoe UI",Tahoma,Arial,sans-serif}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}.topbar{height:auto;min-height:68px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}.brand{font-weight:800;font-size:17px;display:flex;align-items:center;gap:10px}.brandmark{background:var(--brand);color:white;border-radius:12px;width:36px;height:36px;display:grid;place-items:center}.top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.layout{direction:ltr;display:grid;grid-template-columns:235px 1fr;min-height:calc(100vh - 68px)}.sidebar{direction:rtl;background:var(--paper);border-right:1px solid var(--line);padding:18px 12px}.sidebar .label{font-size:11px;color:var(--muted);padding:8px 12px 3px;text-transform:uppercase}.navbtn{width:100%;border:0;background:transparent;border-radius:10px;text-align:right;padding:10px 12px;margin:2px 0;color:var(--muted)}.navbtn:hover,.navbtn.active{background:var(--soft);color:var(--brand);font-weight:700}.navbtn .ico{display:inline-block;width:24px}.main{direction:rtl;padding:26px clamp(16px,3vw,38px);max-width:1440px;width:100%;margin:0 auto}.pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 18px}.pagehead h1{font-size:26px;margin:0 0 4px}.sub{margin:0;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;margin-bottom:16px}.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}.metric{font-size:25px;font-weight:800;margin:5px 0}.muted{color:var(--muted);font-size:13px}.panel{margin:14px 0}.panel h2{font-size:18px;margin:0 0 10px}.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;background:var(--soft);color:var(--brand);font-size:12px}.pill.warn{background:var(--warn);color:#875916}.pill.red{background:#fae9e9;color:var(--red)}.pill.green{background:#e5f4ea;color:var(--green)}.pill.gray{background:#edf0f2;color:#59636a}.late-row{background:#fff0f0}.btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 12px}.btn:hover{border-color:var(--brand);color:var(--brand)}.btn.primary{background:var(--brand);border-color:var(--brand);color:white}.btn.small{padding:4px 8px;font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:white;margin:12px 0}.tablewrap table{border-collapse:collapse;width:100%;min-width:700px}.tablewrap.compact table{min-width:0}th,td{text-align:right;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted);background:#f8fafb;white-space:nowrap}tr:last-child td{border-bottom:0}tr.sub td:first-child{padding-right:34px;color:var(--muted)}.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.field{display:grid;gap:5px;font-size:13px;color:var(--muted);align-content:start}input,select,textarea{border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:white;width:100%}textarea{min-height:86px;resize:vertical}fieldset{border:1px solid var(--line);border-radius:12px;margin:12px 0;padding:12px}legend{font-weight:700;padding:0 6px}.fieldrow{display:flex;gap:9px;align-items:center}.fieldrow input[type=checkbox]{width:auto}.alert{background:var(--warn);border:1px solid #ead6ad;border-radius:12px;padding:12px 14px;margin:12px 0;display:flex;justify-content:space-between;gap:12px;align-items:center}.ai{border:1px solid #c7dfe1;background:linear-gradient(135deg,#fff,#f0f8f8)}.ai h2{display:flex;gap:8px;align-items:center}.tagtest{font-size:11px;border:1px solid #d7bc8d;color:#805a20;border-radius:99px;padding:2px 8px;background:#fffaf0}.empty{padding:32px;text-align:center;color:var(--muted)}.login{max-width:680px;margin:6vh auto;padding:16px}.login .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px}.rolecard{text-align:right;background:white;border:1px solid var(--line);border-radius:12px;padding:14px}.rolecard:hover{border-color:var(--brand)}.helper{border-right:3px solid var(--gold);padding:8px 12px;color:var(--muted);background:#fffcf5;border-radius:8px;margin:12px 0}.subfield{margin-right:26px;border-right:2px solid var(--line);padding-right:10px}.toast{position:fixed;bottom:18px;left:18px;background:#183746;color:white;padding:11px 16px;border-radius:10px;z-index:10;box-shadow:var(--shadow)}.section-title{margin:23px 0 8px}.seg{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.seg button{border:1px solid var(--line);background:white;border-radius:99px;padding:6px 12px}.seg button.active{background:var(--soft);border-color:#a4cfd2;color:var(--brand)}@media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{display:flex;overflow:auto;padding:8px;border-right:0;border-bottom:1px solid var(--line);position:sticky;top:62px;z-index:4}.sidebar .label{display:none}.navbtn{width:auto;white-space:nowrap}.topbar{padding:9px 12px}.main{padding:18px 12px}.pagehead h1{font-size:22px}}
+</style>
+</head>
+<body><div id="app"></div>
+<script>
+/* نموذج واجهات وظيفي (النسخة 8) وفق المخطط 1.1 ببيانات TEST. تبديل الأدوار محاكاة فقط؛ لا توجد مصادقة أو صلاحيات خادم أو تخزين ملفات حقيقي أو ذكاء اصطناعي متصل. */
+const SCHEMA=15,KEY='safir-v15-demo';
+const clone=v=>JSON.parse(JSON.stringify(v));
+const CURRENCIES=[['BHD','دينار بحريني'],['SAR','ريال سعودي'],['AED','درهم إماراتي'],['KWD','دينار كويتي'],['OMR','ريال عماني'],['QAR','ريال قطري'],['JOD','دينار أردني'],['USD','دولار أمريكي']];
+const curOptions=(sel)=>CURRENCIES.map(([c,n])=>`<option value="${c}" ${c===sel?'selected':''}>${c} · ${n}</option>`).join('');
+const sf=(n,sector,name,type,required,dash)=>({id:'FORM-TEST-'+String(n).padStart(3,'0'),scope:'sector',sector,name,type,required:!!required,parent:'',active:true,createdPeriod:'2027-01',archivedPeriod:null,options:[],showOnDashboard:!!dash,order:n});
+const seed={schema:SCHEMA,role:null,date:'2027-04-05',tab:'dashboard',companyTab:'companies',toast:'',dismissedAlerts:{},
+companies:[
+{id:'CO-001',ar:'أفق للخدمات',en:'Ufuq Services',cr:'TEST-10001',ownership:100,sector:'services',managerAr:'مدير أفق',managerEn:'Ufuq Manager',email:'test.ufu@example.test',phone:'+973 0000 0001',currency:'BHD',active:true},
+{id:'CO-002',ar:'مدار للتقنية',en:'Madar Technology',cr:'TEST-10002',ownership:60,sector:'technology',managerAr:'مدير مدار',managerEn:'Madar Manager',email:'test.madar@example.test',phone:'+966 000 000 002',currency:'SAR',active:true},
+{id:'CO-003',ar:'بوابة للتجارة',en:'Bawwaba Trading',cr:'TEST-10003',ownership:50,sector:'trade',managerAr:'مدير بوابة',managerEn:'Bawwaba Manager',email:'test.bawwaba@example.test',phone:'+973 0000 0003',currency:'BHD',active:true},
+{id:'CO-004',ar:'ركن للصناعة',en:'Rukn Industries',cr:'TEST-10004',ownership:33,sector:'industry',managerAr:'مدير ركن',managerEn:'Rukn Manager',email:'test.rukn@example.test',phone:'+966 000 000 004',currency:'SAR',active:true}],
+reports:[
+{id:'RPT-TEST-001',co:'CO-003',period:'2027-03',due:'2027-04-05',status:'مسودة',revenue:25000,expenses:18000,bankBalance:9500,receivables:4200,bank:'TEST_bank_statement_BH_2027-03.pdf',note:'',values:{'FORM-TEST-005':60000,'FORM-TEST-006':5000,'FORM-TEST-007':24,'FORM-TEST-017':12000}},
+{id:'RPT-TEST-002',co:'CO-004',period:'2027-03',due:'2027-04-05',status:'مرسل للمحاسبة',revenue:400000,expenses:310000,bankBalance:45000,receivables:75000,bank:'TEST_bank_statement_SA_2027-03.pdf',note:'',values:{'FORM-TEST-008':1200,'FORM-TEST-009':72,'FORM-TEST-010':14}},
+{id:'RPT-TEST-004',co:'CO-003',period:'2027-02',due:'2027-03-05',status:'مقفل',revenue:28000,expenses:15000,bankBalance:11200,receivables:3900,bank:'TEST_bank_statement_BH_2027-02.pdf',note:'',values:{'FORM-TEST-005':58000,'FORM-TEST-006':4000,'FORM-TEST-007':26,'FORM-TEST-017':11000}},
+{id:'RPT-TEST-003',co:'CO-001',period:'2027-02',due:'2027-03-05',status:'مقفل',revenue:10000,expenses:7000,bankBalance:5200,receivables:3000,bank:'TEST_bank_statement_BH_2027-02.pdf',note:'',values:{'FORM-TEST-014':12,'FORM-TEST-015':420,'FORM-TEST-016':71}}],
+leads:[{id:'LEAD-TEST-001',company:'CO-003',name:'TEST - متجر الواحة',source:'حملة تسويقية خارج المنصة',status:'جديد',owner:'مسوق التجارة'},{id:'LEAD-TEST-002',company:'CO-004',name:'TEST - مصنع النخبة',source:'إحالة',status:'تواصل',owner:'مسوق الصناعة'}],
+opportunities:[{id:'OPP-TEST-001',title:'TEST - توسع خط الإنتاج',summary:'دراسة توسعة الطاقة الإنتاجية لمنتج واعد.',company:'CO-004',file:'https://example.test/studies/opp-test-001',amount:50000,expectedReturn:'18%',risk:'تذبذب أسعار المواد',duration:'12 شهرًا',status:'بانتظار قرار المالك',by:'مطور الأعمال'}],
+ownerReports:[{type:'تقرير مطور الأعمال',title:'TEST - تقرير أداء المجموعة لشهر مارس',summary:'ملخص أداء الشركات والقابضة والفرص والقرارات المطلوبة.'},{type:'تقرير المستشار',title:'TEST - تقييم وضع مطور الأعمال والقابضة',summary:'تقرير مهني دوري للمستشار؛ لا ينشئ صلاحية تقييم سري آلي أو قرارًا وظيفيًا.'},{type:'تحليل الذكاء الاصطناعي',title:'TEST - تحليل التقارير المعتمدة',summary:''}],
+requests:[{id:'REQ-TEST-001',title:'TEST - مراجعة تحليل مالي',type:'دراسة',company:'CO-003',from:'مدير الشركة',status:'جديد',assigned:'مطور الأعمال',details:'مطلوب مراجعة تحليل الربحية للربع الأول.',priority:'عادية',replies:[]},{id:'REQ-TEST-002',title:'TEST - تصميم ملف تعريفي',type:'تصميم',company:'CO-001',from:'مدير الشركة',status:'قيد العمل',assigned:'المصمم',details:'ملف تعريفي من ست صفحات.',priority:'عادية',replies:[]}],
+advice:[{id:'ADV-TEST-001',title:'TEST - متابعة خطة الربع القادم',text:'ملاحظة استشارية تجريبية موجهة لمطور الأعمال.',to:'مطور الأعمال',author:'المستشار',date:'2027-04-02'}],
+decisions:[{id:'DEC-TEST-001',kind:'فرصة',title:'TEST - مراجعة فرصة توسع',summary:'قرار تجريبي مرتبط بالفرصة OPP-TEST-001.',status:'بانتظار اعتماد المالك',opportunityId:'OPP-TEST-001'},{id:'DIR-TEST-001',kind:'توجيه',title:'TEST - مراجعة قائمة العملاء',summary:'راجع قائمة العملاء المحتملين وأرسل ملاحظاتك.',recipient:'مطور الأعمال',followup:'2027-04-08',status:'جديد'}],
+employees:[
+{id:'EMP-TEST-001',company:'CO-003',name:'TEST - ناصر التجارة',position:'مسؤول مبيعات',salary:'700 BHD',phone:'+973 TEST 1003',contract:'TEST_employment_contract_trade.pdf',official:'TEST_employee_documents_trade.pdf'},
+{id:'EMP-TEST-002',company:'CO-004',name:'TEST - خالد الصناعة',position:'مشرف إنتاج',salary:'7,500 SAR',phone:'+966 TEST 1004',contract:'TEST_employment_contract_industry.pdf',official:'TEST_employee_documents_industry.pdf'},
+{id:'EMP-TEST-003',company:'CO-001',name:'TEST - موظف أفق',position:'مسؤول عمليات',salary:'600 BHD',phone:'+973 TEST 1001',contract:'TEST_employment_contract_services.pdf',official:'TEST_employee_documents_services.pdf'}],
+hr:[{id:'HR-TEST-001',company:'CO-003',employee:'EMP-TEST-001',type:'إجازة سنوية',date:'2027-04-15',details:'3 أيام',file:'TEST_annual_leave_request.pdf',status:'بانتظار المراجعة'},{id:'HR-TEST-002',company:'CO-004',employee:'EMP-TEST-002',type:'عهدة',date:'2027-03-10',details:'حاسوب محمول TEST-ASSET-02',file:'TEST_custody_receipt.pdf',status:'مسلّمة'}],
+forms:[sf(5,'trade','قيمة المخزون','amount',true,true),sf(6,'trade','المخزون الراكد','amount',false),sf(7,'trade','هامش الربح الإجمالي','number',false),sf(8,'industry','حجم الإنتاج','number',true,true),sf(9,'industry','نسبة استغلال الطاقة','number',false),sf(10,'industry','ساعات التوقف','number',false),sf(11,'technology','الإيراد المتكرر الشهري','amount',false,true),sf(12,'technology','العملاء النشطون','number',false),sf(13,'technology','معدل إلغاء الاشتراك','number',false),sf(14,'services','العقود النشطة','number',false,true),sf(15,'services','الساعات القابلة للفوترة','number',false),sf(16,'services','نسبة استغلال الموارد','number',false),Object.assign(sf(17,'trade','رواتب','amount',false),{parent:'SYS-EXP'})],
+users:[{id:'USR-TEST-001',name:'مالك المجموعة TEST',email:'owner@example.test',role:'مالك المجموعة',custom:false,company:'HOLD'},{id:'USR-TEST-002',name:'مدير بوابة TEST',email:'manager.trade@example.test',role:'مدير الشركة',custom:false,company:'CO-003'}],
+createdTasks:[],audit:[{actor:'TEST · المحاسب',action:'اعتماد وإقفال تقرير',record:'RPT-TEST-004',before:'مرسل للمحاسبة',after:'مقفل',date:'2027-03-05'}]};
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY));if(!S||S.schema!==SCHEMA)S=clone(seed)}catch(e){S=clone(seed)}
+
+const roles=[['owner','مالك المجموعة'],['manager','مدير الشركة'],['accountant','المحاسب'],['bd','مطور الأعمال'],['marketing','المسوق'],['designer','المصمم'],['advisor','المستشار']];
+const sectorNames={technology:'تقني',industry:'صناعي',trade:'تجاري',services:'خدمي'};
+const sectorName=x=>sectorNames[x]||x;
+const systemFields=[{id:'SYS-REV',name:'الإيرادات',type:'amount',required:true,core:'revenue'},{id:'SYS-EXP',name:'المصروفات',type:'amount',required:true,core:'expenses'},{id:'SYS-REC',name:'المستحقات',type:'amount',required:true,core:'receivables'}];
+const sysById=id=>systemFields.find(s=>s.id===id);
+const names={dashboard:'لوحة القيادة',leads:'العملاء المحتملون',requests:'الطلبات',advisory:'التوصيات والاستشارات',opportunities:'الفرص الاستثمارية',decisions:'القرارات',reports:'التقارير الشهرية',hr:'الموارد البشرية',employees:'ملفات الموظفين',group:'إدارة المجموعة',aiReview:'تعلّم المساعد',assets:'أصول القابضة',site:'إدارة الموقع',execSummary:'الملخص التنفيذي الذكي',logout:'تغيير الدور',test:'معاينة TEST',dismiss:'إزالة التنبيه',company:'الشركة',ownership:'نسبة ملكية المجموعة %',shareProfit:'حصة المجموعة من صافي الربح',salary:'الراتب',position:'المسمى الوظيفي',documents:'المرفقات',period:'الفترة',due:'موعد الإرسال',status:'الحالة',actions:'الإجراء',revenue:'الإيرادات',expenses:'المصروفات',receivables:'المستحقات',bankBalance:'رصيد البنك',bank:'كشف الحساب',save:'حفظ',send:'إرسال للمحاسبة',return:'إعادة للمدير للتعديل',approve:'اعتماد التقرير',reopen:'إعادة فتح التقرير',newReport:'تقرير جديد',newRequest:'طلب خدمة جديد',newEmployee:'إضافة موظف',newHr:'تسجيل إجراء موارد بشرية',annual:'إجازة سنوية',sick:'إجازة مرضية',warning:'إنذار',custody:'استلام عهدة',employee:'الموظف',date:'التاريخ',details:'التفاصيل',attachment:'المرفق (اسم الملف)',addCompany:'تسجيل شركة تابعة',companyNameAr:'اسم الشركة بالعربي',companyNameEn:'اسم الشركة بالإنجليزي',cr:'رقم السجل التجاري',sector:'القطاع',managerAr:'اسم المدير بالعربي',managerEn:'اسم المدير بالإنجليزي',email:'البريد الإلكتروني',phone:'رقم التواصل',currency:'العملة',create:'إنشاء',fieldType:'نوع الحقل',required:'إلزامي',parentField:'الحقل الرئيسي',scope:'النطاق',dashboardField:'في لوحة القيادة',opTitle:'موضوع الفرصة',opSummary:'وصف مختصر',study:'رابط دراسة الفرصة',amount:'المبلغ المطلوب',expectedReturn:'العائد المتوقع',risk:'المخاطر',duration:'المدة',requestStudy:'طلب دراسة من مطور الأعمال',addOpp:'إضافة الفرصة',aiTitle:'ملخص وضع الشركة ونصيحة الشهر القادم',wantPlan:'هل تريد إرسال طلب إعداد خطة لمطور الأعمال؟',plan:'إرسال طلب الخطة',planSent:'أُرسل طلب الخطة لمطور الأعمال كتكليف. لا تنشئ المعاينة الخطة آليًا.',aiMock:'محاكاة توضيحية مبنية على بيانات TEST، وليست تحليلًا فعليًا بالذكاء الاصطناعي.',summary:'ملخص المجموعة',addLead:'إضافة عميل محتمل',leadSource:'مصدر العميل',managerNote:'ملاحظة مدير الشركة',sender:'المرسل',requestType:'نوع الطلب',actor:'منفذ الإجراء',changes:'التغييرات',id:'الرقم',type:'النوع',action:'الإجراء',permissions:'الصلاحيات',title:'العنوان',assigned:'المسند إليه',customRole:'صلاحيات مخصصة',role:'المنصب',manager:'المدير',name:'الاسم',note:'ملاحظة المحاسب',testNote:'هذا نموذج واجهات محلي ببيانات وهمية TEST. اختيار الدور لا ينشئ مصادقة أو صلاحية حقيقية.',fileNote:'المعاينة تسجل اسم المرفق فقط؛ حفظ الملفات وفتحها يتطلبان التطبيق الحقيقي.',noData:'لا توجد سجلات لعرضها.',created:'تمت الإضافة في المعاينة.',companyCode:'رمز الشركة التلقائي',companyRecords:'الشركات المسجلة',userAdmin:'إدارة المستخدمين',formsBuilder:'مصمم الاستمارة',audit:'سجل التدقيق',closeReason:'سبب الإغلاق',stage:'مرحلة العميل',profit:'صافي الربح',ack:'تأكيد الاستلام',followup:'تاريخ المتابعة',proposed:'قواعد مقترحة للمراجعة قبل التنفيذ',filledPrev:'الحقول مهيأة بقيم الشهر السابق؛ راجعها قبل الإرسال.',leadStages:'جديد / تواصل / عرض / مغلق ناجح أو خاسر',salaryPrivacy:'بيانات الرواتب ظاهرة للمالك ومطور الأعمال؛ وتقتصر رؤية مدير الشركة على موظفي شركته.',noOwnLead:'إضافة العملاء وتسجيل متابعتهم من مهام المسوق.',saved:'حُفظت التغييرات التجريبية.',rolePerm:'الصلاحيات في هذا النموذج عرض توضيحي؛ التطبيق الحقيقي يجب أن يطبقها على الخادم.'};
+const t=k=>names[k]??k;
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const role=()=>S.role;
+const roleLabel=()=>roles.find(x=>x[0]===S.role)?.[1]||'';
+const num=v=>v===''||v==null?null:Number(v);
+const fmtNum=v=>Number(v||0).toLocaleString('en-US');
+function companyInfo(co){return S.companies.find(c=>c.id===co)}
+function cName(id){return id==='HOLD'?'القابضة':id==='EXTERNAL'?'خارجي':(companyInfo(id)?.ar||id)}
+function fmt(v,co){return v==null||v===''?'—':fmtNum(v)+' '+(companyInfo(co)?.currency||'')}
+function nextId(prefix,arr){const n=arr.reduce((m,x)=>{const id=String(x.id||'');const k=id.startsWith(prefix)&&id.match(/(\d+)$/);return k?Math.max(m,+k[1]):m},0)+1;return prefix+String(n).padStart(3,'0')}
+function persist(){localStorage.setItem(KEY,JSON.stringify(S))}
+function notify(msg){S.toast=msg;persist();render();setTimeout(()=>{S.toast='';persist();document.querySelector('.toast')?.remove()},1800)}
+function auditLog(action,record,before,after){S.audit.unshift({actor:'TEST · '+(roleLabel()||'المستخدم'),action,record,before:String(before??'—'),after:String(after??'—'),date:S.date})}
+
+/* ===== التواريخ والتقارير ===== */
+function dueForPeriod(p){const [y,m]=p.split('-').map(Number);return new Date(Date.UTC(y,m,5)).toISOString().slice(0,10)}
+function previousPeriod(date){const [y,m]=date.slice(0,7).split('-').map(Number);return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,'0')}`}
+function nextPeriod(p){const [y,m]=p.split('-').map(Number);return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,'0')}`}
+const isEditable=x=>['مسودة','معاد للتعديل'].includes(x.status);
+const isApproved=x=>['مقفل','معتمد'].includes(x.status);
+const approvedReports=co=>S.reports.filter(x=>x.co===co&&isApproved(x)).sort((a,b)=>b.period.localeCompare(a.period));
+const expectedReport=co=>S.reports.find(x=>x.co===co&&x.period===previousPeriod(S.date));
+function isLate(co){const r=expectedReport(co);return S.date>dueForPeriod(previousPeriod(S.date))&&(!r||isEditable(r))}
+function visibleReports(){const r=role();return S.reports.filter(x=>r==='owner'||r==='bd'?isApproved(x):r==='manager'?x.co===companyForRole():r==='accountant'?x.status!=='مسودة':false).sort((a,b)=>b.period.localeCompare(a.period)||a.co.localeCompare(b.co))}
+function workStatus(s){return({'جديد':'جديد','قيد الدراسة':'جديد','قيد التنفيذ':'قيد العمل','قيد العمل':'قيد العمل','بانتظار اعتماد المالك':'بانتظار رد','بانتظار قرار المالك':'بانتظار رد','بانتظار رد':'بانتظار رد','معاد للتعديل':'قيد العمل','مقفل':'مكتمل','معتمد':'مكتمل','مكتمل':'مكتمل','منفذ':'مكتمل','مرفوض':'مغلق','مغلق':'مغلق'})[s]||s}
+function routeRequest(type){return({'محاسبة':'المحاسب','تصميم':'المصمم','دراسة':'مطور الأعمال','مساعدة':'مطور الأعمال'})[type]||'مطور الأعمال'}
+function companyForRole(){if(role()!=='manager')return null;return S.currentCompany||S.users.find(u=>u.role==='مدير الشركة'&&u.company&&u.company!=='HOLD')?.company||S.companies[0]?.id}
+function planPeriod(co){const done=S.createdTasks.filter(x=>x.kind==='plan'&&x.company===co&&x.status==='مكتمل').sort((a,b)=>b.period.localeCompare(a.period))[0];return done?nextPeriod(done.period):previousPeriod(S.date)}
+function activePlan(co){return S.createdTasks.find(x=>x.kind==='plan'&&x.company===co&&x.period===planPeriod(co)&&x.status!=='مكتمل')}
+function overdueDirectives(){return S.decisions.filter(x=>x.kind==='توجيه'&&x.followup&&S.date>x.followup&&!['منفذ','مكتمل'].includes(x.status))}
+
+/* ===== تعريف حقول الاستمارة ===== */
+function fieldApplies(f,co){const c=companyInfo(co);return f.scope==='company'?f.company===co:f.sector===c?.sector}
+function effectiveFields(co,activeOnly=true){return S.forms.filter(f=>(!activeOnly||f.active)&&fieldApplies(f,co)).sort((a,b)=>(a.order||0)-(b.order||0))}
+function getFormSnapshot(co){return effectiveFields(co).map(f=>({id:f.id,name:f.name,type:f.type,required:f.required,parent:f.parent||'',options:f.options||[],showOnDashboard:!!f.showOnDashboard}))}
+function snapshotDefs(report,co){return report?.formSnapshot||getFormSnapshot(co)}
+function childDefs(parent,defs){return defs.filter(f=>f.parent===parent)}
+function anchorCompany(f){return f.scope==='company'?f.company:S.companies.find(c=>c.sector===f.sector)?.id}
+function nameTaken(name,parent,scope,anchor,ignoreId){const c=companyInfo(anchor);if(!c)return false;const targets=scope==='company'?[c]:S.companies.filter(x=>x.sector===c.sector);return targets.some(x=>effectiveFields(x.id).some(f=>f.id!==ignoreId&&(f.parent||'')===(parent||'')&&f.name.trim().toLowerCase()===name.trim().toLowerCase()))}
+function parentOptions(scope,type,company){const c=companyInfo(company);if(!['amount','number'].includes(type)||!c)return[];return[...systemFields.filter(s=>s.type===type),...S.forms.filter(f=>f.active&&!f.parent&&f.type===type&&f.scope===scope&&(scope==='company'?f.company===company:f.sector===c.sector))]}
+function normalize(){S.dismissedAlerts=S.dismissedAlerts||{};S.forms.forEach((f,i)=>{if(f.order===undefined)f.order=i;if(!f.options)f.options=[]});S.reports.forEach(r=>{if(!r.formSnapshot)r.formSnapshot=getFormSnapshot(r.co)})}
+
+/* ===== حقول التقرير ===== */
+function priorReport(report){return S.reports.filter(x=>x.co===report.co&&x.period<report.period&&isApproved(x)).sort((a,b)=>b.period.localeCompare(a.period))[0]}
+function coreValue(report,id){const s=sysById(id);return s?report?.[s.core]:report?.values?.[id]}
+function priorValue(report,id){if(!report)return'';const p=priorReport(report);if(!p)return'';return coreValue(p,id)??''}
+function refText(prev,val){return prev===''||prev==null?'':`السابق ${esc(prev)}${String(prev)===String(val??'')?' · لم يتغير':''}`}
+function extraField(f,report){
+  const val=report?.values?.[f.id]??'',cur=companyInfo(report?.co)?.currency||'',numeric=f.type==='amount'||f.type==='number',prev=numeric?priorValue(report,f.id):'',req=f.required?'required':'';
+  let control;
+  if(f.type==='list')control=`<select name="field_${f.id}" ${req}><option value="">اختر</option>${(f.options||[]).map(v=>`<option ${String(val)===String(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+  else{const type=numeric?'number':f.type==='date'?'date':'text';control=`<input name="field_${f.id}" type="${type}" ${numeric?'step="any"':''} value="${esc(val)}" ${numeric?`data-prev-value="${esc(prev)}"`:''} ${req}>`}
+  return `<label class="field ${f.parent?'subfield':''}">${f.parent?'↳ ':''}${esc(f.name)}${f.required?' *':''}${f.type==='amount'?` (${esc(cur)})`:''}${control}${numeric?`<small class="muted" data-ref-for="field_${f.id}">${refText(prev,val)}</small>`:''}</label>`}
+function childrenBlock(pid,report,defs){const ch=childDefs(pid,defs);const remaining=ch.some(c=>c.type==='amount'||c.type==='number')?`<small class="muted" data-remaining="${pid}"></small>`:'';return ch.map(c=>extraField(c,report)).join('')+remaining}
+function formFields(co,report){const defs=snapshotDefs(report,co);return defs.filter(f=>!f.parent).map(f=>extraField(f,report)+childrenBlock(f.id,report,defs)).join('')}
+function coreBlock(sys,report){const val=report?.[sys.core]??'',prev=priorValue(report,sys.id),cur=companyInfo(report.co)?.currency||'',defs=snapshotDefs(report,report.co);return `<div class="field">${t(sys.core)} (${esc(cur)}) *<input name="${sys.core}" type="number" step="any" min="0" value="${esc(val)}" data-prev-value="${esc(prev)}" required><small class="muted" data-ref-for="${sys.core}">${refText(prev,val)}</small>${childrenBlock(sys.id,report,defs)}</div>`}
+function reportContext(form){const rid=form.elements.reportId?.value;const x=rid?S.reports.find(r=>r.id===rid):null;return{x,co:x?x.co:companyForRole()}}
+function parentFormName(p){return p.core||`field_${p.id}`}
+function updateRemainders(form){
+  if(!form)return;const{x,co}=reportContext(form),defs=snapshotDefs(x,co),cur=companyInfo(co)?.currency||'';
+  form.querySelectorAll('[data-prev-value]').forEach(inp=>{const ref=form.querySelector(`[data-ref-for="${inp.name}"]`);if(!ref)return;const prev=inp.dataset.prevValue;ref.textContent=prev===''?'':'السابق '+prev+(String(inp.value)===String(prev)?' · لم يتغير':' · تغيّر')});
+  [...systemFields,...defs.filter(f=>!f.parent)].forEach(p=>{const ch=childDefs(p.id,defs).filter(c=>c.type==='amount'||c.type==='number');if(!ch.length)return;const total=Number(form.elements[parentFormName(p)]?.value||0),sum=ch.reduce((n,c)=>n+Number(form.elements[`field_${c.id}`]?.value||0),0),el=form.querySelector(`[data-remaining="${p.id}"]`);if(el)el.textContent=`غير موزع: ${fmtNum(Math.max(0,total-sum))} ${p.type==='amount'?cur:''} (الباقي ضمن أخرى)`+(sum>total?' · تنبيه: مجموع الفروع يتجاوز الرئيسي':'')})}
+function validateChildren(form,co,report){
+  const defs=snapshotDefs(report,co),errors=[];
+  for(const p of [...systemFields,...defs.filter(f=>!f.parent)]){const ch=childDefs(p.id,defs).filter(c=>c.type==='amount'||c.type==='number');if(!ch.length)continue;const total=Number(form.elements[parentFormName(p)]?.value||0),sum=ch.reduce((n,c)=>n+Number(form.elements[`field_${c.id}`]?.value||0),0);if(sum>total)errors.push(`${p.name}: مجموع الفروع ${fmtNum(sum)} يتجاوز الرئيسي ${fmtNum(total)}`)}
+  if(errors.length){alert(errors.join('\n'));return false}return true}
+function captureFormValues(form,defs){const values={};for(const f of defs){const v=form.elements[`field_${f.id}`]?.value;if(v!==undefined&&v!=='')values[f.id]=v}return values}
+function unchangedList(form,defs){const out=[],labels={revenue:t('revenue'),expenses:t('expenses'),receivables:t('receivables')};form.querySelectorAll('[data-prev-value]').forEach(inp=>{const p=inp.dataset.prevValue;if(p!==''&&inp.value!==''&&String(inp.value)===String(p))out.push(labels[inp.name]||defs.find(f=>'field_'+f.id===inp.name)?.name||inp.name)});return out}
+function reportValues(x){const o={[t('revenue')]:x.revenue,[t('expenses')]:x.expenses,[t('receivables')]:x.receivables,[t('bankBalance')]:x.bankBalance};snapshotDefs(x,x.co).forEach(f=>{o[f.name]=x.values?.[f.id]});return o}
+function diffText(a,b){const keys=[...new Set([...Object.keys(a),...Object.keys(b)])].filter(k=>String(a[k]??'')!==String(b[k]??''));return keys.length?[keys.map(k=>`${k}: ${a[k]??'—'}`).join('؛ '),keys.map(k=>`${k}: ${b[k]??'—'}`).join('؛ ')]:null}
+function snapshotView(x){
+  const defs=snapshotDefs(x,x.co),cur=companyInfo(x.co)?.currency||'',rows=[];
+  const show=(f,v)=>v===undefined||v===null||v===''?'—':f.type==='amount'?fmtNum(v)+' '+cur:esc(v);
+  const kids=pid=>childDefs(pid,defs).forEach(c=>rows.push(`<tr class="sub"><td>↳ ${esc(c.name)}</td><td>${show(c,x.values?.[c.id])}</td></tr>`));
+  systemFields.forEach(s=>{rows.push(`<tr><td><b>${esc(s.name)}</b></td><td>${show(s,x[s.core])}</td></tr>`);kids(s.id)});
+  rows.push(`<tr><td><b>${t('bankBalance')}</b></td><td>${show({type:'amount'},x.bankBalance)}</td></tr>`);
+  defs.filter(f=>!f.parent).forEach(f=>{rows.push(`<tr><td><b>${esc(f.name)}</b></td><td>${show(f,x.values?.[f.id])}</td></tr>`);kids(f.id)});
+  return `<div class="tablewrap compact"><table><tbody>${rows.join('')}</tbody></table></div>`}
+function readOnlyReport(x){return `<section class="card panel"><h2>عرض تقرير ${esc(cName(x.co))} · ${esc(x.period)}</h2><p><span class="pill">${esc(workStatus(x.status))}</span> · ${t('due')}: ${esc(x.due)} · ${t('bank')}: ${esc(x.bank||'—')}</p>${x.note&&x.status==='معاد للتعديل'?`<p class="muted">${t('note')}: ${esc(x.note)}</p>`:''}${snapshotView(x)}<div class="actions">${button('إغلاق','cancelReport')}</div></section>`}
+function newReportDraft(){const co=companyForRole(),d={id:'',co,period:previousPeriod(S.date),status:'جديد',revenue:null,expenses:null,receivables:null,bankBalance:null,bank:'',values:{},formSnapshot:getFormSnapshot(co)};const p=priorReport(d);if(p){systemFields.forEach(s=>{d[s.core]=p[s.core]});d.values=Object.assign({},p.values||{})}return d}
+function renderReportForm(x){
+  const isNew=!x.id,editable=role()==='manager'&&(isNew||isEditable(x));
+  if(!editable)return readOnlyReport(x);
+  const cur=companyInfo(x.co)?.currency||'',note=x.status==='معاد للتعديل'&&x.note?`<div class="alert"><span><b>${t('note')}:</b> ${esc(x.note)}</span></div>`:'';
+  return `<form class="card panel" id="reportForm"><input type="hidden" name="reportId" value="${esc(x.id)}"><h2>${isNew?'إنشاء تقرير شهري':'استمارة'} · ${esc(cName(x.co))}${isNew?'':' · '+esc(x.period)} <span class="tagtest">TEST</span></h2>${note}<div class="formgrid">${isNew?`<label class="field">${t('period')}<input name="period" type="month" value="${esc(x.period)}" max="${previousPeriod(S.date)}" required></label>`:''}${systemFields.map(s=>coreBlock(s,x)).join('')}<label class="field">${t('bankBalance')} (${esc(cur)}) *<input name="bankBalance" type="number" step="any" value="${esc(x.bankBalance??'')}" required></label>${formFields(x.co,x)}<label class="field">${t('bank')}<input name="bank" type="file" accept=".pdf,.png,.jpg,.jpeg"><small class="muted">${esc(x.bank||'')}</small></label></div><p class="muted">${t('filledPrev')} ${t('fileNote')}</p><label class="fieldrow"><input type="checkbox" name="declaration"> أقر بصحة البيانات المدخلة.</label><div class="actions"><button type="button" class="btn" data-act="saveReport">${isNew?'حفظ كمسودة':t('save')}</button><button class="btn primary">${t('send')}</button>${!isNew&&x.status==='مسودة'?button('تحديث الحقول من التعريف الحالي','updateFields:'+x.id):''}${button('إغلاق','cancelReport')}</div></form>`}
+function fileName(form,name){const el=form.elements[name];return el&&el.files&&el.files[0]?'TEST_'+el.files[0].name.replace(/^TEST_/,''):''}
+function formObj(form){return Object.fromEntries(new FormData(form).entries())}
+function saveReport(f,mode){
+  const d=formObj(f),isNew=!d.reportId,co=companyForRole();
+  if(role()!=='manager'||!co)return;
+  let x=isNew?S.reports.find(q=>q.co===co&&q.period===d.period):S.reports.find(q=>q.id===d.reportId);
+  if(isNew&&x){alert('يوجد تقرير لهذه الفترة؛ افتحه من القائمة.');return}
+  if(x&&(x.co!==co||!isEditable(x))){alert('هذا التقرير مرسل أو مقفل أو خارج صلاحيتك، ولا يمكن تعديله.');return}
+  const period=isNew?d.period:x.period;if(!period){alert('اختر الفترة.');return}
+  const defs=snapshotDefs(x,co);
+  if(mode==='submit'){
+    if(!(x?.bank||fileName(f,'bank'))){alert('أرفق كشف الحساب البنكي قبل الإرسال.');return}
+    if(!f.elements.declaration.checked){alert('أقر بصحة البيانات المدخلة قبل الإرسال.');return}
+    if(!validateChildren(f,co,x))return;
+    const same=unchangedList(f,defs);if(same.length&&!confirm('هذه الحقول لم تتغير عن الشهر السابق: '+same.join('، ')+'\nهل تؤكد صحتها؟'))return}
+  let created=false;
+  if(!x){x={id:nextId('RPT-TEST-',S.reports),co,period,due:dueForPeriod(period),status:'مسودة',revenue:null,expenses:null,receivables:null,bankBalance:null,bank:'',note:'',values:{},formSnapshot:getFormSnapshot(co)};S.reports.unshift(x);created=true}
+  const before=reportValues(x);
+  x.revenue=num(d.revenue);x.expenses=num(d.expenses);x.receivables=num(d.receivables);x.bankBalance=num(d.bankBalance);x.values=captureFormValues(f,snapshotDefs(x,co));
+  const fn=fileName(f,'bank');if(fn)x.bank=fn;
+  const diff=diffText(before,reportValues(x));if(diff&&!created)auditLog('تعديل قيم التقرير',x.id,diff[0],diff[1]);
+  if(mode==='submit'){const old=x.status;x.status='مرسل للمحاسبة';x.note='';auditLog(old==='معاد للتعديل'?'إعادة إرسال تقرير':'إرسال تقرير للمحاسبة',x.id,created?'جديد':old,'مرسل للمحاسبة · '+x.period)}
+  else if(created)auditLog('إنشاء تقرير (مسودة)',x.id,'—','مسودة · '+x.period);
+  S.activeReport=null;S.reportDraft=false;persist();notify(mode==='submit'?'أُرسل التقرير للمحاسبة بنجاح.':created?'حُفظ التقرير كمسودة.':t('saved'))}
+
+/* ===== التنبيهات والذكاء الاصطناعي التوضيحي ===== */
+function alertsForRole(){
+  const r=role(),co=companyForRole();let n=0,label='';
+  if(r==='manager'){n=(isLate(co)?1:0)+S.requests.filter(x=>x.company===co&&x.status==='بانتظار رد'&&x.assigned!=='مدير الشركة').length;label='استمارة متأخرة أو طلب ينتظر ردك'}
+  else if(r==='accountant'){n=S.reports.filter(x=>x.status==='مرسل للمحاسبة').length;label='تقارير بانتظار المراجعة'}
+  else if(r==='owner'){n=S.decisions.filter(x=>x.status==='بانتظار اعتماد المالك').length+overdueDirectives().length;label='قرارات أو توجيهات تحتاج متابعة'}
+  else if(r==='bd'){n=S.createdTasks.filter(x=>x.assigned==='مطور الأعمال'&&x.status!=='مكتمل').length+S.requests.filter(x=>x.assigned==='مطور الأعمال'&&workStatus(x.status)!=='مكتمل').length+S.decisions.filter(x=>x.kind==='توجيه'&&x.recipient==='مطور الأعمال'&&x.status!=='منفذ').length;label='مهام وطلبات وتوجيهات بانتظار العمل'}
+  else if(r==='designer'){n=S.requests.filter(x=>x.assigned==='المصمم'&&workStatus(x.status)!=='مكتمل').length;label='طلبات تصميم مسندة إليك'}
+  else if(r==='marketing'){n=S.leads.filter(x=>x.status==='جديد').length;label='عملاء محتملون يحتاجون متابعة'}
+  else if(r==='advisor'){n=S.decisions.filter(x=>x.kind==='توجيه'&&x.recipient==='المستشار'&&x.status!=='منفذ').length;label='توجيهات موجهة إليك'}
+  return{n,label,key:r+':'+label+':'+n}}
+function aiSummary(companies){
+  return companies.map(c=>{const rs=approvedReports(c.id),cur=rs[0],prev=rs[1];if(!cur)return `${esc(c.ar)}: لا توجد بيانات معتمدة تكفي للتحليل.`;
+    const parts=[];if(prev&&prev.revenue){const pct=(cur.revenue-prev.revenue)/prev.revenue*100;parts.push(`الإيراد ${pct>=0?'ارتفع':'انخفض'} ${Math.abs(pct).toFixed(1)}% عن ${esc(prev.period)}`)}else parts.push('لا تتوفر فترة سابقة للمقارنة');
+    if(prev){const d=Number(cur.bankBalance||0)-Number(prev.bankBalance||0);parts.push(`رصيد البنك ${d>=0?'زاد':'انخفض'} بمقدار ${fmtNum(Math.abs(d))} ${esc(c.currency)}`)}
+    return `${esc(c.ar)} (${esc(c.currency)}) — ${parts.join('؛ ')}. الفترة ${esc(cur.period)}، المصدر: التقرير ${esc(cur.id)}.`}).join('<br>')}
+
+/* ===== الأدوار والصفحات ===== */
+function roleTabs(){const r=role();
+  if(r==='owner')return['dashboard','leads','requests','advisory','opportunities','decisions','reports','employees','hr','assets','site','aiReview'];
+  if(r==='manager')return['dashboard','reports','employees','hr','leads','requests'];
+  if(r==='accountant')return['dashboard','reports','requests'];
+  if(r==='bd')return['dashboard','opportunities','site','requests','advisory','employees','hr','reports'];
+  if(r==='marketing')return['dashboard','leads','requests'];
+  if(r==='designer')return['dashboard','requests'];
+  if(r==='advisor')return['dashboard','advisory','requests'];
+  return['dashboard']}
+function canOpen(tab){if(tab==='group'||tab==='ownerReports'||tab==='execSummary')return role()==='owner';return roleTabs().includes(tab)}
+function openTab(tab){S.tab=canOpen(tab)?tab:'dashboard';S.activeReport=null;S.activeRequest=null;S.reportDraft=false;S.requestDraft=false;persist();render()}
+function switchRole(r){S.role=r;if(r==='manager'){const u=S.users.find(x=>x.email===S.currentManagerEmail&&x.role==='مدير الشركة')||S.users.find(x=>x.role==='مدير الشركة'&&x.company&&x.company!=='HOLD');S.currentCompany=u?.company||S.companies[0]?.id;S.currentManagerEmail=u?.email||''}S.tab='dashboard';S.activeReport=null;S.activeRequest=null;S.reportDraft=false;S.requestDraft=false;persist();render()}
+function button(txt,act,primary=false){return `<button type="button" class="btn ${primary?'primary':''}" data-act="${act}">${txt}</button>`}
+function smallBtn(txt,act){return `<button type="button" class="btn small" data-act="${act}">${txt}</button>`}
+function table(headers,rows){if(!rows.length)return `<div class="empty">${t('noData')}</div>`;return `<div class="tablewrap"><table><thead><tr>${headers.map(h=>`<th>${t(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`}
+
+function companyCard(c){
+  const rs=approvedReports(c.id),x=rs[0],prev=rs[1],late=isLate(c.id),returned=expectedReport(c.id)?.status==='معاد للتعديل';
+  const net=x?(x.revenue||0)-(x.expenses||0):0,declined=!!(x&&prev&&prev.revenue&&x.revenue<prev.revenue*.9);
+  let color='green',reason='';
+  if(late){color='red';reason='تقرير الفترة المتوقعة متأخر'}
+  else if(x&&net<0){color='red';reason='صافي ربح سالب'}
+  else if(x&&x.bankBalance<0){color='red';reason='رصيد بنك سالب'}
+  else if(!x){color='gray';reason='لا بيانات معتمدة'}
+  else if(declined){color='yellow';reason='تراجع الإيراد 10% فأكثر'}
+  else if(returned){color='yellow';reason='تقرير معاد للتعديل'}
+  const label={red:'أحمر',yellow:'أصفر',green:'أخضر',gray:'رمادي'}[color],cls={red:'red',yellow:'warn',green:'green',gray:'gray'}[color];
+  const kpis=x?snapshotDefs(x,c.id).filter(f=>f.showOnDashboard&&['amount','number'].includes(f.type)&&x.values?.[f.id]!==undefined).slice(0,3).map(f=>`<div class="muted">${esc(f.name)}: ${fmtNum(x.values[f.id])} ${f.type==='amount'?esc(c.currency):''} · ${esc(x.period)}</div>`).join(''):'';
+  const body=x?`<div class="metric">${fmtNum(net)} ${esc(c.currency)}</div><div>${t('profit')}${role()==='owner'?` · ${t('shareProfit')}: ${fmtNum(net*Number(c.ownership||0)/100)} ${esc(c.currency)}`:''}</div><div class="muted">${t('revenue')}: ${fmtNum(x.revenue)} · ${t('expenses')}: ${fmtNum(x.expenses)} · ${t('bankBalance')}: ${fmtNum(x.bankBalance)} · ${t('receivables')}: ${fmtNum(x.receivables)}</div><small>آخر تقرير معتمد: ${esc(x.period)}</small>${kpis}`:`<div class="metric">لا بيانات معتمدة</div>`;
+  return `<article class="card"><div class="muted">${esc(c.ar)} · ${esc(c.currency)}${role()==='owner'?` · ${esc(c.ownership)}%`:''}</div>${body}<div style="margin-top:8px"><span class="pill ${cls}">${label}</span>${reason?` <span class="muted">${reason}</span>`:''}</div></article>`}
+function dashboard(){
+  const r=role(),financial=['owner','manager','accountant','bd'].includes(r),co=companyForRole(),companies=r==='manager'?S.companies.filter(c=>c.id===co):S.companies;
+  const info=alertsForRole(),alerts=info.n&&!S.dismissedAlerts[info.key]?`<div class="alert"><span>${info.label} · ${info.n}</span>${button(t('dismiss'),'dismiss')}</div>`:'';
+  const cards=financial?companies.map(companyCard).join(''):'';
+  const ai=(r==='owner'||r==='manager')?`<article class="card ai panel"><h2>✦ ${t('aiTitle')} <span class="tagtest">TEST</span></h2><p>${aiSummary(companies)||'لا توجد بيانات معتمدة كافية للتحليل.'}</p><p class="muted">${t('aiMock')} · الأرقام من التقارير المعتمدة فقط ولا تُدمج العملات.</p>${r==='manager'?(activePlan(co)?`<span class="pill green">${t('planSent')}</span>`:`<p>${t('wantPlan')}</p>${button(t('plan'),'plan',true)}`):`<p class="muted">نصيحة الشهر القادم: راجع مع كل مدير البنود التي تغيرت في تقريره المعتمد واطلب تفسيرًا قبل بناء خطة. هذه ملاحظة إرشادية وليست قرارًا آليًا.</p>`}</article>`:'';
+  const owner=r==='owner'?`<section class="card panel"><h2>التقارير الواردة للمالك</h2><p class="muted">تقرير مطور الأعمال، تقرير المستشار، وتحليل الذكاء الاصطناعي.</p>${button('عرض التقارير الثلاثة','goto:ownerReports')}</section>`:'';
+  const bd=r==='bd'?`<section class="card panel"><h2>المهام والطلبات المسندة إليك</h2>${table(['id','title','status','company'],[...S.createdTasks.filter(x=>x.assigned==='مطور الأعمال').map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(workStatus(x.status))}</td><td>${esc(cName(x.company))}</td></tr>`),...S.requests.filter(x=>x.assigned==='مطور الأعمال').map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(workStatus(x.status))}</td><td>${esc(cName(x.company))}</td></tr>`)])}</section>`:'';
+  const neutral=['marketing','designer','advisor'].includes(r)?`<section class="card panel"><h2>${r==='marketing'?'متابعة العملاء المحتملين':r==='designer'?'طلبات التصميم المسندة':'التوصيات والتوجيهات'}</h2><p class="muted">تظهر هنا الأعمال المرتبطة بدورك فقط.</p>${button(r==='marketing'?t('leads'):r==='advisor'?t('advisory'):t('requests'),'goto:'+(r==='marketing'?'leads':r==='advisor'?'advisory':'requests'))}</section>`:'';
+  return `<div class="pagehead"><div><h1>${t('dashboard')}</h1><p class="sub">${r==='owner'?'ملخص القابضة والشركات التابعة':r==='manager'?'ملخص شركتك والمهام المطلوبة':'ملخص الأعمال المرتبطة بدورك'}</p></div></div>${alerts}<div class="grid">${cards}</div>${financial?`<p class="helper">${t('proposed')}: أحمر عند تأخر إرسال التقرير أو صافي ربح سالب أو رصيد بنك سالب؛ أصفر عند تراجع الإيراد 10% عن الشهر السابق أو تقرير معاد؛ رمادي إن لم يوجد تقرير معتمد؛ أخضر فيما عدا ذلك. الحدود تحتاج اعتمادًا قبل البرمجة.</p>`:''}${ai}${owner}${bd}${neutral}<section class="card panel"><h2>${t('summary')}</h2><p class="muted">لوحة القيادة تعرض مؤشرات وتنبيهات واختصارات فقط، ثم تنقل المستخدم إلى صفحة العمل.</p><div class="actions">${canOpen('reports')?button(t('reports'),'goto:reports'):''}${r==='manager'?button(t('hr'),'goto:hr'):''}${r==='owner'?button(t('group'),'goto:group'):''}</div></section>`}
+
+function leadsPage(){
+  const r=role(),stages=['جديد','تواصل','عرض','مغلق ناجح','مغلق خاسر'];
+  const rows=S.leads.filter(l=>r==='owner'||r==='marketing'||(r==='manager'&&l.company===companyForRole())).map(l=>{
+    const closed=(l.status||'').includes('مغلق'),stage=r==='marketing'?`<select data-stage="${esc(l.id)}">${stages.map(s=>`<option ${l.status===s?'selected':''}>${s}</option>`).join('')}</select>`:`<span class="pill">${esc(l.status)}</span>`;
+    return `<tr><td>${esc(l.id)}</td><td>${esc(cName(l.company))}</td><td>${esc(l.name)}</td><td>${esc(l.source)}</td><td>${esc(l.owner)}</td><td>${stage}${closed?`<div class="muted">${t('closeReason')}: ${esc(l.closeReason||'—')}</div>`:''}</td><td>${r==='manager'?`<input data-leadnote="${esc(l.id)}" value="${esc(l.managerNote||'')}" placeholder="ملاحظة المدير">`:esc(l.managerNote||'—')}</td></tr>`});
+  const form=r==='marketing'?`<form class="card panel" id="leadForm"><h2>${t('addLead')}</h2><div class="formgrid"><label class="field">${t('company')}<select name="company">${S.companies.map(c=>`<option value="${c.id}">${esc(c.ar)}</option>`).join('')}</select></label><label class="field">اسم العميل<input name="name" required></label><label class="field">${t('leadSource')}<input name="source" required></label></div><p class="muted">${t('leadStages')}</p><button class="btn primary">${t('create')}</button></form>`:r==='owner'?`<p class="helper">${t('noOwnLead')}</p>`:'';
+  return `<div class="pagehead"><div><h1>${t('leads')}</h1><p class="sub">يسجل المسوق العملاء ويتابع مراحلهم؛ يطّلع المالك على الجميع، والمدير على عملاء شركته.</p></div></div>${form}${table(['id','company','title','leadSource','assigned','stage','managerNote'],rows)}`}
+
+function reportPage(){
+  const r=role(),list=visibleReports();
+  const rows=list.map(x=>{
+    let actions=button('عرض','report:'+x.id);
+    if(r==='manager'&&isEditable(x))actions=button('تعديل','report:'+x.id,true);
+    if(r==='accountant'&&x.status==='مرسل للمحاسبة')actions+=' '+button(t('return'),'return:'+x.id)+' '+button(t('approve'),'approve:'+x.id);
+    if(r==='owner'&&x.status==='مقفل'&&!x.reopenReq)actions+=' '+button(t('reopen'),'reopen:'+x.id);
+    if(r==='owner'&&x.status==='مقفل'&&x.reopenReq)actions+=' '+button('موافقة على إعادة الفتح','reopenOk:'+x.id,true)+' '+button('رفض الطلب','reopenNo:'+x.id);
+    if(r==='accountant'&&x.status==='مقفل'&&!x.reopenReq)actions+=' '+button('طلب إعادة فتح','reopenAsk:'+x.id);
+    return `<tr><td>${esc(x.id)}</td><td>${esc(cName(x.co))}</td><td>${esc(x.period)}</td><td>${esc(x.due)}</td><td><span class="pill ${isApproved(x)?'green':x.status==='معاد للتعديل'?'red':'warn'}">${esc(workStatus(x.status))}</span>${x.status==='معاد للتعديل'&&x.note?`<div class="muted">${esc(x.note)}</div>`:''}${x.reopenReq?`<div class="muted">طلب إعادة فتح بانتظار المالك: ${esc(x.reopenReq.reason)}</div>`:''}</td><td>${fmt(x.revenue,x.co)}</td><td>${fmt(x.expenses,x.co)}</td><td>${fmt(x.receivables,x.co)}</td><td>${esc(x.bank||'—')}</td><td><div class="actions">${actions}</div></td></tr>`});
+  let panel='';
+  if(S.activeReport){const x=S.reports.find(q=>q.id===S.activeReport);if(x&&list.some(q=>q.id===x.id))panel=renderReportForm(x)}
+  else if(r==='manager'&&S.reportDraft)panel=renderReportForm(newReportDraft());
+  const sub=r==='manager'?'أنشئ التقرير كمسودة ثم أرسله للمحاسبة بعد إرفاق كشف الحساب والإقرار.':r==='accountant'?'التقارير المرسلة للمراجعة والاعتماد.':'تقارير معتمدة للقراءة فقط؛ أرقام غير المعتمد لا تظهر هنا.';
+  const reopenNote=['owner','accountant'].includes(r)?`<div class="helper">التقرير المقفل لا يُفتح إلا بسبب مكتوب: يطلب المحاسب إعادة الفتح ويوافق المالك، وللمالك الفتح المباشر.</div>`:'';
+  return `<div class="pagehead"><div><h1>${t('reports')}</h1><p class="sub">${sub}</p></div>${r==='manager'?button(t('newReport'),'newReport',true):''}</div>${reopenNote}${table(['id','company','period','due','status','revenue','expenses','receivables','bank','actions'],rows)}${panel}`}
+
+function workInboxRows(){
+  const r=role(),me=roleLabel(),items=[];
+  for(const x of S.requests)if(r==='owner'||(r==='manager'&&x.company===companyForRole())||x.assigned===me)items.push({id:x.id,title:x.title,type:'طلب خدمة',company:cName(x.company),to:x.assigned,status:workStatus(x.status)});
+  for(const x of S.createdTasks)if(r==='owner'||x.assigned===me||(r==='manager'&&x.company===companyForRole()))items.push({id:x.id,title:x.title,type:x.kind==='plan'?'تكليف خطة':'تكليف دراسة',company:cName(x.company),to:x.assigned,status:workStatus(x.status)});
+  for(const x of S.decisions){if(x.kind==='توجيه'&&(r==='owner'||x.recipient===me))items.push({id:x.id,title:x.title,type:'توجيه',company:'القابضة',to:x.recipient,status:workStatus(x.status)});if(r==='owner'&&x.kind!=='توجيه')items.push({id:x.id,title:x.title,type:'قرار',company:'القابضة',to:'المالك',status:workStatus(x.status)})}
+  for(const x of S.opportunities)if(r==='owner'||r==='bd')items.push({id:x.id,title:x.title,type:'فرصة استثمارية',company:cName(x.company),to:x.by||'مطور الأعمال',status:workStatus(x.status)});
+  for(const x of S.advice)if(r==='owner'||(r==='bd'&&x.to==='مطور الأعمال')||(r==='advisor'&&x.author==='المستشار'))items.push({id:x.id,title:x.title,type:'توصية',company:'القابضة',to:x.to,status:'جديد'});
+  return items.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.type)}</td><td>${esc(x.company)}</td><td>${esc(x.to)}</td><td>${esc(x.status)}</td></tr>`)}
+function dirTable(list,ownerView){
+  const me=roleLabel();
+  return table(['id','title','details','assigned','status','followup','actions'],list.map(x=>{
+    const late=x.followup&&S.date>x.followup&&!['منفذ','مكتمل'].includes(x.status);
+    const act=ownerView||x.recipient!==me?'متابعة فقط':x.status==='جديد'?button(t('ack'),'ack:'+x.id):x.status==='قيد التنفيذ'?button('تسجيل التنفيذ','execute:'+x.id):'—';
+    return `<tr class="${late?'late-row':''}"><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.summary)}</td><td>${esc(x.recipient)}</td><td>${esc(workStatus(x.status))}${late?' <span class="pill red">متأخر</span>':''}</td><td>${esc(x.followup||'—')}</td><td>${act}</td></tr>`}))}
+function requestDetail(d){
+  const me=roleLabel(),isAssignee=d.assigned===me,cur=workStatus(d.status);
+  const thread=(d.replies||[]).map(q=>`<article class="card"><b>${esc(q.from)}</b> · ${esc(q.date)}<p>${esc(q.text)}</p></article>`).join('')||'<p class="muted">لا توجد ردود بعد.</p>';
+  const statusField=isAssignee?`<label class="field">الحالة<select name="status">${['جديد','قيد العمل','بانتظار رد','مكتمل'].map(s=>`<option ${cur===s?'selected':''}>${s}</option>`).join('')}</select></label>`:`<p class="muted">الحالة: ${esc(cur)} — يغيّرها المسند إليه.</p>`;
+  return `<section class="card panel"><h2>الطلب ${esc(d.id)} · ${esc(d.title)}</h2><p>${esc(d.details||'')} · الأولوية: ${esc(d.priority||'عادية')}</p><p>من ${esc(d.from)} (${esc(cName(d.company))}) إلى ${esc(d.assigned)} · الحالة: ${esc(cur)}</p><h3>الردود</h3>${thread}<form id="requestDetailForm"><input type="hidden" name="requestId" value="${esc(d.id)}"><div class="formgrid"><label class="field">الرد<textarea name="message" placeholder="اكتب الرد أو وصف ما تم إنجازه"></textarea></label>${statusField}</div>${role()==='designer'?'<p class="muted">عند الإكمال اكتب وصف التسليم الخارجي، مثل: أُرسل التصميم بالبريد.</p>':''}<div class="actions"><button class="btn primary">حفظ</button>${button('إغلاق التفاصيل','closeRequest')}</div></form></section>`}
+function requestPage(){
+  const r=role(),me=roleLabel();
+  const reqs=S.requests.filter(x=>r==='owner'||(r==='manager'&&x.company===companyForRole())||x.assigned===me);
+  const reqRows=reqs.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.type)}</td><td>${esc(cName(x.company))}</td><td>${esc(x.from)}</td><td>${esc(x.assigned)}</td><td>${esc(workStatus(x.status))}</td><td>${button('فتح الطلب','request:'+x.id)}</td></tr>`);
+  const dirs=S.decisions.filter(x=>x.kind==='توجيه'&&(r==='owner'||x.recipient===me));
+  const overdue=r==='owner'?overdueDirectives().length:0;
+  const tasks=r==='bd'?S.createdTasks.filter(x=>x.assigned===me).map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${x.kind==='plan'?'تكليف خطة':'تكليف دراسة'}</td><td>${esc(cName(x.company))}</td><td>${esc(x.from||'القابضة')}</td><td>${esc(x.assigned)}</td><td>${esc(workStatus(x.status))}</td><td>${x.status==='مكتمل'?'—':x.kind==='study'?button(x.status==='جديد'?'بدء الدراسة':'تسجيل الفرصة','studyTask:'+x.id):x.status==='جديد'?button('بدء العمل','taskstart:'+x.id):button('إكمال المهمة','taskdone:'+x.id)}</td></tr>`):[];
+  const detail=S.activeRequest?S.requests.find(x=>x.id===S.activeRequest):null;
+  const reqForm=r==='manager'&&S.requestDraft?`<form class="card panel" id="requestForm"><h2>${t('newRequest')}</h2><div class="formgrid"><label class="field">نوع الخدمة<select name="type"><option>محاسبة</option><option>تصميم</option><option>دراسة</option><option>مساعدة</option></select></label><label class="field">${t('title')}<input name="title" required></label><label class="field">الأولوية<select name="priority"><option>عادية</option><option>عاجلة</option></select></label><label class="field">الميزانية التقديرية (اختياري)<input name="budget" type="number" step="any"></label><label class="field">التفاصيل<textarea name="details" required></textarea></label></div><button class="btn primary">إرسال الطلب</button></form>`:'';
+  return `<div class="pagehead"><div><h1>${t('requests')}</h1><p class="sub">صندوق العمل الموحد يعرض عناصر العمل الموجهة للمستخدم بحالات مشتركة.</p></div>${r==='manager'?button(t('newRequest'),'newRequest',true):''}</div>${reqForm}<h2>صندوق العمل الموحد</h2>${table(['id','title','type','company','assigned','status'],workInboxRows())}<h2>${r==='owner'?'التوجيهات ومتابعة التنفيذ':'التوجيهات الموجهة إليّ'}</h2>${overdue?`<div class="alert">توجيهات متأخرة · ${overdue}</div>`:''}${dirTable(dirs,r==='owner')}${detail?requestDetail(detail):''}${['owner','manager','accountant','bd','designer'].includes(r)?`<h2>الطلبات</h2>${table(['id','title','requestType','company','sender','assigned','status','actions'],reqRows)}`:''}${r==='bd'?`<h2>مهامي المسندة</h2>${table(['id','title','requestType','company','sender','assigned','status','actions'],tasks)}`:''}`}
+function submitRequestDetail(f){
+  const d=formObj(f),x=S.requests.find(q=>q.id===d.requestId);if(!x)return;
+  const me=roleLabel(),isAssignee=x.assigned===me,isSender=role()==='manager'&&x.company===companyForRole();
+  if(!(role()==='owner'||isAssignee||isSender))return;
+  const msg=(d.message||'').trim(),oldStatus=workStatus(x.status),lastReply=x.replies?.at(-1)?.text||'';
+  let status=oldStatus;
+  if(isAssignee&&d.status)status=d.status;else if(isSender&&oldStatus==='بانتظار رد'&&msg)status='قيد العمل';
+  if(status==='مكتمل'&&oldStatus!=='مكتمل'&&!msg){alert('اكتب ملاحظة الإنجاز قبل إكمال الطلب.');return}
+  if(!msg&&status===oldStatus){alert('اكتب ردًا أو غيّر الحالة.');return}
+  x.replies=x.replies||[];if(msg)x.replies.push({from:me,text:msg,date:S.date});x.status=status;
+  auditLog('رد أو تحديث طلب',x.id,oldStatus+' · '+(lastReply||'—'),status+' · '+(msg||'—'));S.activeRequest=null;persist();notify('تم حفظ الرد والحالة.')}
+
+function oppPage(){
+  const r=role(),task=S.createdTasks.find(x=>x.id===S.oppDraftTask);
+  const rows=S.opportunities.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.summary)}</td><td>${esc(cName(x.company))}</td><td>${fmtNum(x.amount)} ${esc(x.currency||companyInfo(x.company)?.currency||'')}</td><td>${esc(x.expectedReturn||'—')}</td><td>${esc(x.risk||'—')}</td><td>${esc(x.duration||'—')}</td><td>${esc(x.file||'—')}<div class="muted">${t('fileNote')}</div></td><td>${esc(workStatus(x.status))}</td><td>${r==='bd'&&x.by==='مطور الأعمال'&&x.status==='قيد الدراسة'?button('رفع للمالك','escalate:'+x.id):r==='owner'&&x.status==='قيد الدراسة'?button('طرح للقرار','oppdecision:'+x.id):'—'}</td></tr>`);
+  const form=['bd','owner'].includes(r)?`<form class="card panel" id="oppForm"><h2>${task?'تسجيل فرصة من دراسة مكتملة':'تسجيل فرصة'}</h2><input type="hidden" name="taskId" value="${esc(task?.id||'')}"><div class="formgrid"><label class="field">الشركة / النطاق<select name="company"><option value="HOLD">القابضة</option><option value="EXTERNAL">فرصة خارجية</option>${S.companies.map(c=>`<option value="${c.id}">${esc(c.ar)}</option>`).join('')}</select></label><label class="field">العملة (للقابضة أو الخارجية فقط)<select name="currency">${curOptions()}</select></label><label class="field">${t('opTitle')}<input name="title" required></label><label class="field">${t('opSummary')}<textarea name="summary" required></textarea></label><label class="field">${t('amount')}<input name="amount" type="number" step="any" required></label><label class="field">${t('expectedReturn')}<input name="expectedReturn" required></label><label class="field">${t('risk')}<textarea name="risk" required></textarea></label><label class="field">${t('duration')}<input name="duration" required></label><label class="field">${t('study')}<input name="file" type="url" placeholder="https://" required></label></div><p class="muted">العملة لا تُجمع مع عملات الشركات. تظهر الفرصة للمالك عند رفعها للقرار أو طرحها منه.</p><div class="actions"><button class="btn primary">${t('addOpp')}</button>${r==='owner'?button(t('requestStudy'),'requestStudy'):''}</div></form>`:'';
+  return `<div class="pagehead"><div><h1>${t('opportunities')}</h1><p class="sub">تسجيل فرصة أو طلب دراسة، ثم رفعها للقرار ومتابعة النتيجة.</p></div></div>${form}${table(['id','title','opSummary','company','amount','expectedReturn','risk','duration','study','status','actions'],rows)}`}
+function decisionPage(){
+  const rows=S.decisions.map(x=>{const late=x.kind==='توجيه'&&x.followup&&S.date>x.followup&&!['منفذ','مكتمل'].includes(x.status);return `<tr class="${late?'late-row':''}"><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.summary)}</td><td>${esc(x.recipient||'مالك المجموعة')}</td><td>${esc(workStatus(x.status))}${late?' <span class="pill red">متأخر</span>':''}</td><td>${esc(x.followup||'—')}</td><td>${role()==='owner'&&x.status==='بانتظار اعتماد المالك'?button('اعتماد','decision:'+x.id)+' '+button('رفض','reject:'+x.id):x.kind==='توجيه'?'متابعة التنفيذ':'—'}</td></tr>`});
+  const form=role()==='owner'?`<form class="card panel" id="directionForm"><h2>إصدار قرار أو توجيه</h2><div class="formgrid"><label class="field">${t('title')}<input name="title" required></label><label class="field">المستلم<select name="recipient">${roles.filter(x=>x[0]!=='owner').map(x=>`<option>${x[1]}</option>`).join('')}</select></label><label class="field">التوجيه<textarea name="summary" required></textarea></label><label class="field">${t('followup')}<input name="followup" type="date"></label></div><p class="muted">يصل التوجيه للمستلم المختار وحده. يؤكد الاستلام ثم يسجل التنفيذ قبل تاريخ المتابعة.</p><button class="btn primary">إرسال التوجيه</button></form>`:'';
+  return `<h1>${t('decisions')}</h1><p class="sub">القرارات المحالة للمالك والتوجيهات الصادرة منه ومتابعة تنفيذها.</p>${form}${table(['id','title','details','assigned','status','followup','actions'],rows)}`}
+function advisoryPage(){
+  const r=role(),rows=S.advice.filter(x=>r==='owner'||(r==='bd'&&x.to==='مطور الأعمال')||(r==='advisor'&&x.author==='المستشار')).map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}</td><td>${esc(x.text)}</td><td>${esc(x.to)}</td><td>${esc(x.date)}</td></tr>`);
+  const form=r==='advisor'?`<form class="card panel" id="adviceForm"><h2>إرسال توصية للمستلم</h2><div class="formgrid"><label class="field">${t('title')}<input name="title" required></label><label class="field">المستلم<select name="to"><option>مطور الأعمال</option><option>مالك المجموعة</option></select></label><label class="field">نص التوصية<textarea name="text" required></textarea></label></div><button class="btn primary">إرسال التوصية</button></form>`:'';
+  return `<h1>${t('advisory')}</h1><p class="sub">التوصيات والاستشارات المهنية للمستلم المحدد.</p>${form}${table(['id','title','details','assigned','date'],rows)}`}
+function visibleEmployees(){const r=role();return S.employees.filter(e=>r==='owner'||r==='bd'||(r==='manager'&&e.company===companyForRole()))}
+function employeePage(){return `<h1>${t('employees')}</h1><p class="muted">${t('salaryPrivacy')}</p>${table(['id','company','name','position','salary','phone','documents'],visibleEmployees().map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(cName(e.company))}</td><td>${esc(e.name)}</td><td>${esc(e.position)}</td><td>${esc(e.salary)}</td><td>${esc(e.phone)}</td><td>${esc(e.contract)}<br>${esc(e.official)}</td></tr>`))}`}
+function hrPage(){
+  const r=role(),employees=visibleEmployees();
+  const rows=S.hr.filter(h=>employees.some(e=>e.id===h.employee)).map(h=>`<tr><td>${esc(cName(h.company))}</td><td>${esc(employees.find(e=>e.id===h.employee)?.name)}</td><td>${esc(h.type)}</td><td>${esc(h.date)}</td><td>${esc(h.details)}</td><td>${esc(h.file)}</td><td>${esc(h.status)}</td><td>${r==='bd'&&h.status==='بانتظار المراجعة'?button('موافقة','hrOk:'+h.id,true)+' '+button('رفض','hrNo:'+h.id):''}</td></tr>`);
+  const forms=r==='manager'?`<form class="card panel" id="employeeForm"><h2>${t('newEmployee')}</h2><div class="formgrid"><label class="field">اسم الموظف<input name="name" required></label><label class="field">${t('position')}<input name="position" required></label><label class="field">${t('salary')}<input name="salary" required></label><label class="field">${t('phone')}<input name="phone" required></label><label class="field">العقد والوثائق الرسمية<input name="file" type="file" multiple></label></div><p class="muted">${t('fileNote')}</p><button class="btn primary">${t('newEmployee')}</button></form><form class="card panel" id="hrForm"><h2>${t('newHr')}</h2><div class="formgrid"><label class="field">${t('employee')}<select name="employee">${employees.map(e=>`<option value="${e.id}">${esc(e.name)}</option>`).join('')}</select></label><label class="field">نوع السجل<select name="type"><option>${t('annual')}</option><option>${t('sick')}</option><option>${t('warning')}</option><option>${t('custody')}</option></select></label><label class="field">${t('date')}<input name="date" type="date" required></label><label class="field">${t('details')}<input name="details" required></label><label class="field">${t('attachment')}<input name="file" type="file"></label></div><p class="muted">${t('fileNote')}</p><button class="btn primary">${t('newHr')}</button></form>`:'';
+  return `<div class="pagehead"><div><h1>${t('hr')}</h1><p class="sub">يسجل مدير الشركة شؤون موظفي شركته. لا يحتاج الموظف إلى حساب دخول.</p></div></div>${['owner','bd'].includes(r)?`<div class="helper">${r==='bd'?'مطور الأعمال يراجع إجازات موظفي الشركات التابعة ويوافق أو يرفض.':'سجلات الموارد البشرية للقراءة؛ مراجعة الإجازات بيد مطور الأعمال.'}</div>`:''}${forms}${table(['company','employee','type','date','details','attachment','status','actions'],rows)}`}
+
+function groupPage(){
+  if(role()!=='owner')return'<p>غير متاح.</p>';
+  const coRows=S.companies.map(c=>`<tr><td>${esc(c.id)}</td><td>${esc(c.ar)} / ${esc(c.en)}</td><td>${esc(c.cr)}</td><td>${sectorName(c.sector)}</td><td>${esc(c.ownership||0)}%</td><td>${esc(c.managerAr)} / ${esc(c.managerEn)}</td><td>${esc(c.email)}</td><td>${esc(c.phone)}</td><td>${esc(c.currency)}</td></tr>`);
+  const userRows=S.users.map(u=>`<tr><td>${esc(u.id)}</td><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.role)}</td><td>${esc(cName(u.company||'HOLD'))}</td><td>${u.custom?'مخصصة':'حسب المنصب'}</td><td>${u.permissions?.length?esc(u.permissions.join('، ')):'—'}</td></tr>`);
+  const tabs=[['companies',t('companyRecords')],['forms',t('formsBuilder')],['users',t('userAdmin')],['audit',t('audit')]];
+  return `<div class="pagehead"><div><h1>${t('group')}</h1><p class="sub">تسجيل الشركات وإدارة الحسابات والصلاحيات من المالك فقط.</p></div><span class="tagtest">TEST</span></div><div class="seg">${tabs.map(([k,l])=>`<button type="button" class="${S.companyTab===k?'active':''}" data-act="group:${k}">${l}</button>`).join('')}</div>${S.companyTab==='companies'?companyAdmin(coRows):S.companyTab==='forms'?formsAdmin():S.companyTab==='users'?userAdmin(userRows):auditAdmin()}`}
+function companyAdmin(rows){return `<form class="card panel" id="companyForm"><h2>${t('addCompany')}</h2><div class="formgrid"><label class="field">${t('companyNameAr')}<input name="ar" required></label><label class="field">${t('companyNameEn')}<input name="en" dir="ltr" required></label><label class="field">${t('cr')}<input name="cr" required></label><label class="field">${t('sector')}<select name="sector">${Object.entries(sectorNames).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label><label class="field">${t('managerAr')}<input name="managerAr" required></label><label class="field">${t('managerEn')}<input name="managerEn" required></label><label class="field">${t('email')}<input name="email" type="email" required></label><label class="field">${t('phone')}<input name="phone" required></label><label class="field">${t('ownership')}<input name="ownership" type="number" step="any" min="0" max="100" required></label><label class="field">${t('currency')}<select name="currency">${curOptions()}</select></label></div><p class="muted">${t('companyCode')}: ينشأ تلقائيًا عند الحفظ. لا يوجد إدخال للأرصدة الافتتاحية.</p><button class="btn primary">${t('create')}</button></form><h2 class="section-title">${t('companyRecords')}</h2>${table(['id','company','cr','sector','ownership','manager','email','phone','currency'],rows)}`}
+function formsAdmin(){
+  const company=S.formsCompany||S.companies[0].id,c=companyInfo(company),scope=S.formScope||'company',type=S.formType||'amount';
+  const all=effectiveFields(company,false),activeAll=all.filter(f=>f.active);
+  const parentName=f=>f.parent?(sysById(f.parent)?.name||all.find(z=>z.id===f.parent)?.name||'—'):'حقل رئيسي';
+  const rows=all.map(f=>`<tr style="${f.active?'':'opacity:.55'}"><td>${esc(f.id)}</td><td>${esc(f.name)} ${f.isTest?'<span class="tagtest">TEST</span>':''}</td><td>${esc(f.type)}${f.type==='list'?`<div class="muted">${esc((f.options||[]).join('، '))}</div>`:''}</td><td>${f.scope==='sector'?'قطاعي · '+sectorName(f.sector):'خاص بالشركة'}</td><td>${esc(parentName(f))}</td><td>${f.required?'إلزامي':'اختياري'}</td><td>${f.showOnDashboard?'نعم':'—'}</td><td>${f.active?'نشط':'مؤرشف'}</td><td>${f.active?`<div class="actions">${smallBtn('الاسم','fieldedit:'+f.id)}${smallBtn('إلزامي','fieldreq:'+f.id)}${['amount','number'].includes(f.type)?smallBtn('اللوحة','fielddash:'+f.id):''}${smallBtn('↑','fieldup:'+f.id)}${smallBtn('↓','fielddown:'+f.id)}${smallBtn('أرشفة','fieldarchive:'+f.id)}</div>`:'—'}</td></tr>`);
+  const opts=parentOptions(scope,type,company);
+  return `<div class="pagehead"><div><h1>${t('formsBuilder')}</h1><p class="sub">المؤشرات الأساسية (الإيرادات والمصروفات والمستحقات) ثابتة وتقبل فروعًا. حقول القطاع ترثها كل شركات القطاع. تعريف التقرير يؤخذ من لقطة محفوظة عند إنشائه.</p></div></div><label class="field">${t('company')}<select id="formsCompany">${S.companies.map(x=>`<option value="${x.id}" ${x.id===company?'selected':''}>${esc(x.ar)} · ${sectorName(x.sector)}</option>`).join('')}</select></label><form class="card panel" id="fieldForm"><h2>إضافة حقل</h2><div class="formgrid"><label class="field">اسم الحقل<input name="name" required></label><label class="field">${t('scope')}<select name="scope" id="fieldScope"><option value="company" ${scope==='company'?'selected':''}>خاص بـ ${esc(c.ar)}</option><option value="sector" ${scope==='sector'?'selected':''}>قطاعي: كل شركات القطاع ${sectorName(c.sector)}</option></select></label><label class="field">${t('fieldType')}<select name="type" id="fieldType">${[['amount','مبلغ'],['number','رقم'],['text','سؤال / نص'],['date','تاريخ'],['list','قائمة']].map(([k,v])=>`<option value="${k}" ${type===k?'selected':''}>${v}</option>`).join('')}</select></label><label class="field">${t('parentField')}<select name="parent" id="fieldParent"><option value="">حقل رئيسي جديد</option>${opts.map(f=>`<option value="${f.id}">${esc(f.name)}${sysById(f.id)?' · أساسي':''}</option>`).join('')}</select></label><label class="field" id="optionsWrap" style="display:${type==='list'?'grid':'none'}">خيارات القائمة (خيار في كل سطر)<textarea name="options"></textarea></label><label class="fieldrow"><input name="required" type="checkbox"> ${t('required')}</label><label class="fieldrow"><input name="showOnDashboard" type="checkbox" ${['amount','number'].includes(type)?'':'disabled'}> يظهر في لوحة القيادة (مبلغ أو رقم، حتى ثلاثة)</label></div><p class="muted">الفرع يطابق نوع أبيه الرقمي، ولا يكون إلزاميًا تحت أب اختياري، ولا يتكرر اسمه تحت الأب نفسه. التعديل يسري على التقارير الجديدة فقط.</p><button class="btn primary">إضافة الحقل</button></form>${table(['id','title','type','scope','parentField','required','dashboardField','status','actions'],rows)}`}
+function refreshFieldParents(form){
+  const scope=form.elements.scope.value,type=form.elements.type.value;S.formScope=scope;S.formType=type;
+  const opts=parentOptions(scope,type,S.formsCompany||S.companies[0].id);
+  form.elements.parent.innerHTML='<option value="">حقل رئيسي جديد</option>'+opts.map(f=>`<option value="${f.id}">${esc(f.name)}${sysById(f.id)?' · أساسي':''}</option>`).join('');
+  form.querySelector('#optionsWrap').style.display=type==='list'?'grid':'none';
+  const dash=form.elements.showOnDashboard;dash.disabled=!['amount','number'].includes(type);if(dash.disabled)dash.checked=false;
+  form.elements.required.disabled=false;form.elements.required.checked=false}
+function submitField(f){
+  const d=formObj(f),scope=d.scope||'company',company=S.formsCompany||S.companies[0].id,c=companyInfo(company),name=(d.name||'').trim();if(!name)return;
+  if(systemFields.some(x=>x.name===name)){alert('هذا مؤشر أساسي؛ أنشئ البند تحت المؤشر الأساسي.');return}
+  const parent=d.parent||'',par=parent?(sysById(parent)||S.forms.find(x=>x.id===parent)):null;
+  if(parent&&(!par||par.type!==d.type||!['amount','number'].includes(d.type))){alert('نوع الفرع يجب أن يطابق نوع الحقل الرئيسي الرقمي.');return}
+  if(par&&!sysById(parent)&&(par.scope!==scope||(scope==='company'?par.company!==company:par.sector!==c.sector))){alert('الحقل الرئيسي من نطاق مختلف.');return}
+  const required=!!f.elements.required.checked;if(par&&!par.required&&required){alert('لا يمكن جعل الفرع إلزاميًا تحت حقل اختياري.');return}
+  const options=(d.options||'').split('\n').map(x=>x.trim()).filter(Boolean);if(d.type==='list'&&!options.length){alert('أدخل خيارات القائمة، خيارًا في كل سطر.');return}
+  if(nameTaken(name,parent,scope,company,null)){alert('يوجد حقل بالاسم نفسه تحت الحقل الرئيسي نفسه.');return}
+  const dash=!!f.elements.showOnDashboard.checked&&['amount','number'].includes(d.type),targets=scope==='company'?[c]:S.companies.filter(x=>x.sector===c.sector);
+  if(dash&&targets.some(x=>effectiveFields(x.id).filter(z=>z.showOnDashboard).length>=3)){alert('الحد الأقصى ثلاثة مؤشرات ظاهرة في لوحة كل شركة.');return}
+  const x={id:nextId('FORM-TEST-',S.forms),scope,company:scope==='company'?company:'',sector:c.sector,name,type:d.type,required,parent,active:true,createdPeriod:previousPeriod(S.date),archivedPeriod:null,options,showOnDashboard:dash,order:Math.max(0,...S.forms.map(z=>z.order||0))+1,isTest:true};
+  S.forms.push(x);auditLog('إنشاء حقل',x.id,'—',`${name} · ${scope==='sector'?'قطاعي':'شركة'}${parent?' · فرع من '+(sysById(parent)?.name||par.name):''}`);persist();notify(t('created'))}
+function fieldAction(act,id){
+  const f=S.forms.find(z=>z.id===id);if(!f||!f.active)return;
+  if(act==='fieldedit'){const n=(prompt('اسم الحقل',f.name)||'').trim();if(!n||n===f.name)return;if(systemFields.some(s=>s.name===n)){alert('هذا اسم مؤشر أساسي.');return}if(nameTaken(n,f.parent,f.scope,anchorCompany(f),f.id)){alert('يوجد حقل بالاسم نفسه تحت الحقل الرئيسي نفسه.');return}const old=f.name;f.name=n;auditLog('تعديل اسم حقل',f.id,old,n)}
+  else if(act==='fieldreq'){const par=f.parent?(sysById(f.parent)||S.forms.find(z=>z.id===f.parent)):null;if(!f.required){if(par&&!par.required){alert('لا يمكن جعل الفرع إلزاميًا تحت أب اختياري.');return}f.required=true;auditLog('تغيير إلزامية حقل',f.id,'اختياري','إلزامي')}else{f.required=false;S.forms.filter(z=>z.parent===f.id).forEach(z=>{z.required=false});auditLog('تغيير إلزامية حقل',f.id,'إلزامي','اختياري (وفروعه)')}}
+  else if(act==='fielddash'){if(!f.showOnDashboard){const c=anchorCompany(f),targets=f.scope==='company'?[companyInfo(c)]:S.companies.filter(x=>x.sector===f.sector);if(targets.some(x=>x&&effectiveFields(x.id).filter(z=>z.showOnDashboard).length>=3)){alert('الحد الأقصى ثلاثة مؤشرات ظاهرة في لوحة كل شركة.');return}f.showOnDashboard=true}else f.showOnDashboard=false;auditLog('تغيير ظهور حقل في اللوحة',f.id,String(!f.showOnDashboard),String(f.showOnDashboard))}
+  else if(act==='fieldup'||act==='fielddown'){const group=S.forms.filter(z=>z.active&&z.scope===f.scope&&(f.scope==='company'?z.company===f.company:z.sector===f.sector)&&(z.parent||'')===(f.parent||'')).sort((a,b)=>(a.order||0)-(b.order||0)),i=group.findIndex(z=>z.id===id),j=i+(act==='fieldup'?-1:1);if(j<0||j>=group.length)return;[group[i],group[j]]=[group[j],group[i]];group.forEach((z,k)=>{z.order=k});auditLog('تغيير ترتيب حقل',f.id,String(i+1),String(j+1))}
+  else if(act==='fieldarchive'){const kids=S.forms.filter(z=>z.active&&z.parent===f.id);if(!confirm(kids.length?`ستؤرشف ${kids.length} فرعًا تابعًا أيضًا. متابعة؟`:'أرشفة الحقل؟'))return;[f,...kids].forEach(z=>{z.active=false;z.archivedPeriod=previousPeriod(S.date);auditLog('أرشفة حقل',z.id,'نشط','مؤرشف · '+z.archivedPeriod)})}
+  persist();render()}
+function auditAdmin(){return '<p class="muted">سجل قراءة فقط يوضح من نفّذ الإجراء ووقته والسجل والقيمة قبل التعديل وبعده.</p>'+table(['actor','action','id','date','changes'],S.audit.map(a=>`<tr><td>${esc(a.actor)}</td><td>${esc(a.action)}</td><td>${esc(a.record)}</td><td>${esc(a.date)}</td><td>${esc(a.before)} → ${esc(a.after)}</td></tr>`))}
+function userAdmin(rows){return `<form class="card panel" id="userForm"><h2>${t('userAdmin')}</h2><div class="formgrid"><label class="field">الاسم<input name="name" required></label><label class="field">${t('email')}<input name="email" type="email" required></label><label class="field">${t('role')}<select name="role">${roles.map(x=>`<option>${x[1]}</option>`).join('')}</select></label><label class="field">الشركة المرتبطة (لمدير الشركة: شركة تابعة)<select name="company"><option value="HOLD">القابضة</option>${S.companies.map(c=>`<option value="${c.id}">${esc(c.ar)}</option>`).join('')}</select></label><label class="field"><span>${t('customRole')}</span><input type="checkbox" name="custom"></label></div><fieldset><legend>صلاحيات إضافية مخصصة (اختياري)</legend><div class="formgrid">${['عرض التقارير','اعتماد التقارير','عرض الرواتب','إدارة الاستمارات','عرض الفرص','إدارة الطلبات'].map(x=>`<label class="fieldrow"><input type="checkbox" name="permissions" value="${x}">${x}</label>`).join('')}</div></fieldset><p class="muted">حسابات الدخول الحقيقية تُنشأ من الخادم. هذه الشاشة تعرض توزيع الصلاحيات فقط ولا تحفظ كلمة مرور.</p><button class="btn primary">إضافة حساب تجريبي</button></form>${table(['id','name','email','role','company','customRole','permissions'],rows)}`}
+function ownerReportsPage(){return `<div class="pagehead"><div><h1>التقارير الواردة للمالك</h1><p class="sub">ثلاثة تقارير منفصلة بمصدر واضح؛ ولا تحتوي المنصة على تقييمات قيادية سرية.</p></div>${button('عودة إلى لوحة القيادة','goto:dashboard')}</div><div class="grid">${S.ownerReports.map(x=>`<article class="card"><span class="pill">${esc(x.type)}</span><h3>${esc(x.title)}</h3><p>${x.type==='تحليل الذكاء الاصطناعي'?aiSummary(S.companies):esc(x.summary)}</p><small class="muted">${x.type==='تحليل الذكاء الاصطناعي'?'المصدر: أرقام التقارير المعتمدة فقط':'المصدر: سجلات وتقارير TEST'}</small></article>`).join('')}</div>`}
+function currentPage(){switch(S.tab){case'ownerReports':return ownerReportsPage();case'leads':return leadsPage();case'requests':return requestPage();case'advisory':return advisoryPage();case'opportunities':return oppPage();case'decisions':return decisionPage();case'reports':return reportPage();case'hr':return hrPage();case'employees':return employeePage();case'group':return groupPage();default:return dashboard()}}
+function render(){
+  if(S.role&&!canOpen(S.tab))S.tab='dashboard';
+  const app=document.getElementById('app');
+  if(!S.role){app.innerHTML=`<div class="login"><div class="card"><div class="brand"><span class="brandmark">س</span> سفير القابضة <span class="tagtest">${t('test')}</span></div><h1>النموذج الوظيفي الأولي</h1><p class="sub">اختر منظورًا لمراجعة الشاشات والصلاحيات. جميع الأسماء والسجلات خيالية وموسومة TEST.</p><p class="helper">${t('testNote')}</p><div class="roles">${roles.map(([id,label])=>`<button type="button" class="rolecard" data-role="${id}"><b>${label}</b><div class="muted">TEST · دخول للمعاينة</div></button>`).join('')}</div></div></div>`;return}
+  const icons={dashboard:'◫',leads:'◎',requests:'⇄',advisory:'✦',opportunities:'◇',decisions:'✓',reports:'▤',hr:'♙',employees:'♧',group:'⚙',aiReview:'✦',assets:'◆',site:'◐'},admin=role()==='owner';
+  let nav=roleTabs().map(x=>`<button type="button" class="navbtn ${S.tab===x?'active':''}" data-tab="${x}"><span class="ico">${icons[x]||'•'}</span>${t(x)}</button>`).join('');
+  if(admin)nav+=`<div class="label">إدارة المالك</div><button type="button" class="navbtn ${S.tab==='group'?'active':''}" data-tab="group"><span class="ico">⚙</span>${t('group')}</button>`;
+  const managerSelect=role()==='manager'?`<label class="muted">الشركة / المدير <select data-manager-user>${S.users.filter(u=>u.role==='مدير الشركة'&&u.company&&u.company!=='HOLD').map(u=>`<option value="${esc(u.email)}" ${u.company===companyForRole()?'selected':''}>${esc(u.name)} · ${esc(cName(u.company))}</option>`).join('')}</select></label>`:'';
+  app.innerHTML=`<header class="topbar"><div class="brand"><span class="brandmark">س</span> سفير القابضة <span class="tagtest">${t('test')}</span></div><div class="top-actions"><span class="muted">${roleLabel()}</span>${managerSelect}${admin?`<label class="muted">تاريخ المعاينة <input style="width:auto;padding:4px" type="date" value="${S.date}" data-date></label><button type="button" class="btn small" data-act="reset">إعادة بيانات TEST</button>`:''}<button type="button" class="btn small" data-act="switch">${t('logout')}</button></div></header><div class="layout"><aside class="sidebar"><div class="label">القائمة الرئيسية</div>${nav}</aside><main class="main"><div class="helper">${t('testNote')}</div>${currentPage()}<p class="muted" style="margin-top:22px">${t('rolePerm')} · ${t('fileNote')}</p></main></div>${S.toast?`<div class="toast" role="status">${esc(S.toast)}</div>`:''}`;
+  const rf=document.getElementById('reportForm');if(rf)updateRemainders(rf)}
+
+/* ===== الأحداث ===== */
+document.addEventListener('click',e=>{
+  const rb=e.target.closest('[data-role]');if(rb){switchRole(rb.dataset.role);return}
+  const tb=e.target.closest('[data-tab]');if(tb){openTab(tb.dataset.tab);return}
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const a=b.dataset.act,i=a.indexOf(':'),act=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1),me=roleLabel();
+  const find=(arr)=>arr.find(z=>z.id===arg);
+  switch(act){
+    case'switch':S.role=null;persist();render();break;
+    case'reset':if(role()==='owner'&&confirm('إعادة بيانات المعاينة الأولية؟')){S=clone(seed);normalize();persist();render()}break;
+    case'dismiss':S.dismissedAlerts[alertsForRole().key]=true;persist();render();break;
+    case'goto':openTab(arg);break;
+    case'newReport':{const co=companyForRole(),same=S.reports.find(x=>x.co===co&&x.period===previousPeriod(S.date));if(same&&!isEditable(same)){alert('يوجد تقرير مرسل أو مقفل لهذه الفترة.');break}if(same){S.activeReport=same.id;S.reportDraft=false}else{S.activeReport=null;S.reportDraft=true}render();break}
+    case'cancelReport':S.reportDraft=false;S.activeReport=null;render();break;
+    case'report':{const x=find(S.reports);if(x&&visibleReports().some(q=>q.id===x.id)){S.activeReport=x.id;S.reportDraft=false;render()}break}
+    case'saveReport':{const f=document.getElementById('reportForm');if(f)saveReport(f,'save');break}
+    case'updateFields':{const x=find(S.reports);if(x&&role()==='manager'&&x.co===companyForRole()&&x.status==='مسودة'){x.formSnapshot=getFormSnapshot(x.co);auditLog('تحديث حقول مسودة',x.id,'تعريف سابق','تعريف حالي');persist();render()}break}
+    case'reopenAsk':{const x=find(S.reports);if(role()==='accountant'&&x&&x.status==='مقفل'&&!x.reopenReq){const reason=(prompt('سبب طلب إعادة فتح التقرير')||'').trim();if(reason){x.reopenReq={reason,by:'المحاسب',date:S.date};auditLog('طلب إعادة فتح تقرير',x.id,'مقفل','طلب · '+reason);persist();render()}}break}
+    case'reopenOk':{const x=find(S.reports);if(role()==='owner'&&x&&x.status==='مقفل'&&x.reopenReq){const rs=x.reopenReq.reason;x.status='معاد للتعديل';x.note='أُعيد فتح التقرير: '+rs;delete x.reopenReq;auditLog('موافقة المالك على إعادة فتح',x.id,'مقفل','معاد للتعديل · '+rs);persist();render()}break}
+    case'reopenNo':{const x=find(S.reports);if(role()==='owner'&&x&&x.reopenReq){delete x.reopenReq;auditLog('رفض طلب إعادة فتح',x.id,'مقفل','مقفل');persist();render()}break}
+    case'hrOk':case'hrNo':{const x=S.hr.find(q=>q.id===arg);if(role()==='bd'&&x&&x.status==='بانتظار المراجعة'){const ok=act==='hrOk';x.status=ok?'موافق عليها':'مرفوضة';auditLog(ok?'الموافقة على إجازة':'رفض إجازة',x.id,'بانتظار المراجعة',x.status);persist();render()}break}
+    case'reopen':{const x=find(S.reports);if(role()==='owner'&&x&&x.status==='مقفل'){const reason=(prompt('سبب إعادة فتح التقرير')||'').trim();if(reason){x.status='معاد للتعديل';x.note='أُعيد فتح التقرير: '+reason;auditLog('إعادة فتح تقرير مقفل',x.id,'مقفل','معاد للتعديل · '+reason);persist();render()}}break}
+    case'return':{const x=find(S.reports);if(role()==='accountant'&&x&&x.status==='مرسل للمحاسبة'){const note=(prompt('اكتب ملاحظة الإعادة للمدير')||'').trim();if(!note)break;x.status='معاد للتعديل';x.note=note;auditLog('إعادة تقرير للتعديل',x.id,'مرسل للمحاسبة','معاد للتعديل · '+note);persist();render()}break}
+    case'approve':{const x=find(S.reports);if(role()==='accountant'&&x&&x.status==='مرسل للمحاسبة'){x.status='مقفل';x.note='';auditLog('اعتماد وإقفال تقرير',x.id,'مرسل للمحاسبة','مقفل');persist();render()}break}
+    case'requestStudy':if(role()==='owner'){const task={id:nextId('TASK-TEST-',S.createdTasks),kind:'study',title:'TEST - طلب دراسة فرصة من المالك',assigned:'مطور الأعمال',status:'جديد',from:'مالك المجموعة',company:'HOLD',period:previousPeriod(S.date)};S.createdTasks.unshift(task);auditLog('طلب دراسة فرصة',task.id,'—',task.title);persist();notify(t('created'))}break;
+    case'ack':{const x=find(S.decisions);if(x&&x.kind==='توجيه'&&x.recipient===me&&x.status==='جديد'){x.status='قيد التنفيذ';auditLog('تأكيد استلام توجيه',x.id,'جديد','قيد التنفيذ');persist();render()}break}
+    case'execute':{const x=find(S.decisions);if(x&&x.kind==='توجيه'&&x.recipient===me&&x.status==='قيد التنفيذ'){x.status='منفذ';auditLog('تسجيل تنفيذ توجيه',x.id,'قيد التنفيذ','منفذ');persist();render()}break}
+    case'taskstart':{const x=find(S.createdTasks);if(role()==='bd'&&x&&x.assigned===me&&x.status==='جديد'){x.status='قيد العمل';auditLog('بدء تكليف',x.id,'جديد','قيد العمل');persist();render()}break}
+    case'taskdone':{const x=find(S.createdTasks);if(role()==='bd'&&x&&x.assigned===me&&x.status==='قيد العمل'){x.status='مكتمل';auditLog('إكمال تكليف',x.id,'قيد العمل','مكتمل');persist();render()}break}
+    case'studyTask':{const x=find(S.createdTasks);if(role()==='bd'&&x&&x.assigned===me){if(x.status==='جديد'){x.status='قيد العمل';auditLog('بدء دراسة فرصة',x.id,'جديد','قيد العمل');persist();render()}else if(x.status==='قيد العمل'){S.oppDraftTask=x.id;openTab('opportunities')}}break}
+    case'decision':{const x=find(S.decisions);if(role()==='owner'&&x&&x.status==='بانتظار اعتماد المالك'){x.status='معتمد';const o=S.opportunities.find(q=>q.id===x.opportunityId);if(o)o.status='معتمد';auditLog('اعتماد قرار',x.id,'بانتظار اعتماد المالك','معتمد');persist();render()}break}
+    case'reject':{const x=find(S.decisions);if(role()==='owner'&&x&&x.status==='بانتظار اعتماد المالك'){x.status='مرفوض';const o=S.opportunities.find(q=>q.id===x.opportunityId);if(o)o.status='مرفوض';auditLog('رفض قرار',x.id,'بانتظار اعتماد المالك','مرفوض');persist();render()}break}
+    case'newRequest':S.requestDraft=true;render();break;
+    case'closeRequest':S.activeRequest=null;render();break;
+    case'request':{const x=find(S.requests);if(x&&(role()==='owner'||(role()==='manager'&&x.company===companyForRole())||x.assigned===me)){S.activeRequest=x.id;render()}break}
+    case'plan':if(role()==='manager'){const co=companyForRole();if(activePlan(co)){notify('يوجد تكليف خطة لهذه الشركة والفترة بالفعل.');break}const x={id:nextId('TASK-TEST-',S.createdTasks),kind:'plan',title:'TEST - إعداد خطة عمل للشهر القادم',assigned:'مطور الأعمال',status:'جديد',from:'مدير الشركة',company:co,period:planPeriod(co)};S.createdTasks.unshift(x);auditLog('طلب إعداد خطة',x.id,'—',cName(co)+' · '+x.period);persist();notify('أُرسل طلب الخطة لمطور الأعمال.')}break;
+    case'escalate':{const x=find(S.opportunities);if(role()==='bd'&&x&&x.by==='مطور الأعمال'&&x.status==='قيد الدراسة'){x.status='بانتظار قرار المالك';S.decisions.unshift({id:nextId('DEC-TEST-',S.decisions),kind:'فرصة',title:x.title,summary:x.summary,status:'بانتظار اعتماد المالك',opportunityId:x.id});auditLog('رفع فرصة للمالك',x.id,'قيد الدراسة','بانتظار قرار المالك');persist();render()}break}
+    case'oppdecision':{const x=find(S.opportunities);if(role()==='owner'&&x&&x.status==='قيد الدراسة'){x.status='بانتظار قرار المالك';S.decisions.unshift({id:nextId('DEC-TEST-',S.decisions),kind:'فرصة',title:x.title,summary:x.summary,status:'بانتظار اعتماد المالك',opportunityId:x.id});auditLog('طرح فرصة للقرار',x.id,'قيد الدراسة','بانتظار قرار المالك');persist();render()}break}
+    case'group':if(role()==='owner'){S.companyTab=arg;render()}break;
+    case'fieldedit':case'fieldreq':case'fielddash':case'fieldup':case'fielddown':case'fieldarchive':if(role()==='owner')fieldAction(act,arg);break;
+  }
+});
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.matches('[data-manager-user]')){const u=S.users.find(x=>x.email===el.value);if(u){S.currentCompany=u.company;S.currentManagerEmail=u.email;S.tab='dashboard';S.activeReport=null;S.reportDraft=false;persist();render()}return}
+  if(el.matches('[data-date]')&&role()==='owner'){S.date=el.value;persist();render();return}
+  if(el.id==='formsCompany'){S.formsCompany=el.value;render();return}
+  if(el.id==='fieldType'||el.id==='fieldScope'){refreshFieldParents(el.form);return}
+  if(el.id==='fieldParent'){const f=el.form,par=sysById(el.value)||S.forms.find(x=>x.id===el.value);f.elements.required.disabled=!!par&&!par.required;if(f.elements.required.disabled)f.elements.required.checked=false;return}
+  if(el.dataset.leadnote){const x=S.leads.find(z=>z.id===el.dataset.leadnote);if(x&&role()==='manager'&&x.company===companyForRole()){x.managerNote=el.value;persist()}return}
+  if(el.dataset.stage&&role()==='marketing'){
+    const x=S.leads.find(z=>z.id===el.dataset.stage);if(!x)return;const before=x.status;let reason='';
+    if(['مغلق ناجح','مغلق خاسر'].includes(el.value)){reason=(prompt('اكتب سبب إغلاق العميل المحتمل')||'').trim();if(!reason){el.value=before;return}}
+    x.status=el.value;x.closeReason=reason;auditLog('تغيير مرحلة عميل محتمل',x.id,before,x.status+(reason?' · '+reason:''));persist();render()}
+});
+document.addEventListener('input',e=>{const f=e.target.closest('#reportForm');if(f)updateRemainders(f)});
+document.addEventListener('submit',e=>{
+  e.preventDefault();const f=e.target,id=f.getAttribute('id'),d=formObj(f),me=roleLabel();
+  switch(id){
+    case'reportForm':saveReport(f,'submit');break;
+    case'requestDetailForm':submitRequestDetail(f);break;
+    case'leadForm':if(role()==='marketing'){const x={id:nextId('LEAD-TEST-',S.leads),company:d.company,name:'TEST - '+d.name,source:d.source,status:'جديد',owner:'المسوق'};S.leads.unshift(x);auditLog('إضافة عميل محتمل',x.id,'—',x.name);persist();notify(t('created'))}break;
+    case'requestForm':if(role()==='manager'){const x={id:nextId('REQ-TEST-',S.requests),title:'TEST - '+d.title,type:d.type,company:companyForRole(),from:'مدير الشركة',status:'جديد',assigned:routeRequest(d.type),details:d.details,priority:d.priority,budget:d.budget,replies:[]};S.requests.unshift(x);S.requestDraft=false;auditLog('إنشاء طلب خدمة',x.id,'—',x.type+' ← '+x.assigned);persist();notify(t('created'))}break;
+    case'oppForm':if(['bd','owner'].includes(role())){const task=S.createdTasks.find(q=>q.id===d.taskId),company=d.company||'HOLD',x={id:nextId('OPP-TEST-',S.opportunities),title:'TEST - '+d.title,summary:d.summary,company,currency:company==='HOLD'||company==='EXTERNAL'?d.currency:'',file:d.file,amount:Number(d.amount),expectedReturn:d.expectedReturn,risk:d.risk,duration:d.duration,status:'قيد الدراسة',by:role()==='owner'?'مالك المجموعة':'مطور الأعمال',taskId:d.taskId||''};S.opportunities.unshift(x);if(task){task.status='مكتمل';task.opportunityId=x.id}S.oppDraftTask=null;auditLog('إنشاء فرصة استثمارية',x.id,'—',x.title+' · '+cName(company));persist();notify(t('created'))}break;
+    case'adviceForm':if(role()==='advisor'){const x={id:nextId('ADV-TEST-',S.advice),title:'TEST - '+d.title,text:'TEST - '+d.text,to:d.to,author:'المستشار',date:S.date};S.advice.unshift(x);auditLog('إضافة توصية',x.id,'—',x.to);persist();notify(t('created'))}break;
+    case'employeeForm':if(role()==='manager'){const fn=fileName(f,'file'),x={id:nextId('EMP-TEST-',S.employees),company:companyForRole(),name:'TEST - '+d.name,position:d.position,salary:d.salary,phone:d.phone,contract:fn||'TEST_contract_pending.pdf',official:fn||'TEST_documents_pending.pdf'};S.employees.unshift(x);auditLog('إضافة سجل موظف',x.id,'—',x.name);persist();notify(t('created'))}break;
+    case'hrForm':if(role()==='manager'){const x={id:nextId('HR-TEST-',S.hr),company:companyForRole(),employee:d.employee,type:d.type,date:d.date,details:'TEST - '+d.details,file:fileName(f,'file')||'TEST_attachment_pending.pdf',status:d.type.includes('إجازة')?'بانتظار المراجعة':'مسجّل'};S.hr.unshift(x);auditLog('إضافة سجل موارد بشرية',x.id,'—',x.type+' · '+x.employee);persist();notify(t('created'))}break;
+    case'directionForm':if(role()==='owner'){const x={id:nextId('DIR-TEST-',S.decisions),kind:'توجيه',title:'TEST - '+d.title,summary:d.summary,recipient:d.recipient,followup:d.followup,status:'جديد'};S.decisions.unshift(x);auditLog('إصدار توجيه',x.id,'—',x.recipient);persist();notify(t('created'))}break;
+    case'companyForm':if(role()==='owner'){const x=Object.assign({},d,{id:nextId('CO-',S.companies),ownership:Number(d.ownership),active:true});S.companies.push(x);auditLog('إضافة شركة',x.id,'—',d.ar);persist();notify(t('companyCode')+': '+x.id)}break;
+    case'fieldForm':if(role()==='owner')submitField(f);break;
+    case'userForm':if(role()==='owner'){if(d.role==='مدير الشركة'&&d.company==='HOLD'){alert('اختر شركة تابعة لمدير الشركة.');break}if(d.role==='مدير الشركة'&&S.users.some(x=>x.role==='مدير الشركة'&&x.company===d.company)&&!confirm('يوجد مدير آخر للشركة نفسها. هل تريد المتابعة؟'))break;const perms=[...f.querySelectorAll('[name="permissions"]:checked')].map(x=>x.value),x={id:nextId('USR-TEST-',S.users),name:'TEST - '+d.name,email:d.email,role:d.role,custom:f.elements.custom.checked,company:d.company,permissions:perms};S.users.push(x);auditLog('إضافة مستخدم',x.id,'—',d.role+' · '+cName(d.company));persist();notify(t('created'))}break;
+  }
+});
+/* ===== مساعد سفير (محاكاة بقواعد ثابتة ببيانات TEST؛ لا يوجد نموذج لغوي حقيقي) ===== */
+(function(){
+const AI_STYLE=`#aiRoot{font-family:inherit}
+.aibtn{position:fixed;bottom:16px;left:16px;z-index:40;background:var(--brand);color:#fff;border:0;border-radius:999px;padding:11px 18px;font:inherit;font-weight:700;cursor:pointer;box-shadow:var(--shadow)}
+.aipanel{position:fixed;bottom:16px;left:16px;z-index:41;width:min(390px,calc(100vw - 32px));max-height:min(620px,calc(100vh - 32px));display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px #10303d26;overflow:hidden}
+.aihead{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-weight:700}
+.aimsgs{padding:12px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:9px;min-height:120px}
+.aim{padding:9px 12px;border-radius:12px;line-height:1.7;font-size:14px;max-width:92%}
+.aim.u{background:var(--brand);color:#fff;align-self:flex-start}
+.aim.a{background:#f1f5f7;align-self:flex-end}
+.aisrc{font-size:12px;color:var(--muted);margin-top:5px}
+.aichips{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px}
+.aichip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.aiform{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line)}
+.aiform input{flex:1;min-width:0}
+.aifoot{font-size:11.5px;color:var(--muted);padding:0 12px 10px}
+.aicard{border-inline-start:4px solid var(--gold)}
+.aicard .pos{color:var(--green)}
+.aihint{background:var(--soft);border-radius:10px;padding:9px 12px;margin:8px 0;font-size:13.5px}
+.linkbtn{background:none;border:0;color:var(--brand);cursor:pointer;font:inherit;font-size:12.5px;padding:0;text-decoration:underline}`;
+
+const nz=s=>String(s||'').toLowerCase().replace(/[ً-ْـ]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[؟?!.,،؛:()"'«»\-\/]/g,' ').replace(/\s+/g,' ').trim();
+const STOP=['ما','هل','كيف','متي','من','ماذا','هي','هو','في','علي','الي','عن','التي','الذي','لي','لا','هذا','هذه','اريد','اين','ان'];
+const hasRx=(q,rx)=>rx.test(q);
+const br=s=>esc(s).replace(/\n/g,'<br>');
+
+const BASE_KB=[
+{id:'KB-01',title:'دورة التقرير الشهري',kw:['ارسل','مسوده','دوره','اعتماد','اعيد','ارجاع','ملاحظه','يعاد للتعديل','خطوات'],text:'مدير الشركة ينشئ التقرير كمسودة ويرفق كشف الحساب ثم يرسله للمحاسبة.\nالمحاسب يراجعه: إما يعيده للمدير بملاحظة (معاد للتعديل) أو يعتمده فيُقفل.\nالمقفل لا يُعدَّل إلا بإعادة فتح بسبب مكتوب. الاعتماد والقفل خطوة واحدة.'},
+{id:'KB-02',title:'موعد الإرسال والتأخر',kw:['موعد','تاخر','تاخير','الخامس','استحقاق','متاخر'],text:'موعد إرسال تقرير أي شهر هو اليوم 5 من الشهر التالي.\nتُعدّ الشركة متأخرة إذا تجاوز اليوم الخامس وكان تقرير الفترة المتوقعة غير مرسل، أي غير موجود أو ما زال مسودة أو معاد للتعديل.'},
+{id:'KB-03',title:'إعادة فتح تقرير مقفل',kw:['اعاده فتح','فتح','مقفل','يفتح','اعادة فتح','يعاد فتح'],text:'يطلب المحاسب إعادة الفتح بسبب مكتوب، ويوافق المالك أو يرفض. فإذا وافق يصبح التقرير «معاد للتعديل».\nللمالك أيضًا الفتح المباشر بسبب مكتوب. كل ذلك يُسجَّل في سجل التدقيق.'},
+{id:'KB-04',title:'العملات',kw:['عمله','عملات','تحويل','دينار','ريال','دمج'],text:'لكل شركة عملتها وتظهر أرقامها بها. لا يوجد تحويل بين العملات ولا جمع لأرقام شركات بعملات مختلفة.'},
+{id:'KB-05',title:'ألوان حالة الشركات',kw:['لون','الوان','احمر','اصفر','اخضر','رمادي','حاله الشركات'],text:'أحمر: تقرير الفترة متأخر، أو صافي ربح سالب، أو رصيد بنك سالب.\nأصفر: تراجع الإيراد 10% فأكثر عن الفترة السابقة، أو تقرير معاد للتعديل.\nأخضر: لا مؤشر سلبي. رمادي: لا بيانات معتمدة.'},
+{id:'KB-06',title:'الحقول الرئيسية والفرعية في الاستمارة',kw:['حقل','حقول','فرعي','رئيسي','استماره','ارشفه','نموذج التقرير'],text:'المالك وحده يدير الحقول. مستويان فقط: رئيسي وفرعي، ونوع الفرعي كنوع الأب (مبلغ أو رقم).\nمجموع الفرعيات لا يتجاوز الرئيسي، والفرعي إلزامي فقط إذا كان أبوه إلزاميًا.\nالحقل يُؤرشف ولا يُحذف، ولكل تقرير نسخة من تعريف الحقول وقت إنشائه.'},
+{id:'KB-07',title:'الطلبات وتوجيهها',kw:['طلب','طلبات','خدمه','رفع','توجيه الطلب','حالات'],text:'مدير الشركة يرفع طلب خدمة ويُوجَّه تلقائيًا: محاسبة إلى المحاسب، تصميم إلى المصمم، دراسة أو مساعدة إلى مطور الأعمال.\nالحالات الموحدة: جديد، قيد العمل، بانتظار رد، مكتمل، مغلق. صندوق العمل الموحد يعرض ما وُجِّه إليك.'},
+{id:'KB-08',title:'التوجيهات من المالك',kw:['توجيه','توجيهات','متابعه','تاكيد الاستلام'],text:'يصدر المالك توجيهًا بموعد متابعة. يؤكد المستلم الاستلام ثم ينفذ. التوجيه المتجاوز لموعد متابعته دون تنفيذ يظهر للمالك كتوجيه متأخر.'},
+{id:'KB-09',title:'الفرص الاستثمارية',kw:['فرصه','فرص','استثمار','دراسه','دراسات','قرار الفرصه'],text:'يسجل مطور الأعمال الفرصة بنموذج موحد: الموضوع، الوصف، المبلغ، العائد المتوقع، المخاطر، المدة، ورابط الدراسة.\nتُرفع للمالك للقرار. المستشار الخارجي يقدّم توصيات لكنه لا يستخدم المساعد.\nيمكن للمالك تكليف مطور الأعمال بدراسة أو بخطة لشركة.'},
+{id:'KB-10',title:'العملاء المحتملون ومراحلهم',kw:['مراحل','مرحله','عميل','عملاء','مسوق','سبب الاغلاق','اغلاق'],text:'يسجل المسوق العميل ويحدّث مرحلته: جديد، تواصل، عرض، مغلق ناجح، مغلق خاسر. الإغلاق يتطلب سببًا.\nيطّلع المالك على الجميع، ويضيف مدير الشركة ملاحظة على عملاء شركته.'},
+{id:'KB-11',title:'الإجازات والموارد البشرية',kw:['اجازه','اجازات','موظف','موارد','مراجعه الاجازات'],text:'مدير الشركة يسجل شؤون موظفيه ولا يحتاج الموظف حسابًا. الإجازات بانتظار المراجعة يراجعها مطور الأعمال فيوافق أو يرفض.\nلا يعرض المساعد الرواتب ولا ملفات الموظفين.'},
+{id:'KB-12',title:'من يرى ماذا',kw:['صلاحيات','صلاحيه','يرى','اشوف','نسبه الملكيه','يشوف','خصوصيه'],text:'المالك ومطور الأعمال يريان التقارير المعتمدة فقط. نسب الملكية وحصة الأرباح للمالك وحده.\nمدير الشركة يرى شركته فقط. المحاسب يرى التقارير المرسلة والمعتمدة. المسوق والمصمم يريان أعمالهما فقط.'},
+{id:'KB-13',title:'المشاريع المستقبلية',kw:['مشروع','مشاريع','مستقبليه','مستقبل','فكره'],text:'في النموذج الحالي تُتابَع المشاريع المستقبلية كفرص استثمارية أو كتكليف دراسة لمطور الأعمال حتى يقرر المالك. لا توجد لها وحدة مستقلة بعد.'},
+{id:'KB-15',title:'أصول القابضة',kw:['سجل الاصول','اسجل اصل','شراء اصل','تسجيل اصل','ذهب','عقار','اصل'],text:'يسجّل المالك وحده أصول القابضة (ذهب، عقار، أسهم وغيرها) بكل معلوماتها، وتُضاف قيمتها الحالية إلى قيمة أصول القابضة وتظهر في لوحته. لا يراها غيره.'},
+{id:'KB-16',title:'إدارة الموقع الإلكتروني',kw:['موقع','نشر','انشر','الموقع الالكتروني','فرص الموقع'],text:'يدير مطور الأعمال محتوى الموقع من المنصة: بيانات القابضة المنشورة، وملفات شركات المجموعة (إضافة وتعديل ونشر وإلغاء نشر)، والفرص الواردة من نموذج «أرسل نشاطك التجاري» (نشر أو رفض أو طلب معلومات). يطّلع المالك على ذلك للقراءة.\nلا يُنشر إلا الحقول العامة؛ بيانات اتصال أصحاب الفرص والأرقام المالية لا تظهر في الموقع. من يهتم بفرصة منشورة يضغط «أبدِ اهتمامك» فيصل طلبه إلى مطور الأعمال.'},
+{id:'KB-14',title:'سجل التدقيق',kw:['تدقيق','سجل','تتبع','تغييرات'],text:'كل تغيير مهم (اعتماد، إعادة، فتح، موافقة إجازة، تعديل حقل) يُسجَّل بالمنفذ والتاريخ وقبل/بعد.'}
+];
+const ROLE_HINT={owner:'دورك: تعتمد القرارات وتصدر التوجيهات وتدير الحقول، وتوافق على إعادة فتح التقارير المقفلة.',manager:'دورك: تنشئ تقرير شركتك الشهري وترسله للمحاسبة قبل يوم 5، وترفع الطلبات وتسجل الموظفين والإجازات.',accountant:'دورك: تراجع التقارير المرسلة فتعيدها بملاحظة أو تعتمدها وتقفلها، ويمكنك طلب إعادة فتح مقفل.',bd:'دورك: تسجل الفرص والدراسات، وتنفذ المهام المسندة، وتراجع إجازات موظفي التابعة.',marketing:'دورك: تسجل العملاء المحتملين وتحدّث مراحلهم.',designer:'دورك: تنفذ طلبات التصميم المسندة إليك.'};
+const CHIPS={owner:['أي شركة متأخرة؟','ما وضع الإيرادات؟','ما قيمة الأصول؟','ما الذي يحتاج قراري؟','كيف يُعاد فتح تقرير مقفل؟'],manager:['ما حالة تقريري؟','كيف أرسل التقرير؟','متى موعد الإرسال؟','كيف أرفع طلب خدمة؟'],accountant:['ما التقارير بانتظاري؟','متى أعيد التقرير للمدير؟','كيف أطلب إعادة فتح تقرير؟'],bd:['ما مهامي الآن؟','ما الفرص المسجلة؟','كيف أراجع الإجازات؟'],marketing:['ما العملاء الجدد؟','ما مراحل العميل المحتمل؟'],designer:['ما طلباتي؟','كيف تصلني الطلبات؟']};
+const SCOPE_KW=['قابض','شرك','تابع','مشروع','مشاريع','استثمار','فرص','تقرير','طلب','توجيه','عميل','عملاء','اجاز','ايراد','مصروف','محاسب','مدير','مطور','مسوق','مصمم','مستشار','اعتماد','ميزاني','مستحقات','رصيد','سير','عمل','منصه','حقل','حقول','تاخر','متاخر','مهام','مهمه','مهامي','ارباح','ربح','ملكي','راتب','رواتب','قرار','موظف','دراسه','خطه','لوحه','صلاحي','مرحله','مراحل','تقارير','بانتظار','قرارات','فرصه','اصول','ذهب','عقار','موقع','نشر'].map(nz);
+
+function ai(){S.ai=S.ai||{};const a=S.ai;a.chats=a.chats||{};a.queue=a.queue||[];a.learned=a.learned||[];a.cardHidden=a.cardHidden||{};a.cardOff=a.cardOff||{};a.feedback=a.feedback||[];a.usage=a.usage||{};a.seq=a.seq||0;return a}
+const AI_ON=()=>!!S.role&&S.role!=='advisor';
+const chatKey=()=>role()+(role()==='manager'?':'+companyForRole():'');
+const kbAll=()=>BASE_KB.concat(ai().learned.map(x=>({id:x.id,title:x.title,kw:x.kw,text:x.text,learned:true,src:x.src})));
+const canFin=()=>['owner','manager','accountant','bd'].includes(role());
+const visCos=()=>role()==='manager'?S.companies.filter(c=>c.id===companyForRole()):S.companies;
+function mentioned(q){return S.companies.filter(c=>{const w=nz(c.ar.split(' ')[0]),e=c.en.split(' ')[0].toLowerCase();return q.includes(w)||q.includes(e)})}
+function kbBest(q){let best=null,score=0;for(const e of kbAll()){let s=0;for(const k of e.kw){const kk=nz(k);if(kk&&q.includes(kk))s+=kk.includes(' ')?2:1}if(s>score){score=s;best=e}}return score>0?best:null}
+function kbReply(e){return{html:br(e.text)+(ROLE_HINT[role()]?'<br><br><b>'+esc(ROLE_HINT[role()])+'</b>':''),src:['دليل سير العمل · '+e.title+(e.learned?' ('+e.src+')':'')]}}
+const refuse=(m)=>({html:esc(m),src:['حدود الصلاحية']});
+
+function answer(raw){
+  const q=nz(raw),r=role();
+  if(/راتب|رواتب|اجور|مرتب/.test(q))return refuse('لا أعرض الرواتب ولا ملفات الموظفين لأي دور. تبقى في صفحة ملفات الموظفين لمن له صلاحيتها.');
+  if(/ملكي|حصه المجموعه|حصه من الربح|حصه الارباح|نسبه المجموعه/.test(q)){
+    if(r!=='owner')return refuse('نسب الملكية وحصة الأرباح للمالك فقط.');
+    return{html:S.companies.map(c=>esc(c.ar)+': '+esc(c.ownership)+'%').join('<br>'),src:['بيانات الشركات (المالك فقط)']}}
+  const co=mentioned(q),inScope=co.length||SCOPE_KW.some(k=>q.includes(k))||kbBest(q);
+  if(!inScope)return{html:'أنا مخصص لشؤون القابضة والشركات التابعة والمشاريع المستقبلية والفرص الاستثمارية فقط، ولا أجيب عن هذا الموضوع. جرّب أحد الأسئلة المقترحة أسفل الشاشة.',src:['حدود النطاق'],out:true};
+  {const L=ai().learned.map(e=>({e,s:e.kw.filter(k=>q.includes(nz(k))).length,n:Math.min(2,e.kw.length)})).filter(x=>x.s>=x.n).sort((a,b)=>b.s-a.s)[0];if(L)return{html:br(L.e.text),src:['معرفة معتمدة · '+L.e.src]}}
+  if(/كيف|لماذا|اشرح|شرح|من يعتمد|من يراجع|من يوافق|متي|ما معني|ما الفرق|خطوات|طريقه|مراحل|مرحله|الوان|لون|صلاحيات|من يري/.test(q)){const e=kbBest(q);if(e)return kbReply(e)}
+  if(/اصول|ذهب|عقار|اسهم|(^| )(ال)?اصل( |$)/.test(q)){
+    if(r!=='owner')return refuse('أصول القابضة متاحة للمالك فقط.');
+    const t=assetTotals();return{html:br(t.rows.join('\n')||'لا أصول نشطة مسجلة.'),src:['سجل أصول القابضة (المالك فقط)']}}
+  if(/بانتظار|مهامي|طلباتي|اعمل|افعل|الان|قراري|مطلوب|يحتاج قرار|مهام/.test(q)){
+    const a=alertsForRole(),lines=[];
+    if(r==='owner'){lines.push(S.decisions.filter(x=>x.status==='بانتظار اعتماد المالك').length+' قرارات بانتظار اعتمادك',overdueDirectives().length+' توجيهات متأخرة',S.reports.filter(x=>x.reopenReq).length+' طلبات إعادة فتح تقرير بانتظارك')}
+    else if(r==='manager'){const ex=expectedReport(companyForRole());lines.push('تقرير '+previousPeriod(S.date)+': '+(ex?workStatus(ex.status)+' ('+ex.status+')':'لم يُنشأ بعد'),S.requests.filter(x=>x.company===companyForRole()&&x.status==='بانتظار رد'&&x.assigned!=='مدير الشركة').length+' طلبات تنتظر ردك')}
+    else if(r==='accountant'){const p=S.reports.filter(x=>x.status==='مرسل للمحاسبة');lines.push(p.length+' تقارير بانتظار مراجعتك'+(p.length?': '+p.map(x=>x.id).join('، '):''))}
+    else if(r==='bd'){lines.push((S.createdTasks.filter(x=>x.assigned==='مطور الأعمال'&&x.status!=='مكتمل').length+S.requests.filter(x=>x.assigned==='مطور الأعمال'&&workStatus(x.status)!=='مكتمل').length)+' مهام وطلبات مفتوحة',S.hr.filter(h=>h.type.includes('إجازة')&&h.status==='بانتظار المراجعة').length+' إجازات بانتظار مراجعتك')}
+    else if(r==='marketing')lines.push(S.leads.filter(x=>x.status==='جديد').length+' عملاء جدد يحتاجون متابعة');
+    else if(r==='designer')lines.push(S.requests.filter(x=>x.assigned==='المصمم'&&workStatus(x.status)!=='مكتمل').length+' طلبات تصميم مفتوحة');
+    return{html:br(lines.join('\n')),src:['صندوق العمل · '+roleLabel()]}}
+  const finance=/ايراد|مصروف|رصيد|مستحقات|ربح|دخل|اداء|تقرير|وضع/.test(q);
+  if(/متاخر|تاخر/.test(q)){
+    if(!canFin())return refuse('حالة التقارير غير متاحة لدورك.');
+    const late=visCos().filter(c=>isLate(c.id));
+    return{html:late.length?esc('متأخرة عن موعد تقرير '+previousPeriod(S.date)+': '+late.map(c=>c.ar).join('، ')):esc('لا توجد شركة متأخرة حاليًا في '+(r==='manager'?'شركتك':'المجموعة')+'.'),src:['حالة التقارير · التاريخ '+S.date]}}
+  if(/حاله/.test(q)&&/تقرير|تقارير/.test(q)){
+    if(!canFin())return refuse('التقارير غير متاحة لدورك.');
+    if(r==='manager'&&co.some(c=>c.id!==companyForRole()))return refuse('تستطيع الاطلاع على شركتك فقط.');
+    const rows=(co.length?co:visCos()).map(c=>{const x=expectedReport(c.id);return c.ar+': '+(x?x.status:'لا تقرير لفترة '+previousPeriod(S.date))+(x&&x.status==='معاد للتعديل'&&x.note?' — '+x.note:'')});
+    return{html:br(rows.join('\n')),src:['التقارير الشهرية · فترة '+previousPeriod(S.date)]}}
+  if(finance&&/ايراد|مصروف|رصيد|مستحقات|ربح|دخل|اداء|وضع/.test(q)){
+    if(!canFin())return refuse('الأرقام المالية غير متاحة لدورك.');
+    let targets=co.length?co:visCos();
+    if(r==='manager'&&co.length&&co.some(c=>c.id!==companyForRole()))return refuse('تستطيع الاطلاع على شركتك فقط.');
+    const rows=targets.map(c=>{const x=approvedReports(c.id)[0];return x?c.ar+': إيراد '+fmt(x.revenue,c.id)+'، مصروفات '+fmt(x.expenses,c.id)+'، صافي '+fmt((x.revenue||0)-(x.expenses||0),c.id)+' (فترة '+x.period+'، المصدر '+x.id+')':c.ar+': لا يوجد تقرير معتمد.'});
+    return{html:br(rows.join('\n')+'\nالأرقام من التقارير المعتمدة فقط، بعملة كل شركة بلا تحويل.'),src:['التقارير المعتمدة']}}
+  if(/فرص|استثمار/.test(q)){
+    if(!['owner','bd'].includes(r))return refuse('الفرص الاستثمارية متاحة للمالك ومطور الأعمال.');
+    return{html:br(S.opportunities.map(x=>x.id+' · '+x.title+' · '+cName(x.company)+' · '+workStatus(x.status)).join('\n')||'لا فرص مسجلة.'),src:['الفرص الاستثمارية']}}
+  if(/عميل|عملاء/.test(q)){
+    if(!['owner','marketing','manager'].includes(r))return refuse('العملاء المحتملون غير متاحين لدورك.');
+    const ls=S.leads.filter(l=>r!=='manager'||l.company===companyForRole());
+    return{html:br(ls.map(l=>l.id+' · '+l.name+' · '+cName(l.company)+' · '+l.status).join('\n')||'لا عملاء.'),src:['العملاء المحتملون']}}
+  if(/اجاز/.test(q)){
+    if(!['bd','manager'].includes(r))return refuse('الإجازات تُعرض لمدير الشركة ومطور الأعمال فقط.');
+    const hs=S.hr.filter(h=>h.type.includes('إجازة')&&(r==='bd'||h.company===companyForRole()));
+    return{html:br(hs.map(h=>h.id+' · '+h.type+' · '+h.status).join('\n')||'لا إجازات.'),src:['الموارد البشرية']}}
+  const e=kbBest(q);if(e)return kbReply(e);
+  return{html:'لم أجد جوابًا مؤكدًا في دليل سير العمل أو في بياناتك. إن كان عندك الجواب الصحيح فاضغط «اقتراح تصحيح» ليراجعه المالك، وإن اعتمده أتعلمه.',src:['لا مصدر مؤكد'],unknown:true}}
+
+function ask(raw){
+  const text=String(raw||'').trim();if(!text||!AI_ON())return;
+  const a=ai(),k=chatKey(),ch=a.chats[k]=a.chats[k]||[];
+  const res=answer(text);a.seq++;
+  ch.push({t:'u',text});ch.push({t:'a',id:'M'+a.seq,html:res.html,src:res.src,q:text});
+  if(ch.length>40)ch.splice(0,ch.length-40);
+  a.usage[role()]=(a.usage[role()]||0)+1;
+  auditLog('استخدام المساعد','AI','—','سؤال (النص غير مسجّل)');
+  a.focus=true;persist();render()}
+
+/* ===== البطاقة اليومية: نصيحة + جملة إيجابية من بيانات المستخدم فقط ===== */
+function reviewHints(x){
+  const h=[],p=priorReport(x),c=companyInfo(x.co);
+  if(!x.bank)h.push('لا يوجد كشف حساب مرفق.');
+  if(p){
+    if(p.expenses&&x.expenses>p.expenses*1.3)h.push('المصروفات ارتفعت '+Math.round((x.expenses/p.expenses-1)*100)+'% عن '+p.period+'.');
+    if(p.revenue&&x.revenue<p.revenue*.8)h.push('الإيراد انخفض '+Math.round((1-x.revenue/p.revenue)*100)+'% عن '+p.period+'.');
+    if(p.receivables&&x.receivables>p.receivables*1.5)h.push('المستحقات ارتفعت '+Math.round((x.receivables/p.receivables-1)*100)+'% عن '+p.period+'.');
+  }else h.push('لا فترة معتمدة سابقة للمقارنة.');
+  if((x.revenue||0)-(x.expenses||0)<0)h.push('صافي الربح سالب.');
+  if(Number(x.bankBalance)<0)h.push('رصيد البنك سالب.');
+  return h}
+function cardData(){
+  const r=role(),a=ai();let advice='',pos='';
+  if(r==='owner'){
+    const late=S.companies.filter(c=>isLate(c.id)),ro=S.reports.filter(x=>x.reopenReq).length,pd=S.decisions.filter(x=>x.status==='بانتظار اعتماد المالك').length,od=overdueDirectives().length;
+    advice=late.length?late.map(c=>c.ar).join('، ')+' متأخرة عن موعد التقرير؛ اقتراح: تواصل مع المدير أو أصدر توجيه متابعة.':ro?'طلب إعادة فتح تقرير بانتظار قرارك.':(pd||od)?pd+' قرارات بانتظار اعتمادك و'+od+' توجيهات متأخرة؛ ابدأ بالأقدم.':'لا شيء عاجل اليوم؛ يمكن مراجعة تقارير الشركات المعتمدة.';
+    const done=S.companies.filter(c=>approvedReports(c.id).some(x=>x.period===previousPeriod(S.date))).length;
+    if(done)pos=done+' من '+S.companies.length+' شركات لديها تقرير معتمد لفترة '+previousPeriod(S.date)+'.';
+  }else if(r==='manager'){
+    const co=companyForRole(),ex=expectedReport(co),due=dueForPeriod(previousPeriod(S.date));
+    advice=!ex?'تقرير فترة '+previousPeriod(S.date)+' لم يُنشأ بعد؛ موعد الإرسال '+due+'.':ex.status==='مسودة'?'تقريرك ما زال مسودة؛ تأكد من كشف الحساب ثم أرسله قبل '+due+'.':ex.status==='معاد للتعديل'?'أعاده المحاسب: '+(ex.note||'راجع الملاحظة')+'.':ex.status==='مرسل للمحاسبة'?'التقرير عند المحاسب بانتظار الاعتماد؛ لا إجراء مطلوب منك.':'تقرير الفترة مقفل؛ لا إجراء مطلوب.';
+    const rs=approvedReports(co);if(rs.length>1&&rs[1].revenue&&rs[0].revenue>rs[1].revenue)pos='الإيراد ارتفع '+((rs[0].revenue/rs[1].revenue-1)*100).toFixed(1)+'% في '+rs[0].period+' عن '+rs[1].period+'.';
+    else if(rs.length)pos='لديك '+rs.length+' تقارير معتمدة في المنصة.';
+  }else if(r==='accountant'){
+    const p=S.reports.filter(x=>x.status==='مرسل للمحاسبة');
+    advice=p.length?p.length+' تقارير بانتظار مراجعتك ('+p.map(x=>x.id).join('، ')+')؛ ابدأ بأقدم موعد، وراجع الملاحظات الآلية أسفل.':'لا تقارير معلّقة عندك الآن.';
+    const n=S.reports.filter(isApproved).length;if(n)pos='اعتُمد وأُقفل '+n+' تقارير حتى الآن.';
+  }else if(r==='bd'){
+    const t1=S.createdTasks.filter(x=>x.assigned==='مطور الأعمال'&&x.status!=='مكتمل').length,lv=S.hr.filter(h=>h.type.includes('إجازة')&&h.status==='بانتظار المراجعة').length;
+    advice=(t1||lv)?t1+' مهام مفتوحة و'+lv+' إجازات بانتظار مراجعتك.':'لا مهام معلّقة؛ وقت مناسب لتحديث الفرص المسجلة.';
+    const dn=S.createdTasks.filter(x=>x.assigned==='مطور الأعمال'&&x.status==='مكتمل').length;if(dn)pos='أنجزت '+dn+' مهام مسندة إليك.';
+  }else if(r==='marketing'){
+    const n=S.leads.filter(l=>l.status==='جديد').length;advice=n?n+' عملاء جدد لم يبدأ التواصل معهم؛ رسالة أولى قصيرة تكفي لتحريك المرحلة.':'كل العملاء الحاليين تجاوزوا مرحلة «جديد».';
+    const w=S.leads.filter(l=>l.status==='مغلق ناجح').length;if(w)pos='أُغلق '+w+' عملاء بنجاح.';
+  }else if(r==='designer'){
+    const n=S.requests.filter(x=>x.assigned==='المصمم'&&workStatus(x.status)!=='مكتمل').length;advice=n?n+' طلبات تصميم مفتوحة؛ حدّد موعد التسليم لكل طلب لتتضح الأولويات.':'لا طلبات تصميم مفتوحة.';
+    const d=S.requests.filter(x=>x.assigned==='المصمم'&&workStatus(x.status)==='مكتمل').length;if(d)pos='أنجزت '+d+' طلبات تصميم.';
+  }
+  return{advice,pos}}
+function cardHTML(){
+  if(!AI_ON())return'';const a=ai(),r=role(),key=r+'|'+S.date;
+  const execBtn=r==='owner'?`<div class="actions" style="margin:8px 0">${button('✦ الملخص التنفيذي الذكي','goto:execSummary',true)}</div>`:'';
+  if(a.cardOff[r])return execBtn+`<div class="muted" style="margin:8px 0">بطاقة الاقتراحات متوقفة · <button class="linkbtn" data-ai="cardOn">تفعيل</button></div>`;
+  if(a.cardHidden[key])return execBtn;
+  const d=cardData();
+  return execBtn+`<section class="card panel aicard"><h2>✦ اقتراح اليوم <span class="tagtest">TEST · اقتراح آلي</span></h2><p><b>نصيحة:</b> ${esc(d.advice)}</p>${d.pos?`<p class="pos"><b>إيجابي:</b> ${esc(d.pos)}</p>`:''}<p class="muted">مبنية على بياناتك أنت وبصلاحيتك، ولا مقارنة بين الأشخاص.</p><div class="actions"><button class="btn small" data-ai="cardHide">إخفاء</button><button class="btn small" data-ai="cardBad">غير مفيد</button><button class="btn small" data-ai="cardOff">إيقاف البطاقة</button></div></section>`}
+
+/* ===== مراجعة المالك لما يتعلمه المساعد ===== */
+window.aiReviewPage=function(){
+  const a=ai();
+  const q=a.queue.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.by)}</td><td>${esc(x.q)}</td><td>${esc(x.correct)}</td><td>${esc(x.status)}</td><td>${x.status==='بانتظار المراجعة'?button('اعتماد','aiOk:'+x.id,true)+' '+button('رفض','aiNo:'+x.id):'—'}</td></tr>`);
+  const kb=kbAll().map(e=>`<tr><td>${esc(e.id)}</td><td>${esc(e.title)}</td><td>${br(e.text)}</td><td>${esc(e.learned?e.src:'دليل أساسي')}</td></tr>`);
+  const use=roles.filter(x=>x[0]!=='advisor').map(x=>esc(x[1])+': '+(a.usage[x[0]]||0)).join(' · ');
+  const tb=(h,rows)=>rows.length?`<div class="tablewrap"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="empty">لا بيانات</div>';
+  return `<div class="pagehead"><div><h1>تعلّم المساعد</h1><p class="sub">ما يقترحه المستخدمون من تصحيحات يمر عليك قبل أن يصبح معرفة معتمدة. المحادثات نفسها خاصة بأصحابها ولا تظهر هنا.</p></div></div>
+  <div class="helper">ما تعتمده هنا يصبح متاحًا لكل الأدوار ما عدا المستشار الخارجي؛ لا تعتمد نصًا فيه بيانات خاصة. عدد الأسئلة لكل دور (بلا محتوى): ${use}</div>
+  <h2>طابور التصحيحات</h2>${tb(['الرقم','من','السؤال','الصواب المقترح','الحالة','الإجراء'],q)}
+  <h2>دليل سير العمل والمعرفة المعتمدة</h2>${tb(['الرقم','الموضوع','النص','المصدر'],kb)}`};
+
+/* ===== واجهة الشات ===== */
+function ensureRoot(){let el=document.getElementById('aiRoot');if(!el){el=document.createElement('div');el.id='aiRoot';document.body.appendChild(el);const st=document.createElement('style');st.textContent=AI_STYLE;document.head.appendChild(st)}return el}
+function mount(){
+  const root=ensureRoot();
+  if(!AI_ON()){root.innerHTML='';return}
+  const a=ai();
+  if(!a.open){root.innerHTML=`<button class="aibtn" data-ai="toggle">✦ مساعد سفير</button>`;return}
+  const ch=a.chats[chatKey()]||[];
+  const msgs=ch.length?ch.map(m=>m.t==='u'?`<div class="aim u">${esc(m.text)}</div>`:`<div class="aim a">${m.html}<div class="aisrc">المصدر: ${m.src.map(esc).join('، ')} · اقتراح آلي</div><div class="aisrc"><button class="linkbtn" data-ai="teach:${m.id}">إجابة خاطئة؟ اقتراح تصحيح</button></div></div>`).join(''):`<div class="aim a">مرحبًا، أنا مساعد سفير. أشرح سير العمل في القابضة وأجيب عن شركاتها ومشاريعها وفرصها بحدود صلاحيتك. أقترح ولا أعتمد ولا أعدّل شيئًا.</div>`;
+  const chips=(CHIPS[role()]||[]).map(c=>`<button class="aichip" data-ai="chip:${esc(c)}">${esc(c)}</button>`).join('');
+  root.innerHTML=`<section class="aipanel" role="dialog" aria-label="مساعد سفير"><div class="aihead"><span>✦ مساعد سفير <span class="tagtest">TEST</span></span><button class="linkbtn" data-ai="toggle">إغلاق</button></div><div class="aimsgs" id="aiMsgs">${msgs}</div><div class="aichips">${chips}</div><form class="aiform" id="aiChatForm" autocomplete="off"><input name="q" id="aiInput" placeholder="اسأل عن سير العمل أو شركاتك" required><button class="btn primary">إرسال</button></form><div class="aifoot">محادثتك خاصة بك ولا يراها المالك. يُسجَّل في التدقيق أنك سألت دون نص السؤال. لا يعرض الرواتب ولا ملفات الموظفين.</div></section>`;
+  const box=document.getElementById('aiMsgs');if(box)box.scrollTop=box.scrollHeight;
+  if(a.focus){document.getElementById('aiInput')?.focus();a.focus=false}}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-ai]');if(!b)return;
+  const v=b.dataset.ai,i=v.indexOf(':'),act=i<0?v:v.slice(0,i),arg=i<0?'':v.slice(i+1),a=ai(),r=role();
+  switch(act){
+    case'toggle':a.open=!a.open;a.focus=a.open;persist();mount();break;
+    case'chip':ask(arg);break;
+    case'cardHide':a.cardHidden[r+'|'+S.date]=true;persist();render();break;
+    case'cardBad':a.feedback.push({role:r,date:S.date,card:cardData().advice});a.cardHidden[r+'|'+S.date]=true;persist();render();break;
+    case'cardOff':a.cardOff[r]=true;persist();render();break;
+    case'cardOn':delete a.cardOff[r];persist();render();break;
+    case'teach':{const ch=a.chats[chatKey()]||[],m=ch.find(x=>x.id===arg);if(!m)break;const c=(prompt('اكتب الجواب الصحيح أو المعلومة المقترحة (سيراجعها المالك ولا يرى محادثتك غيرها)')||'').trim();if(!c)break;a.seq++;a.queue.unshift({id:'LRN-Q'+String(a.seq).padStart(3,'0'),by:roleLabel(),q:m.q,correct:c,status:'بانتظار المراجعة',date:S.date});auditLog('اقتراح تصحيح للمساعد','AI','—','بانتظار المالك');a.chats[chatKey()].push({t:'a',id:'M'+(++a.seq),html:'شكرًا، أُرسل اقتراحك للمالك للمراجعة. لن أعتمده قبل موافقته.',src:['طابور المراجعة']});persist();render();break}
+    case'applyReq':{const f=document.getElementById('requestForm');if(f){const [ty,pr]=arg.split('|');if(f.elements.type)f.elements.type.value=ty;if(f.elements.priority)f.elements.priority.value=pr}break}
+  }});
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||role()!=='owner')return;
+  const a=b.dataset.act,i=a.indexOf(':'),act=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1),s=ai();
+  if(act!=='aiOk'&&act!=='aiNo')return;
+  const x=s.queue.find(z=>z.id===arg);if(!x||x.status!=='بانتظار المراجعة')return;
+  if(act==='aiOk'){x.status='معتمد';const kw=nz(x.q).split(' ').filter(w=>w.length>2&&!STOP.includes(w)).slice(0,6);s.learned.push({id:'LRN-'+String(s.learned.length+1).padStart(3,'0'),title:x.q,kw,text:x.correct,src:'تصحيح معتمد من '+x.by+' · '+x.date});auditLog('اعتماد معرفة للمساعد',x.id,'بانتظار المراجعة','معتمد')}
+  else{x.status='مرفوض';auditLog('رفض اقتراح للمساعد',x.id,'بانتظار المراجعة','مرفوض')}
+  persist();render()},true);
+document.addEventListener('submit',e=>{
+  if(e.target.getAttribute&&e.target.getAttribute('id')==='aiChatForm'){e.preventDefault();e.stopImmediatePropagation();const v=e.target.elements.q.value;ask(v)}},true);
+document.addEventListener('input',e=>{
+  const f=e.target.form;if(!f||f.getAttribute('id')!=='requestForm'||!['title','details'].includes(e.target.name))return;
+  const q=nz((f.elements.title?.value||'')+' '+(f.elements.details?.value||''));
+  let ty='',why='';
+  if(/فاتوره|ضريب|محاسب|قيود|حسابات|ميزاني|تدقيق|كشف/.test(q)){ty='محاسبة'}
+  else if(/شعار|تصميم|بوستر|هويه|اعلان|صوره|بروشور/.test(q)){ty='تصميم'}
+  else if(/دراسه|جدوي|تحليل|مقارنه|سوق|توسع/.test(q)){ty='دراسة'}
+  let hint=f.querySelector('#aiReqHint');
+  if(!ty){hint?.remove();return}
+  const pr=/عاجل|فورا|اليوم|ضروري/.test(q)?'عاجلة':'عادية';
+  if(!hint){hint=document.createElement('div');hint.id='aiReqHint';hint.className='aihint';const btn=f.querySelector('button.btn.primary');f.insertBefore(hint,btn)}
+  hint.innerHTML=`✦ اقتراح آلي: النوع «${ty}» ويُوجَّه إلى ${esc(routeRequest(ty))}، الأولوية «${pr}». <button type="button" class="linkbtn" data-ai="applyReq:${ty}|${pr}">تطبيق</button>`});
+
+/* ===== ربط مع الصفحات الحالية ===== */
+const _dash=dashboard;dashboard=function(){const h=_dash(),c=cardHTML()+assetCard(),i=h.indexOf('<div class="grid">');return c?(i<0?h+c:h.slice(0,i)+c+h.slice(i)):h};
+const _rp=reportPage;reportPage=function(){
+  const h=_rp();if(role()!=='accountant')return h;
+  const p=S.reports.filter(x=>x.status==='مرسل للمحاسبة');
+  const panel=`<section class="card panel aicard"><h2>✦ ملاحظات المراجعة الآلية <span class="tagtest">TEST · اقتراح</span></h2>${p.length?p.map(x=>{const hs=reviewHints(x);return `<p><b>${esc(x.id)} · ${esc(cName(x.co))} · ${esc(x.period)}:</b> ${esc(hs.join(' '))}</p>`}).join(''):'<p>لا تقارير بانتظار المراجعة.</p>'}<p class="muted">القرار لك: الملاحظات مقارنة حسابية بالفترة المعتمدة السابقة ولا تُعدّل شيئًا.</p></section>`;
+  const i=h.indexOf('<div class="tablewrap');return i<0?h+panel:h.slice(0,i)+panel+h.slice(i)};
+const _cp=currentPage;currentPage=function(){return S.tab==='site'&&['bd','owner'].includes(role())?sitePage():S.tab==='assets'&&role()==='owner'?assetsPage():S.tab==='aiReview'&&role()==='owner'?aiReviewPage():S.tab==='execSummary'&&role()==='owner'?execPage():_cp()};
+const _render=render;render=function(){_render();mount()};
+
+/* ===== الملخص التنفيذي الذكي (المالك فقط) ===== */
+function execStatus(c){
+  const rs=approvedReports(c.id),x=rs[0],prev=rs[1],late=isLate(c.id),returned=expectedReport(c.id)?.status==='معاد للتعديل';
+  const net=x?(x.revenue||0)-(x.expenses||0):0,declined=!!(x&&prev&&prev.revenue&&x.revenue<prev.revenue*.9);
+  let color='green',reason='';
+  if(late){color='red';reason='تقرير الفترة المتوقعة متأخر'}
+  else if(x&&net<0){color='red';reason='صافي ربح سالب'}
+  else if(x&&Number(x.bankBalance)<0){color='red';reason='رصيد بنك سالب'}
+  else if(!x){color='gray';reason='لا بيانات معتمدة'}
+  else if(declined){color='yellow';reason='تراجع الإيراد 10% فأكثر'}
+  else if(returned){color='yellow';reason='تقرير معاد للتعديل'}
+  return{color,reason,x,prev,net,label:{red:'أحمر',yellow:'أصفر',green:'أخضر',gray:'رمادي'}[color],cls:{red:'red',yellow:'warn',green:'green',gray:'gray'}[color]}}
+window.execPage=function(){
+  if(role()!=='owner')return'<p>غير متاح.</p>';
+  const st=S.companies.map(c=>({c,s:execStatus(c)}));
+  const cnt=k=>st.filter(z=>z.s.color===k).length;
+  const pd=S.decisions.filter(x=>x.status==='بانتظار اعتماد المالك'),od=overdueDirectives(),ro=S.reports.filter(x=>x.reopenReq);
+  const late=st.filter(z=>isLate(z.c.id));
+  const summary=`من ${S.companies.length} شركات: ${cnt('green')} أخضر، ${cnt('yellow')} أصفر، ${cnt('red')} أحمر، ${cnt('gray')} بلا بيانات معتمدة. ${late.length?'المتأخرة عن موعد التقرير: '+late.map(z=>z.c.ar).join('، ')+'.':'لا توجد شركة متأخرة عن الموعد.'} ${pd.length+od.length+ro.length?'ينتظر قرارك '+(pd.length+od.length+ro.length)+' بنود.':'لا بنود تنتظر قرارك.'}`;
+  const rows=st.map(({c,s})=>{const x=s.x,p=s.prev,ch=x&&p&&p.revenue?((x.revenue/p.revenue-1)*100):null;return `<tr><td>${esc(c.ar)}</td><td>${esc(c.currency)}</td><td>${x?esc(x.period):'—'}</td><td>${x?fmtNum(x.revenue):'—'}</td><td>${x?fmtNum(s.net):'—'}</td><td>${ch==null?'—':(ch>=0?'+':'')+ch.toFixed(1)+'%'}</td><td><span class="pill ${s.cls}">${s.label}</span> <span class="muted">${esc(s.reason)}</span></td></tr>`});
+  const decisions=[...pd.map(x=>'قرار بانتظار اعتمادك: '+x.title),...od.map(x=>'توجيه متأخر: '+x.title),...ro.map(x=>'طلب إعادة فتح التقرير '+x.id+': '+x.reopenReq.reason)];
+  const risks=st.filter(z=>['red','yellow'].includes(z.s.color)).map(z=>z.c.ar+': '+z.s.reason);
+  const stages=['جديد','تواصل','عرض','مغلق ناجح','مغلق خاسر'].map(g=>g+' '+S.leads.filter(l=>l.status===g).length).join(' · ');
+  const opps=S.opportunities.map(x=>x.id+' · '+x.title+' · '+workStatus(x.status));
+  const open=S.requests.filter(x=>workStatus(x.status)!=='مكتمل'&&workStatus(x.status)!=='مغلق');
+  const byWho={};open.forEach(x=>byWho[x.assigned]=(byWho[x.assigned]||0)+1);
+  const lv=S.hr.filter(h=>h.type.includes('إجازة')&&h.status==='بانتظار المراجعة').length;
+  const recs=[];
+  late.forEach(z=>recs.push('تواصل مع مدير '+z.c.ar+' بشأن التقرير المتأخر أو أصدر توجيه متابعة.'));
+  st.filter(z=>z.s.color==='red'&&!isLate(z.c.id)).forEach(z=>recs.push('اطلب من '+z.c.ar+' تفسيرًا لـ«'+z.s.reason+'».'));
+  st.filter(z=>z.s.color==='yellow'&&z.s.reason.includes('الإيراد')).forEach(z=>recs.push('اسأل '+z.c.ar+' عن سبب تراجع الإيراد.'));
+  if(pd.length)recs.push('احسم القرارات المعلقة ('+pd.length+').');
+  if(ro.length)recs.push('ردّ على طلب إعادة فتح التقرير.');
+  if(od.length)recs.push('تابع التوجيهات المتأخرة ('+od.length+').');
+  const list=a=>a.length?'<ul>'+a.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<p class="muted">لا شيء.</p>';
+  const tbl=`<div class="tablewrap"><table><thead><tr><th>الشركة</th><th>العملة</th><th>الفترة المعتمدة</th><th>الإيراد</th><th>صافي الربح</th><th>تغير الإيراد</th><th>الحالة</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  return `<div class="pagehead"><div><h1>✦ الملخص التنفيذي الذكي <span class="tagtest">TEST · اقتراح آلي</span></h1><p class="sub">قراءة سريعة لوضع القابضة بتاريخ ${esc(S.date)}، من التقارير المعتمدة والبيانات المسجلة فقط.</p></div>${button('عودة إلى لوحة القيادة','goto:dashboard')}</div>
+  <section class="card panel aicard"><h2>الخلاصة</h2><p>${esc(summary)}</p></section>
+  <section class="card panel"><h2>أداء الشركات</h2>${tbl}<p class="muted">كل شركة بعملتها ولا يُجمع بين العملات. الأرقام من آخر تقرير معتمد.</p></section>
+  <div class="grid"><section class="card panel"><h2>ما يحتاج قرارك</h2>${list(decisions)}</section><section class="card panel"><h2>مخاطر وتنبيهات</h2>${list(risks)}</section></div>
+  <div class="grid"><section class="card panel"><h2>الفرص والعملاء</h2>${list(opps)}<p class="muted">مراحل العملاء: ${esc(stages)}</p></section><section class="card panel"><h2>التشغيل</h2><p>طلبات مفتوحة: ${open.length}${Object.keys(byWho).length?' ('+Object.entries(byWho).map(([k,v])=>esc(k)+' '+v).join('، ')+')':''}</p><p>إجازات بانتظار مراجعة مطور الأعمال: ${lv}</p></section></div>
+  <section class="card panel"><h2>أصول القابضة</h2>${assetTotals().rows.length?'<ul>'+assetTotals().rows.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<p class="muted">لا أصول نشطة مسجلة.</p>'}</section>
+  <section class="card panel aicard"><h2>توصيات مقترحة</h2>${list(recs.slice(0,5).length?recs.slice(0,5):['لا توصيات عاجلة اليوم.'])}<p class="muted">صياغة تجريبية بقواعد ثابتة؛ القرار لك. لا تعرض الرواتب ولا نسب الملكية.</p></section>`};
+
+/* ===== أصول القابضة (المالك فقط) ===== */
+const ASSET_TYPES=['ذهب','عقار','أسهم وصناديق','فضة ومعادن','مركبات ومعدات','أخرى'];
+const ASSET_SEED=[
+{id:'AST-TEST-001',type:'ذهب',name:'TEST - سبائك ذهب',qty:'100 غرام',currency:'BHD',purchaseValue:7000,currentValue:7600,purchaseDate:'2027-01-15',seller:'TEST - تاجر ذهب',storage:'TEST - خزنة بنكية',file:'TEST_gold_invoice.pdf',insured:'نعم',reviewDate:'2027-07-01',notes:'',status:'نشط',hist:[{date:'2027-01-15',value:7000},{date:'2027-03-31',value:7600}]},
+{id:'AST-TEST-002',type:'عقار',name:'TEST - أرض سكنية',qty:'600 م²',currency:'BHD',purchaseValue:60000,currentValue:64000,purchaseDate:'2026-11-20',seller:'TEST - مالك سابق',storage:'صك باسم القابضة',file:'TEST_land_deed.pdf',insured:'لا',reviewDate:'2027-11-20',notes:'',status:'نشط',hist:[{date:'2026-11-20',value:60000},{date:'2027-03-31',value:64000}]}];
+const _norm=normalize;normalize=function(){_norm();if(!S.assets)S.assets=clone(ASSET_SEED)};
+function assetTotals(){
+  const act=(S.assets||[]).filter(a=>a.status==='نشط'),cur={};
+  act.forEach(a=>{const c=cur[a.currency]=cur[a.currency]||{buy:0,now:0,n:0};c.buy+=Number(a.purchaseValue||0);c.now+=Number(a.currentValue||0);c.n++});
+  const rows=Object.entries(cur).map(([k,v])=>k+': القيمة الحالية '+fmtNum(v.now)+'، التكلفة '+fmtNum(v.buy)+'، '+(v.now-v.buy>=0?'ربح غير محقق ':'خسارة غير محققة ')+fmtNum(Math.abs(v.now-v.buy))+' ('+v.n+' أصول)');
+  return{act,cur,rows}}
+function assetCard(){
+  if(role()!=='owner')return'';const t=assetTotals();
+  const lines=Object.entries(t.cur).map(([k,v])=>`<div class="metric">${fmtNum(v.now)} ${esc(k)}</div><div class="muted">التكلفة ${fmtNum(v.buy)} · ${v.now-v.buy>=0?'ربح غير محقق':'خسارة غير محققة'} ${fmtNum(Math.abs(v.now-v.buy))}</div>`).join('');
+  const types=[...new Set(t.act.map(a=>a.type))].map(x=>x+' '+t.act.filter(a=>a.type===x).length).join(' · ');
+  return `<section class="card panel"><h2>◆ قيمة أصول القابضة</h2>${lines||'<p class="muted">لا أصول نشطة مسجلة.</p>'}<p class="muted">${esc(types)}${types?' · ':''}كل عملة على حدة بلا تحويل.</p>${button('سجل الأصول','goto:assets')}</section>`}
+window.assetsPage=function(){
+  if(role()!=='owner')return'<p>غير متاح.</p>';
+  const t=assetTotals();
+  const rows=S.assets.map(a=>`<tr><td>${esc(a.id)}</td><td>${esc(a.type)}</td><td>${esc(a.name)}<div class="muted">${esc(a.qty||'')}</div></td><td>${fmtNum(a.purchaseValue)} ${esc(a.currency)}<div class="muted">${esc(a.purchaseDate)}</div></td><td>${fmtNum(a.currentValue)} ${esc(a.currency)}<div class="muted">${esc((a.hist||[]).slice(-1)[0]?.date||'')}</div></td><td>${esc(a.seller||'—')}</td><td>${esc(a.storage||'—')}<div class="muted">تأمين: ${esc(a.insured||'—')} · مراجعة: ${esc(a.reviewDate||'—')}</div></td><td>${esc(a.file||'—')}</td><td><span class="pill ${a.status==='نشط'?'green':'gray'}">${esc(a.status)}</span></td><td>${a.status==='نشط'?button('تحديث القيمة','astVal:'+a.id)+' '+button('تسجيل البيع','astSold:'+a.id):'—'}</td></tr>`);
+  const tb=rows.length?`<div class="tablewrap"><table><thead><tr><th>الرقم</th><th>النوع</th><th>الأصل</th><th>سعر الشراء</th><th>القيمة الحالية</th><th>البائع</th><th>الحفظ والتأمين</th><th>المستند</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="empty">لا أصول مسجلة.</div>';
+  const form=`<form class="card panel" id="assetForm"><h2>تسجيل أصل جديد</h2><div class="formgrid"><label class="field">نوع الأصل<select name="type">${ASSET_TYPES.map(x=>`<option>${x}</option>`).join('')}</select></label><label class="field">اسم الأصل<input name="name" required></label><label class="field">الكمية أو الوصف (مثل 100 غرام، 600 م²)<input name="qty"></label><label class="field">العملة<select name="currency">${curOptions()}</select></label><label class="field">قيمة الشراء<input name="purchaseValue" type="number" step="any" min="0" required></label><label class="field">تاريخ الشراء<input name="purchaseDate" type="date" required></label><label class="field">القيمة الحالية (اختياري، وإلا تساوي الشراء)<input name="currentValue" type="number" step="any" min="0"></label><label class="field">البائع أو الجهة<input name="seller"></label><label class="field">مكان الحفظ أو التسجيل<input name="storage"></label><label class="field">مؤمَّن؟<select name="insured"><option>نعم</option><option>لا</option></select></label><label class="field">تاريخ المراجعة القادمة<input name="reviewDate" type="date"></label><label class="field">مستند الملكية أو الفاتورة<input name="file" type="file"></label><label class="field">ملاحظات<textarea name="notes"></textarea></label></div><p class="muted">${t_('fileNote')}</p><button class="btn primary">تسجيل الأصل</button></form>`;
+  const sums=Object.entries(t.cur).map(([k,v])=>`${esc(k)}: ${fmtNum(v.now)}`).join(' · ')||'—';
+  return `<div class="pagehead"><div><h1>أصول القابضة</h1><p class="sub">للمالك وحده. تُضاف القيمة الحالية للأصول النشطة إلى قيمة أصول القابضة وتظهر في لوحة القيادة، كل عملة على حدة.</p></div></div><div class="helper">إجمالي القيمة الحالية للأصول النشطة: ${sums}</div>${form}${tb}`};
+const t_=k=>t(k);
+document.addEventListener('submit',e=>{
+  if(e.target.getAttribute&&e.target.getAttribute('id')==='assetForm'){e.preventDefault();e.stopImmediatePropagation();if(role()!=='owner')return;
+    const f=e.target,d=formObj(f),a=nextId('AST-TEST-',S.assets);
+    const pv=Number(d.purchaseValue),cv=d.currentValue===''?pv:Number(d.currentValue);if(!(pv>=0)||!(cv>=0)){alert('أدخل قيمًا صحيحة.');return}
+    const x={id:a,type:d.type,name:'TEST - '+d.name,qty:d.qty,currency:d.currency,purchaseValue:pv,currentValue:cv,purchaseDate:d.purchaseDate,seller:d.seller,storage:d.storage,file:fileName(f,'file')||'TEST_document_pending.pdf',insured:d.insured,reviewDate:d.reviewDate,notes:d.notes,status:'نشط',hist:[{date:d.purchaseDate,value:pv}].concat(cv!==pv?[{date:S.date,value:cv}]:[])};
+    S.assets.unshift(x);auditLog('تسجيل أصل',x.id,'—',x.type+' · '+fmtNum(pv)+' '+x.currency);persist();notify('تم تسجيل الأصل')}},true);
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||role()!=='owner')return;
+  const a=b.dataset.act,i=a.indexOf(':'),act=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1);
+  if(act!=='astVal'&&act!=='astSold')return;
+  const x=S.assets.find(z=>z.id===arg);if(!x||x.status!=='نشط')return;
+  if(act==='astVal'){const v=prompt('القيمة الحالية الجديدة ('+x.currency+')',x.currentValue);if(v==null||v===''||!(Number(v)>=0))return;const old=x.currentValue;x.currentValue=Number(v);x.hist=(x.hist||[]).concat([{date:S.date,value:x.currentValue}]);auditLog('تحديث قيمة أصل',x.id,fmtNum(old),fmtNum(x.currentValue))}
+  else{const v=prompt('قيمة البيع ('+x.currency+')',x.currentValue);if(v==null||v===''||!(Number(v)>=0))return;x.status='مباع';x.saleValue=Number(v);x.saleDate=S.date;auditLog('تسجيل بيع أصل',x.id,'نشط','مباع · '+fmtNum(x.saleValue)+' '+x.currency)}
+  persist();render()},true);
+window.assetTotals=assetTotals;
+/* ===== إدارة الموقع (مطور الأعمال يدير، المالك يطّلع) ===== */
+const SITE_SEED={
+info:{nameAr:'شركة ستارت اب سفير القابضة ذ.م.م',nameEn:'START UPSPHERE HOLDING CO W.L.L',phone:'+973 17626990',email:'info@sup-edu.com',address:'',whatsapp:'',hours:'9:00–17:00'},
+profiles:[
+{id:'PUB-001',nameAr:'ركن الريادة للمحاماة والاستشارات القانونية',nameEn:'ALREYADA CORNER LAW & LEGAL CONSULTANCY',descAr:'مكتب محاماة في البحرين يقدم الاستشارات القانونية والتمثيل في النزاعات والقضايا ومتابعة الإجراءات القانونية.',descEn:'A Bahrain law firm offering legal advice, representation in disputes and cases, and follow-up of legal procedures.',phone:'+973 17595522',email:'info@alreyada-law.com',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-002',nameAr:'مركز عالم داماك للأعمال ذ.م.م',nameEn:'DAMAC WORLD BUSINESS CENTER W.L.L',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-003',nameAr:'داماك ورلد التجارية ذ.م.م',nameEn:'DAMAC WORLD TRADING W.L.L',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-004',nameAr:'شركة بيت الريحان التجارية ذ.م.م',nameEn:'BAIT AL RAYHAN TRADING COMPANY W.L.L',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-005',nameAr:'ديجيتال روكيت للدعاية والإعلان ذ.م.م',nameEn:'DIGITAL ROCKET FOR ADVERTISING W.L.L',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-006',nameAr:'نجمة الأعمال للخدمات التجارية – الأعمال',nameEn:'Najmat Al Aamal for Commercial Services (Business)',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-007',nameAr:'ويلث فيرست للاستشارات الإدارية',nameEn:'WEALTH FIRST MANAGEMENT CONSULTANCY',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-008',nameAr:'نجمة الأعمال للخدمات التجارية – المقاولات',nameEn:'Najmat Al Aamal for Commercial Services (Contracting)',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'},
+{id:'PUB-009',nameAr:'اللمسات الفنية للاتصالات',nameEn:'',descAr:'',descEn:'',phone:'',email:'',logo:'(موجود في الموقع)',published:true,updated:'2027-01-10'}],
+subs:[
+{id:'SUB-TEST-001',title:'TEST - مطعم للبيع في المنامة',sector:'أغذية ومشروبات',country:'Bahrain',price:85000,currency:'BHD',summary:'مطعم قائم بعقد إيجار ساري ومعدات كاملة.',contactName:'TEST - مقدم الطلب 1',contactPhone:'+973 TEST 0001',contactEmail:'owner1@example.test',date:'2027-04-03',status:'جديد',reason:''},
+{id:'SUB-TEST-002',title:'TEST - مصنع تعبئة صغير',sector:'صناعة',country:'Saudi Arabia',price:450000,currency:'SAR',summary:'خط تعبئة بطاقة 2000 وحدة يوميًا مع تراخيص سارية.',contactName:'TEST - مقدم الطلب 2',contactPhone:'+966 TEST 0002',contactEmail:'owner2@example.test',date:'2027-03-20',status:'منشور',reason:''},
+{id:'SUB-TEST-003',title:'TEST - محل ملابس',sector:'تجزئة',country:'Bahrain',price:0,currency:'BHD',summary:'',contactName:'TEST - مقدم الطلب 3',contactPhone:'+973 TEST 0003',contactEmail:'owner3@example.test',date:'2027-03-25',status:'مرفوض',reason:'بيانات ناقصة'}],
+interests:[{id:'INT-TEST-001',subId:'SUB-TEST-002',name:'TEST - زائر مهتم',phone:'+973 TEST 7001',email:'visitor1@example.test',message:'أرغب بمعرفة المزيد عن المصنع.',date:'2027-04-04',status:'جديد'}]};
+const _norm2=normalize;normalize=function(){_norm2();if(!S.site)S.site=clone(SITE_SEED);if(!S.site.interests)S.site.interests=[]};
+const pubMissing=p=>[['nameAr','الاسم العربي'],['nameEn','الاسم الإنجليزي'],['descAr','الوصف العربي'],['descEn','الوصف الإنجليزي']].filter(([k])=>!String(p[k]||'').trim()).map(x=>x[1]);
+const _al=alertsForRole;alertsForRole=function(){const i=_al();if(role()==='bd'&&S.site){const n=S.site.subs.filter(x=>x.status==='جديد').length+S.site.interests.filter(x=>x.status==='جديد').length;if(n){i.n+=n;i.label+=' (تشمل ما ورد من الموقع)';i.key=role()+':'+i.label+':'+i.n}}return i};
+const tb0=(h,rows)=>rows.length?`<div class="tablewrap"><table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:'<div class="empty">لا بيانات</div>';
+window.sitePage=function(){
+  const r=role();if(!['bd','owner'].includes(r))return'<p>غير متاح.</p>';
+  const bd=r==='bd',s=S.site,edit=bd&&S.siteEdit?s.profiles.find(p=>p.id===S.siteEdit):null;
+  const inf=s.info,warn=!inf.nameEn?'<div class="alert"><span>الاسم الإنجليزي للقابضة غير معتمد؛ يختلف في الموقع بين عدة صيغ. أدخل الاسم الرسمي حسب السجل التجاري.</span></div>':'';
+  const infoForm=bd?`<form class="card panel" id="siteInfoForm"><h2>بيانات القابضة المنشورة في الموقع</h2><div class="formgrid"><label class="field">الاسم بالعربي<input name="nameAr" value="${esc(inf.nameAr)}" required></label><label class="field">الاسم الإنجليزي الرسمي<input name="nameEn" value="${esc(inf.nameEn)}" required></label><label class="field">الهاتف<input name="phone" value="${esc(inf.phone)}"></label><label class="field">البريد<input name="email" type="email" value="${esc(inf.email)}"></label><label class="field">واتساب<input name="whatsapp" value="${esc(inf.whatsapp)}"></label><label class="field">العنوان<input name="address" value="${esc(inf.address)}"></label><label class="field">ساعات العمل<input name="hours" value="${esc(inf.hours)}"></label></div><button class="btn primary">حفظ</button></form>`:`<section class="card panel"><h2>بيانات القابضة المنشورة</h2><p>${esc(inf.nameAr)} / ${esc(inf.nameEn||'—')}<br>${esc(inf.phone)} · ${esc(inf.email)} · ${esc(inf.address)}</p></section>`;
+  const prow=s.profiles.map(p=>{const m=pubMissing(p);return `<tr><td>${esc(p.id)}</td><td>${esc(p.nameAr)}<div class="muted">${esc(p.nameEn||'—')}</div></td><td>${esc(p.descAr||'—')}</td><td>${m.length?`<span class="pill warn">ناقص: ${esc(m.join('، '))}</span>`:'<span class="pill green">مكتمل</span>'}</td><td><span class="pill ${p.published?'green':'gray'}">${p.published?'منشور':'غير منشور'}</span></td><td>${bd?button('تعديل','siteEdit:'+p.id)+' '+(p.published?button('إلغاء النشر','siteUnpub:'+p.id):button('نشر','sitePub:'+p.id,true)):'—'}</td></tr>`});
+  const pform=bd?`<form class="card panel" id="siteProfileForm"><h2>${edit?'تعديل ملف شركة':'إضافة شركة إلى الموقع'}</h2><input type="hidden" name="profileRef" value="${esc(edit?.id||'')}"><div class="formgrid"><label class="field">الاسم بالعربي<input name="nameAr" value="${esc(edit?.nameAr||'')}" required></label><label class="field">الاسم بالإنجليزي<input name="nameEn" value="${esc(edit?.nameEn||'')}"></label><label class="field">الوصف بالعربي<textarea name="descAr">${esc(edit?.descAr||'')}</textarea></label><label class="field">الوصف بالإنجليزي<textarea name="descEn">${esc(edit?.descEn||'')}</textarea></label><label class="field">هاتف<input name="phone" value="${esc(edit?.phone||'')}"></label><label class="field">بريد<input name="email" type="email" value="${esc(edit?.email||'')}"></label><label class="field">الشعار<input name="file" type="file"></label></div><p class="muted">لا يُنشر ملف ناقص: يلزم الاسمان والوصفان. ${t('fileNote')}</p><button class="btn primary">${edit?'حفظ التعديل':'إضافة كمسودة'}</button>${edit?' '+button('إلغاء','siteEditCancel'):''}</form>`:'';
+  const srow=s.subs.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.title)}<div class="muted">${esc(x.summary||'—')}</div></td><td>${esc(x.sector)} · ${esc(x.country)}</td><td>${x.price?fmtNum(x.price)+' '+esc(x.currency):'—'}</td><td>${bd?esc(x.contactName)+'<div class="muted">'+esc(x.contactPhone)+' · '+esc(x.contactEmail)+'</div>':'<span class="muted">محجوبة عن المالك في العرض</span>'}</td><td><span class="pill ${x.status==='منشور'?'green':x.status==='مرفوض'?'red':'warn'}">${esc(x.status)}</span>${x.reason?`<div class="muted">${esc(x.reason)}</div>`:''}</td><td>${bd&&x.status!=='منشور'?button('نشر','subPub:'+x.id,true)+' '+(x.status==='جديد'?button('طلب معلومات','subInfo:'+x.id)+' ':'')+(x.status!=='مرفوض'?button('رفض','subRej:'+x.id):''):bd&&x.status==='منشور'?button('إلغاء النشر','subUnpub:'+x.id):'—'}</td></tr>`);
+  const irows=s.interests.map(x=>{const o=s.subs.find(z=>z.id===x.subId);return `<tr><td>${esc(x.id)}</td><td>${esc(o?o.title:x.subId)}</td><td>${bd?esc(x.name)+'<div class="muted">'+esc(x.phone)+' · '+esc(x.email)+'</div>':'<span class="muted">محجوبة عن المالك في العرض</span>'}</td><td>${esc(x.message)}</td><td>${esc(x.date)}</td><td><span class="pill ${x.status==='جديد'?'warn':x.status==='مغلق'?'gray':'green'}">${esc(x.status)}</span></td><td>${bd&&x.status==='جديد'?button('تم التواصل','intDone:'+x.id,true):''} ${bd&&x.status!=='مغلق'?button('إغلاق','intClose:'+x.id):''}</td></tr>`});
+  const itable=tb0(['الرقم','الفرصة','الزائر','الرسالة','التاريخ','الحالة','الإجراء'],irows);
+  const pubCos=s.profiles.filter(p=>p.published),pubOps=s.subs.filter(x=>x.status==='منشور');
+  const preview=`<section class="card panel"><h2>ما يراه الزائر الآن</h2><p><b>شركات المجموعة (${pubCos.length}):</b> ${pubCos.map(p=>esc(p.nameAr)).join('، ')||'—'}</p><p><b>الفرص المنشورة (${pubOps.length}):</b></p>${pubOps.length?pubOps.map(x=>`<div class="muted">${esc(x.title)} · ${esc(x.sector)} · ${esc(x.country)} · ${x.price?fmtNum(x.price)+' '+esc(x.currency):'السعر عند الطلب'} — ${esc(x.summary)} [زر: أبدِ اهتمامك] ${bd?button('TEST: محاكاة اهتمام زائر','intSim:'+x.id):''}</div>`).join(''):'<div class="muted">لا فرص منشورة، ويظهر الموقع قسم الفرص مخفيًا بدل «جارٍ التحميل».</div>'}<p class="muted">لا تظهر بيانات اتصال أصحاب الفرص ولا أي رقم مالي داخلي؛ التواصل يمر عبر القابضة.</p></section>`;
+  const tb=tb0;
+  return `<div class="pagehead"><div><h1>إدارة الموقع</h1><p class="sub">${bd?'تدير هنا محتوى الموقع المنشور: الشركات والفرص. أي تغيير يُسجَّل في سجل التدقيق.':'عرض للقراءة؛ تدير المحتوى جهة مطور الأعمال.'}</p></div></div>${warn}${infoForm}<h2>شركات المجموعة على الموقع</h2>${tb(['الرقم','الشركة','الوصف','الاكتمال','النشر','الإجراء'],prow)}${pform}<h2>الفرص الواردة من الموقع</h2>${tb(['الرقم','الفرصة','القطاع والدولة','السعر','صاحب الطلب','الحالة','الإجراء'],srow)}<h2>اهتمامات الزوار بالفرص المنشورة</h2><p class="muted">لا يُنشر رقم صاحب الفرصة؛ يضغط الزائر «أبدِ اهتمامك» فيصل طلبه هنا إلى الإدارة.</p>${itable}${preview}`};
+document.addEventListener('submit',e=>{
+  const id=e.target.getAttribute&&e.target.getAttribute('id');if(id!=='siteInfoForm'&&id!=='siteProfileForm')return;
+  e.preventDefault();e.stopImmediatePropagation();if(role()!=='bd')return;
+  const f=e.target,d=formObj(f),s=S.site;
+  if(id==='siteInfoForm'){const old=JSON.stringify(s.info);Object.assign(s.info,{nameAr:d.nameAr.trim(),nameEn:d.nameEn.trim(),phone:d.phone,email:d.email,whatsapp:d.whatsapp,address:d.address,hours:d.hours});auditLog('تعديل بيانات القابضة المنشورة','SITE-INFO','—','تم التحديث');persist();notify('تم الحفظ');return}
+  const ref=d.profileRef,p=ref?s.profiles.find(z=>z.id===ref):null,logo=fileName(f,'file');
+  if(p){Object.assign(p,{nameAr:d.nameAr.trim(),nameEn:d.nameEn.trim(),descAr:d.descAr.trim(),descEn:d.descEn.trim(),phone:d.phone,email:d.email,updated:S.date});if(logo)p.logo=logo;
+    if(p.published&&pubMissing(p).length){p.published=false;auditLog('إلغاء نشر تلقائي (ملف ناقص)',p.id,'منشور','غير منشور')}
+    auditLog('تعديل ملف شركة في الموقع',p.id,'—',p.nameAr);S.siteEdit=null}
+  else{const x={id:nextId('PUB-',s.profiles),nameAr:d.nameAr.trim(),nameEn:d.nameEn.trim(),descAr:d.descAr.trim(),descEn:d.descEn.trim(),phone:d.phone,email:d.email,logo:logo||'',published:false,updated:S.date};s.profiles.push(x);auditLog('إضافة شركة إلى الموقع (مسودة)',x.id,'—',x.nameAr)}
+  persist();notify('تم الحفظ')},true);
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b||role()!=='bd')return;
+  const a=b.dataset.act,i=a.indexOf(':'),act=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1),s=S.site;
+  const P=()=>s.profiles.find(z=>z.id===arg),U=()=>s.subs.find(z=>z.id===arg);
+  switch(act){
+    case'siteEdit':S.siteEdit=arg;persist();render();break;
+    case'siteEditCancel':S.siteEdit=null;persist();render();break;
+    case'sitePub':{const p=P();if(!p)break;const m=pubMissing(p);if(m.length||!p.logo){alert('لا يمكن نشر ملف ناقص: '+m.concat(p.logo?[]:['الشعار']).join('، '));break}p.published=true;auditLog('نشر شركة في الموقع',p.id,'غير منشور','منشور');persist();render();break}
+    case'siteUnpub':{const p=P();if(!p||!p.published)break;p.published=false;auditLog('إلغاء نشر شركة',p.id,'منشور','غير منشور');persist();render();break}
+    case'subPub':{const x=U();if(!x||x.status==='منشور')break;if(!x.summary||!x.price){alert('أكمل الوصف والسعر قبل النشر (اطلب معلومات من صاحب الطلب).');break}const old=x.status;x.status='منشور';x.reason='';auditLog('نشر فرصة في الموقع',x.id,old,'منشور');persist();render();break}
+    case'subRej':{const x=U();if(!x||x.status==='مرفوض')break;const r=(prompt('سبب الرفض (يُحفظ في السجل)')||'').trim();if(!r)break;const old=x.status;x.status='مرفوض';x.reason=r;auditLog('رفض فرصة واردة من الموقع',x.id,old,'مرفوض · '+r);persist();render();break}
+    case'subInfo':{const x=U();if(!x||x.status!=='جديد')break;const r=(prompt('ما المعلومات المطلوبة من صاحب الطلب؟')||'').trim();if(!r)break;x.status='بانتظار معلومات';x.reason=r;auditLog('طلب معلومات لفرصة واردة',x.id,'جديد','بانتظار معلومات · '+r);persist();render();break}
+    case'intSim':{const o=U();if(!o||o.status!=='منشور')break;const n=nextId('INT-TEST-',s.interests);s.interests.unshift({id:n,subId:o.id,name:'TEST - زائر '+n.slice(-3),phone:'+973 TEST '+n.slice(-3),email:'visitor'+n.slice(-3)+'@example.test',message:'أرغب بالتواصل بخصوص هذه الفرصة.',date:S.date,status:'جديد'});persist();render();break}
+    case'intDone':{const x=s.interests.find(z=>z.id===arg);if(!x||x.status!=='جديد')break;x.status='تم التواصل';auditLog('معالجة اهتمام زائر بفرصة',x.id,'جديد','تم التواصل');persist();render();break}
+    case'intClose':{const x=s.interests.find(z=>z.id===arg);if(!x||x.status==='مغلق')break;const old=x.status;x.status='مغلق';auditLog('إغلاق اهتمام زائر',x.id,old,'مغلق');persist();render();break}
+    case'subUnpub':{const x=U();if(!x||x.status!=='منشور')break;x.status='جديد';auditLog('إلغاء نشر فرصة',x.id,'منشور','جديد');persist();render();break}
+  }},true);
+window.__aiAnswer=answer;window.__aiKey=chatKey;window.__aiMount=mount;
+})();
+
+normalize();
+render();
+</script></body></html>

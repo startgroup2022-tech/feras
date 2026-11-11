@@ -633,7 +633,9 @@ def test_home_group_services_form_is_present_in_both_languages(public_client):
 
 def test_home_offers_the_two_group_cta_actions(public_client):
     html = public_client.get("/").text
-    assert "View All Opportunities" in html
+    # Approved package copy: home.opps.link "Explore opportunities" and
+    # cta.submitBusiness "Submit Your Business".
+    assert "Explore opportunities" in html
     assert "Submit Your Business" in html
 
 
@@ -720,9 +722,11 @@ def test_revision_brief_submit_cta_reaches_the_form_in_one_click(public_client):
 def test_revision_brief_opportunities_use_approved_copy(public_client):
     en = public_client.get("/opportunities").text
     ar = public_client.get("/ar/الفرص-التجارية").text
-    # Approved heading + intro (item 04).
+    # Approved heading + intro (item 04), aligned to the handoff package
+    # (nav.opportunities "Opportunities & Investment" / cta.submitBusiness
+    # "أرسل نشاطك").
     assert "Submit Your Business" in en
-    assert "اعرض مشروعك" in ar
+    assert "أرسل نشاطك" in ar
     assert "after review and approval" in en
     assert "بعد المراجعة والموافقة" in ar
     # Planning phrases are removed (item 04).
