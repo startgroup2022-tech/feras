@@ -36,7 +36,7 @@ from backend.repositories.scoped import (
     MonthlyReportRepository,
     SupportRequestRepository,
 )
-from backend.services import motivation_service, role_summary_service
+from backend.services import motivation_service, report_deadline, role_summary_service
 
 
 def _scoped(stmt, column, user: User):
@@ -535,6 +535,17 @@ def build_dashboard(
         "pending_financial_reviews": review_repo.pending_count(user),
     }
 
+    # Business rule 1: the expected period (the month before the one shown) and
+    # the companies late against its day-5 deadline. Only meaningful for the
+    # live period; a historical period is judged by its own deadline.
+    deadline_year, deadline_month = report_deadline.previous_period(
+        date(year, month, 1)
+    )
+    late = report_deadline.late_companies(
+        db, user=user, year=deadline_year, month=deadline_month
+    )
+    kpis["reports_late"] = len(late)
+
     return {
         "scope": "company" if company_id is not None else "holding",
         "company_id": company_id,
@@ -549,6 +560,19 @@ def build_dashboard(
         "companies_requiring_attention": attention,
         "priorities": _priorities(db, user, year, month),
         "motivation": motivation_service.pick_for_role(db, role_code=user.role_code),
+        # Business rule 1: the period the deadline applies to and the companies
+        # that are late for it, so the UI can label the tile and drill down.
+        "report_deadline": {
+            "period_year": deadline_year,
+            "period_month": deadline_month,
+            "deadline": report_deadline.deadline_for_period(
+                deadline_year, deadline_month
+            ),
+            "is_late_period": report_deadline.is_period_late(
+                deadline_year, deadline_month
+            ),
+        },
+        "companies_late": late,
         # Deck slides 7-11: each role gets its own tile set, computed from the
         # records it may read. ``None`` keeps the holding strip for any role the
         # deck did not draw a dashboard for.

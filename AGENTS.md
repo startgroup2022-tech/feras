@@ -107,7 +107,8 @@ scenario; do not widen `world` for a single test — build the extra rows locall
 
 Suites: `test_auth`, `test_isolation`, `test_rbac`, `test_reports`, `test_support`,
 `test_dashboard`, `test_ai`, `test_admin`, `test_schemas`, `test_ai_providers`,
-`test_insights`, `test_frontend_domain_views`.
+`test_insights`, `test_report_deadline`, `test_retention_cv`,
+`test_frontend_domain_views`.
 
 `test_frontend_domain_views` also holds the **frontend→backend route contract**:
 it parses every literal `/api/v1/...` call in `frontend/app.js` and requires each
@@ -141,6 +142,24 @@ Add these in a later phase rather than papering over them in tests:
 - Frontend is still the approved static dashboard plus `frontend/app.js`, which
   hydrates it from the real APIs when served by the backend. There is no login
   screen or write flows in the browser yet.
+
+## Phase 3 additions
+
+- `backend/services/report_deadline.py` — business rule 1. `deadline_for_period`
+  returns day `REPORT_DEADLINE_DAY` (5) of the following month; `is_report_late`
+  treats a missing/draft/returned report past that date as late; `late_companies`
+  is company-scoped; `scan_report_deadlines` raises one `report.deadline_missed`
+  notification per recipient per period (deduped) and never edits a report.
+  Surfaced on the dashboard as `report_deadline`, `companies_late` and the
+  `reports_late` KPI; each report also carries derived `due_date` / `is_late`.
+- `backend/services/retention_service.py` — the six-month CV retention policy
+  (`CV_RETENTION_MONTHS`). Deletes only careers CVs (file + row) past the window;
+  the lead and every non-careers attachment are untouched. Best-effort file
+  removal, per-removal audit rows, and a `dry_run` preview.
+- `scripts/run_scheduled_jobs.py` + `deploy/systemd/safir-jobs.{service,timer}`
+  — the daily trigger for both jobs. Both are idempotent.
+- Admin endpoints: `POST /api/v1/admin/retention/cv/purge` and
+  `POST /api/v1/admin/reports/scan-deadlines` (both `group.manage`).
 
 ## Phase 2 additions
 

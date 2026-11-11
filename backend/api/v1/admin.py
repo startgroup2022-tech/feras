@@ -38,6 +38,7 @@ from backend.schemas import (
     PositionCreateRequest,
     PositionOut,
     PositionUpdateRequest,
+    RetentionRunOut,
     RoleCreateRequest,
     RoleOut,
     RolePermissionsRequest,
@@ -55,6 +56,8 @@ from backend.services import (
     motivation_service,
     ownership_service,
     position_service,
+    report_deadline,
+    retention_service,
     role_service,
     sector_service,
 )
@@ -666,3 +669,62 @@ def list_audit_logs(
             company_id=company_id,
         )
     )
+
+
+# --------------------------------------------------------------------------
+# scheduled jobs (retention + deadline scan)
+# --------------------------------------------------------------------------
+@router.post("/retention/cv/purge", response_model=RetentionRunOut)
+def purge_expired_cvs(
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.GROUP_MANAGE)),
+    dry_run: bool = Query(
+        default=False,
+        description="Report what would be removed without deleting anything.",
+    ),
+) -> RetentionRunOut:
+    """Run the 6-month CV retention policy (site-integration.md).
+
+    Deletes only careers CVs past the retention window; the lead record and
+    every non-careers attachment are left untouched. Each removal is audit
+    logged. ``dry_run=true`` previews the run without writing.
+    """
+    ctx = audit_service.request_context(request)
+    result = retention_service.purge_expired_cvs(
+        db,
+        dry_run=dry_run,
+        actor_user_id=actor.id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return RetentionRunOut(**result)
+
+
+@router.post("/reports/scan-deadlines")
+def scan_report_deadlines(
+    request: Request,
+    db: DbSession,
+    actor=Depends(require(Perm.GROUP_MANAGE)),
+) -> dict:
+    """Run the monthly report deadline scan (business rule 1).
+
+    Raises at most one "report is late" notification per recipient per period
+    (idempotent via ``dedupe_key``) and records a summary audit row. It never
+    edits a report.
+    """
+    ctx = audit_service.request_context(request)
+    result = report_deadline.scan_report_deadlines(
+        db,
+        actor_user_id=actor.id,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    # ``late`` carries company rows; the endpoint returns the summary only.
+    return {
+        "period_year": result["period_year"],
+        "period_month": result["period_month"],
+        "deadline": result["deadline"].isoformat(),
+        "late_count": result["late_count"],
+        "notifications": result["notifications"],
+    }

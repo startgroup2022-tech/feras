@@ -1,0 +1,37 @@
+# Safir Holding 2027 — scheduled jobs (one-shot).
+#
+# Install alongside the API unit:
+#
+#   sudo install -m 644 deploy/systemd/safir-jobs.service /etc/systemd/system/
+#   sudo install -m 644 deploy/systemd/safir-jobs.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now safir-jobs.timer
+#
+# Runs the two policies that must happen on a clock rather than on a request:
+#   * the 6-month CV retention purge (site-integration.md)
+#   * the monthly report deadline scan (business-rules.md rule 1)
+# Both are idempotent, so a missed or repeated run is harmless.
+
+[Unit]
+Description=Safir Holding 2027 scheduled jobs
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=safir
+Group=safir
+WorkingDirectory=/opt/safir/app
+EnvironmentFile=/etc/safir/staging.env
+
+ExecStart=/opt/safir/venv/bin/python -m scripts.run_scheduled_jobs
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/safir/uploads
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

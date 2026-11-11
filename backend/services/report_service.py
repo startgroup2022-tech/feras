@@ -42,7 +42,7 @@ from backend.rbac.authorization import (
 )
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import MonthlyReportRepository
-from backend.services import audit_service, notification_service
+from backend.services import audit_service, notification_service, report_deadline
 
 
 def create_report(
@@ -1103,6 +1103,15 @@ def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> d
         "attachments": report.attachments,
         "financial_part": financial_part,
     }
+    # Business rule 1: the deadline (day 5 of the following month) and whether
+    # this report is late. Derived, never stored, so a status change or the
+    # passage of time is reflected without a write.
+    data["due_date"] = report_deadline.deadline_for_period(
+        report.period_year, report.period_month
+    )
+    data["is_late"] = report_deadline.is_report_late(
+        report.status, year=report.period_year, month=report.period_month
+    )
     return data
 
 

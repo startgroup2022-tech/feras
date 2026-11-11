@@ -526,6 +526,10 @@ class MonthlyReportOut(BaseModel):
     submitted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # Business rule 1: the period's submission deadline (day 5 of the following
+    # month) and whether the report is late. Both derived server-side.
+    due_date: date | None = None
+    is_late: bool = False
     financial_review: FinancialReviewOut | None = None
     attachments: list[AttachmentOut] = []
     financial_part: FinancialPartOut | None = None
@@ -650,6 +654,41 @@ class DashboardKpis(BaseModel):
     companies_requiring_attention: int
     open_support_requests: int
     pending_financial_reviews: int
+    # Business rule 1: companies late for the expected period's day-5 deadline.
+    reports_late: int = 0
+
+
+class ReportDeadlineOut(BaseModel):
+    """The period the deadline applies to and the deadline date itself."""
+
+    period_year: int
+    period_month: int
+    deadline: date
+    is_late_period: bool
+
+
+class LateCompanyOut(BaseModel):
+    """A company late for the expected period's report deadline."""
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    health: str
+    report_status: str | None = None
+    deadline: date
+    reason_ar: str
+    reason_en: str
+
+
+class RetentionRunOut(BaseModel):
+    """Result of a CV retention run (site-integration.md, 6-month policy)."""
+
+    cutoff: datetime
+    retention_months: int
+    dry_run: bool
+    removed_count: int
+    removed_attachment_ids: list[int] = []
 
 
 class AttentionCompanyOut(BaseModel):
@@ -833,6 +872,9 @@ class DashboardResponse(BaseModel):
     priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
     role_summary: "RoleSummaryOut | None" = None
+    # Business rule 1: the expected period's deadline and the late companies.
+    report_deadline: "ReportDeadlineOut | None" = None
+    companies_late: list[LateCompanyOut] = []
 
 
 # --------------------------------------------------------------------------

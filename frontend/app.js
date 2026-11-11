@@ -3475,6 +3475,14 @@
   function reportRow(r) {
     var rev = money(r.revenue);
     var net = money(r.net_result);
+    // Business rule 1: a report past its day-5 deadline that is still missing
+    // or editable is flagged, so the list shows who is behind at a glance.
+    // Reuses the existing status chip styling for visual consistency.
+    var late = r.is_late
+      ? '<span class="status miss" title="' +
+        escapeHtml(dual("متأخر عن الموعد", "Past deadline")) + '"><i></i>' +
+        dual("متأخر", "Late") + "</span> "
+      : "";
     return (
       '<div class="av-row" data-report="' + r.id + '">' +
       '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] + ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
@@ -3482,6 +3490,7 @@
       '<div class="s">' + dual(AR_MONTHS[r.period_month - 1] + " " + toArabicDigits(String(r.period_year)), EN_MONTHS[r.period_month - 1] + " " + r.period_year) +
       " · " + dual("الإيرادات ", "Revenue ") + '<b>' + dual(rev.ar, rev.en) + "</b>" +
       " · " + dual("الصافي ", "Net ") + '<b>' + dual(net.ar, net.en) + "</b></div></div>" +
+      late +
       statusBadge(r.status) +
       "</div>"
     );
@@ -7143,6 +7152,7 @@
     "document.expiring": { ar: "مستند على وشك الانتهاء", en: "Document expiring" },
     "document.expired": { ar: "مستند منتهي", en: "Document expired" },
     "report.submitted": { ar: "تقرير شهري مُرسل", en: "Monthly report submitted" },
+    "report.deadline_missed": { ar: "تقرير شهري متأخر", en: "Monthly report late" },
     "financial_summary.submitted": { ar: "ملخص مالي مُرسل", en: "Financial summary submitted" },
     "financial_summary.returned": { ar: "ملخص مالي مُعاد", en: "Financial summary returned" },
     "financial_summary.resubmitted": { ar: "ملخص مالي مُعاد إرساله", en: "Financial summary resubmitted" },

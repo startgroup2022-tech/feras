@@ -38,6 +38,25 @@ def test_drafts_are_excluded_from_group_totals(client, world, auth):
     assert body["kpis"]["total_revenue"] == "1111110.00"
 
 
+# --------------------------------------------------------------------------
+# business rule 1: the report deadline surfacing
+# --------------------------------------------------------------------------
+def test_dashboard_exposes_the_expected_period_deadline(client, world, auth):
+    body = client.get(HOLDING, headers=auth(world["owner"])).json()
+
+    # October 2027 is shown, so the expected period is September and its
+    # deadline is 5 October 2027.
+    deadline = body["report_deadline"]
+    assert deadline["period_year"] == 2027
+    assert deadline["period_month"] == 9
+    assert deadline["deadline"] == "2027-10-05"
+    # 2027-10-05 is in the past relative to any realistic "now" for this data,
+    # but the period is judged against the current date; assert the shape only.
+    assert "is_late_period" in deadline
+    assert "reports_late" in body["kpis"]
+    assert isinstance(body["companies_late"], list)
+
+
 def test_missing_reports_are_listed(client, world, auth, make_company):
     gamma = make_company("GAMMA", "شركة جاما")
 

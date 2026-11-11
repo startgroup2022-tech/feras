@@ -130,6 +130,19 @@ class Settings(BaseSettings):
     AI_KNOWLEDGE_CHUNK_CHARS: int = 900
     AI_KNOWLEDGE_CHUNK_OVERLAP: int = 150
 
+    # ---- monthly report deadline (business rule 1) ----
+    # A month's report is due on this day of the *following* month. After it,
+    # a company whose expected-period report is still missing or editable is
+    # "late". The approved prototype hardcodes the 5th; it stays configurable
+    # so a deployment can move the deadline without a code change.
+    REPORT_DEADLINE_DAY: int = 5
+
+    # ---- retention: public CVs (site-integration.md) ----
+    # A CV submitted through the website's careers form is held by the Holding
+    # for this many calendar months, then deleted automatically. Nothing else
+    # is touched by the retention job.
+    CV_RETENTION_MONTHS: int = 6
+
     # ---- notification centre ----
     # Days before a document's expiry date that an "expiring soon" notification
     # is raised. Mirrors EXPIRING_SOON_DAYS but is configurable per deployment.

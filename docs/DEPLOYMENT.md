@@ -163,6 +163,40 @@ until the in-process rate limiter is replaced with a shared store.
 
 ---
 
+## 9a. Scheduled jobs
+
+Two policies run on a clock, not on a request:
+
+* **CV retention** (`site-integration.md`): a careers CV is deleted after six
+  months. The public form promises this, so it must happen without a click.
+* **Report deadline scan** (`business-rules.md` rule 1): a period's report is due
+  on the 5th of the following month; once the deadline passes, the companies
+  still late are flagged by a notification.
+
+Install the timer (daily at 02:30, plus catch-up if the host was down):
+
+```bash
+sudo install -m 644 deploy/systemd/safir-jobs.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/safir-jobs.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now safir-jobs.timer
+systemctl list-timers safir-jobs.timer
+```
+
+Run either job by hand (add `--dry-run` to preview the CV purge):
+
+```bash
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs --dry-run
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs --only deadlines
+```
+
+Both jobs are idempotent, so a repeated or missed run is harmless. A Holding
+Owner can also trigger them through the admin API
+(`POST /api/v1/admin/retention/cv/purge`, `POST /api/v1/admin/reports/scan-deadlines`).
+
+---
+
 ## 10. Reverse proxy and HTTPS
 
 ```bash

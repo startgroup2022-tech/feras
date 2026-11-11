@@ -180,6 +180,19 @@ class AuditAction:
     WEBSITE_OPPORTUNITY_SUBMITTED = "website_opportunity.submitted"
     WEBSITE_OPPORTUNITY_REVIEWED = "website_opportunity.reviewed"
     WEBSITE_OPPORTUNITY_PUBLISHED = "website_opportunity.published"
+    # Retention job (site-integration.md): a careers CV past its 6-month
+    # retention window was deleted. One row per purged CV, so the deletion is
+    # traceable even though the CV itself is gone.
+    WEBSITE_LEAD_CV_PURGED = "website_lead.cv_purged"
+
+    # Retention job summary: one row per run, so a clean run is distinguishable
+    # from a run that removed CVs without reading the per-file rows.
+    RETENTION_CV_PURGE_RUN = "retention.cv_purge_run"
+
+    # Monthly report deadline scan (business rule 1). One row per scan run,
+    # recording how many companies were flagged late and how many notifications
+    # were raised; the scan itself never mutates a report.
+    REPORT_DEADLINE_SCANNED = "monthly_report.deadline_scanned"
 
     # public website branding (logo)
     BRANDING_LOGO_UPDATED = "branding.logo_updated"

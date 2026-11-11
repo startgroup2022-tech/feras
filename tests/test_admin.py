@@ -677,3 +677,59 @@ def test_valuation_update_is_audited(client, world, auth, db):
         row.action for row in db.query(AuditLog).all()
     }
     assert "investment.valuation_updated" in actions
+
+
+# --------------------------------------------------------------------------
+# scheduled jobs: CV retention + report deadline scan
+# --------------------------------------------------------------------------
+CV_PURGE = "/api/v1/admin/retention/cv/purge"
+DEADLINE_SCAN = "/api/v1/admin/reports/scan-deadlines"
+
+
+def test_cv_purge_requires_group_manage(client, auth, make_user):
+    manager = make_user("mgr@corp.sa", "company_manager")
+
+    response = client.post(CV_PURGE, headers=auth(manager))
+
+    assert response.status_code == 403
+
+
+def test_cv_purge_reports_a_clean_run(client, auth, make_user, monkeypatch, tmp_path):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(CV_PURGE, headers=auth(owner))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["removed_count"] == 0
+    assert body["retention_months"] == 6
+    assert body["dry_run"] is False
+
+
+def test_deadline_scan_requires_group_manage(client, auth, make_user):
+    manager = make_user("mgr@corp.sa", "company_manager")
+
+    response = client.post(DEADLINE_SCAN, headers=auth(manager))
+
+    assert response.status_code == 403
+
+
+def test_deadline_scan_is_audited(client, auth, make_user, db):
+    from backend.db.models.ai import AuditLog
+
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(DEADLINE_SCAN, headers=auth(owner))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "period_year" in body and "late_count" in body
+    assert (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "monthly_report.deadline_scanned")
+        .count()
+        == 1
+    )

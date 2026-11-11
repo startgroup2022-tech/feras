@@ -23,9 +23,11 @@ from backend.schemas import (
     DataCompletenessOut,
     IndicatorSourceOut,
     IndicatorSourcesOut,
+    LateCompanyOut,
     MotivationTextOut,
     PeriodChangeOut,
     PriorityOut,
+    ReportDeadlineOut,
     RoleSummaryOut,
 )
 from backend.services import dashboard_service
@@ -69,6 +71,14 @@ def _response(data: dict, *, scope: str, company_id: int | None, year: int, mont
         role_summary=(
             RoleSummaryOut(**data["role_summary"]) if data.get("role_summary") else None
         ),
+        report_deadline=(
+            ReportDeadlineOut(**data["report_deadline"])
+            if data.get("report_deadline")
+            else None
+        ),
+        companies_late=[
+            LateCompanyOut(**row) for row in data.get("companies_late", [])
+        ],
     )
 
 

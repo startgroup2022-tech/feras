@@ -436,6 +436,9 @@ class NotificationType(str, enum.Enum):
     REPORT_APPROVED = "report.approved"
     REPORT_LOCKED = "report.locked"
     REPORT_CANCELLED = "report.cancelled"
+    # Business rule 1: the expected-period report passed its deadline while
+    # still missing or editable. Raised by the deadline scan, not by a user.
+    REPORT_DEADLINE_MISSED = "report.deadline_missed"
     SYSTEM = "system"
 
 
