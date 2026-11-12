@@ -1160,3 +1160,22 @@ def test_secondary_tab_groups_are_bound():
     # just a read, so its action must be present and permission-gated.
     assert "/pages/" in APP_JS and "/publish" in APP_JS
     assert 'has("website.content.publish")' in APP_JS
+
+
+def test_navigation_closes_the_mobile_drawer():
+    # The ≤1180px rail is a slide-in drawer whose .nav-scrim covers the whole
+    # viewport. If a navigation (hash link, back button, or a view with no
+    # sidebar item reached by its hash) leaves the drawer open, the scrim keeps
+    # intercepting clicks, so the header's language switch -- and every other
+    # header control -- becomes unreachable on a phone or tablet. Every
+    # navigation must therefore drop the drawer and disarm the scrim.
+    assert "function closeNavDrawer(" in APP_JS
+    assert "closeNavDrawer();" in APP_JS
+    # It must be called from the single navigation entry point, not only from
+    # the drawer's own toggle/scrim handlers.
+    nav_to = APP_JS.split("function navTo(view, push) {", 1)[1].split("\n  }", 1)[0]
+    assert "closeNavDrawer()" in nav_to
+    # And it must remove the class the scrim's pointer-events rule keys on.
+    closer = APP_JS.split("function closeNavDrawer() {", 1)[1].split("\n  }", 1)[0]
+    assert 'classList.remove("nav-open")' in closer
+    assert "scrim.hidden = true" in closer

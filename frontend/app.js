@@ -3116,6 +3116,7 @@
       else n.removeAttribute("aria-current");
     });
     syncMoreGroup(view);
+    closeNavDrawer();
     applyDocTitle();
     var board = byId("board");
     if (board) board.classList.toggle("view-hidden", view !== "dashboard");
@@ -3159,6 +3160,18 @@
 
   // Deck slides 39/89/90: on a phone the rail opens from ☰. The toggle only
   // exists visually ≤1180px (CSS), but the binding is harmless on desktop.
+  // ``closeNavDrawer`` is also called from ``navTo`` so any navigation -- a
+  // sidebar tap, a hash link or the browser back button -- drops the drawer
+  // and disarms its full-screen scrim, which would otherwise keep covering the
+  // header controls (language switch, search, notifications, profile).
+  function closeNavDrawer() {
+    var scrim = byId("navScrim");
+    body.classList.remove("nav-open");
+    var toggle = byId("navToggle");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    if (scrim) scrim.hidden = true;
+  }
+
   function bindNavDrawer() {
     var toggle = byId("navToggle");
     var scrim = byId("navScrim");
