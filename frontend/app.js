@@ -4328,9 +4328,9 @@
     var form =
       '<form class="av-form av-form-inline" id="finDefForm">' +
       field("الشركة", "Company", selectInput("fdCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-      field("الكود", "Code", textInput("fdCode", "")) +
-      field("الاسم (عربي)", "Name (AR)", textInput("fdNameAr", "")) +
-      field("الاسم (إنجليزي)", "Name (EN)", textInput("fdNameEn", "")) +
+      field("الكود", "Code", textInput("fdCode", "", "", true), null, null, true) +
+      field("الاسم (عربي)", "Name (AR)", textInput("fdNameAr", "", "", true), null, null, true) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("fdNameEn", "", "", true), null, null, true) +
       field("النوع", "Kind", selectInput("fdKind", [
         { value: "expense", label: opt("مصروف", "Expense") },
         { value: "revenue", label: opt("إيراد", "Revenue") },
@@ -7521,8 +7521,8 @@
         });
         var create = has("website_lead.manage")
           ? '<form class="av-form av-form-inline" id="leadCreateForm">' +
-            field("الاسم", "Name", textInput("lcName", "")) +
-            field("البريد", "Email", '<input class="av-input" id="lcEmail" type="email">') +
+            field("الاسم", "Name", textInput("lcName", "", "", true)) +
+            field("البريد", "Email", '<input class="av-input" id="lcEmail" type="email" required>') +
             field("الهاتف", "Phone", textInput("lcPhone", "")) +
             field("الشركة", "Company", textInput("lcCompany", "")) +
             field("الخدمة", "Service", selectInput("lcService",
@@ -8110,22 +8110,26 @@
     return STATE.lang === "ar" ? ar : en;
   }
 
-  function numInput(id, value, placeholder) {
+  function reqAttr(required) {
+    return required ? " required" : "";
+  }
+
+  function numInput(id, value, placeholder, required) {
     return (
       '<input class="av-input" id="' + id + '" type="number" step="any" value="' +
       escAttr(value === null || value === undefined ? "" : value) + '" placeholder="' +
-      escAttr(placeholder || "") + '">'
+      escAttr(placeholder || "") + '"' + reqAttr(required) + ">"
     );
   }
 
-  function dateInput(id, value) {
-    return '<input class="av-input" id="' + id + '" type="date" value="' + escAttr(value || "") + '">';
+  function dateInput(id, value, required) {
+    return '<input class="av-input" id="' + id + '" type="date" value="' + escAttr(value || "") + '"' + reqAttr(required) + ">";
   }
 
-  function textArea(id, value, placeholder) {
+  function textArea(id, value, placeholder, required) {
     return (
       '<textarea class="av-input" id="' + id + '" rows="2" placeholder="' +
-      escAttr(placeholder || "") + '">' + escapeHtml(value || "") + "</textarea>"
+      escAttr(placeholder || "") + '"' + reqAttr(required) + ">" + escapeHtml(value || "") + "</textarea>"
     );
   }
 
@@ -8230,7 +8234,7 @@
       var create = canManage
         ? '<form class="av-form av-form-inline" id="empForm">' +
           field("الشركة", "Company", selectInput("eCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "", "", true)) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("eNameEn", "")) +
           field("المسمى الوظيفي", "Job title", textInput("eTitle", "")) +
           field("الجنسية", "Nationality", textInput("eNationality", "")) +
@@ -8825,7 +8829,7 @@
       var create = canRecord
         ? '<form class="av-form av-form-inline" id="advForm">' +
           field("الشركة", "Company", selectInput("adCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("adUser", "")) +
+          field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("adUser", "", "", true), null, null, true) +
           field("الموعد", "Scheduled at", '<input class="av-input" id="adWhen" type="datetime-local">') +
           field("الموضوع", "Topic", textInput("adTopic", "")) +
           field("الملاحظات", "Notes", textInput("adNotes", "")) +
@@ -8865,7 +8869,7 @@
     var form = canAssign
       ? '<form class="av-form av-form-inline" id="advAssignForm">' +
         field("الشركة", "Company", selectInput("aaCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("aaUser", "")) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("aaUser", "", "", true), null, null, true) +
         field("التخصص", "Specialty", textInput("aaSpecialty", "")) +
         '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
         dual("إسناد مستشار", "Assign advisor") + "</button></div></form>"
@@ -8894,9 +8898,9 @@
     var form = canWrite
       ? '<form class="av-form av-form-inline" id="advReportForm">' +
         field("الشركة", "Company", selectInput("arCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("arUser", "")) +
-        field("السنة", "Year", numInput("arYear", now.getFullYear())) +
-        field("الشهر", "Month", numInput("arMonth", now.getMonth() + 1)) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("arUser", "", "", true), null, null, true) +
+        field("السنة", "Year", numInput("arYear", now.getFullYear(), "", true), null, null, true) +
+        field("الشهر", "Month", numInput("arMonth", now.getMonth() + 1, "", true), null, null, true) +
         field("التطويرات", "Development", textInput("arDev", "")) +
         field("التحديات", "Challenges", textInput("arChal", "")) +
         field("التوصيات", "Recommendations", textInput("arRec", "")) +
@@ -8960,6 +8964,8 @@
       return;
     }
     if (action === "adv-report-save" || action === "adv-report-submit") {
+      var advForm = byId("advReportForm");
+      if (advForm && !advForm.reportValidity()) return;
       var payload = {
         company_id: parseInt(valOf("arCompany"), 10),
         advisor_user_id: parseInt(valOf("arUser"), 10),
@@ -9097,7 +9103,7 @@
       var create = canCreate
         ? '<form class="av-form av-form-inline" id="taskForm">' +
           field("الشركة", "Company", selectInput("tkCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("العنوان", "Title", textInput("tkTitle", "")) +
+          field("العنوان", "Title", textInput("tkTitle", "", "", true), null, null, true) +
           field("الأولوية", "Priority", selectInput("tkPriority", [
             { value: "low", label: opt("منخفضة", "Low") },
             { value: "normal", label: opt("عادية", "Normal") },
@@ -9531,7 +9537,13 @@
       return submitManagementBrief(id, el);
     }
     if (action === "brief-load") {
-      return loadBriefDraft(parseInt(valOf("mbYear"), 10), parseInt(valOf("mbMonth"), 10));
+      var y = parseInt(valOf("mbYear"), 10);
+      var mo = parseInt(valOf("mbMonth"), 10);
+      if (!y || !mo) {
+        toast(dual("حدد السنة والشهر أولاً.", "Choose a year and month first."), "warn");
+        return;
+      }
+      return loadBriefDraft(y, mo);
     }
     if (action !== "submit") return;
     if (id === "briefForm") {
@@ -9594,7 +9606,7 @@
         var form = canAuthor
           ? '<form class="av-form" id="briefForm">' +
             '<div class="av-form-inline">' +
-            field("السنة", "Year", numInput("mbYear", now.getFullYear(), "")) +
+            field("السنة", "Year", numInput("mbYear", now.getFullYear(), "", true), null, null, true) +
             field("الشهر", "Month", selectInput("mbMonth", monthOptions(), now.getMonth() + 1)) +
             field("الأولوية", "Urgency", selectInput("mbUrgency", [
               { value: "monthly", label: opt("شهري", "Monthly") },
@@ -9743,8 +9755,8 @@
       var canManage = has("owner_decision.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="decForm">' +
-          field("الرقم", "Number", textInput("dcNumber", "")) +
-          field("العنوان", "Title", textInput("dcTitle", "")) +
+          field("الرقم", "Number", textInput("dcNumber", "", "", true), null, null, true) +
+          field("العنوان", "Title", textInput("dcTitle", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("dcCompany", companySelectOptions(true), "")) +
           field("المُنفّذ (معرّف)", "Executor id", numInput("dcExecutor", "")) +
           field("الاستحقاق", "Due date", dateInput("dcDue", "")) +
@@ -10219,7 +10231,7 @@
             { value: "opportunity", label: opt("فرصة", "Opportunity") },
             { value: "project", label: opt("مشروع", "Project") },
           ], "opportunity")) +
-          field("الاسم", "Name", textInput("prName", "")) +
+          field("الاسم", "Name", textInput("prName", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("prCompany", companySelectOptions(true), "")) +
           field("الفترة من", "Period from", dateInput("prFrom", "")) +
           field("الفترة إلى", "Period to", dateInput("prTo", "")) +
@@ -12143,10 +12155,10 @@
       var canCreate = has("complaint.create");
       var create = canCreate
         ? '<form class="av-form av-form-inline" id="complaintForm">' +
-          field("الموضوع", "Subject", textInput("coSubject", "")) +
+          field("الموضوع", "Subject", textInput("coSubject", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("coCompany", companySelectOptions(true), "")) +
           field("مجهولة؟", "Anonymous?", selectInput("coAnon", [{ value: "0", label: opt("لا", "No") }, { value: "1", label: opt("نعم", "Yes") }], "0")) +
-          field("النص", "Body", textArea("coBody", "", "")) +
+          field("النص", "Body", textArea("coBody", "", "", true), null, null, true) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("رفع شكوى", "Submit complaint") + "</button></div></form>"
         : "";
@@ -12340,18 +12352,19 @@
     );
   }
 
-  function field(labelAr, labelEn, inputHtml, hintAr, hintEn) {
+  function field(labelAr, labelEn, inputHtml, hintAr, hintEn, required) {
     var hint = hintAr
       ? '<span class="hint">' + dual(hintAr, hintEn || hintAr) + "</span>"
       : "";
     return (
-      '<div class="av-field"><label>' + dual(labelAr, labelEn) + "</label>" +
+      '<div class="av-field"><label>' + dual(labelAr, labelEn) +
+      (required ? ' <span class="req">*</span>' : "") + "</label>" +
       inputHtml + hint +
       "</div>"
     );
   }
 
-  function textInput(id, value, placeholder) {
+  function textInput(id, value, placeholder, required) {
     // A placeholder that matches an I18N key is emitted bilingually so it
     // follows the language switch; anything else is a literal example token.
     var ph =
@@ -12360,7 +12373,7 @@
         : ' placeholder="' + escAttr(placeholder || "") + '"';
     return (
       '<input class="av-input" id="' + id + '" type="text" value="' +
-      escAttr(value || "") + '"' + ph + ">"
+      escAttr(value || "") + '"' + ph + reqAttr(required) + ">"
     );
   }
 
@@ -12496,10 +12509,10 @@
       '<div class="av-tree">' + roots.map(function (n) { return branch(n, 0); }).join("") + "</div>" +
       (has("ownership.manage")
         ? '<form class="av-form av-form-inline" id="stakeForm">' +
-          field("الشركة المملوكة", "Owned company", selectInput("stOwned", companyOptions(nodes), "")) +
+          field("الشركة المملوكة", "Owned company", selectInput("stOwned", companyOptions(nodes), ""), null, null, true) +
           field("المالك", "Owner", selectInput("stOwner", [{ value: "", label: "—" }].concat(companyOptions(nodes)), "")) +
-          field("النسبة %", "Percentage %", '<input class="av-input" id="stPct" type="number" min="0" max="100" step="0.01">') +
-          field("من تاريخ", "Effective from", '<input class="av-input" id="stFrom" type="date">') +
+          field("النسبة %", "Percentage %", '<input class="av-input" id="stPct" type="number" min="0" max="100" step="0.01" required>', null, null, true) +
+          field("من تاريخ", "Effective from", '<input class="av-input" id="stFrom" type="date" required>', null, null, true) +
           '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="add-stake">' +
           dual("إضافة حصة", "Add stake") + "</button></div></form>"
         : "") +
@@ -15528,14 +15541,15 @@
     }
     if (form.id === "holdingForm") {
       e.preventDefault();
+      var optStr = function (id) { var v = valOf(id); return v === "" ? null : v; };
       return patch("/api/v1/admin/holding", {
-        legal_name_ar: byId("hLegalAr").value,
-        legal_name_en: byId("hLegalEn").value,
-        commercial_registration: byId("hCr").value,
-        tax_number: byId("hTax").value,
-        default_currency: byId("hCurrency").value,
-        contact_email: byId("hEmail").value,
-        phone: byId("hPhone").value,
+        legal_name_ar: optStr("hLegalAr"),
+        legal_name_en: optStr("hLegalEn"),
+        commercial_registration: optStr("hCr"),
+        tax_number: optStr("hTax"),
+        default_currency: optStr("hCurrency"),
+        contact_email: optStr("hEmail"),
+        phone: optStr("hPhone"),
       }).then(function () {
         toast(STATE.lang === "ar" ? "تم حفظ بيانات القابضة." : "Holding profile saved.", "ok");
         return renderAdminStructure();
