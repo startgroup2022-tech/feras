@@ -10682,9 +10682,19 @@
     host.innerHTML = loadingHtml();
     var canApprove = has("ai.knowledge.approve");
     var canManage = has("ai.knowledge.manage");
-    var tab = STATE.aiRevTab || "proposals";
+    // Listing proposals is a manage-only endpoint; a read-only viewer (a
+    // company-scoped role that holds ``ai.knowledge.read`` but not ``manage``)
+    // would get a 403. They open on the knowledge base and the proposals tab is
+    // not offered, so the view never fires a request it cannot make.
+    var tab = canManage ? (STATE.aiRevTab || "proposals") : "documents";
+    STATE.aiRevTab = tab;
+    document.querySelectorAll("[data-airev-tab]").forEach(function (b) {
+      var t = b.getAttribute("data-airev-tab");
+      b.classList.toggle("perm-hidden", t === "proposals" && !canManage);
+      b.classList.toggle("on", t === tab);
+    });
     return Promise.all([
-      softGet("/api/v1/ai/knowledge/proposals"),
+      canManage ? softGet("/api/v1/ai/knowledge/proposals") : Promise.resolve(null),
       softGet("/api/v1/ai/knowledge/documents"),
     ]).then(function (res) {
       var proposals = res[0] || [];

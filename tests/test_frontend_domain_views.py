@@ -233,6 +233,32 @@ def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
     }
 
 
+def test_ai_review_gate_matches_the_permission_its_endpoints_enforce():
+    # `GET /ai/knowledge/proposals` is gated by `ai.knowledge.manage`, but the
+    # Assistant Learning *view* is reachable by any read-only role that holds
+    # `ai.knowledge.read` (e.g. a company manager). Opening the view must not
+    # fire the manage-only proposals request, or the role gets a 403 on a screen
+    # it is allowed to open. The proposals tab is therefore gated on
+    # approve/manage, and the renderer falls back to the knowledge base.
+    section = re.search(
+        r'<section[^>]*data-view="aiReview"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert section, "aiReview section not found"
+    assert "ai.knowledge.read" in section.group(1).split()
+
+    tab = re.search(
+        r'<button[^>]*data-airev-tab="proposals"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert tab, "proposals tab not found"
+    assert "ai.knowledge.read" not in tab.group(1).split()
+    assert {"ai.knowledge.approve", "ai.knowledge.manage"} & set(tab.group(1).split())
+
+    # The renderer must only call the manage-only endpoint when the role can
+    # manage; a read-only viewer opens on the documents tab.
+    assert 'canManage ? softGet("/api/v1/ai/knowledge/proposals")' in APP_JS
+    assert 'has("ai.knowledge.manage")' in APP_JS
+
+
 # --------------------------------------------------------------------------
 # Roles & permissions UX + bilingual admin shell
 # --------------------------------------------------------------------------
