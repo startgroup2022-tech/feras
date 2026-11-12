@@ -8,7 +8,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230A1730'/%3E%3Cpath d='M12 3.4 20 7.4v2L12 5.4 4 9.4v-2l8-4Z' fill='%23DCBE72'/%3E%3Cpath d='M6.2 10.8v6.4l5.8 2.8 5.8-2.8v-6.4L12 13.6l-5.8-2.8Z' fill='%23fff' opacity='.92'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/website/assets/holding-logo.png">
+<link rel="apple-touch-icon" href="/website/assets/holding-logo.png">
+<meta name="theme-color" content="#0A1730">
 </head>
 <body>
 
@@ -16,13 +18,16 @@
 <div class="login-screen" id="loginScreen">
   <div class="login-card">
     <div class="login-brand">
-      <div class="login-mark">
+      <span class="login-mark" id="loginBrandMark" hidden>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
           <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
           <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
           <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
         </svg>
-      </div>
+      </span>
+      <img class="brand-logo brand-logo-login" id="loginBrandLogo"
+           src="/website/assets/holding-logo.png" alt="شركة ستارت اب سفير القابضة ذ.م.م"
+           decoding="async" width="46" height="25">
       <div>
         <div class="login-title"><span class="ar">الدخول إلى منصة القابضة</span><span class="en">Sign in to the Holding platform</span></div>
         <div class="login-sub"><span class="ar">ستارت اب سفير القابضة ٢٠٢٧ · منصة القيادة التنفيذية</span><span class="en">Start Upsphere Holding 2027 · Executive Platform</span></div>
@@ -90,7 +95,7 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
     <div class="brand">
-      <div class="brand-mark" id="brandMark">
+      <div class="brand-mark" id="brandMark" hidden>
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
           <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
           <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
@@ -98,9 +103,11 @@
           <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
         </svg>
       </div>
-      <!-- The admin-uploaded Holding logo, shown instead of the fallback mark
-           when one is configured. -->
-      <img class="brand-logo" id="brandLogo" alt="ستارت اب سفير القابضة" hidden>
+      <!-- The Holding logo: the owner-supplied mark by default, or the
+           admin-uploaded logo when one is configured. -->
+      <img class="brand-logo" id="brandLogo"
+           src="/website/assets/holding-logo.png" alt="شركة ستارت اب سفير القابضة ذ.م.م"
+           decoding="async" width="70" height="38">
       <div class="brand-text">
         <span class="brand-name"><span class="ar">ستارت اب سفير القابضة</span><span class="en">Start Upsphere Holding</span></span>
         <span class="brand-sub"><span class="ar">٢٠٢٧ · منصة القيادة</span><span class="en">2027 · Executive Platform</span></span>
@@ -167,13 +174,16 @@
        click/keyboard binding and the aria-current logic stay intact. -->
   <aside class="sidebar" id="sidebar" aria-label="التنقل الرئيسي">
     <div class="sb-brand">
-      <div class="sb-mark">
+      <span class="sb-mark" id="sbMark" hidden>
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
           <path d="M12 2.6 21 7v2.1L12 4.7 3 9.1V7l9-4.4Z" fill="#DCBE72"/>
           <path d="M5.4 10.2v7.1l6.6 3.2 6.6-3.2v-7.1l-6.6 3.2-6.6-3.2Z" fill="#fff" opacity=".92"/>
           <circle cx="12" cy="17.4" r="1.5" fill="#DCBE72"/>
         </svg>
-      </div>
+      </span>
+      <img class="brand-logo brand-logo-side" id="sbBrandLogo"
+           src="/website/assets/holding-logo.png" alt="شركة ستارت اب سفير القابضة ذ.م.م"
+           decoding="async" width="34" height="18">
       <div class="sb-brand-text">
         <span class="sb-name"><span class="ar">ستارت اب سفير القابضة</span><span class="en">Start Upsphere Holding</span></span>
         <span class="sb-sub"><span class="ar">٢٠٢٧ · منصة القيادة</span><span class="en">2027 · Executive</span></span>

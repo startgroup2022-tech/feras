@@ -110,21 +110,39 @@ def _open_more(page) -> None:
 
 
 def nav(page, view: str) -> bool:
-    """Open a sidebar view, expanding the "Additional tools" group if needed."""
+    """Open a sidebar view, expanding the "Additional tools" group if needed.
+
+    A few views (e.g. ``investments``) are intentionally no longer in the rail
+    but remain reachable by deep link, so fall back to the hash route when no
+    sidebar item exists for the view.
+    """
     item = page.query_selector(f'.nav-item[data-view="{view}"]')
     if item and not item.is_visible():
         _open_more(page)
     item = page.query_selector(f'.nav-item[data-view="{view}"]')
-    if not item or not item.is_visible():
-        return False
-    item.click()
-    page.wait_for_timeout(1500)
-    return True
+    if item and item.is_visible():
+        item.click()
+        page.wait_for_timeout(1500)
+        return True
+    if not item:
+        page.evaluate("v => { location.hash = v; }", view)
+        page.wait_for_timeout(1800)
+        return page.query_selector(f'[data-view="{view}"]') is not None
+    return False
+
+
+# Administration is exposed by the section that carries the admin tab set. Its
+# view id has changed over time ("admin" -> "group"), so resolve it by probing
+# the tab panel rather than hard-coding a single name.
+_ADMIN_VIEWS = ("group", "admin")
 
 
 def _open_admin_tab(page, tab: str) -> bool:
-    if not nav(page, "admin"):
-        return False
+    for view in _ADMIN_VIEWS:
+        if not nav(page, view):
+            continue
+        if page.query_selector('[data-admin-tab]'):
+            break
     btn = page.query_selector(f'[data-admin-tab="{tab}"]')
     if not btn:
         return False

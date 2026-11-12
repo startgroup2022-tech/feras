@@ -138,11 +138,14 @@ body.export .stage{width:var(--stage-w);max-width:none;height:var(--stage-h);min
 }
 .brand-mark::before{content:"";position:absolute;inset:0;border-radius:11px;background:linear-gradient(160deg,transparent 42%,rgba(201,165,78,.34));}
 .brand-mark svg{position:relative;z-index:1;}
+.brand-mark[hidden],.login-mark[hidden],.sb-mark[hidden]{display:none;}
 .brand-logo[hidden]{display:none;}
 .brand-logo{
-  display:block;height:38px;width:auto;max-width:150px;
-  object-fit:contain;flex:0 0 auto;border-radius:9px;
+  display:block;height:34px;width:auto;max-width:150px;
+  object-fit:contain;flex:0 0 auto;border-radius:6px;
 }
+.brand-logo-login{height:44px;max-width:150px;}
+.brand-logo-side{height:30px;max-width:118px;}
 .brand-text{display:flex;flex-direction:column;line-height:1.15;}
 .brand-name{font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--navy-900);}
 .brand-sub{font-size:9.5px;font-weight:600;color:var(--gold-600);letter-spacing:.14em;text-transform:uppercase;}

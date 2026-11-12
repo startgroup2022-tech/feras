@@ -109,9 +109,9 @@ def _catalogue_permissions(code: str):
 
 
 def _open_admin_roles(page) -> bool:
-    # Administration lives inside the collapsed "More" group (the deck keeps only
-    # six primary sections expanded), so the group must be opened before its
-    # items are clickable.
+    # Administration is exposed by the "Group management" section (data-view
+    # "group"); the section id has changed over time, so resolve it by the tab
+    # set rather than a hard-coded view name.
     if page.locator("#sbMoreToggle").count():
         expanded = page.eval_on_selector(
             "#sbMoreToggle", "e => e.getAttribute('aria-expanded')"
@@ -119,11 +119,23 @@ def _open_admin_roles(page) -> bool:
         if expanded != "true":
             page.click("#sbMoreToggle")
             page.wait_for_timeout(300)
-    item = page.locator('.nav-item[data-view="admin"]')
-    if item.count() == 0:
-        return False
-    item.first.click()
-    page.wait_for_timeout(800)
+    candidates = page.eval_on_selector_all(
+        ".nav-item",
+        "els => els.map(e => e.getAttribute('data-view')).filter(Boolean)",
+    )
+    order = ["group", "admin", "site", "aiReview"] + candidates
+    seen = set()
+    for view in order:
+        if view in seen:
+            continue
+        seen.add(view)
+        item = page.locator(f'.nav-item[data-view="{view}"]')
+        if item.count() == 0:
+            continue
+        item.first.click()
+        page.wait_for_timeout(700)
+        if page.locator('[data-admin-tab="roles"]').count():
+            break
     tab = page.locator('[data-admin-tab="roles"]:visible')
     if tab.count() == 0:
         return False

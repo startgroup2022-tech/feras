@@ -38,6 +38,14 @@ BRAND_EN = "Start Upsphere Holding"
 # constrains it with ``object-fit: contain`` so no display size distorts it.
 BRAND_LOGO_URL = "/website/assets/holding-logo.png"
 
+# The same owner mark is the browser-tab icon, so the public site and the
+# platform share one identity (handoff §1: no recolour, no redraw).
+FAVICON_HTML = (
+    f'<link rel="icon" type="image/png" href="{BRAND_LOGO_URL}">'
+    f'<link rel="apple-touch-icon" href="{BRAND_LOGO_URL}">'
+    '<meta name="theme-color" content="#0A1730">'
+)
+
 # The owner-selected visual reference for the hero (handoff assets/ASSETS.md).
 # Used as a background image only; the layout must remain legible if it fails
 # to load, so the hero carries its own background colour underneath.
@@ -309,6 +317,7 @@ def render_page(meta: PageMeta, body: str, branding: dict | None = None, cms=Non
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/website/assets/styles.css">
 {jsonld_html}
+{FAVICON_HTML}
 </head>
 <body class="site lang-{e(lang)}">
 <a class="skip-link" href="#main">{e(_t('تخطَّ إلى المحتوى', 'Skip to content', lang))}</a>
@@ -1608,6 +1617,7 @@ def maintenance_page(lang: str, message: str | None = None) -> str:
 <meta name="robots" content="noindex, nofollow">
 <title>{e(title)} — {e(_brand(lang))}</title>
 <link rel="stylesheet" href="/website/assets/styles.css">
+{FAVICON_HTML}
 </head>
 <body class="site lang-{e(lang)}">
 <main id="main" tabindex="-1">

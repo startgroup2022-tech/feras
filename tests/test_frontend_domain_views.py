@@ -160,6 +160,10 @@ def test_platform_header_renders_the_admin_logo():
     assert "/api/v1/public/branding" in APP_JS
     # It must be wired into the post-login boot so it appears on first paint.
     assert "applyPlatformLogo();" in APP_JS
+    # The browser-tab icon is the same owner mark, not a redrawn SVG glyph.
+    assert 'rel="icon" type="image/png" href="/website/assets/holding-logo.png"' in INDEX
+    assert 'rel="apple-touch-icon" href="/website/assets/holding-logo.png"' in INDEX
+    assert "data:image/svg+xml" not in INDEX
 
 
 def test_platform_nav_is_responsive_and_never_clipped():
@@ -1111,3 +1115,22 @@ def test_submission_edit_reopens_the_detail_instead_of_a_removed_modal():
     assert 'openSubmission(s.id);' in APP_JS
     assert "closeModal();\n                  toast" in APP_JS
     assert "loadSubmissionDetail(s.id);\n                })\n                .catch" not in APP_JS
+
+
+def test_secondary_tab_groups_are_bound():
+    # The advisory, HR, website and assistant-learning views carry chip tabs.
+    # A rendered-but-unbound chip is a dead control, so each group must be wired
+    # through bindSimpleTabs with its own STATE key and re-render function.
+    for attr, state_key, renderer in (
+        ("data-adv-tab", "advTab", "renderAdvisoryView"),
+        ("data-hr-tab", "hrTab", "renderHrView"),
+        ("data-site-tab", "siteTab", "renderSiteView"),
+        ("data-airev-tab", "aiRevTab", "renderAiReviewView"),
+    ):
+        call = f'bindSimpleTabs("{attr}", "{state_key}", {renderer})'
+        assert call in APP_JS, f"{attr} chips are not bound to {state_key}"
+    assert "function bindSimpleTabs(" in APP_JS
+    # The website content tab performs a real write (publish/unpublish), not
+    # just a read, so its action must be present and permission-gated.
+    assert "/pages/" in APP_JS and "/publish" in APP_JS
+    assert 'has("website.content.publish")' in APP_JS

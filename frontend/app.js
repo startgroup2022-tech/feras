@@ -45,6 +45,10 @@
     anTab: "briefing",
     integrationSecret: null,
     empTab: "employees",
+    hrTab: "movements",
+    advTab: "sessions",
+    siteTab: "listings",
+    aiRevTab: "proposals",
     opsTab: "tasks",
     acctTab: "balances",
     acctLedgerCompany: null,
@@ -8027,6 +8031,21 @@
     return '<div class="av-panel"><h3>' + dual(titleAr, titleEn) + "</h3>" + body + "</div>";
   }
 
+  // Bind a simple chip tab group: clicking a chip sets its key on STATE and
+  // re-renders via `render`. Used by the advisory/HR/site/assistant-learning
+  // views, whose tabs filter an already-loaded, already-scoped payload.
+  function bindSimpleTabs(attr, stateKey, render) {
+    document.querySelectorAll("[" + attr + "]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        STATE[stateKey] = btn.getAttribute(attr);
+        document.querySelectorAll("[" + attr + "]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        render();
+      });
+    });
+  }
+
   function noticeHtml(ar, en) {
     return '<p class="av-empty">' + dual(ar, en) + "</p>";
   }
@@ -10395,6 +10414,10 @@
   function renderAdvisoryView() {
     var host = byId("advContent");
     if (!host) return Promise.resolve();
+    if (!STATE.advBound) {
+      STATE.advBound = true;
+      bindSimpleTabs("data-adv-tab", "advTab", renderAdvisoryView);
+    }
     host.innerHTML = loadingHtml();
     return Promise.all([
       softGet("/api/v1/operations/advisory-sessions"),
@@ -10402,17 +10425,9 @@
     ]).then(function (res) {
       var sessions = res[0] || [];
       var reports = res[1] || [];
-      host.innerHTML =
-        panel("جلسات المستشار", "Advisor sessions",
-          sessions.length
-            ? '<div class="av-list">' + sessions.map(function (s) {
-                return '<div class="av-row" style="cursor:default"><div class="grow">' +
-                  '<div class="t">' + escapeHtml(s.specialty || s.advisor_name || dual("جلسة استشارية", "Advisory session")) + '</div>' +
-                  '<div class="s">' + escapeHtml((s.scheduled_at || s.date || "") + " · " + (s.status || "")) + '</div>' +
-                  '</div></div>';
-              }).join("") + "</div>"
-            : noticeHtml("لا توجد جلسات مسجّلة.", "No sessions recorded.")) +
-        panel("تقارير المستشار", "Advisor reports",
+      var tab = STATE.advTab || "sessions";
+      if (tab === "reports") {
+        host.innerHTML = panel("تقارير المستشار", "Advisor reports",
           reports.length
             ? '<div class="av-list">' + reports.map(function (r) {
                 return '<div class="av-row" style="cursor:default"><div class="grow">' +
@@ -10421,6 +10436,17 @@
                   '</div></div>';
               }).join("") + "</div>"
             : noticeHtml("لا توجد تقارير بعد.", "No reports yet."));
+      } else {
+        host.innerHTML = panel("جلسات المستشار", "Advisor sessions",
+          sessions.length
+            ? '<div class="av-list">' + sessions.map(function (s) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(s.specialty || s.advisor_name || dual("جلسة استشارية", "Advisory session")) + '</div>' +
+                  '<div class="s">' + escapeHtml((s.scheduled_at || s.date || "") + " · " + (s.status || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد جلسات مسجّلة.", "No sessions recorded."));
+      }
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -10430,9 +10456,28 @@
   function renderHrView() {
     var host = byId("hrContent");
     if (!host) return Promise.resolve();
+    if (!STATE.hrBound) {
+      STATE.hrBound = true;
+      bindSimpleTabs("data-hr-tab", "hrTab", renderHrView);
+    }
     host.innerHTML = loadingHtml();
     return get("/api/v1/employees").then(function (emps) {
-      if (!emps || !emps.length) {
+      emps = emps || [];
+      if ((STATE.hrTab || "movements") === "employees") {
+        STATE.hr = STATE.hr || {};
+        STATE.hr.employees = emps;
+        host.innerHTML = panel("الموظفون", "Employees",
+          emps.length
+            ? '<div id="hrEmpList"></div>'
+            : noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope."));
+        if (emps.length) {
+          renderPaged(byId("hrEmpList"), "hrEmployees", emps, employeeRow, function (h) {
+            bindRowClicks(h, "emp", openEmployee);
+          }, employeesFilterSpec());
+        }
+        return;
+      }
+      if (!emps.length) {
         host.innerHTML = panel("حركات الموظفين", "Employee movements",
           noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope."));
         return;
@@ -10517,37 +10562,98 @@
   function renderSiteView() {
     var host = byId("siteContent");
     if (!host) return Promise.resolve();
+    if (!STATE.siteBound) {
+      STATE.siteBound = true;
+      bindSimpleTabs("data-site-tab", "siteTab", renderSiteView);
+    }
     host.innerHTML = loadingHtml();
     var canLeads = has("website_lead.read");
     var canCms = has("website.content.read");
+    var tab = STATE.siteTab || "listings";
     return Promise.all([
       canLeads ? softGet("/api/v1/leads/opportunities") : Promise.resolve(null),
       canCms ? softGet("/api/v1/website/overview") : Promise.resolve(null),
+      canCms && tab === "content" ? softGet("/api/v1/website/pages") : Promise.resolve(null),
     ]).then(function (res) {
       var opps = res[0] || [];
       var cms = res[1];
+      var pages = res[2] || [];
       var html = "";
-      if (canLeads) {
-        html += panel("العروض المقدَّمة من الموقع", "Listings submitted from the site",
-          opps.length
-            ? '<div class="av-list">' + opps.map(function (o) {
-                return '<div class="av-row" style="cursor:default"><div class="grow">' +
-                  '<div class="t">' + escapeHtml(o.description ? o.description.slice(0, 80) : dual("عرض", "Listing")) + '</div>' +
-                  '<div class="s">' + escapeHtml((o.sector || "") + " · " + (o.market || "") + " · " + (o.currency || "") + " " + dec(o.value_max)) + '</div>' +
-                  '</div></div>';
-              }).join("") + "</div>"
-            : noticeHtml("لا توجد عروض مقدَّمة.", "No listings submitted."));
-      }
-      if (canCms && cms) {
-        html += panel("نظرة عامة على الموقع", "Website overview",
-          '<div class="av-list">' +
-          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
-          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.visible_companies) + " / " + dec(cms.companies) + '</div><div class="s">' + dual("الشركات الظاهرة", "Visible companies") + '</div></div></div>' +
-          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
-          '</div>');
+      if (tab === "content") {
+        if (!canCms) {
+          host.innerHTML = noticeHtml("ليست لديك صلاحية عرض محتوى الموقع.", "You cannot view website content.");
+          return;
+        }
+        html += siteContentPanel(cms, pages);
+      } else {
+        if (canLeads) {
+          html += panel("العروض المقدَّمة من الموقع", "Listings submitted from the site",
+            opps.length
+              ? '<div class="av-list">' + opps.map(function (o) {
+                  return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                    '<div class="t">' + escapeHtml(o.description ? o.description.slice(0, 80) : dual("عرض", "Listing")) + '</div>' +
+                    '<div class="s">' + escapeHtml((o.sector || "") + " · " + (o.market || "") + " · " + (o.currency || "") + " " + dec(o.value_max)) + '</div>' +
+                    '</div></div>';
+                }).join("") + "</div>"
+              : noticeHtml("لا توجد عروض مقدَّمة.", "No listings submitted."));
+        }
+        if (canCms && cms) {
+          html += panel("نظرة عامة على الموقع", "Website overview",
+            '<div class="av-list">' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.visible_companies) + " / " + dec(cms.companies) + '</div><div class="s">' + dual("الشركات الظاهرة", "Visible companies") + '</div></div></div>' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
+            '</div>');
+        }
       }
       host.innerHTML = html || noticeHtml("ليست لديك صلاحية عرض بيانات الموقع.", "You cannot view website data.");
+      if (tab === "content") bindSiteContent(host, pages);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Website content (CMS) tab: the page register with a publish/unpublish
+  // control per page. Editing bodies/settings stays in Group Administration →
+  // Website; this tab is the day-to-day content overview the prototype shows.
+  function siteContentPanel(cms, pages) {
+    var canPublish = has("website.content.publish");
+    var list = pages.length
+      ? '<div class="av-list">' + pages.map(function (p) {
+          var published = (p.status || "") === "published";
+          return '<div class="av-row" style="cursor:default"><div class="grow">' +
+            '<div class="t">' + escapeHtml(p.title_ar || p.title_en || p.route_key || "") + '</div>' +
+            '<div class="s">' + escapeHtml((p.route_key || "") + " · " + (p.status || "")) + '</div>' +
+            '</div>' +
+            (canPublish
+              ? '<button class="chip" data-site-publish="' + p.id + '" data-published="' + (published ? "1" : "0") + '">' +
+                dual(published ? "إلغاء النشر" : "نشر", published ? "Unpublish" : "Publish") + '</button>'
+              : "") +
+            '</div>';
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد صفحات.", "No pages.");
+    var overview = cms
+      ? panel("نظرة عامة على الموقع", "Website overview",
+          '<div class="av-list">' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
+          '</div>')
+      : "";
+    return overview + panel("صفحات الموقع", "Website pages", list);
+  }
+
+  function bindSiteContent(host, pages) {
+    host.querySelectorAll("[data-site-publish]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = parseInt(btn.getAttribute("data-site-publish"), 10);
+        var published = btn.getAttribute("data-published") === "1";
+        var verb = published ? "unpublish" : "publish";
+        post("/api/v1/website/pages/" + id + "/" + verb, {})
+          .then(function () {
+            toast(dual(published ? "تم إلغاء نشر الصفحة." : "تم نشر الصفحة.", published ? "Page unpublished." : "Page published."), "ok");
+            return renderSiteView();
+          })
+          .catch(function (err) { domainError(err); });
+      });
+    });
   }
 
   // ---- Assistant learning (prototype tab "aiReview") --------------------
@@ -10557,39 +10663,60 @@
   function renderAiReviewView() {
     var host = byId("aiRevContent");
     if (!host) return Promise.resolve();
+    if (!STATE.aiRevBound) {
+      STATE.aiRevBound = true;
+      bindSimpleTabs("data-airev-tab", "aiRevTab", renderAiReviewView);
+    }
     host.innerHTML = loadingHtml();
     var canApprove = has("ai.knowledge.approve");
+    var canManage = has("ai.knowledge.manage");
+    var tab = STATE.aiRevTab || "proposals";
     return Promise.all([
       softGet("/api/v1/ai/knowledge/proposals"),
       softGet("/api/v1/ai/knowledge/documents"),
     ]).then(function (res) {
       var proposals = res[0] || [];
       var docs = res[1] || [];
-      host.innerHTML =
-        panel("مقترحات المساعد", "Assistant proposals",
-          proposals.length
-            ? '<div class="av-list">' + proposals.map(function (p) {
-                var pending = (p.status || "pending") === "pending";
-                return '<div class="av-row" style="cursor:default"><div class="grow">' +
-                  '<div class="t">' + escapeHtml(p.title || p.question || dual("مقترح", "Proposal")) + '</div>' +
-                  '<div class="s">' + escapeHtml(p.status || "") + '</div>' +
-                  '</div>' +
-                  (canApprove && pending
-                    ? '<button class="chip" data-kb-approve="' + p.id + '">' + dual("اعتماد", "Approve") + '</button>' +
-                      '<button class="chip" data-kb-reject="' + p.id + '">' + dual("رفض", "Reject") + '</button>'
-                    : "") +
-                  '</div>';
-              }).join("") + "</div>"
-            : noticeHtml("لا توجد مقترحات بانتظار الاعتماد.", "No proposals awaiting approval.")) +
-        panel("قاعدة المعرفة المعتمدة", "Approved knowledge base",
+      if (tab === "documents") {
+        host.innerHTML = panel("قاعدة المعرفة المعتمدة", "Approved knowledge base",
           docs.length
             ? '<div class="av-list">' + docs.map(function (d) {
+                var archived = (d.status || "") === "archived";
                 return '<div class="av-row" style="cursor:default"><div class="grow">' +
                   '<div class="t">' + escapeHtml(d.title || d.name || "") + '</div>' +
                   '<div class="s">' + escapeHtml(d.status || "") + '</div>' +
-                  '</div></div>';
+                  '</div>' +
+                  (canManage && !archived
+                    ? '<button class="chip" data-kb-archive="' + d.id + '">' + dual("أرشفة", "Archive") + '</button>'
+                    : "") +
+                  '</div>';
               }).join("") + "</div>"
             : noticeHtml("لا توجد مستندات معتمدة بعد.", "No approved documents yet."));
+        host.querySelectorAll("[data-kb-archive]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = parseInt(btn.getAttribute("data-kb-archive"), 10);
+            post("/api/v1/ai/knowledge/documents/" + id + "/archive", {})
+              .then(function () { toast(dual("تمت أرشفة المستند.", "Document archived."), "ok"); return renderAiReviewView(); })
+              .catch(function (err) { domainError(err); });
+          });
+        });
+        return;
+      }
+      host.innerHTML = panel("مقترحات المساعد", "Assistant proposals",
+        proposals.length
+          ? '<div class="av-list">' + proposals.map(function (p) {
+              var pending = (p.status || "pending") === "pending";
+              return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                '<div class="t">' + escapeHtml(p.title || p.question || dual("مقترح", "Proposal")) + '</div>' +
+                '<div class="s">' + escapeHtml(p.status || "") + '</div>' +
+                '</div>' +
+                (canApprove && pending
+                  ? '<button class="chip" data-kb-approve="' + p.id + '">' + dual("اعتماد", "Approve") + '</button>' +
+                    '<button class="chip" data-kb-reject="' + p.id + '">' + dual("رفض", "Reject") + '</button>'
+                  : "") +
+                '</div>';
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مقترحات بانتظار الاعتماد.", "No proposals awaiting approval."));
       host.querySelectorAll("[data-kb-approve],[data-kb-reject]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           var approve = btn.hasAttribute("data-kb-approve");
@@ -15792,32 +15919,30 @@
     return has("dashboard.holding");
   }
 
-  // The platform header shows the same admin-uploaded Holding logo as the
-  // public site, falling back to the static brand mark when none is set.
+  // The owner-supplied logo is the default in the header, login card and side
+  // rail (shipped as a static asset). When an admin uploads a Holding logo it
+  // replaces that default everywhere; on any failure the default asset is
+  // restored rather than falling back to the generic SVG mark.
+  var DEFAULT_LOGO = "/website/assets/holding-logo.png";
   function applyPlatformLogo() {
-    var img = byId("brandLogo");
-    var mark = byId("brandMark");
-    if (!img) return;
+    var targets = ["brandLogo", "loginBrandLogo", "sbBrandLogo"]
+      .map(byId)
+      .filter(Boolean);
+    if (!targets.length) return;
     get("/api/v1/public/branding")
       .then(function (branding) {
         var url = branding && branding.logo_url;
-        if (url) {
-          img.onload = function () {
-            img.hidden = false;
-            if (mark) mark.hidden = true;
-          };
+        if (!url) return;
+        targets.forEach(function (img) {
           img.onerror = function () {
-            img.hidden = true;
-            if (mark) mark.hidden = false;
+            img.onerror = null;
+            img.src = DEFAULT_LOGO;
           };
           img.src = url;
-        } else {
-          img.hidden = true;
-          if (mark) mark.hidden = false;
-        }
+        });
       })
       .catch(function () {
-        /* keep the static brand mark on any failure */
+        /* keep the shipped default logo on any failure */
       });
   }
 

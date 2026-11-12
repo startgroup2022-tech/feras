@@ -594,6 +594,9 @@ def test_home_uses_the_original_logo_and_hero_image(public_client):
     html = public_client.get("/").text
     assert "/website/assets/holding-logo.png" in html
     assert "/website/assets/bahrain-bay.jpg" in html
+    # The browser-tab icon is the same owner mark as the header/footer.
+    assert 'rel="icon" type="image/png" href="/website/assets/holding-logo.png"' in html
+    assert 'rel="apple-touch-icon" href="/website/assets/holding-logo.png"' in html
 
 
 def test_home_follows_the_approved_section_order(public_client):
