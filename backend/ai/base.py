@@ -36,10 +36,28 @@ class AIAnswer:
     ungrounded_numbers: list[str] = field(default_factory=list)
     # Optional token accounting when the provider reports it.
     tokens_used: int | None = None
+    # The concrete model that produced the answer. For a routing model such as
+    # ``openrouter/free`` this is the model OpenRouter actually selected, which
+    # is what the free-model check is applied to.
+    model: str | None = None
+    # Cost the provider reported for this call (USD). Always 0 for a verified
+    # free model; a positive value trips the cost breaker.
+    cost_usd: float = 0.0
+    latency_ms: int | None = None
 
     @property
     def grounded(self) -> bool:
         return not self.ungrounded_numbers
+
+
+class PaidModelError(ProviderError):
+    """Raised when a model would incur a cost.
+
+    This is a *refusal*, not a failure: the subsystem is configured to run on
+    zero-cost models only, so a paid model is rejected rather than downgraded to
+    something billable. Callers surface it as a configuration problem, never as
+    a silent charge.
+    """
 
 
 @runtime_checkable

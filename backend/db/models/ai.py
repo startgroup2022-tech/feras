@@ -11,7 +11,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base, TimestampMixin
@@ -69,6 +78,44 @@ class AIMessage(Base, TimestampMixin):
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     conversation: Mapped[AIConversation] = relationship(back_populates="messages")
+
+
+class AIUsageEvent(Base):
+    """One metered provider call, for the usage monitor.
+
+    Deliberately stores *no* prompt or answer text: it is an operational counter
+    (model, outcome, tokens, cost, latency), not a second copy of the
+    conversation. The conversation itself lives in ``ai_messages`` under its own
+    access controls. Cost is stored as NUMERIC so a cent-level cost is exact.
+    """
+
+    __tablename__ = "ai_usage_events"
+    __table_args__ = (
+        Index("ix_ai_usage_events_user", "user_id", "created_at"),
+        Index("ix_ai_usage_events_model", "model", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    # success | rate_limited | timeout | provider_error | rejected_paid |
+    # blocked_budget
+    outcome: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Reported USD cost. Zero for a verified-free model; a positive value here
+    # for a supposedly-free model is the signal the cost breaker fires on.
+    cost_usd: Mapped[float] = mapped_column(
+        Numeric(12, 6), nullable=False, default=0
+    )
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_free: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    detail: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
 
 
 class AuditLog(Base):

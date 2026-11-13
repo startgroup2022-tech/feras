@@ -42,7 +42,7 @@ from backend.rbac.authorization import (
 )
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import MonthlyReportRepository
-from backend.services import audit_service, notification_service
+from backend.services import audit_service, notification_service, report_deadline
 
 
 def create_report(
@@ -490,6 +490,84 @@ def approve_report(
     return report
 
 
+def lock_report(
+    db: Session,
+    *,
+    user: User,
+    report_id: int,
+    note: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> MonthlyReport:
+    """Developer-package parity: the Holding Owner locks an approved report.
+
+    Business rule 1 (``01-platform/docs/business-rules.md``): the lifecycle ends
+    ``... -> معتمد (approved) -> مقفل (locked)`` and "المقفل لا يُعدَّل" -- a
+    locked report is final and can never be edited, returned or cancelled.
+
+    Locking is the terminal transition: only a report that has already been
+    owner-approved (``reviewed`` + ``approval_status=approved``) can be locked.
+    """
+    require_permission(user, Perm.REPORT_APPROVE)
+    report = _get_scoped_or_404(db, user, report_id)
+    require_company_access(user, report.company_id)
+
+    if not report.is_live:
+        raise ConflictError("Only the current report version can be locked.")
+    if report.status == ReportStatus.LOCKED.value:
+        raise ConflictError("The report is already locked.")
+    if (
+        report.status != ReportStatus.REVIEWED.value
+        or report.approval_status != ReportApprovalStatus.APPROVED.value
+    ):
+        raise ConflictError("Only an approved report can be locked.")
+
+    previous_status = report.status
+    report.status = ReportStatus.LOCKED.value
+    report.locked_by_id = user.id
+    report.locked_at = utcnow()
+    _record_lifecycle(
+        db,
+        report=report,
+        action=ReportLifecycleAction.LOCKED.value,
+        from_status=previous_status,
+        to_status=report.status,
+        actor=user,
+        note=note,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+
+    audit_service.record(
+        db,
+        action=AuditAction.REPORT_LOCKED,
+        actor_user_id=user.id,
+        entity_type="monthly_report",
+        entity_id=report.id,
+        company_id=report.company_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        metadata={"version_number": report.version_number},
+    )
+    _notify_report_lifecycle(
+        db,
+        report=report,
+        actor=user,
+        type=NotificationType.REPORT_LOCKED,
+        title_ar="قُفل تقرير شهري",
+        title_en="A monthly report was locked",
+        message_ar=(
+            f"قُفل تقرير {report.period_month}/{report.period_year} نهائياً ولا يمكن تعديله."
+        ),
+        message_en=(
+            f"The {report.period_month}/{report.period_year} report is locked and "
+            f"can no longer be changed."
+        ),
+    )
+    return report
+
+
 def cancel_report(
     db: Session,
     *,
@@ -506,6 +584,8 @@ def cancel_report(
 
     if report.status == ReportStatus.CANCELLED.value:
         raise ConflictError("The report is already cancelled.")
+    if report.status == ReportStatus.LOCKED.value:
+        raise ConflictError("A locked report can no longer be changed.")
     text = (reason or "").strip()
     if not text:
         raise ValidationError("A cancellation reason is required.")
@@ -643,6 +723,8 @@ def review_financially(
 
     if report.status == ReportStatus.DRAFT.value:
         raise ConflictError("A draft report cannot be financially reviewed.")
+    if report.status == ReportStatus.LOCKED.value:
+        raise ConflictError("A locked report can no longer be changed.")
 
     accurate = bool(payload.get("is_financially_accurate"))
     review = db.query(MonthlyReportFinancialReview).filter(
@@ -717,8 +799,8 @@ def add_attachment(
     """Attach a file to a report.
 
     Permitted while the report is a draft (the manager is assembling it) and
-    afterwards for evidence; a *reviewed* report is frozen, so attachments are
-    refused there to keep the reviewed record immutable.
+    afterwards for evidence; a *reviewed* or *locked* report is frozen, so
+    attachments are refused there to keep the record immutable.
     """
     from backend.core import storage
     from backend.db.models.report import MonthlyReportAttachment
@@ -727,7 +809,7 @@ def add_attachment(
     report = _get_scoped_or_404(db, user, report_id)
     require_company_access(user, report.company_id, write=True)
 
-    if report.status == ReportStatus.REVIEWED.value:
+    if report.status in {ReportStatus.REVIEWED.value, ReportStatus.LOCKED.value}:
         raise ConflictError("A reviewed report cannot be modified.")
 
     extension = storage.validate_upload(
@@ -777,7 +859,7 @@ def remove_attachment(
     report = _get_scoped_or_404(db, user, report_id)
     require_company_access(user, report.company_id, write=True)
 
-    if report.status == ReportStatus.REVIEWED.value:
+    if report.status in {ReportStatus.REVIEWED.value, ReportStatus.LOCKED.value}:
         raise ConflictError("A reviewed report cannot be modified.")
 
     attachment = db.get(MonthlyReportAttachment, attachment_id)
@@ -1001,6 +1083,7 @@ def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> d
         "approved_at": report.approved_at,
         "cancelled_at": report.cancelled_at,
         "cancel_reason": report.cancel_reason,
+        "locked_at": report.locked_at,
         "revenue": report.revenue,
         "expenses": report.expenses,
         "net_result": report.net_result,
@@ -1016,11 +1099,48 @@ def serialise(report: MonthlyReport, *, financial_part: dict | None = None) -> d
         "submitted_at": report.submitted_at,
         "created_at": report.created_at,
         "updated_at": report.updated_at,
-        "financial_review": report.financial_review,
+        "financial_review": _financial_review_out(report.financial_review),
         "attachments": report.attachments,
         "financial_part": financial_part,
     }
+    # Business rule 1: the deadline (day 5 of the following month) and whether
+    # this report is late. Derived, never stored, so a status change or the
+    # passage of time is reflected without a write.
+    data["due_date"] = report_deadline.deadline_for_period(
+        report.period_year, report.period_month
+    )
+    data["is_late"] = report_deadline.is_report_late(
+        report.status, year=report.period_year, month=report.period_month
+    )
     return data
+
+
+def _financial_review_out(review) -> dict | None:
+    """Serialise the financial review, adding the reviewer's display name.
+
+    The deck's list spec (slide 134) names a "مراجع" filter; the payload only
+    carried the reviewer's id. The name is the same reviewer the detail view
+    already shows, so it exposes no new data.
+    """
+    if review is None:
+        return None
+    reviewer = review.reviewer
+    return {
+        "id": review.id,
+        "report_id": review.report_id,
+        "reviewer_id": review.reviewer_id,
+        "reviewer_name_ar": reviewer.full_name_ar if reviewer else None,
+        "reviewer_name_en": reviewer.full_name_en if reviewer else None,
+        "status": review.status,
+        "verified_revenue": review.verified_revenue,
+        "verified_expenses": review.verified_expenses,
+        "verified_net_result": review.verified_net_result,
+        "verified_outstanding_receivables": review.verified_outstanding_receivables,
+        "financial_notes": review.financial_notes,
+        "is_financially_accurate": review.is_financially_accurate,
+        "flagged_reason": review.flagged_reason,
+        "reviewed_at": review.reviewed_at,
+    }
 
 
 __all__ = [

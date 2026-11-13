@@ -3,36 +3,39 @@
    Arabic-first RTL · deep navy · white · soft gray · gold
    ============================================================ */
 :root{
-  --navy-900:#060E1F;
-  --navy-800:#0A1730;
-  --navy-700:#0E2044;
-  --navy-600:#132C5C;
-  --navy-500:#1B3D7A;
-  --navy-400:#2C57A0;
-  --navy-300:#5C82C4;
+  /* Brand — teal ramp per the developer package design tokens
+     (--brand:#176b78 on --bg:#f4f7f9; the navy-* names are kept so the rest
+     of the sheet needs no change). */
+  --navy-900:#0B2F36;
+  --navy-800:#0F3F48;
+  --navy-700:#12505B;
+  --navy-600:#155F6C;
+  --navy-500:#176B78;
+  --navy-400:#2F8B98;
+  --navy-300:#63B3BD;
 
-  --gold-700:#8A6820;
-  --gold-600:#AF892F;
-  --gold-500:#C9A54E;
-  --gold-400:#DCBE72;
-  --gold-300:#EBD49B;
-  --gold-100:#F7EFDC;
+  --gold-700:#8A6320;
+  --gold-600:#A5772E;
+  --gold-500:#BC8840;
+  --gold-400:#CFA062;
+  --gold-300:#E0C091;
+  --gold-100:#F7EFE1;
 
-  --ink-900:#0B1424;
-  --ink-700:#22314C;
-  --ink-500:#5A6A85;
-  --ink-400:#7C8AA0;
-  --ink-300:#9DAABD;
+  --ink-900:#152B3A;
+  --ink-700:#2B4250;
+  --ink-500:#607382;
+  --ink-400:#7D8F9C;
+  --ink-300:#A3B1BB;
 
   --paper:#FFFFFF;
-  --bg:#F4F6FA;
-  --bg-2:#EDF1F7;
-  --line:#E4E9F1;
-  --line-2:#EEF2F7;
+  --bg:#F4F7F9;
+  --bg-2:#E5F3F4;
+  --line:#DBE4E9;
+  --line-2:#EAF0F3;
 
-  --green:#1F9D6B;  --green-soft:#E7F6EF;
-  --amber:#C98A16;  --amber-soft:#FBF2DF;
-  --red:#C4483F;    --red-soft:#FBECEA;
+  --green:#24764A;  --green-soft:#E5F4EA;
+  --amber:#BC8840;  --amber-soft:#FFF3DF;
+  --red:#A54343;    --red-soft:#FAE9E9;
   --violet:#5C4CB0; --blue-soft:#EAF1FB;
 
   --shadow-xs:0 1px 2px rgba(11,20,36,.05);
@@ -135,11 +138,14 @@ body.export .stage{width:var(--stage-w);max-width:none;height:var(--stage-h);min
 }
 .brand-mark::before{content:"";position:absolute;inset:0;border-radius:11px;background:linear-gradient(160deg,transparent 42%,rgba(201,165,78,.34));}
 .brand-mark svg{position:relative;z-index:1;}
+.brand-mark[hidden],.login-mark[hidden],.sb-mark[hidden]{display:none;}
 .brand-logo[hidden]{display:none;}
 .brand-logo{
-  display:block;height:38px;width:auto;max-width:150px;
-  object-fit:contain;flex:0 0 auto;border-radius:9px;
+  display:block;height:34px;width:auto;max-width:150px;
+  object-fit:contain;flex:0 0 auto;border-radius:6px;
 }
+.brand-logo-login{height:44px;max-width:150px;}
+.brand-logo-side{height:30px;max-width:118px;}
 .brand-text{display:flex;flex-direction:column;line-height:1.15;}
 .brand-name{font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--navy-900);}
 .brand-sub{font-size:9.5px;font-weight:600;color:var(--gold-600);letter-spacing:.14em;text-transform:uppercase;}
@@ -178,6 +184,28 @@ html.lang-ar .brand-sub{letter-spacing:.02em;}
 .lang-switch{display:flex;align-items:center;gap:2px;padding:3px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);}
 .lang-opt{padding:5px 10px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--ink-400);cursor:pointer;transition:.2s;border:none;background:transparent;font-family:var(--f-body);}
 .lang-opt.on{background:#fff;color:var(--navy-800);box-shadow:var(--shadow-xs);}
+
+/* Entity + period pickers in the header (deck slides 4/48). They read as one
+   quiet pill so they never compete with the brand or the action cluster. */
+.scope-ctl{display:flex;align-items:center;gap:2px;padding:3px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line);}
+.scope-pick{display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--ink-400);border-radius:7px;transition:.18s;}
+.scope-pick:hover{background:#fff;color:var(--navy-700);box-shadow:var(--shadow-xs);}
+.scope-pick svg{flex:0 0 auto;}
+/* Deck slide 4: the header names the control [الشركة / المجموعة ▾]. The label
+   stays visible beside the select, which still opens on click. */
+.scope-lbl{font-size:9.5px;font-weight:600;letter-spacing:.2px;white-space:nowrap;}
+.scope-pick select{
+  border:none;background:transparent;outline:none;cursor:pointer;
+  font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-800);
+  padding:5px 2px;max-width:190px;text-overflow:ellipsis;
+}
+.scope-pick + .scope-pick{border-inline-start:1px solid var(--line);border-start-start-radius:0;border-end-start-radius:0;}
+/* The deck's mobile frame (slide 39) keeps only ☰, the brand and the alert on
+   the bar, so the entity/period pill retires on narrow screens rather than
+   crowding them out. */
+@media (max-width:980px){
+  .scope-ctl{display:none;}
+}
 .lang-opt:hover:not(.on){color:var(--ink-700);}
 
 .profile{display:flex;align-items:center;gap:9px;padding:4px 4px 4px 12px;border-radius:11px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:.22s;}
@@ -196,13 +224,16 @@ html.lang-en .profile{padding:4px 12px 4px 4px;}
   padding:12px 20px 11px;
   display:grid;
   grid-template-columns:298px minmax(0,1fr) 340px;
-  grid-template-rows:74px 124px minmax(0,1fr) 272px;
+  grid-template-rows:74px 124px auto minmax(158px,1fr) minmax(210px,1fr) 272px;
   grid-template-areas:
-    "head  head    head"
-    "kpis  kpis    kpis"
-    "ai    reports rel"
-    "aii   support rel";
+    "head  head      head"
+    "kpis  kpis      kpis"
+    "role  role      role"
+    "ai    attention rel"
+    "aii   reports   rel"
+    "aii   support   rel";
   gap:11px;
+  overflow-y:auto;
 }
 
 /* ---------- generic card ---------- */
@@ -249,6 +280,31 @@ h1.page-title{font-family:var(--f-display);font-size:22px;font-weight:600;color:
    KPI STRIP
    ============================================================ */
 .kpis{grid-area:kpis;display:grid;grid-template-columns:repeat(6,1fr);gap:11px;}
+/* The role strip and the holding strip share grid-area "kpis"; exactly one is
+   visible, so the hidden one must not render. Without this rule
+   ``.kpis{display:grid}`` beats the UA ``[hidden]`` rule and the hidden strip
+   paints on top of the visible one (deck slides 7-11). */
+.kpis[hidden]{display:none;}
+/* Role strip: four tiles, so the grid is four columns; the holding strip keeps
+   six. ``hidden`` must win over the grid display. */
+.role-kpis{grid-template-columns:repeat(4,1fr);}
+.role-kpis[hidden]{display:none;}
+/* The role follow-up band owns a full-width board row (grid area "role") so it
+   grows the board instead of being auto-placed into an implicit row that
+   shrinks the report card beside it. It holds the role follow-up list and, for
+   a company manager, the smart brief; as the single grid child its contents
+   stack rather than both claiming the same area. It collapses when both its
+   sections are hidden so it never adds a dead gap. */
+.role-band{grid-area:role;display:flex;flex-direction:column;min-height:0;gap:11px;}
+.role-band:not(:has(.role-section:not([hidden]))){display:none;}
+.role-section{display:flex;flex-direction:column;min-height:0;gap:8px;}
+.role-section[hidden]{display:none;}
+.role-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;}
+.role-section-head h2{margin:0;}
+.role-shortcuts[hidden]{display:none;}
+.role-shortcuts .shortcut{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:var(--shadow-xs);cursor:pointer;transition:.18s;text-align:start;font:inherit;color:inherit;}
+.role-shortcuts .shortcut:hover{border-color:var(--navy-300);box-shadow:var(--shadow-sm);transform:translateY(-1px);}
+.role-shortcuts .shortcut .sc-t{font-weight:600;color:var(--navy-900);font-size:12.5px;}
 .kpi{
   background:#fff;border:1px solid var(--line);border-radius:14px;
   padding:10px 13px 9px;position:relative;overflow:hidden;transition:.26s cubic-bezier(.2,.7,.3,1);
@@ -334,6 +390,9 @@ html.lang-en .ask-box{padding:4px 13px 4px 4px;}
 .answer p{margin:0 0 6px;font-size:11px;color:var(--ink-700);line-height:1.6;}
 .answer p:last-child{margin-bottom:0;}
 .answer b{color:var(--navy-800);font-weight:600;}
+.kb-ask{display:flex;flex-direction:column;gap:8px;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);}
+.kb-ask .answer{flex:0 1 auto;max-height:230px;overflow:auto;}
+.kb-ask .answer .av-list{margin-top:6px;}
 .hl-g{color:var(--green);font-weight:600;}
 .hl-r{color:var(--red);font-weight:600;}
 .hl-gold{color:var(--gold-700);font-weight:600;}
@@ -342,7 +401,7 @@ html.lang-en .ask-box{padding:4px 13px 4px 4px;}
    MONTHLY REPORTS  (centre top)
    ============================================================ */
 .reports{grid-area:reports;}
-.rep-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:9px;flex:1;min-height:0;}
+.rep-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:max-content;gap:9px;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;align-content:start;}
 .rep{
   border:1px solid var(--line);border-radius:12px;padding:10px 11px;
   background:linear-gradient(160deg,#FFFFFF,#FAFCFF);transition:.24s cubic-bezier(.2,.7,.3,1);
@@ -554,6 +613,26 @@ body:not(.authed) .stage-wrap{display:none;}
   border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:600;margin-bottom:14px;
 }
 .login-error.show{display:block;}
+.login-notice{
+  display:none;background:var(--gold-100);color:var(--gold-700);border:1px solid #EBD9A8;
+  border-radius:10px;padding:10px 12px;font-size:11.5px;font-weight:600;margin-bottom:14px;line-height:1.7;
+}
+.login-notice.show{display:block;}
+.login-remember{
+  display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-700);
+  font-weight:500;cursor:pointer;user-select:none;
+}
+.login-remember input{
+  width:15px;height:15px;margin:0;accent-color:var(--navy-600);cursor:pointer;flex:0 0 auto;
+}
+.login-links{display:flex;justify-content:center;margin-top:14px;}
+.login-forgot{
+  border:none;background:transparent;cursor:pointer;padding:4px 6px;border-radius:7px;
+  font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-600);
+  text-decoration:underline;text-underline-offset:3px;transition:.15s;
+}
+.login-forgot:hover{color:var(--gold-600);}
+.login-foot{display:flex;justify-content:center;margin-top:16px;}
 .login-hint{
   margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);
   font-size:10.5px;color:var(--ink-400);text-align:center;line-height:1.6;
@@ -584,6 +663,13 @@ body:not(.authed) .stage-wrap{display:none;}
   display:flex;align-items:center;gap:8px;
 }
 .rep-grid .data-error,.subs .data-error,.aii-list .data-error{grid-column:1/-1;}
+.retry-btn{
+  margin-inline-start:auto;flex:0 0 auto;border:1px solid currentColor;background:#fff;
+  color:var(--red);border-radius:8px;padding:5px 11px;cursor:pointer;
+  font-family:var(--f-body);font-size:11px;font-weight:600;transition:.15s;
+}
+.retry-btn:hover{background:var(--red);color:#fff;}
+.retry-btn:disabled{opacity:.55;cursor:progress;}
 
 /* ============================================================
    VIEWS — the dashboard is one of several routed views.
@@ -606,6 +692,7 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
 .av-grid{display:grid;gap:11px;}
 .av-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.av-grid.cols-4{grid-template-columns:repeat(4,1fr);}
 .av-grid.cols-2{grid-template-columns:repeat(2,1fr);}
 .av-panel{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-sm);padding:14px 16px;}
 .av-panel h3{font-family:var(--f-display);font-size:12.5px;font-weight:600;color:var(--navy-900);margin:0 0 10px;}
@@ -616,6 +703,51 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-row .grow{flex:1;min-width:0;}
 .av-row .t{font-weight:600;color:var(--navy-900);font-size:12.5px;}
 .av-row .s{font-size:10.5px;color:var(--ink-400);margin-top:2px;}
+
+/* Per-list filter bar (deck slides 134-136). One row that wraps: the search
+   field, then the selects, then the [تطبيق] [حفظ المرشح باسمي] [مسح]
+   [تصدير النتائج] cluster pushed to the trailing edge. */
+.list-filters{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:10px 12px;margin-bottom:10px;border:1px solid var(--line);
+  border-radius:12px;background:var(--bg-2);
+}
+.lf-field{display:flex;align-items:center;gap:7px;color:var(--ink-400);}
+.lf-search{flex:1 1 210px;min-width:180px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:0 10px;}
+.lf-search .av-input{border:none;padding:8px 0;background:transparent;flex:1;min-width:0;}
+.lf-search .av-input:focus{outline:none;}
+.lf-search:focus-within{border-color:var(--navy-300);box-shadow:0 0 0 3px rgba(20,45,90,.06);}
+.lf-select{max-width:190px;text-overflow:ellipsis;}
+.lf-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-inline-start:auto;}
+.lf-btn{
+  font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-700);
+  background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 12px;
+  cursor:pointer;transition:.18s;white-space:nowrap;
+}
+.lf-btn:hover{border-color:var(--navy-300);box-shadow:var(--shadow-xs);}
+.lf-btn.primary{background:var(--navy-800);border-color:var(--navy-800);color:#fff;}
+.lf-btn.primary:hover{background:var(--navy-700);}
+.lf-empty{padding:8px 0;}
+
+/* One pager for every list (deck slides 134-136): 25 rows a page with a
+   10/25/50/100 selector and prev/next, laid out on the reading edge. */
+.pager{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 13px;margin-top:10px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;box-shadow:var(--shadow-xs);
+}
+.pager-total{font-size:11.5px;font-weight:600;color:var(--ink-500);}
+.pager-size{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--ink-400);}
+.pager-size .av-select{padding:5px 8px;font-size:11.5px;}
+.pager-nav{display:flex;align-items:center;gap:7px;margin-inline-start:auto;}
+.pg-btn{
+  font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--navy-700);
+  background:#fff;border:1px solid var(--line);border-radius:9px;padding:6px 12px;
+  cursor:pointer;transition:.18s;
+}
+.pg-btn:hover:not(:disabled){border-color:var(--navy-300);box-shadow:var(--shadow-xs);}
+.pg-btn:disabled{opacity:.42;cursor:not-allowed;}
+.pg-now{font-size:11.5px;font-weight:600;color:var(--ink-500);min-width:46px;text-align:center;}
 
 /* select / input controls reused across views */
 .av-input,.av-select{
@@ -628,6 +760,7 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-textarea:focus{border-color:var(--navy-400);box-shadow:0 0 0 3px var(--blue-soft);}
 .av-field{margin-bottom:10px;}
 .av-field label{display:block;font-size:10.5px;font-weight:600;color:var(--ink-500);margin-bottom:5px;}
+.av-field label .req{color:#c0392b;font-weight:700;}
 
 /* button variants */
 .btn-solid{display:inline-flex;align-items:center;justify-content:center;gap:7px;font-family:var(--f-body);font-size:11.5px;font-weight:600;color:#fff;background:linear-gradient(135deg,var(--navy-500),var(--navy-700));border:none;border-radius:10px;padding:9px 15px;cursor:pointer;transition:.18s;box-shadow:var(--shadow-sm);}
@@ -730,6 +863,41 @@ body:not(.authed) .stage-wrap{display:none;}
 .av-form .av-field{flex:1 1 190px;margin-bottom:0;}
 .av-form-inline{padding:12px;border:1px dashed var(--line);border-radius:12px;background:var(--bg-2);margin-bottom:12px;}
 .av-form-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;}
+/* Deck slide 37 [إضافة مستخدم]: the primary add action sits above the list. */
+.av-actions{display:flex;justify-content:flex-end;margin-bottom:12px;}
+.av-checklist{display:flex;flex-wrap:wrap;gap:8px 16px;}
+.av-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-700);cursor:pointer;}
+/* ---- company setup wizard (deck slides 50-52) ---- */
+.co-wiz{margin-bottom:2px;}
+/* Deck slides 50-52: a two-column form with the step rail on the right
+   (RTL), not a row of pills. The rail carries "الخطوة N من 3" and its notes. */
+.co-wiz-body{display:flex;gap:16px;align-items:flex-start;}
+.co-wiz-form{flex:1 1 auto;min-width:0;display:block;}
+.co-wiz-rail{flex:0 0 216px;display:flex;flex-direction:column;gap:10px;}
+.co-wiz-railcard{border:1px solid var(--line);border-radius:12px;background:#fff;padding:11px 12px;}
+.co-wiz-railcard h4{margin:0 0 7px;font-size:11.5px;color:var(--navy-900);font-weight:700;}
+.co-wiz-railstep{margin:0 0 3px;font-size:10.5px;color:var(--ink-500);font-weight:600;}
+.co-wiz-railname{margin:0;font-size:11px;color:var(--navy-700);font-weight:600;}
+.co-wiz-railnotes{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;}
+.co-wiz-railnote{border:1px solid var(--line);border-radius:10px;background:var(--bg-2);padding:8px 10px;font-size:10.5px;color:var(--ink-700);}
+.co-wiz-note{font-size:10.5px;color:var(--ink-500);margin:0 0 12px;}
+.co-wiz-pane{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:12px 14px;}
+.co-wiz-pane[hidden]{display:none;}
+.co-wiz-pane .av-field{flex:1 1 calc(50% - 14px);margin-bottom:0;}
+.co-wiz-pane .av-field .hint{display:block;margin-top:4px;font-size:10px;color:var(--ink-400);}
+.co-wiz-inline{display:flex;gap:8px;}
+.co-wiz-inline .av-select{flex:1 1 0;min-width:0;}
+.co-wiz-pane select[multiple]{height:auto;min-height:80px;padding:6px;}
+.co-wiz-actions{flex:1 1 100%;display:flex;justify-content:flex-end;gap:9px;margin-top:4px;}
+.co-wiz-review{flex:1 1 100%;border:1px solid var(--line);border-radius:12px;background:var(--bg-2);padding:10px 12px;}
+.co-wiz-rrow{display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:4px 0;border-bottom:1px dashed var(--line);}
+.co-wiz-rrow:last-child{border-bottom:0;}
+.co-wiz-rrow span{color:var(--ink-500);}
+.co-wiz-rrow b{color:var(--navy-900);font-weight:600;}
+.co-wiz-confirm{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-700);}
+.co-wiz-footer{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px;font-size:10.5px;color:var(--ink-500);}
+
+
 /* ---- Website branding (logo) panel ---- */
 .branding-box{display:flex;flex-direction:column;gap:11px;}
 .brand-preview{display:block;max-height:64px;max-width:220px;width:auto;height:auto;object-fit:contain;
@@ -839,12 +1007,12 @@ body:not(.authed) .stage-wrap{display:none;}
   .board{
     grid-template-columns:1fr;
     grid-template-rows:none;
-    grid-template-areas:"head" "kpis" "ai" "reports" "support" "aii" "rel";
+    grid-template-areas:"head" "kpis" "role" "attention" "ai" "reports" "support" "aii" "rel";
     overflow-y:auto;
   }
   .kpis{grid-template-columns:repeat(2,1fr);}
   .rel{grid-template-rows:auto auto;}
-  .rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr 1fr;}
+  .rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2,.av-grid.cols-4{grid-template-columns:1fr 1fr;}
   .ai,.aii,.card{min-height:auto;}
   .head-row{flex-direction:column;align-items:flex-start;gap:12px;}
   .head-right{width:100%;justify-content:space-between;}
@@ -856,7 +1024,7 @@ body:not(.authed) .stage-wrap{display:none;}
   .app-view{position:static;inset:auto;min-height:calc(100vh - 120px);padding:14px 14px 22px;}
 }
 @media (max-width:560px){
-  .kpis,.rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2{grid-template-columns:1fr;}
+  .kpis,.rep-grid,.subs,.av-grid.cols-3,.av-grid.cols-2,.av-grid.cols-4{grid-template-columns:1fr;}
   .modal-backdrop{padding:12px;}
   .av-head{flex-direction:column;align-items:flex-start;}
   .av-toolbar{width:100%;}
@@ -944,3 +1112,396 @@ body:not(.authed) .stage-wrap{display:none;}
 .secret-banner .grow{flex:1;min-width:0;}
 .secret-banner .t{font-size:11.5px;font-weight:600;color:var(--gold-700);margin-bottom:5px;}
 .secret-banner code{font-size:11.5px;word-break:break-all;color:var(--navy-900);}
+
+
+/* ======================================================================
+   EXECUTIVE UX REDESIGN — Phase 2
+   Dark navy sidebar on the right (RTL), simplified navigation, executive
+   priority cards. Everything here is additive; the rules above are kept
+   intact so the existing responsive behaviour and contract tests hold.
+   ====================================================================== */
+
+/* ---------- shell: sidebar + content row ---------- */
+.stage-body.with-sidebar{
+  flex-direction:row;
+  align-items:stretch;
+  gap:0;
+}
+.stage-body.with-sidebar > .app-view{
+  position:relative;
+  inset:auto;
+  flex:1 1 auto;
+  min-width:0;
+  z-index:1;
+}
+.stage-body.with-sidebar > .board{flex:1 1 auto;min-width:0;}
+
+/* ---------- the sidebar ---------- */
+.sidebar{
+  flex:0 0 250px;
+  order:-1;                      /* RTL: main axis starts at the right, so a
+                                    lower order puts the rail on the right;
+                                    LTR mirrors it to the left, as expected. */
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  background:linear-gradient(178deg,var(--navy-800),var(--navy-900) 72%);
+  color:#DCE4F2;
+  overflow-y:auto;
+  overflow-x:hidden;
+  position:relative;
+  z-index:6;
+}
+.sidebar::-webkit-scrollbar{width:6px;}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:3px;}
+.sb-brand{
+  display:flex;align-items:center;gap:10px;
+  padding:15px 16px 13px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  flex:0 0 auto;
+}
+.sb-mark{
+  width:34px;height:34px;border-radius:10px;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(145deg,var(--navy-500),var(--navy-700));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14);
+}
+.sb-brand-text{min-width:0;}
+.sb-name{display:block;font-family:var(--f-display);font-weight:700;font-size:13.5px;color:#fff;letter-spacing:-.01em;}
+.sb-sub{display:block;font-size:9.5px;font-weight:600;color:var(--gold-400);letter-spacing:.1em;text-transform:uppercase;margin-top:1px;}
+html.lang-ar .sb-sub{letter-spacing:.02em;}
+
+.sb-section{padding:11px 12px 3px;flex:0 0 auto;}
+.sb-label{
+  font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:#7E8FAD;padding:0 6px 7px;
+}
+html.lang-ar .sb-label{letter-spacing:.02em;}
+.sb-nav{display:flex;flex-direction:column;gap:2px;}
+
+/* Sidebar items reuse the .nav-item class so the existing click/keyboard
+   binding, permission gating and aria-current logic keep working unchanged.
+   These rules re-skin them for the dark rail. */
+.sidebar .nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;border-radius:10px;
+  color:#C3CEE2;font-size:12.5px;font-weight:500;
+  border:1px solid transparent;width:100%;
+}
+.sidebar .nav-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+.sidebar .nav-item.active{
+  background:linear-gradient(90deg,rgba(201,165,78,.20),rgba(201,165,78,.06));
+  color:#fff;font-weight:600;
+  border-color:rgba(201,165,78,.34);
+  box-shadow:none;
+}
+.sidebar .nav-item.active::after{
+  content:"";position:absolute;inset-inline-start:0;top:22%;bottom:22%;
+  width:3px;border-radius:3px;background:var(--gold-500);inset-inline-end:auto;height:auto;
+}
+.sb-ico{width:17px;height:17px;flex:0 0 auto;opacity:.85;}
+.sidebar .nav-item.active .sb-ico{opacity:1;color:var(--gold-400);}
+.sb-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* Group toggle ("More") */
+.sb-group-toggle{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:9px 11px;border-radius:10px;cursor:pointer;
+  color:#C3CEE2;font-size:12.5px;font-weight:500;
+  background:transparent;border:1px solid transparent;
+  font-family:var(--f-body);text-align:start;
+}
+.sb-group-toggle:hover{background:rgba(255,255,255,.06);color:#fff;}
+.sb-group-toggle .sb-caret{margin-inline-start:auto;transition:transform .22s;opacity:.7;}
+.sb-group.open .sb-caret{transform:rotate(180deg);}
+.sb-group-items{display:none;flex-direction:column;gap:2px;padding:2px 0 2px 8px;}
+.sb-group.open .sb-group-items{display:flex;}
+.sb-group-items .nav-item{padding:7px 11px;font-size:12px;}
+
+.sb-foot{margin-top:auto;padding:12px;flex:0 0 auto;border-top:1px solid rgba(255,255,255,.08);}
+.sb-user{display:flex;align-items:center;gap:10px;padding:8px;border-radius:11px;background:rgba(255,255,255,.05);}
+.sb-avatar{
+  width:32px;height:32px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(145deg,var(--gold-500),var(--gold-700));
+  color:#20160A;font-weight:700;font-size:12.5px;font-family:var(--f-display);
+}
+.sb-user-meta{min-width:0;}
+.sb-user-name{display:block;font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sb-user-role{display:block;font-size:9.5px;color:#8FA0BC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ---------- priority action cards ("ماذا يحتاج اهتمامك اليوم؟") ---------- */
+.attention{
+  grid-area:attention;
+  background:#fff;border:1px solid var(--line);border-radius:15px;
+  box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-height:0;overflow:hidden;
+}
+.attention-head{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 16px;border-bottom:1px solid var(--line-2);
+  background:linear-gradient(90deg,var(--gold-100),#FFFDF9 62%,#fff);
+}
+.attention-head .t-ico{background:linear-gradient(145deg,var(--gold-400),var(--gold-600));color:#2A1E06;}
+.attention-head h2{font-family:var(--f-display);font-size:13.5px;font-weight:700;color:var(--navy-900);margin:0;}
+.attention-head .t-sub{font-size:10.5px;color:var(--gold-700);margin-top:2px;font-weight:600;}
+.attn-count{
+  font-family:var(--f-display);font-weight:700;font-size:12px;color:#fff;
+  background:linear-gradient(145deg,var(--navy-600),var(--navy-900));
+  border-radius:999px;padding:4px 11px;min-width:30px;text-align:center;
+}
+.attention-body{padding:11px 13px;flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:9px;}
+.attn-card{
+  display:flex;align-items:center;gap:12px;
+  padding:11px 13px;border:1px solid var(--line);border-radius:12px;
+  background:#fff;box-shadow:var(--shadow-xs);transition:.2s cubic-bezier(.2,.7,.3,1);
+}
+.attn-card:hover{border-color:var(--gold-400);box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.attn-card .a-ico{
+  width:32px;height:32px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+  background:var(--blue-soft);color:var(--navy-600);
+}
+.attn-card.urgent .a-ico{background:var(--red-soft);color:var(--red);}
+.attn-card.warn .a-ico{background:var(--amber-soft);color:var(--amber);}
+.attn-card.ok .a-ico{background:var(--green-soft);color:var(--green);}
+.attn-main{flex:1;min-width:0;}
+.attn-title{font-size:12.5px;font-weight:600;color:var(--navy-900);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.attn-sub{font-size:10.5px;color:var(--ink-400);margin-top:2px;}
+.attn-badge{
+  font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:6px;flex:0 0 auto;
+  background:var(--amber-soft);color:var(--amber);
+}
+.attn-badge.urgent{background:var(--red-soft);color:var(--red);}
+.attn-badge.ok{background:var(--green-soft);color:var(--green);}
+.attn-act{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;
+  padding:7px 13px;border-radius:9px;border:1px solid var(--navy-500);
+  background:#fff;color:var(--navy-700);font-family:var(--f-body);
+  font-size:11.5px;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap;
+}
+.attn-act:hover{background:var(--navy-700);color:#fff;border-color:var(--navy-700);}
+.attn-act.gold{background:linear-gradient(140deg,var(--gold-500),var(--gold-700));color:#241A05;border-color:transparent;}
+.attn-act.gold:hover{filter:brightness(1.06);color:#241A05;}
+
+/* ---------- responsive: sidebar collapses on narrow screens ---------- */
+/* The ☰ toggle is a phone-only affordance (deck slides 39/89/90). */
+.nav-toggle{display:none;}
+.nav-scrim{display:none;}
+
+@media (max-width:1180px){
+  .stage-body.with-sidebar{flex-direction:column;}
+  .nav-toggle{
+    display:grid;place-items:center;flex:0 0 auto;
+    width:36px;height:36px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--line);background:#fff;color:var(--navy-700);
+    padding:0;transition:.18s;
+  }
+  .nav-toggle:hover{background:var(--bg-2);border-color:#D3DCEA;}
+  /* The rail becomes a slide-in drawer instead of a wrapping bar, so the
+     header keeps only ☰, brand and the action cluster on a phone. */
+  .sidebar{
+    order:0;position:fixed;inset-block:0;inset-inline-start:0;z-index:60;
+    flex:0 0 auto;width:min(82vw,300px);height:100dvh;
+    flex-direction:column;flex-wrap:nowrap;align-items:stretch;
+    padding:14px 10px;gap:6px;overflow-y:auto;overflow-x:hidden;
+    transform:translateX(-102%);
+    transition:transform .24s ease;
+    box-shadow:0 0 0 1px rgba(10,23,48,.08),0 18px 50px rgba(10,23,48,.28);
+  }
+  html.lang-ar .sidebar{transform:translateX(102%);}
+  body.nav-open .sidebar{transform:translateX(0);}
+  .nav-scrim{
+    display:block;position:fixed;inset:0;z-index:55;
+    background:rgba(10,23,48,.42);opacity:0;pointer-events:none;
+    transition:opacity .24s ease;
+  }
+  .nav-scrim[hidden]{display:none;}
+  body.nav-open .nav-scrim{opacity:1;pointer-events:auto;}
+  .sb-brand{padding:6px 10px 12px;border-bottom:1px solid rgba(255,255,255,.08);}
+  .sb-section{padding:6px 4px 3px;display:block;}
+  .sb-label{display:block;}
+  .sb-nav{flex-direction:column;flex-wrap:nowrap;}
+  .sb-group{display:block;}
+  .sb-group-toggle{width:100%;}
+  .sb-group-items{display:flex;flex-direction:column;flex-wrap:nowrap;padding:0;}
+  .sidebar .nav-item{width:100%;padding:9px 11px;}
+  .sb-ico{display:block;}
+}
+
+/* ---------- header breadcrumb (replaces the old 20-item top nav) ---------- */
+.crumb{
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;
+  font-family:var(--f-display);font-size:12.5px;font-weight:600;color:var(--ink-500);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.crumb::before{
+  content:"";width:3px;height:15px;border-radius:2px;background:var(--gold-500);
+  margin-inline-end:9px;flex:0 0 auto;
+}
+@media (max-width:1180px){
+  .crumb{order:5;flex:1 1 100%;padding:2px 4px 6px;}
+}
+@media (max-width:560px){
+  .crumb{display:none;}
+}
+
+/* ============================================================
+   PROTOTYPE v15 PARITY — light shell
+   ============================================================
+   The approved prototype (`platform_prototype_v15.html`) and the design
+   handoff render a LIGHT application shell: a `#f4f7f9` page, a white
+   top bar and a white right-hand rail, with the teal brand on soft-teal
+   active states. The platform previously used a dark navy frame, dark
+   rail and dark login backdrop. The colour tokens below are identical
+   between the two; only these surface colours differ, so this block
+   re-skins the chrome to the approved light shell while leaving every
+   view, token and behaviour untouched.
+   ============================================================ */
+
+/* Outer frame: light page instead of the dark radial canvas. */
+body{background:var(--bg);}
+.stage-wrap{
+  background:
+    radial-gradient(1100px 520px at 88% -12%, rgba(23,107,120,.06), transparent 62%),
+    radial-gradient(820px 460px at 2% 104%, rgba(188,136,64,.06), transparent 60%),
+    var(--bg);
+}
+.stage{
+  border-radius:16px;
+  box-shadow:0 18px 50px -26px rgba(11,47,54,.28), 0 0 0 1px var(--line);
+}
+
+/* Top bar: solid white with a hairline, matching the prototype header. */
+.header{background:var(--paper);backdrop-filter:none;}
+.header::after{background:var(--line);height:1px;}
+
+/* Right rail: white surface, muted labels, teal active state. */
+.sidebar{
+  background:var(--paper);
+  color:var(--ink-500);
+  border-inline-end:1px solid var(--line);
+}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(21,43,58,.16);}
+.sb-brand{border-bottom-color:var(--line);}
+.sb-mark{background:linear-gradient(145deg,var(--navy-500),var(--navy-700));box-shadow:var(--shadow-sm);}
+.sb-name{color:var(--ink-900);}
+.sb-sub{color:var(--gold-600);}
+.sb-label{color:var(--ink-400);}
+.sidebar .nav-item{color:var(--ink-500);}
+.sidebar .nav-item:hover{background:var(--bg-2);color:var(--navy-700);}
+.sidebar .nav-item.active{
+  background:var(--bg-2);color:var(--navy-700);font-weight:600;
+  border-color:transparent;box-shadow:none;
+}
+.sidebar .nav-item.active::after{
+  background:var(--gold-500);width:3px;top:22%;bottom:22%;
+}
+.sidebar .nav-item.active .sb-ico{color:var(--navy-700);opacity:1;}
+.sb-group-toggle{color:var(--ink-500);}
+.sb-group-toggle:hover{background:var(--bg-2);color:var(--navy-700);}
+.sb-foot{border-top-color:var(--line);}
+.sb-user{background:var(--bg);}
+.sb-user-name{color:var(--ink-900);}
+.sb-user-role{color:var(--ink-400);}
+.sb-avatar{background:linear-gradient(145deg,var(--gold-500),var(--gold-700));color:#20160A;}
+
+/* Login: the prototype is a light centred card on the same soft page,
+   not a dark gradient. */
+.login-screen{
+  background:
+    radial-gradient(1100px 560px at 22% -12%, rgba(23,107,120,.08), transparent 60%),
+    radial-gradient(880px 480px at 100% 110%, rgba(188,136,64,.08), transparent 58%),
+    var(--bg);
+}
+.login-card::before{background:linear-gradient(90deg,var(--navy-500),var(--navy-400),var(--gold-500));}
+.login-mark{background:linear-gradient(145deg,var(--navy-500),var(--navy-700));}
+
+/* ============================================================
+   PROTOTYPE v15 STRUCTURAL PARITY — geometry, type and surfaces
+   ============================================================
+   The approved reference (`01-platform/prototype/platform_prototype_v15.html`
+   in the developer package) is a full-bleed light page: `#f4f7f9` canvas,
+   `"Segoe UI",Tahoma,Arial` at 15px/1.6, a white top bar (min-height 68px),
+   a 235px white rail on the LEFT (`layout{direction:ltr;grid-template-
+   columns:235px 1fr}`) and a `max-width:1440px` centred content column with
+   14px-radius cards. The platform shipped a dark 1920×1080 "stage" frame with
+   a right-hand rail and the IBM Plex Arabic stack. This block aligns the
+   chrome to the reference exactly; every view, token and behaviour is kept.
+   ============================================================ */
+
+/* Type stack: the reference uses the system UI stack, not a webfont. */
+:root{
+  --f-display:"Segoe UI",Tahoma,Arial,sans-serif;
+  --f-body:"Segoe UI",Tahoma,Arial,sans-serif;
+}
+body{font-size:15px;line-height:1.6;}
+
+/* Full-bleed light page: drop the framed 1920×1080 stage. */
+.stage-wrap{padding:0;background:var(--bg);display:block;min-height:0;}
+.stage{
+  max-width:none;width:100%;height:auto;min-height:100vh;
+  border-radius:0;box-shadow:none;background:var(--bg);
+}
+.stage::before{display:none;}
+
+/* Top bar: solid white, min-height 68px, hairline under it. */
+.header{background:var(--paper);backdrop-filter:none;border-bottom:1px solid var(--line);}
+.header::after{display:none;}
+.header-inner{min-height:68px;padding:12px 22px;gap:12px;}
+
+/* Rail: 235px, white, on the inline-start edge — the right in Arabic (RTL),
+   the left in English (LTR). The container inherits its direction from
+   <html dir>, and the rail is the first flex child (order:-1) so it always
+   sits on the start edge, matching the reference `.layout` where the sidebar
+   is the first child. */
+.stage-body.with-sidebar{flex-direction:row;}
+html[dir="rtl"] .stage-body.with-sidebar{direction:rtl;}
+html[dir="ltr"] .stage-body.with-sidebar{direction:ltr;}
+.sidebar{
+  flex:0 0 235px;order:-1;
+  background:var(--paper);color:var(--ink-500);
+  border-inline-end:0;border-inline-start:1px solid var(--line);
+}
+.board{direction:rtl;}
+html.lang-en .board{direction:ltr;}
+.app-view{direction:rtl;}
+html.lang-en .app-view{direction:ltr;}
+.sb-brand{padding:18px 12px 14px;border-bottom:1px solid var(--line);}
+.sb-mark{background:var(--navy-500);border-radius:12px;box-shadow:none;width:36px;height:36px;}
+.sb-name{font-family:var(--f-body);font-weight:800;font-size:17px;color:var(--ink-900);}
+.sb-sub{color:var(--gold-600);}
+.sb-section{padding:12px 12px 3px;}
+.sb-label{font-size:11px;color:var(--ink-400);font-weight:600;letter-spacing:.02em;text-transform:none;}
+.sidebar .nav-item{
+  padding:10px 12px;margin:2px 0;border-radius:10px;
+  color:var(--ink-500);font-size:15px;font-weight:400;border:0;
+}
+.sidebar .nav-item:hover,.sidebar .nav-item.active{
+  background:var(--bg-2);color:var(--navy-700);font-weight:700;
+}
+.sidebar .nav-item.active::after{display:none;}
+.sidebar .nav-item.active .sb-ico{color:var(--navy-700);}
+.sb-group-toggle{color:var(--ink-500);font-size:15px;font-weight:400;}
+.sb-group-toggle:hover{background:var(--bg-2);color:var(--navy-700);}
+
+/* Content column: max-width 1440, centred, 26px / clamp(16px,3vw,38px). */
+.board{
+  max-width:1440px;width:100%;margin:0 auto;
+  padding:26px clamp(16px,3vw,38px);
+}
+.app-view{
+  max-width:1440px;width:100%;margin:0 auto;
+  padding:26px clamp(16px,3vw,38px) 34px;
+}
+
+/* Cards: 14px radius with the reference shadow. */
+.card,.av-panel{border-radius:14px;box-shadow:0 8px 26px #1a40500c;}
+
+/* Page heading: 26px. */
+h1.page-title{font-family:var(--f-body);font-size:26px;font-weight:600;color:var(--ink-900);}
+.av-head h1{font-size:26px;color:var(--ink-900);}
+
+/* Brand line in the rail: the reference wordmark, following the language. */
+.sb-name .en{display:none;}
+.sb-sub .en{display:none;}
+html.lang-en .sb-name .en{display:inline;}
+html.lang-en .sb-sub .en{display:inline;}
+html.lang-en .sb-name .ar,
+html.lang-en .sb-sub .ar{display:none;}

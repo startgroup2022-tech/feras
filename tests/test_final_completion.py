@@ -388,9 +388,12 @@ def test_audit_view_supports_action_and_entity_filters():
 
 
 def test_company_create_form_is_wired_and_gated():
-    assert 'id="companyCreateForm"' in APP_JS
+    assert 'id="companyWizardForm"' in APP_JS
     assert 'post("/api/v1/companies"' in APP_JS
     assert 'has("company.manage")' in APP_JS
+    # Deck slides 50-52: a three-step wizard, not a flat form.
+    assert "معالج إضافة شركة" in APP_JS
+    assert "تفعيل الشركة" in APP_JS
 
 
 # --------------------------------------------------------------------------

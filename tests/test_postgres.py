@@ -10,6 +10,7 @@ touching a live server.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,70 @@ def test_postgresql_url_selects_psycopg_dialect():
         engine.dispose()
 
 
+# --------------------------------------------------------------------------
+# live PostgreSQL migration parity (opt-in)
+# --------------------------------------------------------------------------
+def _live_pg_url() -> str | None:
+    """A real PostgreSQL URL to migrate against, or None when unavailable.
+
+    Set ``SAFIR_TEST_POSTGRES_URL`` to run the migration chain against a live
+    server. The suite stays green on a machine without one; when the variable is
+    set, the check is real, because ``alembic check`` is the only thing that
+    catches a constraint that exists in the models but was silently dropped by a
+    backend-specific migration (exactly what happened to the knowledge
+    current-version foreign key).
+    """
+    return os.environ.get("SAFIR_TEST_POSTGRES_URL") or None
+
+
+@pytest.mark.skipif(
+    _live_pg_url() is None,
+    reason="SAFIR_TEST_POSTGRES_URL not set; live PostgreSQL parity not requested",
+)
+def test_migrated_postgresql_schema_matches_models():
+    """The migrated PostgreSQL schema must equal the model metadata, exactly.
+
+    This is the regression guard for the ``use_alter`` foreign key the AI
+    knowledge migration dropped on PostgreSQL while SQLite kept it inline.
+
+    Runs in a subprocess: ``settings`` is frozen at import with the suite's
+    SQLite URL, so the only way to migrate a real PostgreSQL database is to give
+    the child process its own ``DATABASE_URL``.
+    """
+    import subprocess
+    import sys
+
+    url = _live_pg_url()
+    script = (
+        "import os, sys\n"
+        "from alembic import command\n"
+        "from alembic.config import Config\n"
+        "from alembic.autogenerate import compare_metadata\n"
+        "from alembic.runtime.migration import MigrationContext\n"
+        "from sqlalchemy import create_engine\n"
+        "from backend.db.models import Base\n"
+        "cfg = Config('alembic.ini')\n"
+        "command.upgrade(cfg, 'head')\n"
+        "eng = create_engine(os.environ['DATABASE_URL'])\n"
+        "with eng.connect() as conn:\n"
+        "    diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)\n"
+        "eng.dispose()\n"
+        "print(diffs)\n"
+        "sys.exit(1 if diffs else 0)\n"
+    )
+    env = dict(os.environ, DATABASE_URL=url, APP_ENV="development")
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=str(PROJECT_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (
+        "PostgreSQL schema drift:\n" + proc.stdout + proc.stderr
+    )
+
+
 def test_sqlite_url_still_selects_sqlite_dialect():
     engine = create_engine("sqlite:///./safir_dev.db")
     try:
@@ -57,12 +122,16 @@ def test_sqlite_url_still_selects_sqlite_dialect():
 
 
 def test_sqlite_connect_args_only_apply_to_sqlite():
-    """Mirror of the predicate in ``backend/db/session.py``."""
+    """Mirror of the predicate in ``backend/db/session.py``.
+
+    The rule is "``check_same_thread`` is passed only for SQLite", so the test
+    asserts that invariant against whatever backend the session is actually
+    running on, rather than assuming the SQLite default.
+    """
     from backend.db.session import _is_sqlite
 
-    assert _is_sqlite is True  # the test session runs on SQLite
     connect_args = {"check_same_thread": False} if _is_sqlite else {}
-    assert connect_args == {"check_same_thread": False}
+    assert connect_args == ({"check_same_thread": False} if _is_sqlite else {})
 
 
 # --------------------------------------------------------------------------
@@ -134,8 +203,9 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     heads = set(revisions) - {down for down in revisions.values() if down}
     assert len(heads) == 1
     head = heads.pop()
-    # A single linear chain: the Execution 31 D03 versioned management-report
-    # workflow builds on the Execution 30 owner-decision governance tables
+    # A single linear chain: the employee country/nationality field (S11
+    # localization) builds on the Execution 31 D03 versioned management-report
+    # workflow, which builds on the Execution 30 owner-decision governance tables
     # (D01/D04/D09/D11), which build on the lead-to-campaign link (S13/S14),
     # which builds on the owner secret note (S23), which builds on the
     # management reports & clarifications (S21/S02/S09), which build on the
@@ -149,8 +219,26 @@ def test_alembic_has_a_single_head_at_the_approved_revision():
     # the website CMS, which builds on the bilingual role description, which
     # builds on branding, which builds on phase 10, which builds on phase 6-9,
     # which builds on phase 3, which builds on phase 2, which builds on the
-    # initial schema -- no branches.
-    assert head == "3473d285d919"
+    # initial schema -- no branches. The Phase 3 AI knowledge base builds on the
+    # S11 localization field; the deck v3 employee restricted fields/localization
+    # setup, company localization target, and the investment valuation summary
+    # build on top of it. The company setup wizard (deck slides 50-52) adds the
+    # wizard fields on top of the investment valuation summary, and the deck
+    # slides 25-26/46 opportunity study + plan requests build on the wizard.
+    # The knowledge current-version FK repair builds on top of that, the
+    # server-side session-revocation column (users.token_version) builds on that,
+    # and the monthly-report locked terminal state is the head.
+    assert head == "d04621f4f9bd"
+    assert revisions["d04621f4f9bd"] == "a9c1e2f3b4d6"
+    assert revisions["a9c1e2f3b4d6"] == "f7a1c2e3d4b5"
+    assert revisions["f7a1c2e3d4b5"] == "e1b2c3d4f5a6"
+    assert revisions["e1b2c3d4f5a6"] == "dda8c6a19971"
+    assert revisions["dda8c6a19971"] == "f49eb1554901"
+    assert revisions["f49eb1554901"] == "9950bdb57824"
+    assert revisions["9950bdb57824"] == "b27b32d9905b"
+    assert revisions["b27b32d9905b"] == "2b7c225bbb32"
+    assert revisions["2b7c225bbb32"] == "d806fc545297"
+    assert revisions["d806fc545297"] == "3473d285d919"
     assert revisions["3473d285d919"] == "62040b21dfa2"
     assert revisions["62040b21dfa2"] == "d6e7f8a9b0c1"
     assert revisions["d6e7f8a9b0c1"] == "c5d6e7f8a9b0"

@@ -1,5 +1,5 @@
 /*
- * Safir Holding 2027 — live data bridge.
+ * Start Upsphere Holding 2027 — live data bridge.
  *
  * This file binds the executive dashboard to the real FastAPI backend. It is
  * no longer a standalone mockup: every figure on screen is loaded from the API
@@ -45,6 +45,10 @@
     anTab: "briefing",
     integrationSecret: null,
     empTab: "employees",
+    hrTab: "movements",
+    advTab: "sessions",
+    siteTab: "listings",
+    aiRevTab: "proposals",
     opsTab: "tasks",
     acctTab: "balances",
     acctLedgerCompany: null,
@@ -52,7 +56,11 @@
     acctLedgerYear: null,
     acctLedgerMonth: null,
     confTab: "complaints",
+    scopeCompany: null,
     loaded: {},
+    filters: {},
+    page: {},
+    pageSize: 25,
   };
 
   var period = "";
@@ -97,6 +105,19 @@
     return api.get(path);
   }
 
+  // An optional panel fetch. A 401/403/404 means the caller simply has no
+  // access to this slice, so the section renders empty. Anything else (5xx,
+  // network) is a real fault and must not masquerade as "no data".
+  function softGet(path) {
+    return api.get(path).catch(function (err) {
+      var s = err && err.status;
+      if (s !== 401 && s !== 403 && s !== 404) {
+        toast(errText(err), "err");
+      }
+      return [];
+    });
+  }
+
   function post(path, payload) {
     return api.post(path, payload);
   }
@@ -135,6 +156,7 @@
       en: "https://hooks.example.com/safir",
     },
     "ph.formCode": { ar: "مثال: capex", en: "e.g. capex" },
+    "ph.knowledgeSlug": { ar: "مثال: leave-policy-2027", en: "e.g. leave-policy-2027" },
     "ph.fieldKey": { ar: "مثال: amount", en: "e.g. amount" },
     "ph.scopeSector": { ar: "مثال: Technology", en: "e.g. Technology" },
     "ph.requirementKey": { ar: "مثال: quote", en: "e.g. quote" },
@@ -213,12 +235,13 @@
       draft: { ar: "مسودة", en: "Draft" },
       returned: { ar: "أُعيد للتصحيح", en: "Returned for correction" },
       cancelled: { ar: "ملغى", en: "Cancelled" },
+      locked: { ar: "مقفل", en: "Locked" },
     };
     return map[status] || { ar: "بانتظار التقرير", en: "Awaiting report" };
   }
 
   function statusClass(status) {
-    if (status === "reviewed" || status === "submitted") return "ok";
+    if (status === "reviewed" || status === "submitted" || status === "locked") return "ok";
     if (status === "under_review" || status === "returned") return "late";
     return "miss";
   }
@@ -655,14 +678,33 @@
     });
   }
 
-  // S01 "الأولويات": record links the caller may act on, restricted per access
-  // by the backend, so every entry is openable.
+  // S01 "ماذا يحتاج اهتمامك اليوم؟": record links the caller may act on,
+  // restricted per access by the backend, so every entry is openable. Each
+  // row carries a direct action so the owner can act without navigating away
+  // and hunting for the record.
+  var PRIORITY_ACTION = {
+    company: { view: "subsidiaries", ar: "مراجعة الشركة", en: "Review company" },
+    support_request: { view: "support", ar: "فتح الطلب", en: "Open request" },
+    owner_decision: { view: "decisions", ar: "اتخاذ قرار", en: "Take decision" },
+    monthly_report: { view: "reports", ar: "مراجعة التقرير", en: "Review report" },
+    task: { view: "operations", ar: "متابعة المهمة", en: "Follow up" },
+  };
+
+  function priorityAction(kind) {
+    return PRIORITY_ACTION[kind] || { view: "dashboard", ar: "عرض", en: "View" };
+  }
+
   function hydratePriorities(data) {
     var host = byId("prioritiesList");
     if (!host) return;
     var rows = data.priorities || [];
+    var count = byId("attnCount");
+    if (count) count.textContent = plainNum(rows.length);
     if (!rows.length) {
-      host.innerHTML = emptyHtml("لا توجد أولويات حالية.", "No current priorities.");
+      host.innerHTML = emptyHtml(
+        "لا توجد بنود تتطلب اهتمامك الآن.",
+        "Nothing needs your attention right now."
+      );
       return;
     }
     host.innerHTML = rows.map(function (p) {
@@ -670,15 +712,25 @@
         ? (p.label_ar || p.label_en || "")
         : (p.label_en || p.label_ar || "");
       var sub = p.overdue
-        ? dual("متأخر", "Overdue")
+        ? dual("متأخر عن الاستحقاق", "Overdue")
         : (p.reason ? escapeHtml(p.reason) : "");
+      var urgent = p.overdue || p.kind === "support_request";
       var icon = p.kind === "company" ? "🏢"
-        : p.kind === "support_request" ? "💬" : "📌";
-      return '<div class="av-row" data-priority-kind="' + escapeHtml(p.kind) +
+        : p.kind === "support_request" ? "💬"
+        : p.kind === "owner_decision" ? "✔" : "📌";
+      var act = priorityAction(p.kind);
+      var badge = p.overdue
+        ? '<span class="attn-badge urgent">' + dual("متأخر", "Overdue") + "</span>"
+        : "";
+      return '<div class="attn-card' + (urgent ? " urgent" : "") +
+        '" data-priority-kind="' + escapeHtml(p.kind) +
         '" data-priority-id="' + p.record_id + '">' +
-        '<div class="grow"><div class="t">' + icon + " " + escapeHtml(label) +
-        '</div>' + (sub ? '<div class="s">' + sub + "</div>" : "") +
-        "</div></div>";
+        '<div class="a-ico">' + icon + "</div>" +
+        '<div class="attn-main"><div class="attn-title">' + escapeHtml(label) +
+        '</div>' + (sub ? '<div class="attn-sub">' + sub + "</div>" : "") + "</div>" +
+        badge +
+        '<button type="button" class="attn-act gold">' + dual(act.ar, act.en) +
+        "</button></div>";
     }).join("");
     host.querySelectorAll("[data-priority-kind]").forEach(function (el) {
       el.addEventListener("click", function () {
@@ -686,10 +738,8 @@
         var id = parseInt(el.getAttribute("data-priority-id"), 10);
         if (kind === "company") {
           openCompany(id);
-        } else if (kind === "owner_decision") {
-          navTo("decisions");
-        } else if (kind === "support_request") {
-          navTo("support");
+        } else {
+          navTo(priorityAction(kind).view);
         }
       });
     });
@@ -963,6 +1013,265 @@
   }
 
   // ---- hydration -------------------------------------------------------
+  var ROLE_TONE = {
+    navy: "",
+    green: "green",
+    red: "red",
+    amber: "amber",
+    gold: "gold",
+  };
+
+  function roleKpiCard(kpi) {
+    var tone = ROLE_TONE[kpi.tone] || "";
+    var unit = kpi.unit
+      ? '<span class="unit">' + escapeHtml(kpi.unit) + "</span>"
+      : "";
+    var foot = "";
+    if (kpi.delta) {
+      var dir =
+        kpi.delta_dir === "up" ? "up" : kpi.delta_dir === "down" ? "down" : "flat";
+      foot =
+        '<div class="kpi-foot"><span class="delta ' +
+        dir +
+        '">' +
+        escapeHtml(kpi.delta) +
+        "</span></div>";
+    }
+    return (
+      '<div class="kpi' +
+      (tone ? " " + tone : "") +
+      ' anim">' +
+      '<div class="kpi-head"><div class="kpi-lbl">' +
+      dual(escapeHtml(kpi.label_ar), escapeHtml(kpi.label_en)) +
+      "</div></div>" +
+      '<div class="kpi-val num">' +
+      escapeHtml(kpi.value) +
+      unit +
+      "</div>" +
+      foot +
+      "</div>"
+    );
+  }
+
+  // Deck slides 7-11: when the API returns a role summary, the caller gets its
+  // own tile strip and the holding strip is replaced. A role with no summary
+  // (or one whose every source is denied) keeps the holding strip.
+  function hydrateRoleSummary(data) {
+    var box = byId("roleKpis");
+    if (!box) return;
+    var holding = byId("holdingKpis");
+    var title = byId("pageTitle");
+    var sub = byId("pageSub");
+    var summary = data && data.role_summary;
+    var section = byId("roleSection");
+    var sectionTitle = byId("roleSectionTitle");
+    if (!summary || !summary.kpis || !summary.kpis.length) {
+      box.hidden = true;
+      box.innerHTML = "";
+      if (section) section.hidden = true;
+      if (holding) holding.hidden = false;
+      // A role with no summary of its own keeps the holding strip; the heading
+      // stays "لوحة القيادة" and the sub line falls back to the prototype's
+      // generic wording rather than the owner's holding summary.
+      if (title) title.innerHTML = dual("لوحة القيادة", "Dashboard");
+      if (sub) {
+        sub.innerHTML = dual(
+          "ملخص الأعمال المرتبطة بدورك",
+          "Summary of the work related to your role",
+        );
+      }
+      return;
+    }
+    box.innerHTML = summary.kpis.map(roleKpiCard).join("");
+    box.hidden = false;
+    if (holding) holding.hidden = true;
+    // Deck slides 7-11 name the follow-up section after the role; the API
+    // supplies the deck's own wording so it is painted, not paraphrased.
+    if (section && sectionTitle && summary.section_ar) {
+      sectionTitle.innerHTML = dual(
+        escapeHtml(summary.section_ar),
+        escapeHtml(summary.section_en || summary.section_ar),
+      );
+      section.hidden = false;
+    } else if (section) {
+      section.hidden = true;
+    }
+    renderRoleShortcuts(summary);
+    // Deck slides 7-11 give each role its own page title and greeting above
+    // the tiles, replacing the holding heading.
+    if (title) {
+      title.innerHTML = dual(escapeHtml(summary.title_ar), escapeHtml(summary.title_en));
+    }
+    if (sub && summary.greeting_ar) {
+      sub.innerHTML = dual(escapeHtml(summary.greeting_ar), escapeHtml(summary.greeting_en));
+    }
+  }
+
+  // Deck slides 7-11: each role block carries a shortcut grid ("اختصارات
+  // الشركة", "أدواتي", "أولويات الأسبوع", ...) and a [عرض الكل] action. Both are
+  // navigation only -- the target still passes canView/navTo, so a shortcut can
+  // never open a section the role lacks.
+  function renderRoleShortcuts(summary) {
+    var host = byId("roleShortcuts");
+    var allBtn = byId("roleViewAll");
+    if (allBtn) {
+      var target = summary && summary.view_all;
+      if (target && canView(target)) {
+        allBtn.innerHTML = dual("عرض الكل", "View all");
+        allBtn.hidden = false;
+        if (!allBtn.dataset.bound) {
+          allBtn.dataset.bound = "1";
+          allBtn.addEventListener("click", function () {
+            navTo(byId("roleViewAll").getAttribute("data-target") || "dashboard");
+          });
+        }
+        allBtn.setAttribute("data-target", target);
+      } else {
+        allBtn.hidden = true;
+      }
+    }
+    if (!host) return;
+    var items = (summary && summary.shortcuts) || [];
+    items = items.filter(function (sc) { return canView(sc.view); });
+    if (!items.length) {
+      host.hidden = true;
+      host.innerHTML = "";
+      return;
+    }
+    host.innerHTML = items.map(function (sc) {
+      return '<button type="button" class="shortcut" data-goto="' + escAttr(sc.view) + '">' +
+        '<div class="sc-t">' + dual(escapeHtml(sc.label_ar), escapeHtml(sc.label_en)) + "</div></button>";
+    }).join("");
+    host.hidden = false;
+    host.querySelectorAll("[data-goto]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        navTo(btn.getAttribute("data-goto"));
+      });
+    });
+  }
+
+  // Deck slide 46: after the period's management report is approved the company
+  // manager gets a short smart brief -- one fact about the company and one piece
+  // of advice -- plus a plan offer. The brief is built from the *live* company
+  // figures (a deterministic "smart summary", not a model call), so it can never
+  // cite a number the manager cannot already see. The AI role ends here: [نعم،
+  // اطلب خطة] only opens a plan request for Business Development to answer by
+  // hand ("مطور الأعمال يراجع الطلب ويعدّ الخطة بشريًا").
+  function renderSmartBrief() {
+    var section = byId("smartBriefSection");
+    if (!section) return;
+    // Only the subsidiary manager sees this brief; the owner/BD read the
+    // approved report itself.
+    var summary = STATE.dashboard && STATE.dashboard.role_summary;
+    var roleCode = (summary && summary.role_code) || (USER && USER.role_code);
+    var companyId = primaryCompanyId();
+    if (roleCode !== "company_manager" || companyId === null) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    var intro = byId("sbIntro");
+    if (intro) {
+      intro.innerHTML = dual(
+        "بعد اعتماد التقرير: تنبيه موجز عن وضع الشركة ونصيحة واحدة للشهر القادم، مع خيار طلب خطة.",
+        "After the report is approved: a brief note on the company and one piece of advice for next month, with an option to request a plan.");
+    }
+    var status = byId("sbStatus");
+    var fact = byId("sbFact");
+    var advice = byId("sbAdvice");
+    var question = byId("sbQuestion");
+    var planBtn = byId("sbPlan");
+    var declineBtn = byId("sbDecline");
+
+    var year = STATE.period ? STATE.period.year : new Date().getFullYear();
+    var month = STATE.period ? STATE.period.month : new Date().getMonth() + 1;
+
+    // Find the live report for this company/period.
+    var reports = (STATE.reports || []).filter(function (r) {
+      return r.company_id === companyId && r.period_year === year && r.period_month === month;
+    });
+    var report = reports[0];
+    var approved = report && report.approval_status === "approved";
+
+    if (question) question.innerHTML = dual("هل ترغب بطلب خطة لعمل ذلك؟", "Would you like to request a plan to do that?");
+    var setPlanButtons = function (show) {
+      if (planBtn) { planBtn.hidden = !show; planBtn.innerHTML = dual("نعم، اطلب خطة", "Yes, request a plan"); }
+      if (declineBtn) { declineBtn.hidden = !show; declineBtn.innerHTML = dual("لا، شكرًا", "No, thank you"); }
+    };
+
+    if (!report) {
+      if (status) status.innerHTML = dual("لا يوجد تقرير لهذه الفترة بعد.", "No report for this period yet.");
+      if (fact) fact.textContent = "—";
+      if (advice) advice.textContent = "—";
+      setPlanButtons(false);
+      return;
+    }
+    if (!approved) {
+      if (status) status.innerHTML = statusBadgeFromMap(report.status, REPORT_STATUS_LABEL) +
+        " " + dual("التقرير غير معتمد بعد؛ يظهر الملخص بعد الاعتماد.", "The report is not approved yet; the brief appears after approval.");
+      if (fact) fact.textContent = "—";
+      if (advice) advice.textContent = "—";
+      setPlanButtons(false);
+      return;
+    }
+
+    if (status) status.innerHTML = statusBadgeFromMap("approved", { approved: ["التقرير معتمد", "Report approved", "ok"] });
+    // ---- the one fact: collection fell/rose versus the approved three months
+    var perf = (STATE.dashboard && STATE.dashboard.companies_performance) || [];
+    var mine = perf.filter(function (p) { return p.id === companyId; })[0];
+    var factAr = "بيانات التقرير المعتمد متاحة للمراجعة.";
+    var factEn = "The approved report figures are available for review.";
+    if (mine && typeof mine.revenue_pct === "number") {
+      var pct = Math.abs(Math.round(mine.revenue_pct));
+      if (mine.revenue_pct < 0) {
+        factAr = "التحصيل انخفض " + toArabicDigits(String(pct)) + "٪ عن الفترة السابقة.";
+        factEn = "Collection fell " + pct + "% versus the previous period.";
+      } else if (mine.revenue_pct > 0) {
+        factAr = "الإيراد ارتفع " + toArabicDigits(String(pct)) + "٪ عن الفترة السابقة.";
+        factEn = "Revenue rose " + pct + "% versus the previous period.";
+      }
+    } else if (report.major_problems) {
+      factAr = "أبرز التحديات: " + report.major_problems;
+      factEn = "Top challenge: " + report.major_problems;
+    }
+    if (fact) fact.innerHTML = dual(escapeHtml(factAr), escapeHtml(factEn));
+    // ---- the one piece of advice
+    var adviceAr = "راجعوا المستحقات المتأخرة وحددوا موعد متابعة لكل منها.";
+    var adviceEn = "Review the overdue receivables and set a follow-up date for each.";
+    if (report.outstanding_receivables && Number(report.outstanding_receivables) > 0) {
+      adviceAr = "راجعوا أكبر ثلاثة مستحقات متأخرة وحددوا موعد متابعة لكل منها.";
+      adviceEn = "Review the three largest overdue receivables and set a follow-up date for each.";
+    } else if (report.support_required) {
+      adviceAr = "تابعوا الدعم المطلوب: " + report.support_required;
+      adviceEn = "Follow up the requested support: " + report.support_required;
+    }
+    if (advice) advice.innerHTML = dual(escapeHtml(adviceAr), escapeHtml(adviceEn));
+    setPlanButtons(true);
+
+    if (planBtn && !planBtn.dataset.bound) {
+      planBtn.dataset.bound = "1";
+      planBtn.addEventListener("click", function () {
+        requestSmartPlan(companyId, year, month, planBtn);
+      });
+    }
+    if (declineBtn && !declineBtn.dataset.bound) {
+      declineBtn.dataset.bound = "1";
+      declineBtn.addEventListener("click", function () {
+        byId("smartBriefSection").hidden = true;
+      });
+    }
+  }
+
+  function requestSmartPlan(companyId, year, month, btn) {
+    busy(btn, true);
+    post("/api/v1/operations/plan-requests", {
+      company_id: companyId, period_year: year, period_month: month,
+    }).then(function () {
+      toast(dual("أُرسل طلب الخطة لمطور الأعمال.", "Plan request sent to Business Development."), "ok");
+      if (byId("smartBriefSection")) byId("smartBriefSection").hidden = true;
+    }).catch(function (err) { domainError(err); busy(btn, false); });
+  }
+
   function hydrateKpis(data) {
     var k = data.kpis || {};
     setKpi("companies_count", k.companies_count);
@@ -1098,15 +1407,31 @@
     );
   }
 
-  function errorHtml(message) {
+  function errorHtml(message, opts) {
     var safe = escapeHtml(message || "تعذّر تحميل البيانات.");
+    var retry = opts && opts.retry
+      ? '<button type="button" class="retry-btn" data-retry>' +
+        '<span class="ar">إعادة المحاولة</span><span class="en">Retry</span></button>'
+      : "";
     return (
       '<div class="data-error">' +
       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' +
       '<span class="ar">' + safe + '</span>' +
-      '<span class="en">' + safe + "</span></div>"
+      '<span class="en">' + safe + "</span>" +
+      retry + "</div>"
     );
   }
+
+  // The deck's shared error state (slide 38: "تعذر الحفظ — تحقق من الاتصال
+  // وحاول مجددًا [إعادة المحاولة]") offers one retry control. It re-runs the
+  // active view's fetch; it never re-sends a write, so a failed save cannot be
+  // silently duplicated.
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-retry]");
+    if (!btn) return;
+    btn.disabled = true;
+    refreshActiveView();
+  });
 
   function emptyHtml(ar, en) {
     return (
@@ -1147,6 +1472,14 @@
     return isNaN(n) ? String(value) : NUM.format(n);
   }
 
+  // A calendar year, a month or a week is an identifier, not a quantity: it is
+  // never thousands-separated (NUM.format would render 2027 as "2,027").
+  function periodPart(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    var n = Number(value);
+    return isNaN(n) ? String(value) : String(n);
+  }
+
   function fmtDate(iso) {
     var d = dateLabel(iso);
     return dual(d.ar, d.en);
@@ -1163,6 +1496,20 @@
       base.ar + " · " + toArabicDigits(hh + ":" + mm),
       base.en + " · " + hh + ":" + mm,
     );
+  }
+
+  // Plain-text date-time in the active language, for contexts that will be
+  // HTML-escaped (fmtDateTime returns dual() markup, which would leak tags).
+  function stampText(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+    var base = dateLabel(iso);
+    var hh = String(d.getHours()).padStart(2, "0");
+    var mm = String(d.getMinutes()).padStart(2, "0");
+    return STATE.lang === "ar"
+      ? base.ar + " · " + toArabicDigits(hh + ":" + mm)
+      : base.en + " · " + hh + ":" + mm;
   }
 
   function periodLabel() {
@@ -1376,13 +1723,15 @@
     if (typeof STATE !== "undefined") STATE.lang = lang;
     if (typeof applyI18n === "function") applyI18n();
     applyDocTitle();
+    if (typeof syncScopeSelects === "function") syncScopeSelects();
     if (typeof refreshActiveView === "function") refreshActiveView();
   }
 
   // Keep the document title in the active language (and in sync with the
   // current view) instead of leaving the server-rendered Arabic title forever.
   var VIEW_TITLES = {
-    dashboard: { ar: "لوحة القيادة التنفيذية", en: "Executive Dashboard" },
+    dashboard: { ar: "لوحة القيادة", en: "Dashboard" },
+    feedback: { ar: "التغذية الراجعة", en: "Feedback" },
     subsidiaries: { ar: "الشركات التابعة", en: "Subsidiaries" },
     reports: { ar: "التقارير الشهرية", en: "Monthly Reports" },
     financial: { ar: "المراجعة المالية", en: "Financial Review" },
@@ -1407,11 +1756,17 @@
   function applyDocTitle() {
     var brand =
       STATE.lang === "ar"
-        ? "سفير القابضة ٢٠٢٧ — "
-        : "Safir Holding 2027 — ";
+        ? "ستارت اب سفير القابضة ٢٠٢٧ — "
+        : "Start Upsphere Holding 2027 — ";
     var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
     var t = VIEW_TITLES[view];
     document.title = brand + (t ? (STATE.lang === "ar" ? t.ar : t.en) : "");
+    var crumb = byId("crumb");
+    if (crumb) {
+      var label = t ? (STATE.lang === "ar" ? t.ar : t.en) : "";
+      var brandLabel = STATE.lang === "ar" ? "منصة القيادة التنفيذية" : "Executive Platform";
+      crumb.textContent = brandLabel + (label ? "  ·  " + label : "");
+    }
   }
 
   // Re-render the current view when the language changes, so any Arabic-only
@@ -1419,7 +1774,7 @@
   function refreshActiveView() {
     if (!USER) return;
     var view = (typeof STATE !== "undefined" && STATE.view) || "dashboard";
-    if (view === "admin" && typeof renderAdminTab === "function") {
+    if (view === "group" && typeof renderAdminTab === "function") {
       renderAdminTab(STATE.adminTab);
       return;
     }
@@ -1439,6 +1794,1103 @@
       saved = null;
     }
     setLang(saved === "en" ? "en" : "ar");
+  }
+
+  // ---- header entity + period scope ------------------------------------
+  // The deck's header carries [الشركة / المجموعة ▾] and the reporting period
+  // on every screen (slides 4, 48). Selecting an entity narrows the *view*
+  // filter only: it never widens access, and the backend still enforces the
+  // row-level scope on every request, so an out-of-scope pick simply returns
+  // nothing rather than leaking another company's rows.
+
+  function currentScopeLabel() {
+    if (STATE.scopeCompany == null) return { ar: "كل المجموعة", en: "Whole group" };
+    var c = companyById(STATE.scopeCompany);
+    return c
+      ? { ar: c.name_ar || c.name_en || "", en: c.name_en || c.name_ar || "" }
+      : { ar: "كل المجموعة", en: "Whole group" };
+  }
+
+  function syncScopeSelects() {
+    // Deck slide 34 labels the consultant's header scope control [نطاق التكليف]
+    // rather than [الشركة / المجموعة]; the control is the same selector, only
+    // the wording is role-specific.
+    var scopeLbl = document.querySelector(".scope-ctl .scope-pick .scope-lbl");
+    if (scopeLbl) {
+      var isConsultant = USER && USER.role_code === "external_consultant";
+      scopeLbl.innerHTML = isConsultant
+        ? '<span class="ar">نطاق التكليف ▾</span><span class="en">Assignment scope ▾</span>'
+        : '<span class="ar">الشركة / المجموعة ▾</span><span class="en">Company / Group ▾</span>';
+    }
+    var sel = byId("scopeCompany");
+    if (sel) {
+      var opts =
+        '<option value="">' +
+        escAttr(STATE.lang === "ar" ? "كل المجموعة" : "Whole group") +
+        "</option>";
+      STATE.companies.forEach(function (c) {
+        opts +=
+          '<option value="' +
+          c.id +
+          '">' +
+          escapeHtml(companyName(c)) +
+          "</option>";
+      });
+      sel.innerHTML = opts;
+      sel.value = STATE.scopeCompany == null ? "" : String(STATE.scopeCompany);
+    }
+    var per = byId("scopePeriod");
+    if (per) {
+      // Every period that appears in a report the user may already see, so a
+      // manager sees their own months and the owner sees the group's.
+      var seen = {};
+      var list = [];
+      (STATE.reports || []).forEach(function (r) {
+        var key = r.period_year * 12 + (r.period_month - 1);
+        if (!seen[key]) {
+          seen[key] = true;
+          list.push({ key: key, year: r.period_year, month: r.period_month });
+        }
+      });
+      if (STATE.year && STATE.month) {
+        var ck = STATE.year * 12 + (STATE.month - 1);
+        if (!seen[ck]) list.push({ key: ck, year: STATE.year, month: STATE.month });
+      }
+      list.sort(function (a, b) { return b.key - a.key; });
+      var html = "";
+      list.forEach(function (p) {
+        var ar = AR_MONTHS[p.month - 1] + " " + toArabicDigits(String(p.year));
+        var en = EN_MONTHS[p.month - 1] + " " + p.year;
+        html +=
+          '<option value="' +
+          p.year +
+          "-" +
+          p.month +
+          '">' +
+          escapeHtml(STATE.lang === "ar" ? ar : en) +
+          "</option>";
+      });
+      per.innerHTML = html;
+      if (STATE.year && STATE.month) {
+        per.value = STATE.year + "-" + STATE.month;
+      }
+    }
+  }
+
+  function bindScopeSelects() {
+    var sel = byId("scopeCompany");
+    if (sel && !sel.getAttribute("data-bound")) {
+      sel.setAttribute("data-bound", "1");
+      sel.addEventListener("change", function () {
+        var v = sel.value;
+        STATE.scopeCompany = v === "" ? null : parseInt(v, 10);
+        var host = byId("scopeCtl");
+        if (host) host.classList.toggle("scoped", STATE.scopeCompany != null);
+        syncScopeSelects();
+        loadView(STATE.view);
+      });
+    }
+    var per = byId("scopePeriod");
+    if (per && !per.getAttribute("data-bound")) {
+      per.setAttribute("data-bound", "1");
+      per.addEventListener("change", function () {
+        var parts = String(per.value).split("-");
+        if (parts.length !== 2) return;
+        STATE.year = parseInt(parts[0], 10);
+        STATE.month = parseInt(parts[1], 10);
+        period = "?year=" + STATE.year + "&month=" + STATE.month;
+        STATE.loaded = {};
+        syncScopeSelects();
+        // The period is part of almost every payload, so drop the caches the
+        // view renderers guard on and rebuild the current screen.
+        Promise.all([ensureReports(), loadDashboard().catch(function () {})])
+          .then(function () { return loadView(STATE.view); });
+      });
+    }
+  }
+
+  // Rows a list renderer may show, narrowed by the header entity picker. This
+  // filters only what the user was already served.
+  function scopeFilter(rows, key) {
+    if (STATE.scopeCompany == null) return rows || [];
+    var k = key || "company_id";
+    return (rows || []).filter(function (r) {
+      return r && r[k] === STATE.scopeCompany;
+    });
+  }
+
+  // ---- list pagination --------------------------------------------------
+  // The deck fixes one pager for every list: 25 rows a page with 10/25/50/100
+  // and the same [تطبيق] [حفظ المرشح باسمي] [مسح] [تصدير النتائج] cluster
+  // (slides 134-136). The pager is the only thing this adds: the rows still
+  // come from the same scoped fetch, and each list owns its own sort.
+
+  var PAGE_SIZES = [10, 25, 50, 100];
+
+  function pageSize() {
+    return STATE.pageSize || 25;
+  }
+
+  function pageFor(key) {
+    STATE.page = STATE.page || {};
+    return STATE.page[key] || 1;
+  }
+
+  // Filter values a list is currently narrowed by, kept per list so switching
+  // views never inherits another list's filters.
+  function listFilters(key) {
+    STATE.filters = STATE.filters || {};
+    if (!STATE.filters[key]) STATE.filters[key] = {};
+    return STATE.filters[key];
+  }
+
+  // Saved named filters, persisted per user in localStorage (the deck's
+  // [حفظ المرشح باسمي]). They are a convenience over the current period and
+  // never widen scope: applying one only restores the same filter values.
+  function savedFilters(key) {
+    try {
+      var raw = localStorage.getItem("safir.filters.v1." + key);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveFilter(key) {
+    var values = listFilters(key);
+    var hasAny = Object.keys(values).some(function (k) {
+      return values[k] !== "" && values[k] != null;
+    });
+    if (!hasAny) {
+      toast(STATE.lang === "ar" ? "لا يوجد مرشح لحفظه." : "Nothing to save yet.", "err");
+      return;
+    }
+    var name = window.prompt(
+      STATE.lang === "ar" ? "اسم المرشح:" : "Filter name:",
+      (STATE.lang === "ar" ? "مرشح " : "Filter ") + new Date().toLocaleDateString(),
+    );
+    if (!name) return;
+    var list = savedFilters(key).filter(function (s) { return s.name !== name; });
+    list.push({ name: name, values: JSON.parse(JSON.stringify(values)) });
+    try {
+      localStorage.setItem("safir.filters.v1." + key, JSON.stringify(list));
+    } catch (e) {
+      /* storage disabled */
+    }
+    toast(STATE.lang === "ar" ? "تم حفظ المرشح: " + name : "Filter saved: " + name, "ok");
+    if (typeof renderPaged === "function") refreshActiveView();
+  }
+
+  function applyFilter(key) {
+    var host = byId("listFilter-" + key);
+    if (!host) return;
+    var values = listFilters(key);
+    host.querySelectorAll("[data-filter]").forEach(function (el) {
+      values[el.getAttribute("data-filter")] = el.value;
+    });
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  function clearFilter(key) {
+    STATE.filters = STATE.filters || {};
+    STATE.filters[key] = {};
+    STATE.page = STATE.page || {};
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  function applySavedFilter(key, name) {
+    var found = savedFilters(key).filter(function (s) { return s.name === name; })[0];
+    if (!found) return;
+    STATE.filters[key] = JSON.parse(JSON.stringify(found.values));
+    STATE.page[key] = 1;
+    refreshActiveView();
+  }
+
+  // ``spec`` is a list of {key, ar, en, options:[{value,ar,en}]} or
+  // {key, ar, en, type:"search"} entries. The search field matches any of the
+  // row's text fields (slide 134 "حقول البحث"); the selects match equality.
+  function filterBarHtml(key, spec) {
+    var values = listFilters(key);
+    var html = '<div class="list-filters" id="listFilter-' + escAttr(key) + '">';
+    spec.forEach(function (f) {
+      var val = values[f.key] == null ? "" : values[f.key];
+      if (f.type === "search") {
+        html +=
+          '<label class="lf-field lf-search">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+          '<input class="av-input" data-filter="' + escAttr(f.key) + '" value="' + escAttr(val) + '" placeholder="' +
+          escAttr(STATE.lang === "ar" ? f.ar : f.en) + '" aria-label="' + escAttr(f.ar) + '"></label>';
+        return;
+      }
+      // A select with no choices is a dead control, so it is left out until the
+      // data carries a value to filter on (the deck's lists are per-role and
+      // data-driven).
+      if (!f.options.length) return;
+      var opts = '<option value="">' + escAttr(STATE.lang === "ar" ? f.ar : f.en) + "</option>";
+      f.options.forEach(function (o) {
+        opts +=
+          '<option value="' + escAttr(o.value) + '"' + (o.value === val ? " selected" : "") + ">" +
+          escapeHtml(STATE.lang === "ar" ? o.ar : o.en || o.ar) + "</option>";
+      });
+      html += '<select class="av-select lf-select" data-filter="' + escAttr(f.key) + '" aria-label="' + escAttr(f.ar) + '">' + opts + "</select>";
+    });
+    var saved = savedFilters(key);
+    if (saved.length) {
+      var sOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + "</option>";
+      saved.forEach(function (s) {
+        sOpts += '<option value="' + escAttr(s.name) + '">' + escapeHtml(s.name) + "</option>";
+      });
+      html += '<select class="av-select lf-select" data-saved-filter aria-label="' +
+        escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + '">' + sOpts + "</select>";
+    }
+    html += '<div class="lf-actions">';
+    html += '<button type="button" class="lf-btn primary" data-filter-apply>' + dual("تطبيق", "Apply") + "</button>";
+    html += '<button type="button" class="lf-btn" data-filter-save>' + dual("حفظ المرشح باسمي", "Save filter") + "</button>";
+    html += '<button type="button" class="lf-btn" data-filter-clear>' + dual("مسح", "Clear") + "</button>";
+    // "عند سماح التصدير" — the button only appears when the role may export.
+    if (has("analytics.export")) {
+      html += '<button type="button" class="lf-btn" data-filter-export>' + dual("تصدير النتائج", "Export results") + "</button>";
+    }
+    html += "</div></div>";
+    return html;
+  }
+
+  function bindFilterBar(host, key, rows) {
+    var bar = host.querySelector("#listFilter-" + key);
+    if (!bar) return;
+    var apply = bar.querySelector("[data-filter-apply]");
+    var save = bar.querySelector("[data-filter-save]");
+    var clear = bar.querySelector("[data-filter-clear]");
+    var exp = bar.querySelector("[data-filter-export]");
+    var savedSel = bar.querySelector("[data-saved-filter]");
+    var search = bar.querySelector('input[data-filter]');
+    if (apply) apply.addEventListener("click", function () { applyFilter(key); });
+    if (save) save.addEventListener("click", function () { saveFilter(key); });
+    if (clear) clear.addEventListener("click", function () { clearFilter(key); });
+    if (exp) exp.addEventListener("click", function () { exportListCsv(key, rows); });
+    if (savedSel) {
+      savedSel.addEventListener("change", function () {
+        if (savedSel.value) applySavedFilter(key, savedSel.value);
+      });
+    }
+    if (search) {
+      // Enter applies, matching the deck's form-submit behaviour, and the
+      // value is only committed on apply so a half-typed term never re-filters.
+      search.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          applyFilter(key);
+        }
+      });
+    }
+  }
+
+  // Deck slides 130-132: "كل مخرج يحمل: الفترة والجهة والعملة وحالة البيانات
+  // وآخر تحديث ومسودة/معتمد ورقم النسخة." The export is the caller's own scoped
+  // list, so it is prefixed with the period and entity the list was rendered
+  // for rather than left bare.
+  function exportMeta(key) {
+    var period = STATE.year && STATE.month ? STATE.year + "-" + STATE.month : "—";
+    var entity = STATE.scopeCompany == null
+      ? (STATE.lang === "ar" ? "كل المجموعة" : "Whole group")
+      : (function () {
+          var c = companyById(STATE.scopeCompany);
+          return c ? (STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) : String(STATE.scopeCompany);
+        })();
+    return [
+      "# " + (STATE.lang === "ar" ? "الفترة" : "Period") + ": " + period,
+      "# " + (STATE.lang === "ar" ? "الجهة" : "Entity") + ": " + entity,
+      "# " + (STATE.lang === "ar" ? "آخر تحديث" : "Generated") + ": " + new Date().toISOString(),
+      "# " + (STATE.lang === "ar" ? "الحالة" : "State") + ": " +
+        (STATE.lang === "ar" ? "بيانات مسحوبة من النظام" : "data read from the system"),
+    ].join("\r\n") + "\r\n";
+  }
+
+  function exportListCsv(key, rows) {
+    var lines = [];
+    if (!rows || !rows.length) {
+      toast(STATE.lang === "ar" ? "لا توجد نتائج للتصدير." : "No results to export.", "err");
+      return;
+    }
+    var cols = Object.keys(rows[0]).filter(function (c) {
+      return typeof rows[0][c] !== "object";
+    });
+    lines.push(cols.join(","));
+    rows.forEach(function (r) {
+      lines.push(
+        cols
+          .map(function (c) {
+            var v = r[c] == null ? "" : String(r[c]);
+            return '"' + v.replace(/"/g, '""') + '"';
+          })
+          .join(","),
+      );
+    });
+    var blob = new Blob(["\ufeff" + exportMeta(key) + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "safir-" + key + "-" + STATE.year + "-" + STATE.month + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast(STATE.lang === "ar" ? "تم تصدير النتائج." : "Results exported.", "ok");
+  }
+
+  function pagerHtml(key, page, pages, total, size) {
+    var num = function (v) {
+      return STATE.lang === "ar" ? toArabicDigits(String(v)) : String(v);
+    };
+    var opts = PAGE_SIZES.map(function (s) {
+      return '<option value="' + s + '"' + (s === size ? " selected" : "") + ">" + num(s) + "</option>";
+    }).join("");
+    return (
+      '<div class="pager" data-pager="' + escAttr(key) + '">' +
+      '<span class="pager-total">' +
+      dual(num(total) + " نتيجة", total + " results") +
+      "</span>" +
+      '<label class="pager-size">' +
+      dual("لكل صفحة", "Per page") +
+      '<select class="av-select" data-page-size>' + opts + "</select></label>" +
+      '<div class="pager-nav">' +
+      '<button type="button" class="pg-btn" data-page-prev' + (page <= 1 ? " disabled" : "") + ">" +
+      dual("السابق", "Prev") + "</button>" +
+      '<span class="pg-now">' + num(page) + " / " + num(pages) + "</span>" +
+      '<button type="button" class="pg-btn" data-page-next' + (page >= pages ? " disabled" : "") + ">" +
+      dual("التالي", "Next") + "</button>" +
+      "</div></div>"
+    );
+  }
+
+  // Render ``rows`` into ``host`` a page at a time, then wire the pager. The
+  // caller keeps ownership of the row markup and of the per-row click binding
+  // (``bindFn`` runs on each page so handlers follow the rows that are shown).
+  function renderPaged(host, key, rows, rowFn, bindFn, spec) {
+    var size = pageSize();
+    var pages = Math.max(1, Math.ceil(rows.length / size));
+    var page = Math.min(pageFor(key), pages);
+    STATE.page[key] = page;
+    var start = (page - 1) * size;
+    var slice = rows.slice(start, start + size);
+    host.innerHTML =
+      (spec ? filterBarHtml(key, spec) : "") +
+      (rows.length
+        ? slice.map(rowFn).join("") + pagerHtml(key, page, pages, rows.length, size)
+        : '<div class="lf-empty">' +
+          emptyHtml("لا توجد نتائج مطابقة للمرشحات.", "No rows match the filters.") +
+          "</div>");
+    if (bindFn) bindFn(host, slice);
+    if (spec) bindFilterBar(host, key, rows);
+    var pager = host.querySelector("[data-pager]");
+    if (!pager) return;
+    var prev = pager.querySelector("[data-page-prev]");
+    var next = pager.querySelector("[data-page-next]");
+    var sel = pager.querySelector("[data-page-size]");
+    var again = function () { renderPaged(host, key, rows, rowFn, bindFn, spec); };
+    if (prev) {
+      prev.addEventListener("click", function () {
+        STATE.page[key] = Math.max(1, pageFor(key) - 1);
+        again();
+      });
+    }
+    if (next) {
+      next.addEventListener("click", function () {
+        STATE.page[key] = Math.min(pages, pageFor(key) + 1);
+        again();
+      });
+    }
+    if (sel) {
+      sel.addEventListener("change", function () {
+        STATE.pageSize = parseInt(sel.value, 10) || 25;
+        STATE.page[key] = 1;
+        again();
+      });
+    }
+  }
+
+  // The deck fixes a secondary sort by ID so equal keys keep a stable, paged
+  // order (slides 134-136: "ترتيب ثانوي بالمعرف"). Without it, a tie could
+  // shuffle rows between page renders and hide a row from the reader.
+  // (Named to avoid shadowing the ``byId`` DOM lookup helper.)
+  function byIdAsc(a, b) {
+    return (a.id || 0) - (b.id || 0);
+  }
+
+  // Narrow ``rows`` by the list's own filters. A search entry matches if any of
+  // its ``fields`` contains the term; selects match equality on one field.
+  function applyListFilters(rows, key, spec) {
+    var values = listFilters(key);
+    return (rows || []).filter(function (r) {
+      for (var i = 0; i < spec.length; i++) {
+        var f = spec[i];
+        var v = values[f.key];
+        if (v == null || v === "") continue;
+        if (f.type === "search") {
+          var needle = String(v).toLowerCase();
+          var hit = (f.fields || []).some(function (field) {
+            var cell = r[field];
+            return cell != null && String(cell).toLowerCase().indexOf(needle) >= 0;
+          });
+          if (!hit) return false;
+        } else {
+          var actual = f.resolve ? f.resolve(r) : r[f.field || f.key];
+          if (String(actual == null ? "" : actual) !== String(v)) return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  // Distinct values for a select, in first-seen order, so a filter never
+  // offers a value no visible row carries (the deck's lists are per-role).
+  // ``label`` may return a string or a {ar, en} pair.
+  function distinctOptions(rows, get, label) {
+    var seen = {};
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var v = get(r);
+      if (v == null || v === "" || seen[v]) return;
+      seen[v] = true;
+      var l = label ? label(v) : v;
+      var ar = l && l.ar != null ? l.ar : l;
+      var en = l && l.en != null ? l.en : l;
+      out.push({ value: String(v), ar: String(ar), en: String(en) });
+    });
+    return out;
+  }
+
+  // Company lifecycle labels. The payload stores the bare code, so map it for
+  // display; an unknown code falls through unchanged rather than blanking.
+  function companyStatusLabel(status) {
+    var map = {
+      active: { ar: "نشطة", en: "Active" },
+      inactive: { ar: "موقوفة", en: "Inactive" },
+      suspended: { ar: "معلّقة", en: "Suspended" },
+      closed: { ar: "مغلقة", en: "Closed" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
+  // Employee lifecycle labels, mirroring the S11 badge map.
+  function employeeStatusLabel(status) {
+    var map = {
+      active: { ar: "نشط", en: "Active" },
+      on_leave: { ar: "في إجازة", en: "On leave" },
+      terminated: { ar: "منتهٍ", en: "Terminated" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
+  // Advisory-session lifecycle labels, mirroring the S19 badge map.
+  function advisorSessionStatusLabel(status) {
+    var map = {
+      scheduled: { ar: "مجدولة", en: "Scheduled" },
+      completed: { ar: "مكتملة", en: "Completed" },
+      cancelled: { ar: "ملغاة", en: "Cancelled" },
+    };
+    return map[String(status || "").toLowerCase()] || { ar: status, en: status };
+  }
+
+  function companyFilterOption() {
+    return {
+      key: "company",
+      ar: "الشركة",
+      en: "Company",
+      field: "company_id",
+      options: (STATE.companies || []).map(function (c) {
+        return { value: String(c.id), ar: c.name_ar || c.name_en || "", en: c.name_en || c.name_ar || "" };
+      }),
+    };
+  }
+
+  // Slide 134 fixes "قطاع" and "عملة" among the report filters. Both attributes
+  // live on the company, so a report row resolves them through its company id.
+  function sectorByCompany() {
+    var map = {};
+    (STATE.companies || []).forEach(function (c) { map[c.id] = c.sector; });
+    return map;
+  }
+
+  function currencyByCompany() {
+    var map = {};
+    (STATE.companies || []).forEach(function (c) { map[c.id] = c.currency; });
+    return map;
+  }
+
+  // Slide 134/135/136 fix the filter set per list family. Options that have no
+  // reliable label source (e.g. an assignee name the payload omits) are left
+  // out rather than shown as a bare id.
+  function reportsFilterSpec() {
+    var periods = distinctOptions(
+      STATE.reports || [],
+      function (r) { return r.period_year + "-" + r.period_month; },
+      function (v) {
+        var p = v.split("-");
+        var m = parseInt(p[1], 10);
+        return {
+          ar: AR_MONTHS[m - 1] + " " + toArabicDigits(p[0]),
+          en: EN_MONTHS[m - 1] + " " + p[0],
+        };
+      },
+    );
+    return [
+      { key: "q", type: "search", ar: "رقم / عنوان / فترة", en: "No. / title / period",
+        fields: ["id", "status", "company_name_ar", "company_name_en", "period_year", "period_month"] },
+      companyFilterOption(),
+      // Slide 134 also fixes "قطاع" and "عملة" among the report filters; both
+      // live on the company, so they are derived from the visible reports'
+      // companies rather than a separate catalogue read.
+      { key: "sector", ar: "القطاع", en: "Sector",
+        resolve: function (r) { return sectorByCompany()[r.company_id]; },
+        options: distinctOptions(STATE.reports || [], function (r) { return sectorByCompany()[r.company_id]; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "currency", ar: "العملة", en: "Currency",
+        resolve: function (r) { return currencyByCompany()[r.company_id]; },
+        options: distinctOptions(STATE.reports || [], function (r) { return currencyByCompany()[r.company_id]; }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "submitted", ar: "مُرسل", en: "Submitted" },
+          { value: "under_review", ar: "قيد المراجعة", en: "Under review" },
+          { value: "reviewed", ar: "تمت المراجعة", en: "Reviewed" },
+          { value: "returned", ar: "أُعيد للتصحيح", en: "Returned" },
+          { value: "locked", ar: "مقفل", en: "Locked" },
+          { value: "cancelled", ar: "ملغى", en: "Cancelled" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period", options: periods,
+        resolve: function (r) { return r.period_year + "-" + r.period_month; } },
+      { key: "version", ar: "الإصدار", en: "Version", field: "version_number",
+        options: distinctOptions(STATE.reports || [], function (r) { return r.version_number; }) },
+      // Slide 134 lists "مراجع" among the report filters; the serialiser now
+      // carries the financial reviewer's name on the report's review block.
+      { key: "reviewer", ar: "المراجع", en: "Reviewer",
+        resolve: function (r) { return (r.financial_review || {}).reviewer_id; },
+        options: distinctOptions(
+          (STATE.reports || []).filter(function (r) { return r.financial_review; }),
+          function (r) { return r.financial_review.reviewer_id; },
+          function (v) {
+            var r = (STATE.reports || []).filter(function (x) {
+              return x.financial_review && String(x.financial_review.reviewer_id) === String(v);
+            })[0] || {};
+            var fr = r.financial_review || {};
+            return { ar: fr.reviewer_name_ar || fr.reviewer_name_en || "#" + plainNum(v),
+                     en: fr.reviewer_name_en || fr.reviewer_name_ar || "#" + plainNum(v) };
+          }) },
+    ];
+  }
+
+  function supportFilterSpec() {
+    return [
+      { key: "q", type: "search", ar: "رقم / عنوان / نوع / شركة", en: "No. / title / type / company",
+        fields: ["id", "title", "category", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "category", ar: "النوع", en: "Type", field: "category",
+        options: distinctOptions(STATE.support || [], function (r) { return r.category; },
+          function (v) { return deptLabel(v); }) },
+      // Slide 134 lists "مسؤول" among the request filters; the serialiser now
+      // carries the assignee's name so the select reads as a person, not an id.
+      { key: "assignee", ar: "المسؤول", en: "Assignee", field: "assigned_to_id",
+        options: distinctOptions(STATE.support || [], function (r) { return r.assigned_to_id; },
+          function (v) {
+            var r = (STATE.support || []).filter(function (x) { return String(x.assigned_to_id) === String(v); })[0] || {};
+            return { ar: r.assigned_to_name_ar || r.assigned_to_name_en || "#" + plainNum(v),
+                     en: r.assigned_to_name_en || r.assigned_to_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "new", ar: "جديد", en: "New" },
+          { value: "in_progress", ar: "قيد التنفيذ", en: "In progress" },
+          { value: "completed", ar: "مكتمل", en: "Completed" },
+          { value: "closed", ar: "مغلق", en: "Closed" },
+        ] },
+    ];
+  }
+
+  function subsidiariesFilterSpec() {
+    return [
+      { key: "q", type: "search", ar: "الاسم / رقم التسجيل", en: "Name / registration no.",
+        fields: ["legal_name_ar", "legal_name_en", "name_ar", "name_en", "commercial_registration"] },
+      { key: "country", ar: "الدولة", en: "Country", field: "country",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.country; }) },
+      { key: "sector", ar: "القطاع", en: "Sector", field: "sector",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.sector; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.status; },
+          function (v) { return companyStatusLabel(v); }) },
+      // Slide 134 fixes "مدير" among the company-list filters; the manager is
+      // derived on the backend (primary company grant, then lowest id) and
+      // arrives on each company row as manager_user_id / manager_name_*.
+      { key: "manager", ar: "المدير", en: "Manager", field: "manager_user_id",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.manager_user_id; },
+          function (v) {
+            var c = (STATE.companies || []).filter(function (x) { return String(x.manager_user_id) === String(v); })[0] || {};
+            return { ar: c.manager_name_ar || c.manager_name_en || "#" + plainNum(v),
+                     en: c.manager_name_en || c.manager_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(STATE.companies || [], function (c) { return c.currency; }) },
+    ];
+  }
+
+  // The deck's remaining list families (slides 134-136). Each entry only offers
+  // a select when the payload actually carries a label for it; the assignee /
+  // reviewer / executor names come from the enriched serialisers, so those
+  // selects now show a person instead of a bare id.
+  function leadsFilterSpec() {
+    var rows = STATE.leads || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / المرجع / البريد", en: "Name / reference / email",
+        fields: ["full_name", "reference", "email", "phone", "company_name"] },
+      { key: "company", ar: "الشركة", en: "Company", field: "routed_company_id",
+        options: distinctOptions(rows, function (r) { return r.routed_company_id; },
+          function (v) { return { ar: companyNameById(v), en: companyNameById(v) }; }) },
+      { key: "manager", ar: "المسؤول", en: "Assignee", field: "assigned_to_id",
+        options: distinctOptions(rows, function (r) { return r.assigned_to_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.assigned_to_id) === String(v); })[0] || {};
+            return { ar: r.assigned_to_name_ar || r.assigned_to_name_en || "#" + plainNum(v),
+                     en: r.assigned_to_name_en || r.assigned_to_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return leadLabel(LEAD_STATUS, v); }) },
+      { key: "source", ar: "المصدر", en: "Source", field: "source",
+        options: distinctOptions(rows, function (r) { return r.source; }) },
+      { key: "service", ar: "الخدمة", en: "Service", field: "service_type",
+        options: distinctOptions(rows, function (r) { return r.service_type; },
+          function (v) { return leadLabel(LEAD_SERVICE, v); }) },
+      // Slide 134 "العملاء / الحملات" fixes فترة on the combined customer /
+      // campaign family. A lead has no follow-up date column, so its period is
+      // the month it was captured (the campaign half reads its own start date).
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.created_at ? String(r.created_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.created_at ? String(r.created_at).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  // Slide 134 "العملاء / الحملات": the campaign list filters by company,
+  // platform, status and period, and searches the campaign name / source.
+  function campaignsFilterSpec() {
+    var rows = STATE.campaigns || [];
+    return [
+      { key: "q", type: "search", ar: "اسم الحملة / الهدف / المنصة", en: "Campaign name / goal / platform",
+        fields: ["name", "platform", "goal"] },
+      companyFilterOption(),
+      { key: "platform", ar: "المنصة", en: "Platform", field: "platform",
+        options: distinctOptions(rows, function (r) { return r.platform; }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "planned", ar: "مخططة", en: "Planned" },
+          { value: "active", ar: "نشطة", en: "Active" },
+          { value: "completed", ar: "مكتملة", en: "Completed" },
+          { value: "cancelled", ar: "ملغاة", en: "Cancelled" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.start_date ? String(r.start_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.start_date ? String(r.start_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function employeesFilterSpec() {
+    var rows = (STATE.hr && STATE.hr.employees) || [];
+    var depts = STATE.departments || [];
+    var deptById = {};
+    depts.forEach(function (d) { deptById[d.id] = d; });
+    var countryByCompany = {};
+    (STATE.companies || []).forEach(function (c) { countryByCompany[c.id] = c.country; });
+    return [
+      { key: "q", type: "search", ar: "الاسم / الرقم الوظيفي / المسمى", en: "Name / employee no. / title",
+        fields: ["full_name_ar", "full_name_en", "employee_code", "job_title"] },
+      companyFilterOption(),
+      // Slide 101/135 "جهة، دولة، جنسية، إدارة، حالة": the country is the
+      // company's country, the department resolves through the department
+      // directory (empty when the role cannot read departments, so the select
+      // is omitted rather than shown as a bare id).
+      { key: "country", ar: "الدولة", en: "Country",
+        resolve: function (r) { return countryByCompany[r.company_id]; },
+        options: distinctOptions(rows, function (r) { return countryByCompany[r.company_id]; }) },
+      { key: "nationality", ar: "الجنسية", en: "Nationality", field: "nationality",
+        options: distinctOptions(rows, function (r) { return r.nationality; }) },
+      { key: "department", ar: "الإدارة", en: "Department", field: "department_id",
+        options: distinctOptions(rows, function (r) { return r.department_id; },
+          function (v) {
+            var d = deptById[v];
+            return d ? { ar: d.name_ar, en: d.name_en || d.name_ar } : "#" + plainNum(v);
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return employeeStatusLabel(v); }) },
+      // Slide 135 "الموظفون / التوطين" also fixes فترة and احتساب. The employee
+      // carries a hire date, which is the period the record is filed under; the
+      // localisation basis (احتساب) has no column on the row, so that select is
+      // omitted rather than shown as a dead control.
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.hire_date ? String(r.hire_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.hire_date ? String(r.hire_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function tasksFilterSpec() {
+    var rows = (STATE.ops && STATE.ops.tasks) || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان", en: "Title", fields: ["title", "description"] },
+      companyFilterOption(),
+      { key: "assignee", ar: "المكلف", en: "Assignee", field: "assignee_id",
+        options: distinctOptions(rows, function (r) { return r.assignee_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.assignee_id) === String(v); })[0] || {};
+            return { ar: r.assignee_name_ar || r.assignee_name_en || "#" + plainNum(v),
+                     en: r.assignee_name_en || r.assignee_name_ar || "#" + plainNum(v) };
+          }) },
+      // Slide 134 "الطلبات / المهام" fixes أولوية and فترة in addition to the
+      // assignee, type and status selects.
+      { key: "priority", ar: "الأولوية", en: "Priority", field: "priority",
+        options: [
+          { value: "low", ar: "منخفضة", en: "Low" },
+          { value: "normal", ar: "عادية", en: "Normal" },
+          { value: "high", ar: "عالية", en: "High" },
+        ] },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.due_date ? String(r.due_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.due_date ? String(r.due_date).slice(0, 7) : "";
+        }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+    ];
+  }
+
+  function requestsFilterSpec() {
+    // The form and status selects already live in the requests toolbar and are
+    // applied server-side; the generic bar adds the deck's per-list search,
+    // company and period (slide 136) without duplicating those two controls.
+    var rows = (STATE.submissions && STATE.submissions.items) || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان / المرجع / الجهة", en: "Title / reference / company",
+        fields: ["title", "reference", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.submitted_at ? String(r.submitted_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.submitted_at ? String(r.submitted_at).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function feedbackFilterSpec() {
+    // The feedback list merges three sources; the native toolbar select already
+    // narrows by source, so the generic bar adds the deck's text search only.
+    return [
+      { key: "q", type: "search", ar: "العنوان / الحالة", en: "Title / status",
+        fields: ["title", "status", "sub"] },
+    ];
+  }
+
+  function kpisFilterSpec() {
+    var rows = STATE.kpis || [];
+    var sectorByCompanyId = {};
+    (STATE.companies || []).forEach(function (c) { sectorByCompanyId[c.id] = c.sector; });
+    return [
+      // Slide 136 "المؤشرات / العملات": search by name / definition / metric key
+      // and filter by sector, company, period, status and unit. The KPI record
+      // carries no currency of its own, so "العملة" is represented by its unit
+      // (the only comparable label the payload has) rather than invented.
+      { key: "q", type: "search", ar: "الاسم / التعريف / المعرّف", en: "Name / definition / key",
+        fields: ["code", "name_ar", "name_en", "calculation_method", "metric_key"] },
+      { key: "sector", ar: "القطاع", en: "Sector",
+        resolve: function (r) { return sectorByCompanyId[r.company_id]; },
+        options: distinctOptions(rows, function (r) { return sectorByCompanyId[r.company_id]; },
+          function (v) { return sectorLabel(v); }) },
+      { key: "company", ar: "الشركة", en: "Company", field: "company_id",
+        options: distinctOptions(rows, function (r) { return r.company_id; },
+          function (v) { return { ar: companyNameById(v), en: companyNameById(v) }; }) },
+      { key: "period", ar: "الدورية", en: "Periodicity", field: "period_label",
+        options: distinctOptions(rows, function (r) { return r.period_label; }) },
+      { key: "active", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "معتمد", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+      { key: "unit", ar: "الوحدة", en: "Unit", field: "unit",
+        options: distinctOptions(rows, function (r) { return r.unit; }) },
+    ];
+  }
+
+  function projectsFilterSpec() {
+    var rows = STATE.projects || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / الوصف", en: "Name / description", fields: ["name", "description"] },
+      companyFilterOption(),
+      { key: "type", ar: "النوع", en: "Type", field: "record_type",
+        options: distinctOptions(rows, function (r) { return r.record_type; },
+          function (v) { var t = PROJECT_TYPE_LABEL[v]; return t ? { ar: t[0], en: t[1] } : v; }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+    ];
+  }
+
+  function decisionsFilterSpec() {
+    var rows = STATE.decisions || [];
+    return [
+      { key: "q", type: "search", ar: "الرقم / العنوان", en: "Number / title", fields: ["number", "title"] },
+      // Slide 135 "الفرص / القرارات" opens the filter set with شركة; the
+      // decision carries an optional company_id and the view already loads the
+      // company directory, so the select is offered when a row names a company.
+      companyFilterOption(),
+      { key: "executor", ar: "المسؤول", en: "Executor", field: "executor_user_id",
+        options: distinctOptions(rows, function (r) { return r.executor_user_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.executor_user_id) === String(v); })[0] || {};
+            return { ar: r.executor_name_ar || r.executor_name_en || "#" + plainNum(v),
+                     en: r.executor_name_en || r.executor_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; }) },
+      // Slide 135 "الفرص / القرارات" fixes فترة (and a type/impact dimension);
+      // the decision carries a due date, which is the period it is followed up.
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.due_date ? String(r.due_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.due_date ? String(r.due_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function advisoriesFilterSpec() {
+    var rows = STATE.advisories || [];
+    return [
+      // Slide 136 "جلسات المستشار": search the advisor / topic, filter by
+      // assignee ("مسند إليه"), status and scheduled date.
+      { key: "q", type: "search", ar: "المستشار / الموضوع", en: "Advisor / topic",
+        fields: ["advisor_name_ar", "advisor_name_en", "topic"] },
+      companyFilterOption(),
+      { key: "advisor", ar: "مسند إليه", en: "Assigned to", field: "advisor_user_id",
+        options: distinctOptions(rows, function (r) { return r.advisor_user_id; },
+          function (v) {
+            var r = rows.filter(function (x) { return String(x.advisor_user_id) === String(v); })[0] || {};
+            return { ar: r.advisor_name_ar || r.advisor_name_en || "#" + plainNum(v),
+                     en: r.advisor_name_en || r.advisor_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: distinctOptions(rows, function (r) { return r.status; },
+          function (v) { return advisorSessionStatusLabel(v); }) },
+      { key: "scheduled", ar: "الموعد", en: "Scheduled", field: "scheduled_date",
+        resolve: function (r) { return r.scheduled_at ? String(r.scheduled_at).slice(0, 10) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.scheduled_at ? String(r.scheduled_at).slice(0, 10) : "";
+        }) },
+    ];
+  }
+
+  function documentsFilterSpec() {
+    var rows = (STATE.documentsPage && STATE.documentsPage.items) || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / الجهة", en: "Name / company",
+        fields: ["original_filename", "title_ar", "title_en", "company_name_ar", "company_name_en"] },
+      { key: "expiry", ar: "الانتهاء", en: "Expiry", field: "expiry_state",
+        options: [
+          { value: "expired", ar: "منتهي", en: "Expired" },
+          { value: "expiring_soon", ar: "قريب الانتهاء", en: "Expiring soon" },
+          { value: "valid", ar: "ساري", en: "Valid" },
+        ] },
+    ];
+  }
+
+  // Slide 135 "حسابات / ميزانية / مراكز" and "إيرادات / مصروفات / ذمم". The
+  // accounting payloads are per-company reads, so the selects are built from the
+  // rows actually returned rather than from a fixed catalogue.
+  function accountsFilterSpec() {
+    var rows = STATE.acctAccounts || [];
+    var typeLabel = {
+      asset: ["أصول", "Asset"],
+      liability: ["التزامات", "Liability"],
+      equity: ["حقوق ملكية", "Equity"],
+      revenue: ["إيرادات", "Revenue"],
+      expense: ["مصروفات", "Expense"],
+    };
+    return [
+      { key: "q", type: "search", ar: "اسم الحساب / الرمز", en: "Account name / code",
+        fields: ["code", "name_ar", "name_en"] },
+      companyFilterOption(),
+      { key: "type", ar: "التصنيف", en: "Type", field: "account_type",
+        options: distinctOptions(rows, function (r) { return r.account_type; },
+          function (v) { var t = typeLabel[v]; return t ? { ar: t[0], en: t[1] } : v; }) },
+      // Slide 135 "حسابات / ميزانية / مراكز" also fixes عملة and حالة.
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "status", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "نشط", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+    ];
+  }
+
+  function journalsFilterSpec() {
+    var rows = STATE.acctJournals || [];
+    return [
+      { key: "q", type: "search", ar: "رقم القيد / الوصف", en: "Journal no. / description",
+        fields: ["number", "description"] },
+      companyFilterOption(),
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "posted", ar: "مُرحّل", en: "Posted" },
+          { value: "reversed", ar: "معكوس", en: "Reversed" },
+        ] },
+      // Slide 135 "القيود": the deck fixes عملة and فترة among the journal
+      // filters; the period is the entry month.
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.entry_date ? String(r.entry_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.entry_date ? String(r.entry_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function invoicesFilterSpec() {
+    var rows = STATE.acctInvoices || [];
+    return [
+      { key: "q", type: "search", ar: "رقم / العميل / المورد / الوصف", en: "No. / party / description",
+        fields: ["number", "party_name", "description"] },
+      companyFilterOption(),
+      { key: "direction", ar: "التصنيف", en: "Direction", field: "direction",
+        options: [
+          { value: "issued", ar: "صادرة (مستحق لنا)", en: "Issued (receivable)" },
+          { value: "received", ar: "واردة (مستحق علينا)", en: "Received (payable)" },
+        ] },
+      { key: "status", ar: "حالة الاعتماد والتسوية", en: "Approval & settlement",
+        field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "issued", ar: "صادرة", en: "Issued" },
+          { value: "partially_settled", ar: "مسددة جزئيًا", en: "Partially settled" },
+          { value: "settled", ar: "مسددة", en: "Settled" },
+          { value: "cancelled", ar: "ملغاة", en: "Cancelled" },
+        ] },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      // Slide 135 fixes فترة among the receivable filters; the invoice's period
+      // is its issue month (the due date drives the default sort instead).
+      { key: "period", ar: "الفترة", en: "Period", field: "period",
+        resolve: function (r) { return r.issue_date ? String(r.issue_date).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.issue_date ? String(r.issue_date).slice(0, 7) : "";
+        }) },
+    ];
+  }
+
+  function partiesFilterSpec() {
+    var rows = STATE.acctParties || [];
+    return [
+      { key: "q", type: "search", ar: "الاسم / التواصل", en: "Name / contact",
+        fields: ["name", "contact", "currency"] },
+      companyFilterOption(),
+      { key: "type", ar: "التصنيف", en: "Type", field: "party_type",
+        options: [
+          { value: "customer", ar: "عميل", en: "Customer" },
+          { value: "supplier", ar: "مورد", en: "Supplier" },
+        ] },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+    ];
+  }
+
+  function budgetsFilterSpec() {
+    var rows = STATE.acctBudgets || [];
+    return [
+      { key: "q", type: "search", ar: "السنة / المصدر", en: "Year / source",
+        fields: ["fiscal_year", "source"] },
+      companyFilterOption(),
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "year", ar: "السنة", en: "Year", field: "fiscal_year",
+        options: distinctOptions(rows, function (r) { return r.fiscal_year; }) },
+      // Slide 135 "حسابات / ميزانية / مراكز" fixes مسؤول too. The budget carries
+      // its approver (``approved_by_id``); the serializer adds that person's
+      // name so the select reads as a person rather than a bare id. The deck's
+      // "شهر/ربع" is not offered: a budget has no month or quarter column, and
+      // an empty select is dropped rather than shown as a dead control.
+      { key: "owner", ar: "المسؤول", en: "Responsible", field: "approved_by_id",
+        options: distinctOptions(rows.filter(function (r) { return r.approved_by_id; }),
+          function (r) { return r.approved_by_id; },
+          function (v) {
+            var b = rows.filter(function (x) { return String(x.approved_by_id) === String(v); })[0] || {};
+            return { ar: b.approved_by_name_ar || b.approved_by_name_en || "#" + plainNum(v),
+                     en: b.approved_by_name_en || b.approved_by_name_ar || "#" + plainNum(v) };
+          }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "approved", ar: "معتمدة", en: "Approved" },
+          { value: "superseded", ar: "مستبدلة", en: "Superseded" },
+        ] },
+    ];
+  }
+
+  function assetsFilterSpec() {
+    var rows = STATE.acctAssets || [];
+    return [
+      // Slide 135 search terms "الاسم/البنك/المركز/رمز البند": the asset record
+      // carries a name, a category and notes; the bank/centre/line-code the deck
+      // lists have no backing column on ``Asset``, so only real fields are
+      // searched rather than offering a term that can never match.
+      { key: "q", type: "search", ar: "الاسم / الفئة / ملاحظات", en: "Name / category / notes",
+        fields: ["name", "category", "notes"] },
+      companyFilterOption(),
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "status", ar: "الحالة", en: "Status",
+        resolve: function (r) { return r.is_active ? "1" : "0"; },
+        options: [
+          { value: "1", ar: "نشط", en: "Active" },
+          { value: "0", ar: "موقوف", en: "Inactive" },
+        ] },
+    ];
+  }
+
+  // Mount a paged, filtered list into a placeholder element inside a panel.
+  // The panel owns the heading and any create form; the list owns its own
+  // filter bar, rows and pager (slides 134-136).
+  function mountList(containerId, key, rows, rowFn, spec, bindFn, cmp) {
+    var el = byId(containerId);
+    if (!el) return;
+    var list = applyListFilters(rows, key, spec).slice().sort(cmp || byIdAsc);
+    renderPaged(el, key, list, rowFn, bindFn || null, spec);
+  }
+
+  // The deck's default sort for the accounting lists (slides 135-136) is by
+  // name / period rather than by id; a text comparison keeps a stable order.
+  function byTextAsc(get) {
+    return function (a, b) {
+      return String(get(a) || "").localeCompare(String(get(b) || ""), "ar") || byIdAsc(a, b);
+    };
+  }
+
+  function byDateAsc(get) {
+    return function (a, b) {
+      return String(get(a) || "9999-12-31").localeCompare(String(get(b) || "9999-12-31")) || byIdAsc(a, b);
+    };
+  }
+
+  function byDateDesc(get) {
+    return function (a, b) {
+      return String(get(b) || "").localeCompare(String(get(a) || "")) || byIdAsc(a, b);
+    };
   }
 
   // ---- state -----------------------------------------------------------
@@ -1469,6 +2921,17 @@
     return STATE.lang === "ar"
       ? row.name_ar || row.name_en || ""
       : row.name_en || row.name_ar || "";
+  }
+
+  // A person's display name from a row that carries ``<prefix>_name_ar`` /
+  // ``<prefix>_name_en`` (assignee, executor, reviewer). Falls back to the
+  // English name and then to an empty string, so a caller can supply its own
+  // "#id" placeholder.
+  function personName(row, arKey, enKey) {
+    if (!row) return "";
+    return STATE.lang === "ar"
+      ? row[arKey] || row[enKey] || ""
+      : row[enKey] || row[arKey] || "";
   }
 
   function reportCompanyName(r) {
@@ -1514,28 +2977,46 @@
   // ---- routing ---------------------------------------------------------
   var VIEWS = [
     "dashboard",
-    "subsidiaries",
+    "leads",
+    "requests",
+    "advisory",
+    "opportunities",
+    "decisions",
     "reports",
+    "employees",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+    "group",
+    // Legacy views kept reachable (deep links / internal shortcuts) but no
+    // longer in the rail, which mirrors the approved prototype's 13 sections.
+    "feedback",
+    "subsidiaries",
     "financial",
     "investments",
     "support",
-    "requests",
     "approvals",
     "documents",
     "bi",
     "analytics",
     "inbox",
-    "leads",
-    "employees",
     "operations",
-    "decisions",
-    "projects",
     "accounting",
     "confidential",
-    "admin",
   ];
   var NAV_PERM = {
     dashboard: ["dashboard.holding", "dashboard.company"],
+    // The Feedback view aggregates weekly reports, management briefs and
+    // monthly reports the caller may already read; it introduces no new data
+    // access, so it is gated by exactly those read permissions.
+    feedback: [
+      "weekly_report.read_own",
+      "weekly_report.read_all",
+      "management_brief.read",
+      "monthly_report.read_own",
+      "monthly_report.read_all",
+    ],
     subsidiaries: ["company.read"],
     reports: ["monthly_report.read_own", "monthly_report.read_all"],
     financial: ["financial_summary.read_own", "financial_summary.read_all"],
@@ -1573,7 +3054,19 @@
       "campaign.read",
     ],
     decisions: ["owner_decision.read"],
-    projects: ["project.read"],
+    opportunities: ["project.read"],
+    // Advisory / HR / Assets / Website / Assistant-learning sections mirror the
+    // approved prototype tabs; each is gated by the read capability its
+    // endpoint enforces.
+    advisory: ["advisor.read", "advisor.session.read_own"],
+    hr: ["employee.read", "employee.movement.read"],
+    assets: ["asset.read"],
+    site: ["website.manage", "website.content.read", "website_lead.read"],
+    aiReview: [
+      "ai.knowledge.approve",
+      "ai.knowledge.manage",
+      "ai.knowledge.read",
+    ],
     accounting: [
       "account.read",
       "journal.read",
@@ -1586,7 +3079,7 @@
       "financial_report.read",
     ],
     confidential: ["complaint.read_own", "complaint.decide", "complaint.create"],
-    admin: [
+    group: [
       "company.read",
       "ownership.read",
       "department.read",
@@ -1622,6 +3115,8 @@
       if (on) n.setAttribute("aria-current", "page");
       else n.removeAttribute("aria-current");
     });
+    syncMoreGroup(view);
+    closeNavDrawer();
     applyDocTitle();
     var board = byId("board");
     if (board) board.classList.toggle("view-hidden", view !== "dashboard");
@@ -1659,6 +3154,80 @@
       var h = (location.hash || "").replace("#", "");
       navTo(h || "dashboard", false);
     });
+    bindMoreGroup();
+    bindNavDrawer();
+  }
+
+  // Deck slides 39/89/90: on a phone the rail opens from ☰. The toggle only
+  // exists visually ≤1180px (CSS), but the binding is harmless on desktop.
+  // ``closeNavDrawer`` is also called from ``navTo`` so any navigation -- a
+  // sidebar tap, a hash link or the browser back button -- drops the drawer
+  // and disarms its full-screen scrim, which would otherwise keep covering the
+  // header controls (language switch, search, notifications, profile).
+  function closeNavDrawer() {
+    var scrim = byId("navScrim");
+    body.classList.remove("nav-open");
+    var toggle = byId("navToggle");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    if (scrim) scrim.hidden = true;
+  }
+
+  function bindNavDrawer() {
+    var toggle = byId("navToggle");
+    var scrim = byId("navScrim");
+    var sidebar = byId("sidebar");
+    if (!toggle || !scrim) return;
+
+    function setOpen(open) {
+      body.classList.toggle("nav-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      scrim.hidden = !open;
+    }
+    function close() { setOpen(false); }
+
+    toggle.addEventListener("click", function () {
+      setOpen(!body.classList.contains("nav-open"));
+    });
+    scrim.addEventListener("click", close);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") close();
+    });
+    if (sidebar) {
+      // Tapping a destination closes the drawer so the view is not hidden
+      // behind it. Delegated so it survives permission re-renders.
+      sidebar.addEventListener("click", function (e) {
+        if (e.target.closest(".nav-item")) close();
+      });
+    }
+    // A resize back to desktop must not leave the scrim armed.
+    window.addEventListener("resize", function () {
+      if (window.innerWidth > 1180) close();
+    });
+  }
+
+  // The sidebar collapses the operational views behind one "Additional tools"
+  // toggle so the owner sees six primary sections. The group auto-opens when
+  // the active view lives inside it, so a deep link never hides the current
+  // screen.
+  function bindMoreGroup() {
+    var group = byId("sbMore");
+    var toggle = byId("sbMoreToggle");
+    if (!group || !toggle) return;
+    toggle.addEventListener("click", function () {
+      var open = group.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  function syncMoreGroup(view) {
+    var group = byId("sbMore");
+    var toggle = byId("sbMoreToggle");
+    if (!group || !toggle) return;
+    var inside = !!group.querySelector('.nav-item[data-view="' + view + '"]');
+    if (inside) {
+      group.classList.add("open");
+      toggle.setAttribute("aria-expanded", "true");
+    }
   }
 
   function loadView(view) {
@@ -1667,6 +3236,7 @@
     if (view === "financial") return renderFinancial();
     if (view === "support") return renderSupportView();
     if (view === "requests") return renderRequestsView();
+    if (view === "feedback") return renderFeedbackView();
     if (view === "approvals") return renderApprovalsView();
     if (view === "documents") return renderDocumentsView();
     if (view === "investments") return renderInvestments();
@@ -1677,10 +3247,15 @@
     if (view === "employees") return renderEmployeesView();
     if (view === "operations") return renderOperationsView();
     if (view === "decisions") return renderDecisionsView();
-    if (view === "projects") return renderProjectsView();
+    if (view === "opportunities") return renderProjectsView();
     if (view === "accounting") return renderAccountingView();
     if (view === "confidential") return renderConfidentialView();
-    if (view === "admin") return renderAdmin();
+    if (view === "group") return renderAdmin();
+    if (view === "advisory") return renderAdvisoryView();
+    if (view === "hr") return renderHrView();
+    if (view === "assets") return renderAssetsView();
+    if (view === "site") return renderSiteView();
+    if (view === "aiReview") return renderAiReviewView();
     return Promise.resolve();
   }
 
@@ -1741,16 +3316,19 @@
     return ensureReports().then(function () {
       return ensureCompanies();
     }).then(function (rows) {
-      if (!rows.length) {
-        host.innerHTML = emptyHtml("لا توجد شركات متاحة لك.", "No companies available to you.");
-        return;
-      }
-      host.innerHTML = rows.map(subsidiaryCard).join("");
-      host.querySelectorAll("[data-company]").forEach(function (card) {
-        card.addEventListener("click", function () {
-          openCompany(parseInt(card.getAttribute("data-company"), 10));
-        });
+      var spec = subsidiariesFilterSpec();
+      var list = applyListFilters(scopeFilter(rows, "id"), "subsidiaries", spec);
+      // Deck slide 134: الشركات/المحفظة sort "آخر تحديث تنازليًا".
+      list.sort(function (a, b) {
+        return String(b.updated_at || "").localeCompare(String(a.updated_at || "")) || byIdAsc(a, b);
       });
+      renderPaged(host, "subsidiaries", list, subsidiaryCard, function (h) {
+        h.querySelectorAll("[data-company]").forEach(function (card) {
+          card.addEventListener("click", function () {
+            openCompany(parseInt(card.getAttribute("data-company"), 10));
+          });
+        });
+      }, spec);
     });
   }
 
@@ -1802,7 +3380,15 @@
         var reqs = STATE.support.filter(function (r) {
           return r.company_id === id;
         });
+        // Deck slide 13 puts [تعديل البيانات] on the company file header.
+        var editBtn = has("company.manage")
+          ? '<div class="sec-title" style="display:flex;justify-content:space-between;align-items:center">' +
+            dual("بيانات الشركة", "Company data") +
+            '<button class="btn-outline" type="button" id="coFileEdit">' +
+            dual("تعديل البيانات", "Edit data") + "</button></div>"
+          : '<div class="sec-title">' + dual("بيانات الشركة", "Company data") + "</div>";
         body.innerHTML =
+          editBtn +
           '<div class="kv">' +
           kv(dual("الكود", "Code"), escapeHtml(c.code)) +
           kv(dual("القطاع", "Sector"), dual(escapeHtml(sector.ar), escapeHtml(sector.en))) +
@@ -1828,10 +3414,54 @@
             openSupport(parseInt(el.getAttribute("data-request"), 10));
           });
         });
+        var edit = byId("coFileEdit");
+        if (edit) {
+          edit.addEventListener("click", function () { openCompanyEdit(c); });
+        }
       })
       .catch(function (err) {
         if (body) body.innerHTML = errorHtml(errText(err));
       });
+  }
+
+  // Deck slide 13: the company file offers [تعديل البيانات]. The same fields the
+  // admin card edits are exposed here so the owner can correct the record from
+  // the file it belongs to, and the detail view reloads afterwards.
+  function openCompanyEdit(c) {
+    var sector = sectorLabel(c.sector);
+    openModal({
+      title: dual("تعديل بيانات الشركة", "Edit company data"),
+      body:
+        '<form class="av-form" id="companyEditForm" novalidate>' +
+        field("الاسم (عربي)", "Name (AR)", textInput("ceNameAr", c.name_ar)) +
+        field("الاسم (إنجليزي)", "Name (EN)", textInput("ceNameEn", c.name_en || "")) +
+        field("القطاع", "Sector", textInput("ceSector", c.sector)) +
+        field("العملة", "Currency", textInput("ceCurrency", c.currency)) +
+        field("الدولة", "Country", textInput("ceCountry", c.country || "")) +
+        '<div class="av-form-actions"><button class="btn-solid" type="button" id="ceSave">' +
+        dual("حفظ التعديلات", "Save changes") + "</button></div></form>",
+      onMount: function () {
+        var save = byId("ceSave");
+        if (!save) return;
+        save.addEventListener("click", function () {
+          busy(save, true);
+          patch("/api/v1/companies/" + c.id, {
+            name_ar: valOf("ceNameAr"),
+            name_en: valOf("ceNameEn") || null,
+            sector: valOf("ceSector"),
+            currency: valOf("ceCurrency"),
+            country: valOf("ceCountry") || null,
+          })
+            .then(function () {
+              STATE.loaded.companies = false;
+              toast(dual("تم تحديث بيانات الشركة.", "Company data updated."), "ok");
+              closeModal();
+              openCompany(c.id);
+            })
+            .catch(function (err) { busy(save, false); domainError(err); });
+        });
+      },
+    });
   }
 
   function kv(k, v) {
@@ -1847,24 +3477,28 @@
     return ensureReports().then(function (rows) {
       var year = STATE.year;
       var status = byId("repStatus") ? byId("repStatus").value : "";
+      var spec = reportsFilterSpec();
       var list = rows.filter(function (r) {
         if (year && r.period_year !== year) return false;
         if (status && r.status !== status) return false;
         return true;
       });
-      if (!list.length) {
-        host.innerHTML = emptyHtml("لا توجد تقارير مطابقة.", "No matching reports.");
-        return;
-      }
+      list = applyListFilters(scopeFilter(list), "reports", spec);
+      // Deck slide 134: التقارير sort "الفترة الأحدث ثم وقت الإرسال".
       list.sort(function (a, b) {
-        return b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month);
+        return (
+          b.period_year * 12 + b.period_month - (a.period_year * 12 + a.period_month) ||
+          String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")) ||
+          byIdAsc(a, b)
+        );
       });
-      host.innerHTML = list.map(reportRow).join("");
-      host.querySelectorAll("[data-report]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          openReport(parseInt(el.getAttribute("data-report"), 10));
+      renderPaged(host, "reports", list, reportRow, function (h) {
+        h.querySelectorAll("[data-report]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openReport(parseInt(el.getAttribute("data-report"), 10));
+          });
         });
-      });
+      }, spec);
     });
   }
 
@@ -1892,6 +3526,14 @@
   function reportRow(r) {
     var rev = money(r.revenue);
     var net = money(r.net_result);
+    // Business rule 1: a report past its day-5 deadline that is still missing
+    // or editable is flagged, so the list shows who is behind at a glance.
+    // Reuses the existing status chip styling for visual consistency.
+    var late = r.is_late
+      ? '<span class="status miss" title="' +
+        escapeHtml(dual("متأخر عن الموعد", "Past deadline")) + '"><i></i>' +
+        dual("متأخر", "Late") + "</span> "
+      : "";
     return (
       '<div class="av-row" data-report="' + r.id + '">' +
       '<div class="co-dot" style="background:' + PALETTE[r.company_id % PALETTE.length] + ';width:32px;height:32px;border-radius:9px">' + initial(r.company_name_ar) + "</div>" +
@@ -1899,6 +3541,7 @@
       '<div class="s">' + dual(AR_MONTHS[r.period_month - 1] + " " + toArabicDigits(String(r.period_year)), EN_MONTHS[r.period_month - 1] + " " + r.period_year) +
       " · " + dual("الإيرادات ", "Revenue ") + '<b>' + dual(rev.ar, rev.en) + "</b>" +
       " · " + dual("الصافي ", "Net ") + '<b>' + dual(net.ar, net.en) + "</b></div></div>" +
+      late +
       statusBadge(r.status) +
       "</div>"
     );
@@ -1947,6 +3590,7 @@
     returned: ["\u0625\u0639\u0627\u062f\u0629 \u0644\u0644\u062a\u0635\u062d\u064a\u062d", "Returned"],
     approved: ["\u0627\u0639\u062a\u0645\u0627\u062f", "Approved"],
     cancelled: ["\u0625\u0644\u063a\u0627\u0621", "Cancelled"],
+    locked: ["\u0642\u0641\u0644", "Locked"],
   };
 
   function reportVersionsBlock(r) {
@@ -1970,6 +3614,83 @@
       })
       .join("");
     return '<div class="sec-title">' + dual("\u0633\u0644\u0633\u0644\u0629 \u0627\u0644\u0646\u0633\u062e", "Version history") + "</div>" + rows;
+  }
+
+  // Deck slide 125 — طلب التصحيح ومقارنة القيم. A correction version carries
+  // ``corrects_report_id``; the original stays locked and readable. The block
+  // reads the original through the same scoped GET the detail already uses and
+  // shows field-by-field قبل/بعد. It is read-only: it never edits either side.
+  var CORRECTION_COMPARE_FIELDS = [
+    ["revenue", "الإيرادات", "Revenue", true],
+    ["expenses", "المصروفات", "Expenses", true],
+    ["net_result", "صافي النتيجة", "Net result", true],
+    ["outstanding_receivables", "الذمم المدينة", "Receivables", true],
+    ["important_developments", "أهم التطورات", "Developments", false],
+    ["new_customers", "عملاء جدد", "New customers", false],
+    ["new_opportunities", "فرص جديدة", "New opportunities", false],
+    ["major_problems", "مشاكل رئيسية", "Major problems", false],
+    ["support_required", "الدعم المطلوب", "Support required", false],
+    ["management_notes", "ملاحظات الإدارة", "Management notes", false],
+  ];
+
+  function correctionValueText(value, isMoney) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (isMoney) { var m = money(value); return STATE.lang === "ar" ? m.ar : m.en; }
+    return String(value);
+  }
+
+  var CORRECTION_APPROVAL_LABEL = {
+    pending: ["قيد الاعتماد", "Pending"],
+    approved: ["معتمد", "Approved"],
+    rejected: ["مرفوض", "Rejected"],
+  };
+
+  function loadCorrectionComparison(correctedId, originalId) {
+    var host = byId("repCompare");
+    if (!host) return;
+    Promise.all([
+      get("/api/v1/monthly-reports/" + originalId),
+      get("/api/v1/monthly-reports/" + correctedId),
+    ]).then(function (res) {
+      var original = res[0], current = res[1];
+      // The requester/date comes from the new version's own workflow trail; no
+      // figure is invented when the trail is absent.
+      var submit = (current.lifecycle || []).filter(function (e) {
+        return e.action === "submitted" || e.action === "resubmitted";
+      })[0] || {};
+      var approval = CORRECTION_APPROVAL_LABEL[current.approval_status] ||
+        [current.approval_status, current.approval_status];
+      var head =
+        '<div class="sec-title">' +
+        dual("مقارنة قبل وبعد (الأصل مقابل النسخة المصححة)", "Before / after (original vs. correction)") +
+        "</div>" +
+        '<div class="s">' +
+        dual(
+          "الأصل نسخة " + toArabicDigits(String(original.version_number)) + " مقفلة وقابلة للعرض؛ النسخة الجديدة لا تصبح نهائية قبل الاعتماد.",
+          "Original v" + original.version_number + " is locked and readable; the new version is not final until approved.",
+        ) + "</div>" +
+        '<div class="kv">' +
+        kv(dual("سبب التصحيح", "Correction reason"), escapeHtml(original.return_reason || "—")) +
+        kv(dual("مقدم الطلب وتاريخه", "Requester & date"),
+           escapeHtml(submit.actor_name_ar || "—") + " · " + fmtDateTime(submit.created_at || current.created_at)) +
+        kv(dual("المراجع والقرار", "Reviewer & decision"), dual(approval[0], approval[1])) +
+        "</div>";
+      var rows = CORRECTION_COMPARE_FIELDS.map(function (f) {
+        var key = f[0], ar = f[1], en = f[2], isMoney = f[3];
+        var before = original[key], after = current[key];
+        var changed = String(before === null || before === undefined ? "" : before) !==
+          String(after === null || after === undefined ? "" : after);
+        return (
+          '<div class="note-block"' + (changed ? ' style="border-inline-start:3px solid var(--gold)"' : "") + ">" +
+          '<span class="lbl">' + dual(ar, en) + "</span>" +
+          '<span class="s">' + dual("قبل: ", "Before: ") + escapeHtml(correctionValueText(before, isMoney)) + "</span><br>" +
+          '<span class="s">' + dual("بعد: ", "After: ") + escapeHtml(correctionValueText(after, isMoney)) + "</span>" +
+          (changed ? ' <span class="status warn"><i></i>' + dual("معدّل", "Changed") + "</span>" : "") +
+          "</div>"
+        );
+      }).join("");
+      host.innerHTML = head + rows;
+    }).catch(function () { host.innerHTML = ""; });
   }
 
   function reportLifecycleBlock(r) {
@@ -2045,6 +3766,26 @@
       post("/api/v1/monthly-reports/" + id + "/approve")
         .then(function () {
           toast(dual("\u0627\u0639\u062a\u0645\u062f \u0627\u0644\u062a\u0642\u0631\u064a\u0631.", "Report approved."), "ok");
+          refreshAll().then(function () { openReport(id); });
+        })
+        .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+    });
+  }
+
+  function lockReport(id, btn) {
+    confirmDialog({
+      title: dual("\u0642\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631", "Lock report"),
+      message:
+        STATE.lang === "ar"
+          ? "\u0633\u064a\u064f\u0642\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631 \u0646\u0647\u0627\u0626\u064a\u064b\u0627 \u0648\u0644\u0627 \u064a\u0645\u0643\u0646 \u062a\u0639\u062f\u064a\u0644\u0647 \u0628\u0639\u062f \u0630\u0644\u0643."
+          : "The report is locked permanently and can no longer be changed.",
+      confirmLabel: dual("\u0642\u0641\u0644", "Lock"),
+    }).then(function (ok) {
+      if (!ok) return;
+      busy(btn, true);
+      post("/api/v1/monthly-reports/" + id + "/lock")
+        .then(function () {
+          toast(dual("\u0642\u064f\u0641\u0644 \u0627\u0644\u062a\u0642\u0631\u064a\u0631.", "Report locked."), "ok");
           refreshAll().then(function () { openReport(id); });
         })
         .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
@@ -2177,13 +3918,14 @@
         var rec = money(r.outstanding_receivables);
         var fr = r.financial_review;
         var canSubmit = has("monthly_report.submit") && (r.status === "draft" || r.status === "under_review");
-        var canReview = has("financial_review.write") && r.status !== "draft";
+        var canReview = has("financial_review.write") && r.status !== "draft" && r.status !== "locked";
         var canDelete = has("monthly_report.delete") && r.status === "draft";
         var reviewable = ["submitted", "under_review", "reviewed"].indexOf(r.status) >= 0;
         var canReturn = has("monthly_report.review") && r.is_live && reviewable;
         var canCorrect = has("monthly_report.update") && r.is_live && r.status === "returned";
-        var canApprove = has("monthly_report.approve") && r.is_live && reviewable;
-        var canCancel = has("monthly_report.approve") && r.status !== "cancelled";
+        var canApprove = has("monthly_report.approve") && r.is_live && reviewable && r.approval_status !== "approved";
+        var canLock = has("monthly_report.approve") && r.is_live && r.status === "reviewed" && r.approval_status === "approved";
+        var canCancel = has("monthly_report.approve") && r.status !== "cancelled" && r.status !== "locked";
 
         body.innerHTML =
           '<div class="kv">' +
@@ -2247,12 +3989,20 @@
                 "Figures are read from the approved financial summary, never copied into the report.") + "</div>"
             : "") +
           reportVersionsBlock(r) +
+          '<div id="repCompare"></div>' +
           reportLifecycleBlock(r) +
           '<div id="repOrganize"></div>' +
           '<div id="repClarify"></div>' +
           '<div id="repActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>';
 
         loadClarifications(id);
+
+        // Slide 125: a correction version shows the original next to it, so the
+        // reviewer sees قبل/بعد before approving. Read-only; only when this row
+        // is itself a correction of another version.
+        if (r.corrects_report_id) {
+          loadCorrectionComparison(id, r.corrects_report_id);
+        }
 
         // S09: AI text organization. The proposal never overwrites the report;
         // the manager applies a field explicitly through the normal PATCH.
@@ -2272,7 +4022,7 @@
         var actions = byId("repActions");
         var btns = [];
         if (canSubmit) {
-          btns.push('<button class="btn-solid" id="repSubmit">' + dual("إرسال للقابضة", "Submit to Holding") + "</button>");
+          btns.push('<button class="btn-solid" id="repSubmit">' + dual("حفظ وإرسال", "Save and submit") + "</button>");
         }
         if (canReview) {
           btns.push('<button class="btn-solid gold" id="repReview">' + dual("مراجعة مالية", "Financial review") + "</button>");
@@ -2284,10 +4034,13 @@
           btns.push('<button class="btn-solid gold" id="repReturn">' + dual("إعادة للتصحيح", "Return for correction") + "</button>");
         }
         if (canCorrect) {
-          btns.push('<button class="btn-solid" id="repCorrect">' + dual("إنشاء نسخة تصحيح", "Create correction") + "</button>");
+          btns.push('<button class="btn-solid" id="repCorrect">' + dual("فتح للتصحيح", "Open for correction") + "</button>");
         }
         if (canApprove) {
-          btns.push('<button class="btn-solid gold" id="repApprove">' + dual("اعتماد", "Approve") + "</button>");
+          btns.push('<button class="btn-solid gold" id="repApprove">' + dual("اعتماد التقرير", "Approve report") + "</button>");
+        }
+        if (canLock) {
+          btns.push('<button class="btn-solid gold" id="repLock">' + dual("قفل التقرير", "Lock report") + "</button>");
         }
         if (canCancel) {
           btns.push('<button class="btn-solid danger" id="repCancel">' + dual("إلغاء التقرير", "Cancel report") + "</button>");
@@ -2302,6 +4055,7 @@
         if (byId("repReturn")) byId("repReturn").addEventListener("click", function () { returnReportForm(id, this); });
         if (byId("repCorrect")) byId("repCorrect").addEventListener("click", function () { correctReportForm(id, this); });
         if (byId("repApprove")) byId("repApprove").addEventListener("click", function () { approveReport(id, this); });
+        if (byId("repLock")) byId("repLock").addEventListener("click", function () { lockReport(id, this); });
         if (byId("repCancel")) byId("repCancel").addEventListener("click", function () { cancelReportForm(id, this); });
       })
       .catch(function (err) {
@@ -2538,7 +4292,7 @@
       return Promise.all([
         get("/api/v1/financial/report?" + finPeriodQuery()),
         has("financial_item.manage")
-          ? get("/api/v1/financial/item-definitions").catch(function () { return []; })
+          ? softGet("/api/v1/financial/item-definitions")
           : Promise.resolve([]),
       ]);
     }).then(function (res) {
@@ -2587,9 +4341,9 @@
     var form =
       '<form class="av-form av-form-inline" id="finDefForm">' +
       field("الشركة", "Company", selectInput("fdCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-      field("الكود", "Code", textInput("fdCode", "")) +
-      field("الاسم (عربي)", "Name (AR)", textInput("fdNameAr", "")) +
-      field("الاسم (إنجليزي)", "Name (EN)", textInput("fdNameEn", "")) +
+      field("الكود", "Code", textInput("fdCode", "", "", true), null, null, true) +
+      field("الاسم (عربي)", "Name (AR)", textInput("fdNameAr", "", "", true), null, null, true) +
+      field("الاسم (إنجليزي)", "Name (EN)", textInput("fdNameEn", "", "", true), null, null, true) +
       field("النوع", "Kind", selectInput("fdKind", [
         { value: "expense", label: opt("مصروف", "Expense") },
         { value: "revenue", label: opt("إيراد", "Revenue") },
@@ -2850,6 +4604,10 @@
       (v.return_note
         ? '<div class="note-block"><span class="lbl">' + dual("ملاحظة التصحيح", "Correction note") + "</span>" + escapeHtml(v.return_note) + "</div>"
         : "") +
+      // Deck slide 23 draws the manager's form itself: the mandatory input
+      // fields, then [حفظ مسودة] and [إرسال للمراجعة]. The form is shown only
+      // while the version is editable, so an approved version stays read-only.
+      (finCanEdit(v) ? finDraftForm(v) : "") +
       '<div class="sec-title">' + dual("المؤشرات المالية", "Financials") + "</div>" +
       '<div class="kv">' +
       kv(dual("الإيرادات المدخلة", "Entered revenue"), dual(finMoneyAr(v.submitted_revenue), finMoneyEn(v.submitted_revenue))) +
@@ -2879,7 +4637,7 @@
       '<div id="finBank">' + bank + "</div>" +
       (finCanEdit(v)
         ? '<div class="av-toolbar" style="margin-top:8px"><input type="file" id="finBankFile"><button class="btn-outline" id="finUploadBank">' +
-          dual("رفع كشف البنك", "Upload statement") + "</button></div>"
+          dual("إرفاق الملف", "Attach file") + "</button></div>"
         : "") +
       '<div id="finActions" class="modal-foot" style="margin-top:14px;border-radius:12px;border:1px solid var(--line-2)"></div>'
     );
@@ -2888,6 +4646,35 @@
   function finCanEdit(v) {
     return (v.status === "draft" || v.status === "correction_required") &&
       has("financial_summary.update");
+  }
+
+  // The manager's editable form (deck slide 23). Six mandatory money fields
+  // plus optional notes, matching the deck's own field list; the computed
+  // figures stay read-only underneath. [حفظ مسودة] persists the draft without
+  // submitting it, so a partially filled month is never lost.
+  function finDraftForm(v) {
+    var disabled = has("financial_summary.update") ? "" : " disabled";
+    return (
+      '<div class="sec-title">' + dual("بيانات النموذج", "Form data") + "</div>" +
+      '<p class="note-block"><span class="lbl">' + dual("ملاحظة", "Note") + "</span>" +
+      dual("الحقول الإلزامية مميزة بعلامة *", "Mandatory fields are marked *") + "</p>" +
+      '<div class="av-grid cols-2">' +
+      field("إجمالي الإيرادات *", "Total revenue *", numInput("finfRevenue", v.submitted_revenue)) +
+      field("إجمالي المصروفات *", "Total expenses *", numInput("finfExpenses", v.submitted_expenses)) +
+      field("الرصيد البنكي نهاية الشهر *", "Closing bank balance *", numInput("finfBank", v.closing_bank_balance)) +
+      field("النقد في الصندوق *", "Cash in hand *", numInput("finfCash", v.closing_cash_balance)) +
+      field("الديون غير المسددة *", "Outstanding debts *", numInput("finfDebts", v.outstanding_debts)) +
+      field("الذمم لدى العملاء *", "Customer receivables *", numInput("finfReceivables", v.customer_receivables)) +
+      "</div>" +
+      field("ملاحظات المدير *", "Manager notes *",
+        '<textarea class="av-textarea" id="finfNotes" style="width:100%">' +
+        escapeHtml(v.manager_notes || "") + "</textarea>",
+        "اختياري", "Optional") +
+      '<div class="av-toolbar" style="margin-top:8px">' +
+      '<button class="btn-solid" id="finSaveDraft"' + disabled + ">" +
+      dual("حفظ مسودة", "Save draft") + "</button>" +
+      "</div>"
+    );
   }
 
   function finBindPeriodActions(p, v) {
@@ -2899,7 +4686,7 @@
       btns.push('<button class="btn-solid" id="finSubmit">' + dual("إرسال للمراجعة", "Submit for review") + "</button>");
     }
     if (v.status === "submitted" && has("financial_review.act")) {
-      btns.push('<button class="btn-solid gold" id="finApprove">' + dual("اعتماد", "Approve") + "</button>");
+      btns.push('<button class="btn-solid gold" id="finApprove">' + dual("اعتماد التقرير", "Approve report") + "</button>");
       btns.push('<button class="btn-solid danger" id="finReturn">' + dual("إرجاع للتصحيح", "Return for correction") + "</button>");
     }
     if (v.status === "approved" && has("financial_summary.correct")) {
@@ -2915,6 +4702,7 @@
     if (byId("finCorrect")) byId("finCorrect").addEventListener("click", function () { finCorrect(p, v, this); });
     if (byId("finAddItem")) byId("finAddItem").addEventListener("click", function () { finAddItem(v, this); });
     if (byId("finUploadBank")) byId("finUploadBank").addEventListener("click", function () { finUploadBank(v, this); });
+    if (byId("finSaveDraft")) byId("finSaveDraft").addEventListener("click", function () { finSaveDraft(v, this); });
 
     if (body) {
       body.querySelectorAll("[data-fin-version]").forEach(function (el) {
@@ -2950,7 +4738,10 @@
       message: STATE.lang === "ar"
         ? "سيُرسل الملخص إلى المحاسب، ويلزم وجود كشف بنك."
         : "The summary will be sent to the accountant; a bank statement is required.",
-      confirmLabel: dual("إرسال", "Submit"),
+      // Deck slide 23 names the page's primary action [إرسال للمحاسب] and the
+      // form's button [إرسال للمراجعة]; this confirmation is that same send, so
+      // it carries the deck's primary-action wording.
+      confirmLabel: dual("إرسال للمحاسب", "Send to accountant"),
     }).then(function (ok) {
       if (!ok) return;
       busy(btn, true);
@@ -3002,6 +4793,25 @@
     busy(btn, true);
     post("/api/v1/financial/periods/" + p.id + "/corrections")
       .then(function () { toast(STATE.lang === "ar" ? "أُنشئت نسخة تصحيحية." : "Corrective version created.", "ok"); finReload(p); })
+      .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
+  }
+
+  function finSaveDraft(v, btn) {
+    var body = {
+      submitted_revenue: numVal("finfRevenue"),
+      submitted_expenses: numVal("finfExpenses"),
+      closing_bank_balance: numVal("finfBank"),
+      closing_cash_balance: numVal("finfCash"),
+      outstanding_debts: numVal("finfDebts"),
+      customer_receivables: numVal("finfReceivables"),
+      manager_notes: valOf("finfNotes") || null,
+    };
+    busy(btn, true);
+    patch("/api/v1/financial/summaries/" + v.id, body)
+      .then(function () {
+        toast(STATE.lang === "ar" ? "حُفظت المسودة." : "Draft saved.", "ok");
+        finReload({ id: v.period_id });
+      })
       .catch(function (err) { toast(errText(err), "err"); busy(btn, false); });
   }
 
@@ -3065,19 +4875,23 @@
     }
     return ensureSupport().then(function (rows) {
       var st = byId("supStatus") ? byId("supStatus").value : "";
+      var spec = supportFilterSpec();
       var list = rows.filter(function (r) {
         return !st || r.status === st;
       });
-      if (!list.length) {
-        host.innerHTML = emptyHtml("لا توجد طلبات مطابقة.", "No matching requests.");
-        return;
-      }
-      host.innerHTML = list.map(supportRowCard).join("");
-      host.querySelectorAll("[data-request]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          openSupport(parseInt(el.getAttribute("data-request"), 10));
-        });
+      list = applyListFilters(scopeFilter(list), "support", spec);
+      // The API already orders these newest-first; the deck's secondary sort by
+      // ID (slides 134-136) is layered on so paging stays deterministic.
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });
+      renderPaged(host, "support", list, supportRowCard, function (h) {
+        h.querySelectorAll("[data-request]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            openSupport(parseInt(el.getAttribute("data-request"), 10));
+          });
+        });
+      }, spec);
     });
   }
 
@@ -3163,7 +4977,7 @@
                   '<button class="btn-solid" id="supSetStatus">' + dual("تغيير الحالة", "Change status") + "</button>"
                 : "") +
               (canAssign
-                ? '<button class="btn-outline" id="supAssignBtn">' + dual("إسناد", "Assign") + "</button>"
+                ? '<button class="btn-outline" id="supAssignBtn">' + dual("إسناد للمختص", "Assign to specialist") + "</button>"
                 : "") +
               (canStatus
                 ? '<button class="btn-outline" id="supDeliverBtn">' + dual("تسليم العمل", "Record delivery") + "</button>"
@@ -3265,7 +5079,7 @@
       body: loadingHtml(),
       footer:
         '<button class="btn-outline" id="asgCancel">' + dual("إلغاء", "Cancel") + "</button>" +
-        '<button class="btn-solid" id="asgSave" disabled>' + dual("إسناد", "Assign") + "</button>",
+        '<button class="btn-solid" id="asgSave" disabled>' + dual("إسناد للمختص", "Assign to specialist") + "</button>",
       onMount: function (root, body) {
         root.querySelector("#asgCancel").addEventListener("click", closeModal);
         var userOptions = "";
@@ -3382,10 +5196,42 @@
         "</div>" +
         '<div class="av-field"><label>' + dual("رابط مرجعي", "Reference link") + '</label><input class="av-input" id="ncRef" style="width:100%"></div>',
       footer:
+        // Deck slide 18 names two controls on the create form: [حفظ مسودة] and
+        // [إرسال الطلب]. There is no draft status on the server for a support
+        // request (the spec's Table 49 sends it straight to the specialist), so
+        // the draft is kept on the device and re-filled the next time the form
+        // opens; sending clears it.
         '<button class="btn-outline" id="ncCancel">' + dual("إلغاء", "Cancel") + "</button>" +
-        '<button class="btn-solid" id="ncSave">' + dual("إنشاء", "Create") + "</button>",
+        '<button class="btn-outline" id="ncDraft">' + dual("حفظ مسودة", "Save draft") + "</button>" +
+        '<button class="btn-solid" id="ncSave">' + dual("إرسال الطلب", "Send request") + "</button>",
       onMount: function (root) {
+        var DRAFT_KEY = "safir.supportDraft.v1";
+        var draft = null;
+        try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) { /* storage disabled */ }
+        if (draft) {
+          [["ncCompany", draft.company_id], ["ncCat", draft.category],
+           ["ncTitle", draft.title], ["ncDesc", draft.description],
+           ["ncDims", draft.dimensions], ["ncPlatform", draft.platform],
+           ["ncRef", draft.reference_link]].forEach(function (pair) {
+            var el = root.querySelector("#" + pair[0]);
+            if (el && pair[1]) el.value = pair[1];
+          });
+        }
         root.querySelector("#ncCancel").addEventListener("click", closeModal);
+        root.querySelector("#ncDraft").addEventListener("click", function () {
+          try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({
+              company_id: root.querySelector("#ncCompany").value,
+              category: root.querySelector("#ncCat").value,
+              title: root.querySelector("#ncTitle").value,
+              description: root.querySelector("#ncDesc").value,
+              dimensions: root.querySelector("#ncDims").value,
+              platform: root.querySelector("#ncPlatform").value,
+              reference_link: root.querySelector("#ncRef").value,
+            }));
+          } catch (e) { /* storage disabled */ }
+          toast(dual("تم حفظ المسودة على هذا الجهاز.", "Draft saved on this device."), "ok");
+        });
         root.querySelector("#ncSave").addEventListener("click", function () {
           var btn = this;
           var title = root.querySelector("#ncTitle").value.trim();
@@ -3404,6 +5250,7 @@
             reference_link: root.querySelector("#ncRef").value || null,
           })
             .then(function (created) {
+              try { localStorage.removeItem(DRAFT_KEY); } catch (e) { /* storage disabled */ }
               toast(STATE.lang === "ar" ? "تم إنشاء الطلب." : "Request created.", "ok");
               STATE.loaded.support = false;
               refreshAll().then(function () { openSupport(created.id); });
@@ -3462,7 +5309,8 @@
     var suffix = q.length ? "?" + q.join("&") : "";
     return get("/api/v1/form-submissions" + suffix)
       .then(function (page) {
-        return page && page.items ? page.items : [];
+        STATE.submissions = page && page.items ? page : { items: [] };
+        return STATE.submissions.items;
       })
       .catch(function (err) {
         handleLoadError(err);
@@ -3479,19 +5327,35 @@
       var forms = res[0];
       var rows = res[1];
       fillFormFilter(forms);
+      var spec = requestsFilterSpec();
+      var list = applyListFilters(rows, "requests", spec);
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      host.innerHTML = "";
+      // Deck slide 38: the empty state names the deck's own message and its
+      // primary [إنشاء طلب] control, so a first-time user is not left staring
+      // at "no rows match the filters".
       if (!rows.length) {
-        host.innerHTML = emptyHtml(
-          "لا توجد طلبات مطابقة. ابدأ بإنشاء طلب جديد.",
-          "No matching requests. Start by creating a new one."
-        );
+        host.innerHTML =
+          '<div class="lf-empty">' +
+          emptyHtml("لا توجد طلبات في هذه الفترة", "No requests in this period") +
+          (has("form.submit")
+            ? '<button class="btn-solid" id="reqNewEmpty">' +
+              dual("إنشاء طلب", "Create request") + "</button>"
+            : "") +
+          "</div>";
+        var emptyBtn = byId("reqNewEmpty");
+        if (emptyBtn) emptyBtn.addEventListener("click", function () { newRequestForm(); });
         return;
       }
-      host.innerHTML = rows.map(requestRow).join("");
-      host.querySelectorAll("[data-submission]").forEach(function (row) {
-        row.addEventListener("click", function () {
-          openSubmission(parseInt(row.getAttribute("data-submission"), 10));
+      renderPaged(host, "requests", list, requestRow, function (h) {
+        h.querySelectorAll("[data-submission]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openSubmission(parseInt(row.getAttribute("data-submission"), 10));
+          });
         });
-      });
+      }, spec);
     });
   }
 
@@ -3898,7 +5762,7 @@
                 .then(function () {
                   closeModal();
                   toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
-                  loadSubmissionDetail(s.id);
+                  openSubmission(s.id);
                 })
                 .catch(function (err) {
                   toast(errText(err), "err");
@@ -3995,7 +5859,7 @@
     host.innerHTML = loadingHtml();
     bindDocumentsControls();
     return Promise.all([
-      get("/api/v1/documents/categories").catch(function () { return []; }),
+      softGet("/api/v1/documents/categories"),
       get("/api/v1/documents/expiry-summary").catch(function () { return null; }),
     ]).then(function (meta) {
       fillDocCategoryFilter(meta[0]);
@@ -4006,16 +5870,19 @@
       return get("/api/v1/documents" + (q.length ? "?" + q.join("&") : ""));
     }).then(function (page) {
       var rows = page && page.items ? page.items : [];
-      if (!rows.length) {
-        host.innerHTML = emptyHtml("لا توجد مستندات.", "No documents found.");
-        return;
-      }
-      host.innerHTML = rows.map(documentRow).join("");
-      host.querySelectorAll("[data-doc]").forEach(function (row) {
-        row.addEventListener("click", function () {
-          openDocument(JSON.parse(row.getAttribute("data-doc")));
-        });
+      STATE.documentsPage = page || { items: [] };
+      var spec = documentsFilterSpec();
+      var list = applyListFilters(rows, "documents", spec);
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
       });
+      renderPaged(host, "documents", list, documentRow, function (h) {
+        h.querySelectorAll("[data-doc]").forEach(function (row) {
+          row.addEventListener("click", function () {
+            openDocument(JSON.parse(row.getAttribute("data-doc")));
+          });
+        });
+      }, spec);
     }).catch(function (err) {
       handleLoadError(err);
       host.innerHTML = errorHtml(errText(err));
@@ -4258,6 +6125,9 @@
             }).join("") + "</div>"
           : '<p class="av-empty">' + dual("جميع الشركات أرسلت تقاريرها.", "All companies submitted reports.") + "</p>") +
         "</div>" +
+        '<div class="av-panel" id="investPortfolio"><h3>' +
+        dual("سجل محفظة الملكية والاستثمارات", "Ownership & investment register") +
+        "</h3>" + loadingHtml() + "</div>" +
         '<div class="av-panel"><h3>' + dual("مؤشرات المجموعة", "Group indicators") + "</h3>" + groupIndicators() + "</div>" +
         "</div>";
       host.querySelectorAll("[data-invest-co]").forEach(function (el) {
@@ -4265,6 +6135,395 @@
           openCompany(parseInt(el.getAttribute("data-invest-co"), 10));
         });
       });
+      loadInvestmentPortfolio();
+    });
+  }
+
+  // ---- deck slides 107/108/109: investment register + record detail --------
+  // The deck's investment screen is the *ownership* register (الملكية, القيمة
+  // المرجعية/الدفترية, التقييم, المصدر) with a linked owner decision. Each
+  // ownership row is the real, approved record; its documented valuation summary
+  // (original value, contributions, financing, distributions, book value,
+  // approved valuation) is joined from the investment-valuations endpoint when
+  // the caller holds investment.read. A field with no recorded value renders as
+  // "غير مُعدّ" rather than an invented zero -- the deck's own rule
+  // ("عند لا يوجد لا يضع النظام صفرًا كتقييم", slide 109).
+  function loadInvestmentPortfolio() {
+    var host = byId("investPortfolio");
+    if (!host) return;
+    if (!has("ownership.read")) {
+      host.innerHTML = noticeHtml(
+        "لا تملك صلاحية عرض سجل الملكية.",
+        "You may not view the ownership register.",
+      );
+      return;
+    }
+    var canReadVal = has("investment.read");
+    Promise.all([
+      softGet("/api/v1/admin/ownerships"),
+      canReadVal ? softGet("/api/v1/admin/investment-valuations") : Promise.resolve([]),
+    ]).then(function (res) {
+      var rows = res[0] || [];
+      var byCompany = {};
+      (res[1] || []).forEach(function (v) { byCompany[v.owned_company_id] = v; });
+      if (!rows.length) {
+        host.innerHTML = portfolioActionsHtml() + noticeHtml(
+          "لا توجد حصص ملكية مسجّلة بعد.",
+          "No ownership stakes recorded yet.",
+        );
+        bindPortfolioActions(rows);
+        return;
+      }
+      var notConfigured = dual("غير مُعدّ", "Not configured");
+      function bookValueCell(v) {
+        if (!v || v.book_value == null) return notConfigured;
+        return escapeHtml(money(v.book_value)[STATE.lang] || "") +
+          (v.book_value_date ? " · " + escapeHtml(dateStr(v.book_value_date)) : "") +
+          (v.book_value_source ? " · " + escapeHtml(v.book_value_source) : "");
+      }
+      function valuationCell(v) {
+        // Slide 109: yes/no choice; "no" states none is recorded, never a zero.
+        if (!v || v.has_valuation !== true) return dual("لا يوجد تقييم معتمد", "No approved valuation");
+        return escapeHtml(money(v.valuation_amount)[STATE.lang] || "") +
+          (v.valuation_date ? " · " + escapeHtml(dateStr(v.valuation_date)) : "");
+      }
+      // The deck keeps [إضافة استثمار] / [رفع قرار] / [تقرير المحفظة] above the
+      // register, so the toolbar is rendered outside the paged host (which owns
+      // its own innerHTML, filter bar and pager).
+      host.innerHTML = portfolioActionsHtml() + '<div id="investList"></div>';
+      var listHost = byId("investList");
+      var spec = [
+        { key: "q", type: "search", ar: "الشركة / المالك", en: "Company / owner",
+          fields: ["owned_company_name_ar", "owned_company_name_en",
+                   "owner_company_name_ar", "owner_company_name_en", "external_owner_name"] },
+        { key: "status", ar: "حالة الاستثمار", en: "Investment status", field: "status",
+          options: distinctOptions(rows, function (r) { return r.status; },
+            function (v) {
+              var m = { active: ["نشط", "Active"], ended: ["مغلق", "Closed"] };
+              return { ar: (m[v] || [v])[0], en: (m[v] || [v, v])[1] };
+            }) },
+        { key: "currency", ar: "العملة الأصلية", en: "Original currency",
+          resolve: function (r) { var v = byCompany[r.owned_company_id]; return v && v.currency; },
+          options: distinctOptions(rows, function (r) {
+            var v = byCompany[r.owned_company_id]; return v && v.currency;
+          }) },
+      ];
+      var list = applyListFilters(rows, "investments", spec);
+      // Deck default sort: "الاسم" then the newest valuation / investment date.
+      list.sort(function (a, b) {
+        return String(a.owned_company_name_ar || "").localeCompare(
+          String(b.owned_company_name_ar || ""), "ar") || byIdAsc(a, b);
+      });
+      renderPaged(listHost, "investments", list, function (o) {
+        var name = STATE.lang === "ar"
+          ? o.owned_company_name_ar || o.owned_company_name_en
+          : o.owned_company_name_en || o.owned_company_name_ar;
+        var owner = o.owner_company_id
+          ? (STATE.lang === "ar" ? o.owner_company_name_ar : o.owner_company_name_en)
+          : o.external_owner_name;
+        var pct = plainNum(o.ownership_percentage) + "%";
+        var v = byCompany[o.owned_company_id];
+        var valBlock = canReadVal
+          ? '<div class="s">' +
+            dual("القيمة الدفترية", "Book value") + ": " + bookValueCell(v) +
+            " · " + dual("التقييم", "Valuation") + ": " + valuationCell(v) +
+            (v && v.currency ? " · " + escapeHtml(v.currency) : "") +
+            "</div>"
+          : "";
+        return (
+          '<div class="av-row" data-invest-own="' + o.owned_company_id + '">' +
+          '<div class="co-dot" style="background:' + PALETTE[o.owned_company_id % PALETTE.length] + '">' +
+          initial(name) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
+          '<div class="s">' + dual("المالك", "Owner") + ": " + escapeHtml(owner || "—") +
+          " · " + dual("الملكية", "Ownership") + " " + pct +
+          " · " + dual("تاريخ النفاذ", "Effective") + " " + escapeHtml(dateStr(o.effective_from)) +
+          "</div>" + valBlock + "</div>" +
+          statusBadgeFromMap(o.status, {
+            active: ["قائمة", "Active", "ok"],
+            ended: ["منتهية", "Ended", "warn"],
+          }) +
+          '<button type="button" class="btn-outline" data-invest-open="' + o.owned_company_id + '">' +
+          dual("فتح التفاصيل", "Open details") + "</button></div>"
+        );
+      }, function (h, slice) {
+        h.querySelectorAll("[data-invest-open]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            openInvestment(parseInt(btn.getAttribute("data-invest-open"), 10));
+          });
+        });
+      }, spec);
+      bindPortfolioActions(list);
+    }).catch(function (err) {
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
+  // Deck slide 107 names three actions beside [فتح التفاصيل]: [إضافة استثمار]
+  // (a new ownership stake), [رفع قرار] (raise the linked owner decision) and
+  // [تقرير المحفظة] (export the register the caller is already looking at).
+  // Each appears only when the role holds the permission its endpoint enforces,
+  // so no control is offered that would 403.
+  function portfolioActionsHtml() {
+    var acts = "";
+    if (has("ownership.manage")) {
+      acts += '<button type="button" class="btn-outline" id="invAdd">' +
+        dual("إضافة استثمار", "Add investment") + "</button>";
+    }
+    if (has("owner_decision.manage")) {
+      acts += '<button type="button" class="btn-outline" id="invRaiseDecision">' +
+        dual("رفع قرار", "Raise decision") + "</button>";
+    }
+    acts += '<button type="button" class="btn-outline" id="invReport">' +
+      dual("تقرير المحفظة", "Portfolio report") + "</button>";
+    return '<div class="av-form-actions" id="invActions">' + acts + "</div>";
+  }
+
+  function bindPortfolioActions(rows) {
+    var add = byId("invAdd");
+    if (add) add.addEventListener("click", openInvestmentCreate);
+    var raise = byId("invRaiseDecision");
+    if (raise) raise.addEventListener("click", openPortfolioDecision);
+    var report = byId("invReport");
+    if (report) {
+      report.addEventListener("click", function () { exportListCsv("investments", rows); });
+    }
+  }
+
+  function openInvestmentCreate() {
+    var ownedOpts = (STATE.companies || []).map(function (c) {
+      return { value: c.id, label: companyName(c) };
+    });
+    var ownerOpts = [{ value: "", label: STATE.lang === "ar" ? "— (مالك خارجي)" : "— (external owner)" }]
+      .concat((STATE.companies || []).map(function (c) {
+        return { value: c.id, label: companyName(c) };
+      }));
+    openModal({
+      title: dual("إضافة استثمار (حصة ملكية)", "Add investment (ownership stake)"),
+      body:
+        '<form class="av-form" id="invAddForm">' +
+        field("الشركة المملوكة", "Owned company", selectInput("iaOwned", ownedOpts, "")) +
+        field("المالك (شركة)", "Owner (company)", selectInput("iaOwner", ownerOpts, "")) +
+        field("اسم المالك الخارجي", "External owner name", textInput("iaExternal", "", "")) +
+        field("نسبة الملكية %", "Ownership %", numInput("iaPct", "", "")) +
+        field("من تاريخ", "Effective from", dateInput("iaFrom", "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        body.querySelector("#invAddForm").addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var payload = {
+            owned_company_id: parseInt(valOf("iaOwned"), 10),
+            ownership_percentage: numVal("iaPct"),
+            effective_from: valOf("iaFrom") || null,
+          };
+          var owner = valOf("iaOwner");
+          var external = valOf("iaExternal");
+          if (owner) payload.owner_company_id = parseInt(owner, 10);
+          else if (external) payload.external_owner_name = external;
+          post("/api/v1/admin/ownerships", payload).then(function () {
+            toast(dual("تمت إضافة الحصة.", "Stake added."), "ok");
+            closeModal();
+            loadInvestmentPortfolio();
+          }).catch(domainError);
+        });
+      },
+    });
+  }
+
+  function openPortfolioDecision() {
+    openModal({
+      title: dual("رفع قرار مالك مرتبط بالمحفظة", "Raise an owner decision linked to the portfolio"),
+      body:
+        '<form class="av-form" id="invDecisionForm">' +
+        field("رقم القرار", "Decision number", textInput("idNumber", "", "")) +
+        field("الموضوع", "Title", textInput("idTitle", "", "")) +
+        field("الشركة", "Company",
+          selectInput("idCompany", [{ value: "", label: STATE.lang === "ar" ? "— (القابضة)" : "— (Holding)" }]
+            .concat((STATE.companies || []).map(function (c) {
+              return { value: c.id, label: companyName(c) };
+            })), "")) +
+        field("النص", "Body", textArea("idBody", "", "")) +
+        field("تاريخ الاستحقاق", "Due date", dateInput("idDue", "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("رفع القرار", "Raise decision") + "</button></div></form>",
+      onMount: function (root, body) {
+        body.querySelector("#invDecisionForm").addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var company = valOf("idCompany");
+          post("/api/v1/operations/owner-decisions", {
+            number: valOf("idNumber"),
+            title: valOf("idTitle"),
+            company_id: company ? parseInt(company, 10) : null,
+            body: valOf("idBody") || null,
+            due_date: valOf("idDue") || null,
+          }).then(function () {
+            toast(dual("تم رفع القرار.", "Decision raised."), "ok");
+            closeModal();
+          }).catch(domainError);
+        });
+      },
+    });
+  }
+
+  function openInvestment(companyId) {
+    openModal({
+      title: dual("تفاصيل الاستثمار والقرار المرتبط", "Investment detail & linked decision"),
+      wide: true,
+      body: loadingHtml(),
+      onMount: function () {
+        Promise.all([
+          softGet("/api/v1/admin/ownerships?owned_company_id=" + companyId),
+          softGet("/api/v1/operations/owner-decisions?company_id=" + companyId),
+          softGet("/api/v1/admin/investment-valuations/" + companyId),
+          ensureCompanies(),
+        ]).then(function (res) {
+          var stakes = (res[0] || []).filter(function (o) { return o.status === "active"; });
+          var decisions = res[1] || [];
+          var val = res[2] || {};
+          var body = byId("modalBody");
+          if (!body) return;
+          var name = companyNameById(companyId);
+          var stake = stakes[0];
+          var ownership = stake ? plainNum(stake.ownership_percentage) + "%" : null;
+          // Deck slide 109: a figure with no recorded value is shown as غير مُعدّ,
+          // never as an invented zero. ``dual()`` returns markup, so it is passed
+          // to kv() unescaped; server strings stay escaped.
+          var notConfigured = dual("غير مُعدّ", "Not configured");
+          function amount(v) {
+            return v === null || v === undefined ? notConfigured : escapeHtml(money(v)[STATE.lang] || "");
+          }
+          var hasVal = val.has_valuation === true;
+          // The valuation is a yes/no choice: "yes" shows the approved amount,
+          // date, source and reference; "no" explicitly states none is recorded.
+          var valuationTxt = hasVal
+            ? amount(val.valuation_amount) + " · " +
+              dual("بتاريخ ", "on ") + escapeHtml(dateStr(val.valuation_date)) +
+              (val.valuation_source ? " · " + escapeHtml(val.valuation_source) : "") +
+              (val.valuation_reference ? " · " + escapeHtml(val.valuation_reference) : "")
+            : dual("لا يوجد تقييم معتمد", "No approved valuation");
+          var canEdit = has("investment.manage");
+          body.innerHTML =
+            '<div class="kv">' +
+            kv(dual("الشركة", "Company"), escapeHtml(name)) +
+            kv(dual("نسبة الملكية", "Ownership %"),
+               ownership ? escapeHtml(ownership) + " · " +
+                 dual("منذ ", "since ") + escapeHtml(dateStr(stake.effective_from))
+                 : notConfigured) +
+            kv(dual("الحالة", "Status"), stake
+              ? statusBadgeFromMap(stake.status, { active: ["قائمة", "Active", "ok"], ended: ["منتهية", "Ended", "warn"] })
+              : notConfigured) +
+            kv(dual("القيمة الأصلية وتاريخ الاستثمار", "Original value & date"),
+               val.original_value == null && !val.investment_date ? notConfigured
+                 : amount(val.original_value) +
+                   (val.investment_date ? " · " + escapeHtml(dateStr(val.investment_date)) : "")) +
+            kv(dual("المساهمات الرأسمالية اللاحقة", "Subsequent contributions"), amount(val.subsequent_contributions)) +
+            kv(dual("التمويل أو القروض", "Financing / loans"), amount(val.financing)) +
+            kv(dual("التوزيعات المستلمة", "Distributions received"), amount(val.distributions)) +
+            kv(dual("القيمة الدفترية وتاريخها", "Book value & date"),
+               val.book_value == null ? notConfigured
+                 : amount(val.book_value) +
+                   (val.book_value_date ? " · " + escapeHtml(dateStr(val.book_value_date)) : "") +
+                   (val.book_value_source ? " · " + escapeHtml(val.book_value_source) : "")) +
+            kv(dual("التقييم المعتمد", "Approved valuation"), valuationTxt) +
+            kv(dual("القرار المرتبط", "Linked decision"),
+               escapeHtml(val.decision_reference || "") || notConfigured) +
+            "</div>" +
+            '<div class="s">' +
+            dual(
+              "القيمة الدفترية تدخل كما اعتمدها المحاسب بتاريخها ومصدرها ولا تُحسب بجمع المساهمات والتمويل والتوزيعات؛ عند غياب التقييم لا يضع النظام صفرًا.",
+              "The book value is entered as approved by the accountant with its date and source, never derived by summing contributions, financing and distributions; with no valuation the system stores no zero.",
+            ) + "</div>" +
+            (canEdit
+              ? '<div class="av-form-actions"><button type="button" class="btn" id="invEdit">' +
+                dual("تعديل القيم والتقييم", "Edit figures & valuation") + "</button></div>"
+              : "") +
+            '<div class="sec-title">' + dual("القرار المرتبط", "Linked decision") + "</div>" +
+            (decisions.length
+              ? '<div class="av-list">' + decisions.map(function (d) {
+                  return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                    '<div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
+                    '<div class="s">' + escapeHtml(d.follow_up_note || "") + "</div></div>" +
+                    statusBadgeFromMap(d.status, {
+                      open: ["مفتوح", "Open", "warn"],
+                      in_progress: ["قيد التنفيذ", "In progress", "rev"],
+                      done: ["منفّذ", "Done", "ok"],
+                      cancelled: ["ملغى", "Cancelled", "miss"],
+                    }) + "</div>";
+                }).join("") + "</div>"
+              : noticeHtml("لا يوجد قرار مرتبط بعد.", "No linked decision yet.")) +
+            '<div class="s">' +
+            dual(
+              "كل زيادة ملكية أو تخارج يرتبط بقرار؛ يحتفظ بالسابق ولا يُلغى استثمار معتمد بغير إصدار مرتبط.",
+              "Every ownership increase or exit links to a decision; the previous one is kept and an approved investment is never cancelled without a linked version.",
+            ) + "</div>";
+          var editBtn = byId("invEdit");
+          if (editBtn) {
+            editBtn.addEventListener("click", function () { openInvestmentEdit(companyId, val); });
+          }
+        }).catch(function (err) {
+          var body = byId("modalBody");
+          if (body) body.innerHTML = errorHtml(errText(err));
+        });
+      },
+    });
+  }
+
+  function openInvestmentEdit(companyId, val) {
+    val = val || {};
+    openModal({
+      title: dual("إدخال قيم الاستثمار والتقييم", "Enter investment figures & valuation"),
+      wide: true,
+      body:
+        '<form class="av-form" id="invForm">' +
+        field("العملة", "Currency", textInput("invCurrency", val.currency || "SAR")) +
+        field("تاريخ الاستثمار", "Investment date", dateInput("invDate", val.investment_date || "")) +
+        field("القيمة الأصلية", "Original value", numInput("invOriginal", val.original_value != null ? val.original_value : "")) +
+        field("المساهمات الرأسمالية اللاحقة", "Subsequent contributions", numInput("invContrib", val.subsequent_contributions != null ? val.subsequent_contributions : "")) +
+        field("التمويل أو القروض", "Financing / loans", numInput("invFinancing", val.financing != null ? val.financing : "")) +
+        field("التوزيعات المستلمة", "Distributions received", numInput("invDistributions", val.distributions != null ? val.distributions : "")) +
+        field("القيمة الدفترية", "Book value", numInput("invBook", val.book_value != null ? val.book_value : "")) +
+        field("تاريخ القيمة الدفترية", "Book value date", dateInput("invBookDate", val.book_value_date || "")) +
+        field("مصدر القيمة الدفترية", "Book value source", textInput("invBookSource", val.book_value_source || "")) +
+        field("يوجد تقييم معتمد؟", "Has an approved valuation?",
+          '<select id="invHasVal" class="inp"><option value="false"' + (val.has_valuation ? "" : " selected") + ">" +
+          dual("لا يوجد", "No") + '</option><option value="true"' + (val.has_valuation ? " selected" : "") + ">" +
+          dual("يوجد", "Yes") + "</option></select>") +
+        field("مبلغ التقييم", "Valuation amount", numInput("invValAmount", val.valuation_amount != null ? val.valuation_amount : "")) +
+        field("تاريخ التقييم", "Valuation date", dateInput("invValDate", val.valuation_date || "")) +
+        field("جهة التقييم", "Valuation source", textInput("invValSource", val.valuation_source || "")) +
+        field("مرجع التقييم", "Valuation reference", textInput("invValRef", val.valuation_reference || "")) +
+        field("معرف قرار الاعتماد", "Approving decision id", textInput("invDecision", val.decision_reference || "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        var form = body.querySelector("#invForm");
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var hasVal = valOf("invHasVal") === "true";
+          patch("/api/v1/admin/investment-valuations/" + companyId, {
+            currency: valOf("invCurrency") || null,
+            investment_date: valOf("invDate") || null,
+            original_value: numVal("invOriginal"),
+            subsequent_contributions: numVal("invContrib"),
+            financing: numVal("invFinancing"),
+            distributions: numVal("invDistributions"),
+            book_value: numVal("invBook"),
+            book_value_date: valOf("invBookDate") || null,
+            book_value_source: valOf("invBookSource") || null,
+            has_valuation: hasVal,
+            valuation_amount: hasVal ? numVal("invValAmount") : null,
+            valuation_date: hasVal ? (valOf("invValDate") || null) : null,
+            valuation_source: hasVal ? (valOf("invValSource") || null) : null,
+            valuation_reference: hasVal ? (valOf("invValRef") || null) : null,
+            decision_reference: valOf("invDecision") || null,
+          }).then(function () {
+            toast(dual("تم حفظ قيم الاستثمار.", "Investment figures saved."), "ok");
+            closeModal();
+            openInvestment(companyId);
+          }).catch(domainError);
+        });
+      },
     });
   }
 
@@ -4285,13 +6544,47 @@
   }
 
   // ---- business intelligence view --------------------------------------
+  // Deck slide 35 carries one primary action, [إعداد ملخص]: it asks the AI
+  // provider for a grounded executive summary of the current period. The
+  // figures come only from the same scoped context the answer engine already
+  // receives, so nothing outside the user's scope can appear.
+  function bindBiToolbar() {
+    var btn = byId("biSummarize");
+    if (!btn || btn.getAttribute("data-bound")) return;
+    btn.setAttribute("data-bound", "1");
+    btn.addEventListener("click", function () {
+      var panel = byId("biSummaryPanel");
+      var scope = aiScope("ملخص أداء الشركات");
+      if (!scope) {
+        toast(STATE.lang === "ar" ? "لا نطاق متاح للتلخيص." : "No scope available to summarise.", "warn");
+        return;
+      }
+      busy(btn, true);
+      post(scope.path, scope.payload)
+        .then(function (data) {
+          if (panel) {
+            panel.hidden = false;
+            panel.innerHTML =
+              "<h3>" + dual("ملخص الأداء", "Performance summary") + "</h3>" +
+              '<p class="brief-summary"><span class="ar">' + escapeHtml(data.answer) +
+              '</span><span class="en">' + escapeHtml(data.answer) + "</span></p>";
+          }
+          toast(STATE.lang === "ar" ? "تم إعداد الملخص." : "Summary prepared.", "ok");
+        })
+        .catch(function (err) { toast(errText(err), "err"); })
+        .then(function () { busy(btn, false); });
+    });
+  }
+
   function renderBi() {
     var host = byId("biContent");
     if (!host) return Promise.resolve();
     host.innerHTML = loadingHtml();
+    bindBiToolbar();
     return Promise.all([loadInsights(true), ensureReports(), ensureCompanies()]).then(function () {
       var insights = STATE.insights;
       host.innerHTML =
+        '<div class="av-panel" id="biSummaryPanel" style="margin-bottom:12px" hidden></div>' +
         '<div class="av-panel" style="margin-bottom:12px"><h3>' + dual("رؤى تنفيذية", "Executive insights") + "</h3>" +
         (insights.length
           ? '<div class="av-list">' + insights.map(function (i) {
@@ -4761,6 +7054,8 @@
           '<div class="grow"><div class="t">' + escapeHtml(STATE.lang === "ar" ? n.title_ar : n.title_en) + "</div>" +
           '<div class="s">' + escapeHtml(STATE.lang === "ar" ? n.message_ar : n.message_en) + "</div>" +
           '<div class="s notif-time">' + fmtDateTime(n.created_at) + "</div></div>" +
+          '<button class="btn-outline" data-notif-open="' + n.id + '">' +
+          notifActionLabel(n) + "</button>" +
           "</div>"
         );
       }).join("") + "</div></div>";
@@ -4775,7 +7070,72 @@
         });
       });
     });
+    host.querySelectorAll("[data-notif-open]").forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var id = parseInt(el.getAttribute("data-notif-open"), 10);
+        var row = (STATE.notifications || []).filter(function (n) { return n.id === id; })[0];
+        if (row) openNotification(row, el);
+      });
+    });
     return Promise.resolve();
+  }
+
+  // Deck slide 36: every alert carries [فتح التنبيه], which marks it read and
+  // opens the record it is about. The target is derived from the notification's
+  // soft entity reference, so a new event type routes correctly once its entity
+  // type is listed here.
+  var NOTIF_TARGET = {
+    monthly_report: { view: "reports", open: "report" },
+    form_submission: { view: "requests", open: "submission" },
+    support_request: { view: "support", open: "support" },
+    financial_summary_version: { view: "financial" },
+    monthly_financial_report: { view: "financial" },
+    financial_report: { view: "financial" },
+    document: { view: "documents" },
+    website_lead: { view: "leads", open: "lead" },
+    task: { view: "operations" },
+    assessment: { view: "employees" },
+    policy_proposal: { view: "accounting" },
+    currency_change_request: { view: "accounting" },
+    management_brief: { view: "operations" },
+    user: { view: "group" },
+    role: { view: "group" },
+  };
+
+  // Deck slide 36 names the row action after the record the alert is about: a
+  // pending monthly form offers [فتح الاستمارة] and a new support request
+  // offers [فتح الطلب], rather than a single generic label for every type.
+  function notifActionLabel(n) {
+    if (n.entity_type === "monthly_report" || n.entity_type === "form_submission") {
+      return dual("فتح الاستمارة", "Open form");
+    }
+    if (n.entity_type === "support_request") {
+      return dual("فتح الطلب", "Open request");
+    }
+    return dual("فتح التنبيه", "Open alert");
+  }
+
+  function openNotification(n, btn) {
+    var target = NOTIF_TARGET[n.entity_type] || {};
+    if (btn) busy(btn, true);
+    var mark = n.is_read
+      ? Promise.resolve()
+      : post("/api/v1/notifications/" + n.id + "/read", {}).then(function () {
+          n.is_read = true;
+        });
+    return mark
+      .then(function () {
+        refreshNotifications();
+        if (target.view) navTo(target.view);
+        if (!n.entity_id) return;
+        if (target.open === "report") return openReport(n.entity_id);
+        if (target.open === "support") return openSupport(n.entity_id);
+        if (target.open === "submission") return openSubmission(n.entity_id);
+        if (target.open === "lead") return openLead(n.entity_id);
+      })
+      .catch(function (err) { domainError(err); })
+      .then(function () { if (btn) busy(btn, false); });
   }
 
   // D11: per-event channel preferences. In-app is the base channel; email is
@@ -4843,6 +7203,7 @@
     "document.expiring": { ar: "مستند على وشك الانتهاء", en: "Document expiring" },
     "document.expired": { ar: "مستند منتهي", en: "Document expired" },
     "report.submitted": { ar: "تقرير شهري مُرسل", en: "Monthly report submitted" },
+    "report.deadline_missed": { ar: "تقرير شهري متأخر", en: "Monthly report late" },
     "financial_summary.submitted": { ar: "ملخص مالي مُرسل", en: "Financial summary submitted" },
     "financial_summary.returned": { ar: "ملخص مالي مُعاد", en: "Financial summary returned" },
     "financial_summary.resubmitted": { ar: "ملخص مالي مُعاد إرساله", en: "Financial summary resubmitted" },
@@ -4926,19 +7287,49 @@
     host.innerHTML = loadingHtml();
     return get("/api/v1/leads/opportunities")
       .then(function (rows) {
-        var list = (rows || []).filter(function (o) { return !STATE.oppStatus || o.status === STATE.oppStatus; });
-        if (!list.length) {
-          host.innerHTML = noticeHtml("لا توجد عروض في هذه الحالة.", "No listings in this state.");
-          return;
-        }
-        host.innerHTML = '<div class="av-panel"><div class="av-list">' + list.map(opportunityRow).join("") + "</div></div>";
-        host.querySelectorAll("[data-opp]").forEach(function (row) {
-          row.addEventListener("click", function () {
-            openOpportunity(parseInt(row.getAttribute("data-opp"), 10));
-          });
+        STATE.opportunities = rows || [];
+        var spec = opportunitiesFilterSpec();
+        // The header chips and the filter bar's status select both narrow the
+        // list; the chip is applied first so the deck's quick chips still work.
+        var chipRows = STATE.opportunities.filter(function (o) {
+          return !STATE.oppStatus || o.status === STATE.oppStatus;
         });
+        var list = applyListFilters(chipRows, "opportunities", spec);
+        // Deck slide 135: newest submission first.
+        list.sort(function (a, b) {
+          return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+        });
+        host.innerHTML = '<div class="av-panel"><div id="oppList"></div></div>';
+        renderPaged(byId("oppList"), "opportunities", list, opportunityRow, function (h) {
+          h.querySelectorAll("[data-opp]").forEach(function (row) {
+            row.addEventListener("click", function () {
+              openOpportunity(parseInt(row.getAttribute("data-opp"), 10));
+            });
+          });
+        }, spec);
       })
       .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  function opportunitiesFilterSpec() {
+    var rows = STATE.opportunities || [];
+    return [
+      { key: "q", type: "search", ar: "العنوان / القطاع / الوصف", en: "Title / sector / description",
+        fields: ["public_title_ar", "public_title_en", "sector", "description"] },
+      { key: "type", ar: "النوع", en: "Type", field: "opportunity_type",
+        options: distinctOptions(rows, function (r) { return r.opportunity_type; },
+          function (v) { return leadLabel(OPPORTUNITY_TYPE, v); }) },
+      { key: "market", ar: "السوق", en: "Market", field: "market",
+        options: distinctOptions(rows, function (r) { return r.market; },
+          function (v) { return leadLabel(LEAD_MARKET, v); }) },
+      { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+        options: distinctOptions(rows, function (r) { return r.currency; }) },
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.created_at ? String(r.created_at).slice(0, 7) : ""; },
+        options: distinctOptions(rows, function (r) {
+          return r.created_at ? String(r.created_at).slice(0, 7) : "";
+        }) },
+    ];
   }
 
   function opportunityRow(o) {
@@ -5135,22 +7526,58 @@
     return get(query)
       .then(function (res) {
         var items = (res && res.items) || [];
-        if (!items.length) {
-          host.innerHTML =
-            '<div class="av-panel">' +
-            emptyHtml("لا توجد طلبات مطابقة.", "No matching leads.") +
-            "</div>";
-          return;
-        }
-        host.innerHTML =
-          '<div class="av-panel"><div class="av-list">' +
-          items.map(leadRow).join("") +
-          "</div></div>";
-        host.querySelectorAll("[data-lead]").forEach(function (row) {
-          row.addEventListener("click", function () {
-            openLead(parseInt(row.getAttribute("data-lead"), 10));
-          });
+        STATE.leads = items;
+        var spec = leadsFilterSpec();
+        var list = applyListFilters(items, "leads", spec);
+        list.sort(function (a, b) {
+          return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
         });
+        var create = has("website_lead.manage")
+          ? '<form class="av-form av-form-inline" id="leadCreateForm">' +
+            field("الاسم", "Name", textInput("lcName", "", "", true)) +
+            field("البريد", "Email", '<input class="av-input" id="lcEmail" type="email" required>') +
+            field("الهاتف", "Phone", textInput("lcPhone", "")) +
+            field("الشركة", "Company", textInput("lcCompany", "")) +
+            field("الخدمة", "Service", selectInput("lcService",
+              Object.keys(LEAD_SERVICE).map(function (k) { return { value: k, label: opt(LEAD_SERVICE[k].ar, LEAD_SERVICE[k].en) }; }),
+              "company_formation")) +
+            field("السوق", "Market", selectInput("lcMarket",
+              Object.keys(LEAD_MARKET).map(function (k) { return { value: k, label: opt(LEAD_MARKET[k].ar, LEAD_MARKET[k].en) }; }),
+              "saudi")) +
+            field("ملاحظة", "Note", textInput("lcMessage", "")) +
+            '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+            dual("إضافة عميل محتمل", "Add lead") + "</button></div></form>"
+          : "";
+        host.innerHTML = panel("العملاء المحتملون", "Leads", create + '<div id="leadList"></div>');
+        renderPaged(byId("leadList"), "leads", list, leadRow, function (h) {
+          h.querySelectorAll("[data-lead]").forEach(function (row) {
+            row.addEventListener("click", function () {
+              openLead(parseInt(row.getAttribute("data-lead"), 10));
+            });
+          });
+        }, spec);
+        var createForm = byId("leadCreateForm");
+        if (createForm) {
+          createForm.addEventListener("submit", function (ev) {
+            ev.preventDefault();
+            busy(createForm.querySelector("button"), true);
+            post("/api/v1/leads", {
+              full_name: valOf("lcName"),
+              email: valOf("lcEmail"),
+              phone: valOf("lcPhone") || null,
+              company_name: valOf("lcCompany") || null,
+              service_type: valOf("lcService"),
+              market: valOf("lcMarket"),
+              message: valOf("lcMessage") || null,
+            }).then(function () {
+              toast(dual("تمت إضافة العميل المحتمل.", "Lead added."), "ok");
+              return renderLeads();
+            }).catch(function (err) {
+              domainError(err);
+              busy(createForm.querySelector("button"), false);
+            });
+          });
+        }
       })
       .catch(function (err) {
         host.innerHTML = errorHtml(
@@ -5193,16 +7620,140 @@
 
   function openLead(id) {
     var campaignPromise = has("campaign.read")
-      ? get("/api/v1/operations/campaigns").catch(function () { return []; })
+      ? softGet("/api/v1/operations/campaigns")
       : Promise.resolve([]);
-    return campaignPromise.then(function (campaigns) {
+    // D04: the append-only assignment history (read requires website_lead.read).
+    var assignmentsPromise = has("website_lead.read")
+      ? softGet("/api/v1/leads/" + id + "/assignments")
+      : Promise.resolve([]);
+    // The assignee picker needs the real user directory (holding_owner/admin).
+    var usersPromise = has("website_lead.assign") && has("user.read")
+      ? softGet("/api/v1/users").then(function (rows) {
+          STATE.users = rows || [];
+          return STATE.users;
+        })
+      : Promise.resolve([]);
+    return Promise.all([
+      campaignPromise,
+      assignmentsPromise,
+      usersPromise,
+      ensureCompanies(),
+    ]).then(function (res) {
       return get("/api/v1/leads/" + id).then(function (lead) {
-        return paintLeadModal(lead, campaigns || []);
+        return paintLeadModal(lead, res[0] || [], res[1] || []);
       });
     });
   }
 
-  function paintLeadModal(lead, campaigns) {
+  // D04 assignment: who owns the lead and which company it is routed to, plus
+  // the append-only history. Only users holding website_lead.assign can change
+  // it; everyone who can read the lead sees the current owner and history.
+  function assignmentBlock(lead, assignments) {
+    var canAssign = has("website_lead.assign");
+    var canRoute = has("company.read");
+    if (!lead.assigned_to_id && !lead.routed_company_id && !canAssign && !(assignments || []).length) {
+      return "";
+    }
+    var current =
+      '<div class="kv">' +
+      kv(dual("المسؤول الحالي", "Current assignee"),
+         escapeHtml(
+           (STATE.lang === "ar"
+             ? lead.assigned_to_name_ar
+             : lead.assigned_to_name_en || lead.assigned_to_name_ar) ||
+           (lead.assigned_to_id ? "#" + lead.assigned_to_id : "—"),
+         )) +
+      kv(dual("الشركة الموجَّه إليها", "Routed company"),
+         escapeHtml(
+           lead.routed_company_id
+             ? companyName(companyById(lead.routed_company_id)) || "#" + lead.routed_company_id
+             : "—",
+         )) +
+      "</div>";
+
+    var controls = "";
+    if (canAssign) {
+      var userOptions = (STATE.users || []).map(function (u) {
+        var label = (STATE.lang === "ar" ? u.full_name_ar : u.full_name_en || u.full_name_ar) +
+          " · " + (u.role_name_ar || u.role_code);
+        return '<option value="' + u.id + '"' +
+          (u.id === lead.assigned_to_id ? " selected" : "") + ">" + escapeHtml(label) + "</option>";
+      }).join("");
+      controls =
+        '<div class="av-field" style="margin-top:10px"><label>' + dual("إسناد إلى", "Assign to") + "</label>" +
+        '<select class="av-select" id="leadAssignee" style="width:100%">' +
+        (userOptions
+          ? '<option value="">' + dual("— بدون تغيير —", "— No change —") + "</option>" + userOptions
+          : '<option value="">' + dual("لا يوجد مستخدمون متاحون", "No users available") + "</option>") +
+        "</select></div>" +
+        (canRoute
+          ? '<div class="av-field" style="margin-top:8px"><label>' + dual("توجيه إلى شركة", "Route to company") + "</label>" +
+            '<select class="av-select" id="leadCompany" style="width:100%">' +
+            '<option value="">' + dual("— بدون تغيير —", "— No change —") + "</option>" +
+            (STATE.companies || []).map(function (c) {
+              return '<option value="' + c.id + '"' +
+                (c.id === lead.routed_company_id ? " selected" : "") + ">" +
+                escapeHtml(companyName(c)) + "</option>";
+            }).join("") +
+            "</select></div>"
+          : "") +
+        '<div class="av-field" style="margin-top:8px"><label>' +
+        dual("سبب الإسناد / إعادة الإسناد", "Assignment / reassignment reason") + "</label>" +
+        '<input class="av-input" id="leadAssignReason" style="width:100%" placeholder="' +
+        escAttr(STATE.lang === "ar" ? "مطلوب عند إعادة الإسناد" : "Required when reassigning") + '"></div>' +
+        '<div class="av-form-actions"><button class="btn-solid" id="leadAssignSave">' +
+        dual("حفظ الإسناد", "Save assignment") + "</button></div>";
+    }
+
+    // Newest first, as the API returns them.
+    var history = (assignments || []).map(function (a) {
+      var what = a.action === "reassign"
+        ? opt("إعادة إسناد", "Reassigned")
+        : opt("إسناد", "Assigned");
+      var to = [];
+      if (a.new_assignee_name_ar) to.push(a.new_assignee_name_ar);
+      if (a.new_company_id) to.push("#" + a.new_company_id);
+      return (
+        '<div class="av-row"><div class="grow"><div class="t">' +
+        escapeHtml(what) + (to.length ? " · " + escapeHtml(to.join(" / ")) : "") +
+        "</div><div class=\"s\">" +
+        (a.actor_name_ar ? escapeHtml(a.actor_name_ar) + " · " : "") +
+        escapeHtml(stampText(a.created_at)) +
+        (a.reason ? " · " + escapeHtml(a.reason) : "") +
+        "</div></div></div>"
+      );
+    }).join("");
+
+    return (
+      '<h3 style="margin-top:16px">' + dual("الإسناد والتوجيه", "Assignment & routing") + "</h3>" +
+      current +
+      controls +
+      (history
+        ? '<h4 style="margin-top:12px;font-size:12px;color:var(--ink-400)">' +
+          dual("سجل الإسناد", "Assignment history") + "</h4>" +
+          '<div class="av-list">' + history + "</div>"
+        : "")
+    );
+  }
+
+  // The closed-out fields of a lead (S13): the recorded result and internal
+  // notes. Kept read-only here; the "Update lead" block below edits the live
+  // fields, and website_lead.manage gates the write.
+  function outcomeBlock(lead) {
+    if (!lead.final_result && !lead.internal_notes && !lead.closed_at) return "";
+    return (
+      '<h3 style="margin-top:16px">' + dual("نتيجة الطلب", "Outcome") + "</h3>" +
+      '<div class="kv">' +
+      kv(dual("النتيجة النهائية", "Final result"),
+         lead.final_result ? escapeHtml(lead.final_result) : "—") +
+      kv(dual("ملاحظات داخلية", "Internal notes"),
+         lead.internal_notes ? escapeHtml(lead.internal_notes) : "—") +
+      kv(dual("أُغلق في", "Closed at"), lead.closed_at ? escapeHtml(stampText(lead.closed_at)) : "—") +
+      "</div>"
+    );
+  }
+
+  function paintLeadModal(lead, campaigns, assignments) {
       var id = lead.id;
       var payload = lead.payload || {};
       var detailRows = Object.keys(payload)
@@ -5269,6 +7820,8 @@
         (lead.message
           ? '<h3 style="margin-top:16px">' + dual("رسالة", "Message") + "</h3><p>" + escapeHtml(lead.message) + "</p>"
           : "") +
+        assignmentBlock(lead, assignments) +
+        outcomeBlock(lead) +
         notesBlock +
         (has("website_lead.manage")
           ? '<h3 style="margin-top:16px">' + dual("تحديث الطلب", "Update lead") + "</h3>" +
@@ -5299,7 +7852,20 @@
                 }).join("") +
                 "</select>"
               : "") +
+            // S13: the closed-out fields are written here, alongside the status
+            // that closes the lead; outcomeBlock above only reads them back.
+            '<div class="av-field" style="margin-top:8px"><label>' +
+            dual("النتيجة النهائية", "Final result") + "</label>" +
+            '<input class="av-input" id="leadFinalResult" style="width:100%" value="' +
+            escAttr(lead.final_result || "") + '"></div>' +
+            '<div class="av-field" style="margin-top:8px"><label>' +
+            dual("ملاحظات داخلية", "Internal notes") + "</label>" +
+            '<input class="av-input" id="leadInternalNotes" style="width:100%" value="' +
+            escAttr(lead.internal_notes || "") + '"></div>' +
+            '<div class="av-user-controls" data-stop="1" style="margin-top:8px">' +
             '<button class="btn-solid" id="leadSave">' + dual("حفظ", "Save") + "</button>" +
+            '<button class="btn-outline" id="leadUpdateStatus">' +
+            dual("تحديث الحالة", "Update status") + "</button></div>" +
             "</div>"
           : "");
 
@@ -5336,10 +7902,20 @@
           var statusSel = byId("leadStatusSel");
           var priSel = byId("leadPriSel");
           var campSel = byId("leadCampSel");
+          var resultInp = byId("leadFinalResult");
+          var notesInp = byId("leadInternalNotes");
           var payloadOut = {};
           if (statusSel) payloadOut.status = statusSel.value;
           if (priSel) payloadOut.priority = priSel.value;
           if (campSel && campSel.value) payloadOut.campaign_id = parseInt(campSel.value, 10);
+          // Only send the outcome fields when they changed: the API treats a
+          // null as "unchanged", and the record should not gain empty text.
+          if (resultInp && resultInp.value.trim() !== (lead.final_result || "")) {
+            payloadOut.final_result = resultInp.value.trim();
+          }
+          if (notesInp && notesInp.value.trim() !== (lead.internal_notes || "")) {
+            payloadOut.internal_notes = notesInp.value.trim();
+          }
           patch("/api/v1/leads/" + id, payloadOut)
             .then(function () {
               toast(STATE.lang === "ar" ? "تم تحديث الطلب." : "Lead updated.", "ok");
@@ -5347,8 +7923,75 @@
               loadLeadList();
               loadLeadStats();
             })
-            .catch(function () {
-              toast(STATE.lang === "ar" ? "تعذّر التحديث." : "Update failed.", "err");
+            .catch(function (err) {
+              toast(
+                err && err.message
+                  ? err.message
+                  : STATE.lang === "ar" ? "تعذّر التحديث." : "Update failed.",
+                "err",
+              );
+            });
+        });
+      }
+
+      // Deck slide 15: [تحديث الحالة] is the lead's status action on its own,
+      // separate from the general save. It sends the same field the save does,
+      // so the transition rules live in one place server-side.
+      var statusBtn = byId("leadUpdateStatus");
+      if (statusBtn) {
+        statusBtn.addEventListener("click", function () {
+          var statusSel = byId("leadStatusSel");
+          if (!statusSel) return;
+          busy(statusBtn, true);
+          patch("/api/v1/leads/" + id, { status: statusSel.value })
+            .then(function () {
+              toast(dual("تم تحديث الحالة.", "Status updated."), "ok");
+              closeModal();
+              loadLeadList();
+              loadLeadStats();
+            })
+            .catch(function (err) { domainError(err); busy(statusBtn, false); });
+        });
+      }
+
+      // D04: assign/reassign. Sends only the fields the user actually changed,
+      // so an unchanged company does not re-notify its manager and an unchanged
+      // lead does not record a no-op history row.
+      var assignBtn = byId("leadAssignSave");
+      if (assignBtn) {
+        assignBtn.addEventListener("click", function () {
+          var aSel = byId("leadAssignee");
+          var cSel = byId("leadCompany");
+          var rInp = byId("leadAssignReason");
+          var out = {};
+          if (aSel && aSel.value && parseInt(aSel.value, 10) !== lead.assigned_to_id) {
+            out.assignee_id = parseInt(aSel.value, 10);
+          }
+          if (cSel && cSel.value && parseInt(cSel.value, 10) !== lead.routed_company_id) {
+            out.company_id = parseInt(cSel.value, 10);
+          }
+          if (out.assignee_id === undefined && out.company_id === undefined) {
+            toast(
+              STATE.lang === "ar" ? "لا يوجد تغيير في الإسناد." : "Nothing to change.",
+              "err",
+            );
+            return;
+          }
+          if (rInp && rInp.value.trim()) out.reason = rInp.value.trim();
+          busy(assignBtn, true);
+          post("/api/v1/leads/" + id + "/assign", out)
+            .then(function () {
+              toast(STATE.lang === "ar" ? "تم حفظ الإسناد." : "Assignment saved.", "ok");
+              return openLead(id);
+            })
+            .catch(function (err) {
+              busy(assignBtn, false);
+              toast(
+                err && err.message
+                  ? err.message
+                  : STATE.lang === "ar" ? "تعذّر حفظ الإسناد." : "Could not save the assignment.",
+                "err",
+              );
             });
         });
       }
@@ -5357,16 +8000,15 @@
   function refreshNotifications() {
     if (!has("notification.read_own")) return Promise.resolve();
     return Promise.all([
-      get("/api/v1/notifications?limit=50"),
-      get("/api/v1/notifications/summary"),
+      softGet("/api/v1/notifications?limit=50"),
+      softGet("/api/v1/notifications/summary"),
     ])
       .then(function (res) {
         STATE.notifications = (res[0] && res[0].items) || [];
         STATE.notificationsUnread = (res[1] && res[1].unread) || 0;
         paintNotifBadge();
         return STATE.notifications;
-      })
-      .catch(function () { return []; });
+      });
   }
 
   function paintNotifBadge() {
@@ -5400,6 +8042,21 @@
 
   function panel(titleAr, titleEn, body) {
     return '<div class="av-panel"><h3>' + dual(titleAr, titleEn) + "</h3>" + body + "</div>";
+  }
+
+  // Bind a simple chip tab group: clicking a chip sets its key on STATE and
+  // re-renders via `render`. Used by the advisory/HR/site/assistant-learning
+  // views, whose tabs filter an already-loaded, already-scoped payload.
+  function bindSimpleTabs(attr, stateKey, render) {
+    document.querySelectorAll("[" + attr + "]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        STATE[stateKey] = btn.getAttribute(attr);
+        document.querySelectorAll("[" + attr + "]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        render();
+      });
+    });
   }
 
   function noticeHtml(ar, en) {
@@ -5443,6 +8100,11 @@
     return c ? companyName(c) : String(id);
   }
 
+  function departmentNameById(id) {
+    var d = (STATE.departments || []).filter(function (x) { return x.id === id; })[0];
+    return d ? (STATE.lang === "ar" ? d.name_ar : d.name_en || d.name_ar) : String(id);
+  }
+
   function companySelectOptions(extraAll) {
     // Option labels are plain text: selectInput escapes them, and a <select>
     // cannot hold markup, so the label must already be in the active language.
@@ -5461,22 +8123,26 @@
     return STATE.lang === "ar" ? ar : en;
   }
 
-  function numInput(id, value, placeholder) {
+  function reqAttr(required) {
+    return required ? " required" : "";
+  }
+
+  function numInput(id, value, placeholder, required) {
     return (
       '<input class="av-input" id="' + id + '" type="number" step="any" value="' +
       escAttr(value === null || value === undefined ? "" : value) + '" placeholder="' +
-      escAttr(placeholder || "") + '">'
+      escAttr(placeholder || "") + '"' + reqAttr(required) + ">"
     );
   }
 
-  function dateInput(id, value) {
-    return '<input class="av-input" id="' + id + '" type="date" value="' + escAttr(value || "") + '">';
+  function dateInput(id, value, required) {
+    return '<input class="av-input" id="' + id + '" type="date" value="' + escAttr(value || "") + '"' + reqAttr(required) + ">";
   }
 
-  function textArea(id, value, placeholder) {
+  function textArea(id, value, placeholder, required) {
     return (
       '<textarea class="av-input" id="' + id + '" rows="2" placeholder="' +
-      escAttr(placeholder || "") + '">' + escapeHtml(value || "") + "</textarea>"
+      escAttr(placeholder || "") + '"' + reqAttr(required) + ">" + escapeHtml(value || "") + "</textarea>"
     );
   }
 
@@ -5569,30 +8235,70 @@
   function renderEmployees() {
     var host = byId("empContent");
     var q = STATE.empCompany ? "?company_id=" + STATE.empCompany : "";
-    return Promise.all([ensureCompanies(), get("/api/v1/employees" + q)]).then(function (res) {
+    // Departments back the deck's "إدارة" filter (slides 101/135). The read is
+    // soft so a role without department.read still gets the employee list.
+    var deptReq = has("department.read") ? softGet("/api/v1/admin/departments") : Promise.resolve([]);
+    return Promise.all([ensureCompanies(), get("/api/v1/employees" + q), deptReq]).then(function (res) {
       var employees = res[1] || [];
+      STATE.departments = res[2] || [];
+      STATE.hr = STATE.hr || {};
+      STATE.hr.employees = employees;
       var canManage = has("employee.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="empForm">' +
           field("الشركة", "Company", selectInput("eCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "")) +
+          field("الاسم (عربي)", "Name (AR)", textInput("eNameAr", "", "", true)) +
           field("الاسم (إنجليزي)", "Name (EN)", textInput("eNameEn", "")) +
           field("المسمى الوظيفي", "Job title", textInput("eTitle", "")) +
+          field("الجنسية", "Nationality", textInput("eNationality", "")) +
           field("تاريخ التعيين", "Hire date", dateInput("eHire", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة موظف", "Add employee") + "</button></div></form>"
         : "";
-      var filter =
-        '<div class="av-form av-form-inline">' +
-        field("تصفية بالشركة", "Filter by company", selectInput("empFilter", companySelectOptions(true), STATE.empCompany || "")) +
-        "</div>";
-      var list = employees.length
-        ? '<div class="av-list">' + employees.map(employeeRow).join("") + "</div>"
-        : noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope.");
-      host.innerHTML = panel("الموظفون", "Employees", create + filter + list);
-      var f = byId("empFilter");
-      if (f) f.addEventListener("change", function () { STATE.empCompany = this.value ? parseInt(this.value, 10) : null; renderEmployees(); });
-      bindRowClicks(host, "emp", openEmployee);
+      var spec = employeesFilterSpec();
+      var list = applyListFilters(employees, "employees", spec);
+      list.sort(function (a, b) {
+        return String(a.full_name_ar || "").localeCompare(String(b.full_name_ar || ""), "ar") || byIdAsc(a, b);
+      });
+      // Deck slide 101 names [تقرير الموظفين] next to [موظف جديد] and [فتح الملف].
+      // The report is the caller's own filtered, scoped list exported as CSV --
+      // it introduces no data access beyond what the list already shows.
+      host.innerHTML = panel("الموظفون", "Employees", create + '<div id="empList"></div>');
+      renderPaged(byId("empList"), "employees", list, employeeRow, function (h) {
+        bindRowClicks(h, "emp", openEmployee);
+      }, spec);
+      if (has("employee.read")) {
+        host.insertAdjacentHTML("beforeend",
+          '<div class="av-panel" id="empReportPanel"><div class="av-form-actions">' +
+          '<button type="button" class="btn-outline" id="empReport">' +
+          dual("تقرير الموظفين", "Employee report") + "</button></div></div>");
+        var reportBtn = byId("empReport");
+        if (reportBtn) {
+          reportBtn.addEventListener("click", function () { exportListCsv("employees", list); });
+        }
+      }
+      // Appended after renderPaged (which owns the host's innerHTML).
+      host.insertAdjacentHTML("beforeend",
+        '<div class="av-panel" id="empLocalization"><h3>' +
+        dual("لوحة التوطين لكل جهة", "Localization board per entity") +
+        '</h3><div id="empLocBody"></div></div>');
+      renderLocalizationBoard(employees);
+      var form = byId("empForm");
+      if (form) {
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          busy(form.querySelector("button"), true);
+          post("/api/v1/employees", {
+            company_id: parseInt(valOf("eCompany"), 10),
+            full_name_ar: valOf("eNameAr"),
+            full_name_en: valOf("eNameEn") || null,
+            job_title: valOf("eTitle") || null,
+            nationality: valOf("eNationality") || null,
+            hire_date: valOf("eHire") || null,
+          }).then(function () { toast(dual("تمت إضافة الموظف.", "Employee added."), "ok"); return renderEmployees(); })
+            .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
+        });
+      }
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -5605,7 +8311,8 @@
       '<div class="av-row"' + rowClickAttr("emp", e) + ">" +
       '<div class="grow"><div class="t">' + escapeHtml(name) + "</div>" +
       '<div class="s">' + escapeHtml(companyNameById(e.company_id)) + " · " +
-      escapeHtml(e.job_title || "") + salary + "</div></div>" +
+      escapeHtml(e.job_title || "") + salary +
+      (e.nationality ? " · " + dual("الجنسية", "Nationality") + " " + escapeHtml(e.nationality) : "") + "</div></div>" +
       statusBadgeFromMap(e.status, {
         active: ["نشط", "Active", "ok"],
         on_leave: ["في إجازة", "On leave", "warn"],
@@ -5614,13 +8321,134 @@
     );
   }
 
+  // ---- deck slide 105: localization board per entity -----------------------
+  // The "citizen" of an entity is the employee whose nationality matches the
+  // entity's country (deck slide 106: "المواطن هو صاحب جنسية دولة الجهة"). The
+  // counts are computed live from the employee rows the caller may already read;
+  // a missing country or nationality is left out of both numerator and
+  // denominator. The per-entity target and calculation-rule edition are
+  // administration data on the company (deck slides 105/106); when a target is
+  // approved the board raises a below-target alert, otherwise it shows غير مُعدّ.
+  function renderLocalizationBoard(employees) {
+    var host = byId("empLocBody");
+    if (!host) return;
+    var byCompany = {};
+    (employees || []).forEach(function (e) {
+      if (e.status !== "active") return;
+      var cid = e.company_id;
+      var c = companyById(cid);
+      var bucket = byCompany[cid] || (byCompany[cid] = {
+        country: (c && c.country) || null, total: 0, citizens: 0, counted: 0,
+      });
+      bucket.total += 1;
+      if (bucket.country && e.nationality) {
+        bucket.counted += 1;
+        if (String(e.nationality).trim() === String(bucket.country).trim()) bucket.citizens += 1;
+      }
+    });
+    var ids = Object.keys(byCompany);
+    if (!ids.length) {
+      host.innerHTML = noticeHtml("لا يوجد موظفون نشطون بعد.", "No active employees yet.");
+      return;
+    }
+    var canEdit = has("company.manage");
+    host.innerHTML =
+      '<div class="s">' +
+      dual(
+        "المواطن هو صاحب جنسية دولة الجهة؛ النسبة = المحتسبون ÷ المشمولون × 100. لا متوسط بسيط لنسب الدول المختلفة.",
+        "A citizen holds the entity's country nationality; rate = counted ÷ included × 100. No simple average across countries.",
+      ) + "</div>" +
+      '<div class="av-list">' + ids.map(function (cid) {
+        var b = byCompany[cid];
+        var c = companyById(cid) || {};
+        var rate = b.counted ? ((b.citizens / b.counted) * 100) : null;
+        var rateTxt = rate === null ? dual("غير مُعدّ", "Not configured")
+          : (STATE.lang === "ar" ? toArabicDigits(rate.toFixed(1)) + "٪" : rate.toFixed(1) + "%");
+        // The target is administration data; only an approved target can raise
+        // the deck's below-target alert (slide 105: "الحالية − المستهدف؛
+        // انخفاض = متابعة").
+        var target = c.localization_target_pct != null ? Number(c.localization_target_pct) : null;
+        var targetTxt = target === null ? dual("غير مُعدّ", "Not configured")
+          : (STATE.lang === "ar" ? toArabicDigits(target) + "٪" : target + "%");
+        var delta = (rate !== null && target !== null) ? (rate - target) : null;
+        var alert = (delta !== null && delta < 0)
+          ? '<div class="s" style="color:#b3261e">' +
+            dual("انخفاض عن المستهدف — يحتاج متابعة", "Below target — needs follow-up") + "</div>"
+          : "";
+        var ruleTxt = c.localization_rule_version
+          ? escapeHtml(c.localization_rule_version) +
+            (c.localization_rule_effective_from
+              ? " · " + dual("منذ ", "since ") + escapeHtml(dateStr(c.localization_rule_effective_from))
+              : "")
+          : dual("غير مُعدّ", "Not configured");
+        var editBtn = canEdit
+          ? '<div class="av-form-actions">' +
+            '<button type="button" class="btn-outline" data-loc-edit="' + cid + '">' +
+            dual("تحديث القاعدة والمستهدف", "Edit target & rule") + "</button></div>"
+          : "";
+        return (
+          '<div class="av-row" style="cursor:default;flex-direction:column;align-items:stretch">' +
+          '<div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="co-dot" style="background:' + PALETTE[cid % PALETTE.length] + '">' +
+          initial(companyNameById(cid)) + "</div>" +
+          '<div class="grow"><div class="t">' + escapeHtml(companyNameById(cid)) + "</div>" +
+          '<div class="s">' + dual("الدولة", "Country") + ": " +
+          escapeHtml(b.country || "—") + "</div></div>" +
+          "</div>" +
+          '<div class="kv">' +
+          kv(dual("الإجمالي", "Total"), plainNum(b.total)) +
+          kv(dual("المواطنون", "Citizens"), plainNum(b.citizens)) +
+          kv(dual("غير المواطنين", "Non-citizens"), plainNum(b.total - b.citizens)) +
+          kv(dual("المشمولون", "Included"), plainNum(b.counted)) +
+          kv(dual("النسبة الحالية", "Current rate"), escapeHtml(rateTxt)) +
+          kv(dual("المستهدف", "Target"), escapeHtml(targetTxt)) +
+          kv(dual("قاعدة الاحتساب", "Calculation rule"), ruleTxt) +
+          "</div>" + alert + editBtn + "</div>"
+        );
+      }).join("") + "</div>";
+    host.querySelectorAll("[data-loc-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openLocalizationEdit(parseInt(btn.getAttribute("data-loc-edit"), 10));
+      });
+    });
+  }
+
+  function openLocalizationEdit(companyId) {
+    var c = companyById(companyId) || {};
+    openModal({
+      title: dual("إعداد التوطين والتقرير المجمع", "Localization setup & aggregate report"),
+      body:
+        '<form class="av-form" id="locForm">' +
+        field("النسبة المستهدفة ٪", "Target %", numInput("locTarget", c.localization_target_pct != null ? c.localization_target_pct : "")) +
+        field("إصدار قاعدة الاحتساب", "Calculation-rule version", textInput("locRule", c.localization_rule_version || "")) +
+        field("نفاذ القاعدة", "Rule effective from", dateInput("locRuleFrom", c.localization_rule_effective_from || "")) +
+        '<div class="av-form-actions"><button class="btn" type="submit">' +
+        dual("حفظ", "Save") + "</button></div></form>",
+      onMount: function (root, body) {
+        var form = body.querySelector("#locForm");
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          patch("/api/v1/companies/" + companyId, {
+            localization_target_pct: numVal("locTarget"),
+            localization_rule_version: valOf("locRule") || null,
+            localization_rule_effective_from: valOf("locRuleFrom") || null,
+          }).then(function () {
+            toast(dual("تم تحديث إعداد التوطين.", "Localization setup updated."), "ok");
+            closeModal();
+            return renderEmployees();
+          }).catch(domainError);
+        });
+      },
+    });
+  }
+
   function openEmployee(e) {
     openModal({
       title: dual("ملف الموظف", "Employee file"),
       wide: true,
       body: loadingHtml(),
       onMount: function (root, body) {
-        get("/api/v1/employees/" + e.id + "/movements").catch(function () { return []; }).then(function (movements) {
+        softGet("/api/v1/employees/" + e.id + "/movements").then(function (movements) {
           body.innerHTML = employeeDetail(e, movements || []);
           bindEmployeeDetail(body, e);
         });
@@ -5630,10 +8458,26 @@
 
   function employeeDetail(e, movements) {
     var name = STATE.lang === "ar" ? e.full_name_ar : e.full_name_en || e.full_name_ar;
+    // Deck slides 102/103: the employee file carries the identity and
+    // relationship block (number, entity, department, direct manager, status,
+    // nationality). Each is shown only when the row has it; no value is invented.
+    var manager = (STATE.hr && STATE.hr.employees || []).filter(function (x) { return x.id === e.manager_id; })[0];
+    var managerName = manager
+      ? (STATE.lang === "ar" ? manager.full_name_ar : manager.full_name_en || manager.full_name_ar)
+      : (e.manager_id ? "#" + plainNum(e.manager_id) : "—");
     var info = '<div class="kv">' +
       kv(dual("الشركة", "Company"), escapeHtml(companyNameById(e.company_id))) +
+      kv(dual("الرقم الوظيفي", "Employee no."), escapeHtml(e.employee_code || "—")) +
       kv(dual("الاسم", "Name"), escapeHtml(name)) +
+      kv(dual("الجنسية", "Nationality"), escapeHtml(e.nationality || "—")) +
       kv(dual("المسمى", "Job title"), escapeHtml(e.job_title || "—")) +
+      kv(dual("الإدارة", "Department"), escapeHtml(e.department_id ? departmentNameById(e.department_id) : "—")) +
+      kv(dual("المدير المباشر", "Direct manager"), escapeHtml(managerName)) +
+      kv(dual("الحالة", "Status"), statusBadgeFromMap(e.status, {
+        active: ["نشط", "Active", "ok"],
+        on_leave: ["في إجازة", "On leave", "warn"],
+        terminated: ["منتهٍ", "Terminated", "miss"],
+      })) +
       kv(dual("البريد", "Email"), escapeHtml(e.email || "—")) +
       kv(dual("الهاتف", "Phone"), escapeHtml(e.phone || "—")) +
       kv(dual("تاريخ التعيين", "Hire date"), escapeHtml(dateStr(e.hire_date))) +
@@ -5647,6 +8491,43 @@
       info += kv(dual("الراتب", "Salary"), dual("محجوب", "Restricted"));
     }
     info += "</div>";
+
+    // Deck slide 103: the restricted tab. Rendered only for a caller with the
+    // restricted/salary permission; the same fields are omitted from the API
+    // payload for anyone else, so this block can never leak them.
+    var restricted = "";
+    if (has("employee.salary.read")) {
+      var links = (e.document_links || "").split(/\s*\n\s*/).filter(function (u) { return u.trim(); });
+      var linksHtml = links.length
+        ? links.map(function (u) {
+            return '<a class="mono" href="' + escAttr(u.trim()) + '" target="_blank" rel="noopener">' +
+              escapeHtml(u.trim()) + "</a>";
+          }).join("<br>")
+        : escapeHtml("—");
+      var countsVal = e.counts_toward_localization === true
+        ? dual("نعم", "Yes")
+        : e.counts_toward_localization === false
+          ? dual("لا", "No")
+          : dual("ينتظر مراجعة", "Awaiting review");
+      restricted = panel("الحقول المقيدة والاحتساب", "Restricted fields & localization",
+        '<div class="kv">' +
+        kv(dual("الهوية أو الإقامة", "Identity / residence"), escapeHtml(e.national_id_masked || "—")) +
+        kv(dual("موقع العمل", "Work location"), escapeHtml(e.work_location || "—")) +
+        kv(dual("تاريخ نفاذ البيانات", "Wage effective date"), escapeHtml(dateStr(e.wage_effective_date))) +
+        kv(dual("المستندات أو الروابط الأساسية", "Key documents / links"), linksHtml) +
+        kv(dual("يحتسب ضمن التوطين؟", "Counts toward localization?"), countsVal) +
+        kv(dual("سبب عدم الاحتساب", "Exclusion reason"), escapeHtml(e.localization_exclusion_reason || "—")) +
+        kv(dual("الوظيفة المحتسبة", "Localization job title"), escapeHtml(e.localization_job_title || "—")) +
+        kv(dual("قاعدة الاحتساب المطبقة", "Applied calculation rule"), escapeHtml(e.localization_rule_version || "—")) +
+        kv(dual("المراجع وتاريخ القرار", "Reference & decision date"), escapeHtml(e.localization_reference || "—")) +
+        "</div>" +
+        '<div class="s">' +
+        dual(
+          "المزايا بيان إداري فقط؛ لا احتساب راتب أو خصم أو صرف. هذه الحقول محجوبة عن المستشار والموظفين التنفيذيين.",
+          "Allowances are an administrative statement only; no salary, deduction or payout is computed. These fields are withheld from the advisor and executive staff.",
+        ) + "</div>");
+    }
+
     var movForm = has("employee.movement.manage")
       ? '<form class="av-form av-form-inline" id="movForm">' +
         field("النوع", "Type", selectInput("mvType", [
@@ -5676,6 +8557,7 @@
         }).join("") + "</div>"
       : noticeHtml("لا توجد حركات مسجّلة.", "No movements recorded.");
     return panel("بيانات الموظف", "Employee details", info) +
+      restricted +
       panel("الحركات (يدوية — دون ربط آلي بالرواتب)", "Movements (manual — no automatic payroll link)", movForm + movList);
   }
 
@@ -5724,7 +8606,7 @@
       : "";
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/employees/assessments/list?assessment_type=" + STATE.assessType).catch(function () { return []; }),
+      softGet("/api/v1/employees/assessments/list?assessment_type=" + STATE.assessType),
     ]).then(function (res) {
       var rows = res[1] || [];
       var typeOptions = [{ value: "employee", label: opt("موظف", "Employee") }];
@@ -5740,12 +8622,34 @@
           dual("إنشاء تقييم", "Create assessment") + "</button></div></form>"
         : "";
       var list = rows.length
-        ? '<div class="av-list">' + rows.map(assessmentRow).join("") + "</div>"
+        ? '<div id="assessList"></div>'
         : noticeHtml("لا توجد تقييمات.", "No assessments.");
       var title = STATE.assessType === "leadership" ? "تقييمات القيادة (D04: سرّية)" : "التقييمات";
       var titleEn = STATE.assessType === "leadership" ? "Leadership assessments (D04: confidential)" : "Assessments";
       host.innerHTML = panel(title, titleEn, filter + create + list);
-      bindRowClicks(host, "assess", openAssessment);
+      var assessHost = byId("assessList");
+      if (assessHost) {
+        // Slide 134/135 "التقييمات": the deck's search / company / period /
+        // status filters and default "الفترة الأحدث" sort; the type chip above
+        // still narrows employee vs. confidential leadership assessments.
+        var assessSpec = [
+          { key: "q", type: "search", ar: "الفترة", en: "Period", fields: ["period_label", "assessment_type"] },
+          companyFilterOption(),
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: [
+              { value: "draft", ar: "مسودة", en: "Draft" },
+              { value: "submitted", ar: "مُقدَّم", en: "Submitted" },
+              { value: "approved", ar: "معتمد", en: "Approved" },
+            ] },
+        ];
+        var assessRows = applyListFilters(scopeFilter(rows), "assessments", assessSpec);
+        assessRows.sort(function (a, b) {
+          return String(b.period_label || "").localeCompare(String(a.period_label || "")) || byIdAsc(a, b);
+        });
+        renderPaged(assessHost, "assessments", assessRows, assessmentRow, function (h) {
+          bindRowClicks(h, "assess", openAssessment);
+        }, assessSpec);
+      }
       document.querySelectorAll("[data-assess-type]").forEach(function (b) {
         b.addEventListener("click", function () {
           STATE.assessType = b.getAttribute("data-assess-type");
@@ -5923,12 +8827,12 @@
     var host = byId("empContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/advisory-sessions").catch(function () { return []; }),
+      softGet("/api/v1/operations/advisory-sessions"),
       has("advisor.read")
-        ? get("/api/v1/operations/advisors").catch(function () { return []; })
+        ? softGet("/api/v1/operations/advisors")
         : Promise.resolve([]),
       (has("advisor.read") || has("advisor.session.read_own"))
-        ? get("/api/v1/operations/advisor-reports").catch(function () { return []; })
+        ? softGet("/api/v1/operations/advisor-reports")
         : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -5938,7 +8842,7 @@
       var create = canRecord
         ? '<form class="av-form av-form-inline" id="advForm">' +
           field("الشركة", "Company", selectInput("adCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("adUser", "")) +
+          field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("adUser", "", "", true), null, null, true) +
           field("الموعد", "Scheduled at", '<input class="av-input" id="adWhen" type="datetime-local">') +
           field("الموضوع", "Topic", textInput("adTopic", "")) +
           field("الملاحظات", "Notes", textInput("adNotes", "")) +
@@ -5946,20 +8850,29 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("تسجيل جلسة", "Record session") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (s) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(s.topic || dual("جلسة استشارية", "Advisory session")) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(s.company_id)) + " · " +
-              escapeHtml(s.scheduled_at ? String(s.scheduled_at).slice(0, 16).replace("T", " ") : "—") + "</div></div>" +
-              statusBadgeFromMap(s.status, { scheduled: ["مجدولة", "Scheduled", "warn"], completed: ["مكتملة", "Completed", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد جلسات استشارية.", "No advisory sessions.");
+      STATE.advisories = rows;
+      var sessSpec = advisoriesFilterSpec();
+      var sessList = applyListFilters(scopeFilter(rows), "advisories", sessSpec);
+      sessList.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var sessRow = function (s) {
+        var advisorName = personName(s, "advisor_name_ar", "advisor_name_en") ||
+          (s.advisor_user_id ? "#" + plainNum(s.advisor_user_id) : "");
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(s.topic || dual("جلسة استشارية", "Advisory session")) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(s.company_id)) +
+          (advisorName ? " · " + escapeHtml(advisorName) : "") + " · " +
+          escapeHtml(s.scheduled_at ? String(s.scheduled_at).slice(0, 16).replace("T", " ") : "—") + "</div></div>" +
+          statusBadgeFromMap(s.status, { scheduled: ["مجدولة", "Scheduled", "warn"], completed: ["مكتملة", "Completed", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+          "</div>";
+      };
       host.innerHTML =
-        panel("الجلسات الاستشارية", "Advisory sessions", create + list) +
+        panel("الجلسات الاستشارية", "Advisory sessions", create + '<div id="advSessions"></div>') +
         advisorAssignmentsPanel(assignments) +
         advisorReportsPanel(reports);
+      renderPaged(byId("advSessions"), "advisories", sessList, sessRow, null, sessSpec);
+      renderAdvisorReportsList(reports);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -5969,7 +8882,7 @@
     var form = canAssign
       ? '<form class="av-form av-form-inline" id="advAssignForm">' +
         field("الشركة", "Company", selectInput("aaCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("aaUser", "")) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("aaUser", "", "", true), null, null, true) +
         field("التخصص", "Specialty", textInput("aaSpecialty", "")) +
         '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
         dual("إسناد مستشار", "Assign advisor") + "</button></div></form>"
@@ -5998,33 +8911,61 @@
     var form = canWrite
       ? '<form class="av-form av-form-inline" id="advReportForm">' +
         field("الشركة", "Company", selectInput("arCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("arUser", "")) +
-        field("السنة", "Year", numInput("arYear", now.getFullYear())) +
-        field("الشهر", "Month", numInput("arMonth", now.getMonth() + 1)) +
+        field("المستشار (معرّف المستخدم)", "Advisor user id", numInput("arUser", "", "", true), null, null, true) +
+        field("السنة", "Year", numInput("arYear", now.getFullYear(), "", true), null, null, true) +
+        field("الشهر", "Month", numInput("arMonth", now.getMonth() + 1, "", true), null, null, true) +
         field("التطويرات", "Development", textInput("arDev", "")) +
         field("التحديات", "Challenges", textInput("arChal", "")) +
         field("التوصيات", "Recommendations", textInput("arRec", "")) +
         '<div class="av-form-actions">' +
         '<button class="btn-outline" type="button" data-act="adv-report-save" data-id="advReportForm">' + dual("حفظ كمسودة", "Save draft") + "</button>" +
-        '<button class="btn-solid" type="button" data-act="adv-report-submit" data-id="advReportForm">' + dual("إرسال التقرير", "Submit report") + "</button>" +
+        '<button class="btn-solid" type="button" data-act="adv-report-submit" data-id="advReportForm">' + dual("إضافة توصية", "Add recommendation") + "</button>" +
         "</div></form>"
       : "";
     var list = reports.length
-      ? '<div class="av-list">' + reports.map(function (r) {
-          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-            dual("تقرير", "Report") + " " + r.period_month + "/" + r.period_year + "</div>" +
-            '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-            escapeHtml(r.recommendations || r.development || "—") + "</div></div>" +
-            (r.status === "draft" && canWrite
-              ? '<button class="btn-outline" type="button" data-act="adv-report-submit-one" data-id="' + plainNum(r.id) + '">' + dual("إرسال", "Submit") + "</button>"
-              : "") +
-            statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
-            "</div>";
-        }).join("") + "</div>"
+      ? '<div id="advReports"></div>'
       : noticeHtml("لا توجد تقارير شهرية.", "No monthly reports.");
     return panel("التقارير الشهرية للمستشار (S19)", "Advisor monthly reports (S19)",
       '<p class="note-block">' + dual("يحفظ المستشار تقريره الشهري (التطويرات والتحديات والتوصيات) ويرسله لمدير تطوير الأعمال؛ بعد الإرسال يصبح أصلاً غير قابل للتعديل.", "An advisor saves a monthly report (development, challenges, recommendations) and submits it to Business Development; once submitted it is an immutable original.") + "</p>" +
       form + list);
+  }
+
+  function renderAdvisorReportsList(reports) {
+    var host = byId("advReports");
+    if (!host || !reports.length) return;
+    var canWrite = has("advisor.session.record") || has("advisor.session.read_own");
+    // Slide 136 "التقارير الشهرية للمستشار": company / period / status filters
+    // with the deck's apply / save / clear / export cluster; newest period first.
+    var spec = [
+      { key: "q", type: "search", ar: "الشركة / التوصيات", en: "Company / recommendations",
+        fields: ["recommendations", "development", "challenges", "company_name_ar", "company_name_en"] },
+      companyFilterOption(),
+      { key: "period", ar: "الفترة", en: "Period",
+        resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+        options: distinctOptions(reports, function (r) {
+          return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+        }) },
+      { key: "status", ar: "الحالة", en: "Status", field: "status",
+        options: [
+          { value: "draft", ar: "مسودة", en: "Draft" },
+          { value: "submitted", ar: "مُرسل", en: "Submitted" },
+        ] },
+    ];
+    var rows = applyListFilters(scopeFilter(reports), "advisorReports", spec);
+    rows.sort(function (a, b) {
+      return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+    });
+    renderPaged(host, "advisorReports", rows, function (r) {
+      return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+        dual("تقرير", "Report") + " " + r.period_month + "/" + r.period_year + "</div>" +
+        '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+        escapeHtml(r.recommendations || r.development || "—") + "</div></div>" +
+        (r.status === "draft" && canWrite
+          ? '<button class="btn-outline" type="button" data-act="adv-report-submit-one" data-id="' + plainNum(r.id) + '">' + dual("إرسال", "Submit") + "</button>"
+          : "") +
+        statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُرسل", "Submitted", "ok"] }) +
+        "</div>";
+    }, null, spec);
   }
 
   function onEmployeeAct(action, id, el) {
@@ -6036,6 +8977,8 @@
       return;
     }
     if (action === "adv-report-save" || action === "adv-report-submit") {
+      var advForm = byId("advReportForm");
+      if (advForm && !advForm.reportValidity()) return;
       var payload = {
         company_id: parseInt(valOf("arCompany"), 10),
         advisor_user_id: parseInt(valOf("arUser"), 10),
@@ -6166,14 +9109,14 @@
     var host = byId("opsContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/tasks").catch(function () { return []; }),
+      softGet("/api/v1/operations/tasks"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("task.create");
       var create = canCreate
         ? '<form class="av-form av-form-inline" id="taskForm">' +
           field("الشركة", "Company", selectInput("tkCompany", companySelectOptions(false), STATE.companies.length ? STATE.companies[0].id : "")) +
-          field("العنوان", "Title", textInput("tkTitle", "")) +
+          field("العنوان", "Title", textInput("tkTitle", "", "", true), null, null, true) +
           field("الأولوية", "Priority", selectInput("tkPriority", [
             { value: "low", label: opt("منخفضة", "Low") },
             { value: "normal", label: opt("عادية", "Normal") },
@@ -6183,11 +9126,24 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء مهمة", "Create task") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(taskRow).join("") + "</div>"
-        : noticeHtml("لا توجد مهام.", "No tasks.");
-      host.innerHTML = panel("المهام", "Tasks", create + list);
-      bindRowClicks(host, "task", openTask);
+      var list = rows;
+      STATE.ops = STATE.ops || {};
+      STATE.ops.tasks = rows;
+      var spec = tasksFilterSpec();
+      list = applyListFilters(scopeFilter(list), "tasks", spec);
+      // Deck slide 134: الطلبات/المهام sort "الأقرب استحقاقًا ثم الأقدم" -- the
+      // nearest due date first, ties broken by the oldest task.
+      list.sort(function (a, b) {
+        return (
+          String(a.due_date || "9999-12-31").localeCompare(String(b.due_date || "9999-12-31")) ||
+          String(a.created_at || "").localeCompare(String(b.created_at || "")) ||
+          byIdAsc(a, b)
+        );
+      });
+      host.innerHTML = panel("المهام", "Tasks", create + '<div id="taskList"></div>');
+      renderPaged(byId("taskList"), "tasks", list, taskRow, function (h) {
+        bindRowClicks(h, "task", openTask);
+      }, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6246,12 +9202,100 @@
               .catch(function (err) { domainError(err); busy(btn, false); });
           });
         }
+        bindTaskQuickActions(body, t);
+      },
+    });
+  }
+
+  // Deck slide 20: [بدء التنفيذ] advances a new task to in-progress,
+  // [إضافة سؤال] records the specialist's clarification as a status note, and
+  // [تسليم رابط] completes the task with the delivered link as its note. All
+  // three reuse the status endpoint so the transition rules and the audit trail
+  // stay in one place.
+  function bindTaskQuickActions(body, t) {
+    var start = body.querySelector('[data-act="task-start"]');
+    if (start) {
+      start.addEventListener("click", function () {
+        busy(start, true);
+        post("/api/v1/operations/tasks/" + t.id + "/status", { status: "in_progress", note: null })
+          .then(function () { toast(dual("بدأ التنفيذ.", "Work started."), "ok"); closeModal(); renderTasks(); })
+          .catch(function (err) { domainError(err); busy(start, false); });
+      });
+    }
+    var ask = body.querySelector('[data-act="task-question"]');
+    if (ask) {
+      ask.addEventListener("click", function () { taskNoteForm(t, "question"); });
+    }
+    var deliver = body.querySelector('[data-act="task-deliver"]');
+    if (deliver) {
+      deliver.addEventListener("click", function () { taskNoteForm(t, "delivery"); });
+    }
+  }
+
+  function taskNoteForm(t, kind) {
+    var isDelivery = kind === "delivery";
+    openModal({
+      title: isDelivery
+        ? dual("تسليم رابط", "Deliver link")
+        : dual("إضافة سؤال", "Add question"),
+      body:
+        '<div class="av-field"><label>' +
+        (isDelivery
+          ? dual("رابط التسليم أو وصفه", "Delivery link or description")
+          : dual("السؤال أو طلب التوضيح", "Question or clarification request")) +
+        '</label><textarea class="av-textarea" id="tqBody"></textarea></div>',
+      footer:
+        '<button class="btn-outline" id="tqCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="tqSave">' + dual("حفظ", "Save") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#tqCancel").addEventListener("click", closeModal);
+        root.querySelector("#tqSave").addEventListener("click", function () {
+          var note = valOf("tqBody");
+          if (!note) {
+            toast(dual("أدخل النص.", "Enter the text."), "warn");
+            return;
+          }
+          busy(this, true);
+          // A delivery hands the task to review (the deck's "غير مكتمل" step);
+          // a question is appended to the log while the task stays where it is.
+          var req = isDelivery
+            ? post("/api/v1/operations/tasks/" + t.id + "/status", {
+                status: "awaiting_review", note: note,
+              })
+            : post("/api/v1/operations/tasks/" + t.id + "/note", { note: note });
+          req
+            .then(function () {
+              toast(isDelivery
+                ? dual("تم تسجيل التسليم.", "Delivery recorded.")
+                : dual("تمت إضافة السؤال.", "Question added."), "ok");
+              closeModal();
+              renderTasks();
+            })
+            .catch(function (err) { domainError(err); busy(root.querySelector("#tqSave"), false); });
+        });
       },
     });
   }
 
   function taskDetail(t) {
     var events = t.events || [];
+    // Deck slide 20: the task workspace names three controls -- [بدء التنفيذ]
+    // to move to in-progress, [إضافة سؤال] to ask a clarification, and
+    // [تسليم رابط] to record the delivery link. They sit above the state
+    // dropdown, so the specialist's primary actions are one click, not a
+    // two-step status edit. Each maps to an endpoint the server already owns.
+    var quick = has("task.status_change")
+      ? '<div class="sec-title">' + dual("المتابعة", "Follow-up") + "</div>" +
+        '<div class="av-user-controls" data-stop="1">' +
+        (t.status === "new"
+          ? '<button class="btn-solid" data-act="task-start" data-id="' + t.id + '">' +
+            dual("بدء التنفيذ", "Start work") + "</button>"
+          : "") +
+        '<button class="btn-outline" data-act="task-question" data-id="' + t.id + '">' +
+        dual("إضافة سؤال", "Add question") + "</button>" +
+        '<button class="btn-outline" data-act="task-deliver" data-id="' + t.id + '">' +
+        dual("تسليم رابط", "Deliver link") + "</button></div>"
+      : "";
     var transition = has("task.status_change")
       ? '<form class="av-form av-form-inline" id="taskStatusForm">' +
         field("الحالة", "Status", selectInput("tsStatus", [
@@ -6294,7 +9338,7 @@
         kv(dual("المسؤول", "Assignee"), t.assignee_id ? plainNum(t.assignee_id) : "—") +
         kv(dual("المراجع", "Reviewer"), t.reviewer_id ? plainNum(t.reviewer_id) : "—") +
         kv(dual("التقدم", "Progress"), dec(t.progress_percent) + "%") +
-        "</div>" + update + transition) +
+        "</div>" + quick + update + transition) +
       panel("السجل", "History", hist);
   }
 
@@ -6304,10 +9348,10 @@
     return Promise.all([
       ensureCompanies(),
       canRead
-        ? get("/api/v1/operations/weekly-reports").catch(function () { return []; })
+        ? softGet("/api/v1/operations/weekly-reports")
         : Promise.resolve([]),
       canRead
-        ? get("/api/v1/operations/weekly-reports/questions").catch(function () { return []; })
+        ? softGet("/api/v1/operations/weekly-reports/questions")
         : Promise.resolve([]),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -6332,16 +9376,42 @@
           dual("إرسال التقرير الأسبوعي", "Submit weekly report") + "</button></div></form>"
         : "";
       var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (r) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              dual("أسبوع", "Week") + " " + dec(r.period_week) + " · " + dec(r.period_year) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-              (r.answers || []).length + " " + dual("إجابات", "answers") + "</div></div>" +
-              statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "ok"] }) +
-              "</div>";
-          }).join("") + "</div>"
+        ? '<div id="weeklyList"></div>'
         : noticeHtml("لا توجد تقارير أسبوعية.", "No weekly reports.");
       host.innerHTML = panel("التقرير الأسبوعي (بحد أقصى الأسئلة المعتمدة)", "Weekly report (at most the approved question set)", create + list) + weeklyTemplatePanel(questions);
+      var weeklyHost = byId("weeklyList");
+      if (weeklyHost) {
+        // Slide 134 "التغذية / التقارير": the weekly report list carries the
+        // deck's search / period / status filters and the apply / save / clear /
+        // export cluster.
+        var weeklySpec = [
+          { key: "q", type: "search", ar: "الملخص", en: "Summary",
+            fields: ["summary", "status"] },
+          companyFilterOption(),
+          { key: "period", ar: "الفترة", en: "Period",
+            resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_week).padStart(2, "0") : ""; },
+            options: distinctOptions(rows, function (r) {
+              return r.period_year ? r.period_year + "-" + String(r.period_week).padStart(2, "0") : "";
+            }) },
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: [
+              { value: "draft", ar: "مسودة", en: "Draft" },
+              { value: "submitted", ar: "مُقدَّم", en: "Submitted" },
+            ] },
+        ];
+        var weeklyRows = applyListFilters(scopeFilter(rows), "weekly", weeklySpec);
+        weeklyRows.sort(function (a, b) {
+          return (b.period_year - a.period_year) || (b.period_week - a.period_week) || byIdAsc(a, b);
+        });
+        renderPaged(weeklyHost, "weekly", weeklyRows, function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+            dual("أسبوع", "Week") + " " + dec(r.period_week) + " · " + dec(r.period_year) + "</div>" +
+            '<div class="s">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+            (r.answers || []).length + " " + dual("إجابات", "answers") + "</div></div>" +
+            statusBadgeFromMap(r.status, { draft: ["مسودة", "Draft", "warn"], submitted: ["مُقدَّم", "Submitted", "ok"] }) +
+            "</div>";
+        }, null, weeklySpec);
+      }
       var tplForm = byId("weeklyQForm");
       if (tplForm) {
         tplForm.addEventListener("submit", function (ev) {
@@ -6400,13 +9470,38 @@
       form + list);
   }
 
+  function campaignRow(c) {
+    var canManage = has("campaign.manage");
+    var results = canManage
+      ? '<form class="av-form av-form-inline" data-stop="1" id="campRes' + c.id + '">' +
+        field("الإنفاق", "Spend", numInput("crSpend" + c.id, c.spend)) +
+        field("عدد العملاء المحتملين", "Leads", numInput("crLeads" + c.id, c.lead_count)) +
+        field("التحويلات", "Conversions", numInput("crConv" + c.id, c.conversion_count)) +
+        '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
+        dual("حفظ النتائج", "Save results") + "</button></div></form>"
+      : "";
+    var linked = (c.linked_lead_count || 0);
+    var linkedBar = '<div class="s" style="margin-top:6px">' +
+      dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
+      ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
+      dual("عرض العملاء", "View leads") + "</button></div>" +
+      '<div id="campLeads' + c.id + '"></div>';
+    return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+      '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
+      '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
+      " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
+      statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+      "</div>" + results + linkedBar + "</div>";
+  }
+
   function renderCampaigns() {
     var host = byId("opsContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/campaigns").catch(function () { return []; }),
+      softGet("/api/v1/operations/campaigns"),
     ]).then(function (res) {
       var rows = res[1] || [];
+      STATE.campaigns = rows;
       var canManage = has("campaign.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="campaignForm">' +
@@ -6417,33 +9512,16 @@
           field("من", "From", dateInput("cpFrom", "")) +
           field("إلى", "To", dateInput("cpTo", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
-          dual("إنشاء حملة", "Create campaign") + "</button></div></form>"
+          dual("حملة جديدة", "New campaign") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (c) {
-            var results = canManage
-              ? '<form class="av-form av-form-inline" data-stop="1" id="campRes' + c.id + '">' +
-                field("الإنفاق", "Spend", numInput("crSpend" + c.id, c.spend)) +
-                field("عدد العملاء المحتملين", "Leads", numInput("crLeads" + c.id, c.lead_count)) +
-                field("التحويلات", "Conversions", numInput("crConv" + c.id, c.conversion_count)) +
-                '<div class="av-form-actions"><button class="btn-outline" type="submit" data-act="camp-results" data-id="' + c.id + '">' +
-                dual("حفظ النتائج", "Save results") + "</button></div></form>"
-              : "";
-            var linked = (c.linked_lead_count || 0);
-            var linkedBar = '<div class="s" style="margin-top:6px">' +
-              dual("عملاء مرتبطون", "Linked leads") + ": " + linked +
-              ' · <button class="btn-outline" type="button" data-act="camp-leads" data-id="' + c.id + '">' +
-              dual("عرض العملاء", "View leads") + "</button></div>" +
-              '<div id="campLeads' + c.id + '"></div>';
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(c.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(c.company_id)) + " · " + escapeHtml(c.platform || "") +
-              " · " + dual("الميزانية", "Budget") + " " + dec(c.budget) + "</div></div>" +
-              statusBadgeFromMap(c.status, { planned: ["مخططة", "Planned", "warn"], active: ["نشطة", "Active", "ok"], completed: ["مكتملة", "Completed", "rev"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + results + linkedBar + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد حملات.", "No campaigns.");
-      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + list);
+      var spec = campaignsFilterSpec();
+      var list = applyListFilters(rows, "campaigns", spec);
+      // Deck slide 134: العملاء/الحملات sort "موعد المتابعة تصاعديًا".
+      list.sort(function (a, b) {
+        return String(a.start_date || "9999").localeCompare(String(b.start_date || "9999")) || byIdAsc(a, b);
+      });
+      host.innerHTML = panel("الحملات (التنفيذ خارجي — النتائج تُسجَّل يدويًا)", "Campaigns (external execution — results recorded manually)", create + '<div id="campaignList"></div>');
+      renderPaged(byId("campaignList"), "campaigns", list, campaignRow, null, spec);
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -6472,7 +9550,13 @@
       return submitManagementBrief(id, el);
     }
     if (action === "brief-load") {
-      return loadBriefDraft(parseInt(valOf("mbYear"), 10), parseInt(valOf("mbMonth"), 10));
+      var y = parseInt(valOf("mbYear"), 10);
+      var mo = parseInt(valOf("mbMonth"), 10);
+      if (!y || !mo) {
+        toast(dual("حدد السنة والشهر أولاً.", "Choose a year and month first."), "warn");
+        return;
+      }
+      return loadBriefDraft(y, mo);
     }
     if (action !== "submit") return;
     if (id === "briefForm") {
@@ -6527,7 +9611,7 @@
   function renderManagementBriefs() {
     var host = byId("opsContent");
     host.innerHTML = loadingHtml();
-    return get("/api/v1/operations/management-briefs").catch(function () { return []; })
+    return softGet("/api/v1/operations/management-briefs")
       .then(function (rows) {
         rows = rows || [];
         var canAuthor = has("management_brief.submit");
@@ -6535,7 +9619,7 @@
         var form = canAuthor
           ? '<form class="av-form" id="briefForm">' +
             '<div class="av-form-inline">' +
-            field("السنة", "Year", numInput("mbYear", now.getFullYear(), "")) +
+            field("السنة", "Year", numInput("mbYear", now.getFullYear(), "", true), null, null, true) +
             field("الشهر", "Month", selectInput("mbMonth", monthOptions(), now.getMonth() + 1)) +
             field("الأولوية", "Urgency", selectInput("mbUrgency", [
               { value: "monthly", label: opt("شهري", "Monthly") },
@@ -6553,13 +9637,38 @@
             dual("حفظ المسودة", "Save draft") + "</button></div></form>"
           : "";
         var list = rows.length
-          ? '<div class="av-list">' + rows.map(briefRow).join("") + "</div>"
+          ? '<div id="briefList"></div>'
           : noticeHtml("لا توجد تقارير بعد.", "No briefs yet.");
         host.innerHTML = panel(
           "تقرير تطوير الأعمال (خمسة محاور)",
           "Business development brief (five axes)",
           form + list,
         );
+        var briefHost = byId("briefList");
+        if (briefHost) {
+          // Slide 134 "التغذية / التقارير": search plus period / status filters
+          // and the deck's apply / save / clear / export cluster; newest period
+          // first.
+          var briefSpec = [
+            { key: "q", type: "search", ar: "الملخص التنفيذي", en: "Executive summary",
+              fields: ["executive_summary", "status", "urgency"] },
+            { key: "period", ar: "الفترة", en: "Period",
+              resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+              options: distinctOptions(rows, function (r) {
+                return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+              }) },
+            { key: "status", ar: "الحالة", en: "Status", field: "status",
+              options: [
+                { value: "draft", ar: "مسودة", en: "Draft" },
+                { value: "submitted", ar: "مُرسل", en: "Submitted" },
+              ] },
+          ];
+          var briefRows = applyListFilters(rows, "briefs", briefSpec);
+          briefRows.sort(function (a, b) {
+            return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+          });
+          renderPaged(briefHost, "briefs", briefRows, briefRow, null, briefSpec);
+        }
       })
       .catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
@@ -6653,23 +9762,31 @@
     host.innerHTML = loadingHtml();
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/owner-decisions").catch(function () { return []; }),
+      softGet("/api/v1/operations/owner-decisions"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("owner_decision.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="decForm">' +
-          field("الرقم", "Number", textInput("dcNumber", "")) +
-          field("العنوان", "Title", textInput("dcTitle", "")) +
+          field("الرقم", "Number", textInput("dcNumber", "", "", true), null, null, true) +
+          field("العنوان", "Title", textInput("dcTitle", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("dcCompany", companySelectOptions(true), "")) +
           field("المُنفّذ (معرّف)", "Executor id", numInput("dcExecutor", "")) +
           field("الاستحقاق", "Due date", dateInput("dcDue", "")) +
           field("النص", "Body", textInput("dcBody", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
-          dual("إصدار قرار", "Issue decision") + "</button></div></form>"
+          dual("إصدار توجيه", "Issue directive") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (d) {
+      var list = rows;
+      STATE.decisions = rows;
+      var spec = decisionsFilterSpec();
+      list = applyListFilters(list, "decisions", spec);
+      // Deck slide 135: الفرص/القرارات sort "آخر تحديث؛ القرار: تاريخ الرفع" --
+      // newest first.
+      list.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var decRow = function (d) {
             var controls = canManage
               ? '<div class="av-user-controls" data-stop="1">' +
                 selectInput("dcStatus" + d.id, [
@@ -6686,15 +9803,59 @@
                 textInput("dcReply" + d.id, "") +
                 '<button class="btn-outline" data-act="dec-reply" data-id="' + d.id + '">' + dual("رد", "Reply") + "</button></div>"
               : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+            // Deck slide 27: each decision opens on [فتح القرار] to the detail
+            // screen (slide 28) before the owner acts. Slide 29 gives an
+            // approved decision a [عرض سجل القرار] entry to its execution log.
+            var logBtn = d.status === "done"
+              ? '<button class="btn-outline" data-act="dec-log" data-id="' + d.id + '">' + dual("عرض سجل القرار", "Decision log") + "</button>"
+              : "";
+            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default" data-decision="' + d.id + '"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(d.number + " · " + d.title) + "</div>" +
               '<div class="s">' + (d.company_id ? escapeHtml(companyNameById(d.company_id)) + " · " : "") +
+              (d.executor_user_id ? escapeHtml(personName(d, "executor_name_ar", "executor_name_en") || ("#" + plainNum(d.executor_user_id))) + " · " : "") +
               dual("الاستحقاق", "Due") + " " + escapeHtml(dateStr(d.due_date)) + "</div></div>" +
               statusBadgeFromMap(d.status, { open: ["مفتوح", "Open", "warn"], in_progress: ["قيد التنفيذ", "In progress", "warn"], done: ["منجز", "Done", "ok"], cancelled: ["ملغى", "Cancelled", "miss"] }) +
+              logBtn +
+              '<button class="btn-outline" data-act="dec-open" data-id="' + d.id + '">' + dual("فتح القرار", "Open decision") + "</button>" +
               "</div>" + controls + reply + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد قرارات.", "No decisions.");
-      host.innerHTML = panel("قرارات المالك", "Owner decisions", create + list);
+      };
+      host.innerHTML = panel("قرارات المالك", "Owner decisions", create + '<div id="decList"></div>');
+      renderPaged(byId("decList"), "decisions", list, decRow, function (h) {
+        h.querySelectorAll('[data-act="dec-open"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = parseInt(btn.getAttribute("data-id"), 10);
+            var row = (STATE.decisions || []).filter(function (x) { return x.id === did; })[0];
+            if (row) openDecision(row);
+          });
+        });
+        h.querySelectorAll('[data-act="dec-log"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = parseInt(btn.getAttribute("data-id"), 10);
+            var row = (STATE.decisions || []).filter(function (x) { return x.id === did; })[0];
+            // The detail panel carries the decision log (status history +
+            // execution updates), which is what slide 29 asks the owner to open.
+            if (row) openDecision(row);
+          });
+        });
+        h.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = btn.getAttribute("data-id");
+            patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
+              .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
+              .catch(domainError);
+          });
+        });
+        h.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var did = btn.getAttribute("data-id");
+            var note = valOf("dcReply" + did);
+            if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+            post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
+              .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
+              .catch(domainError);
+          });
+        });
+      }, spec);
       var form = byId("decForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -6711,25 +9872,148 @@
             .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
         });
       }
-      host.querySelectorAll('[data-act="dec-status"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var did = btn.getAttribute("data-id");
-          patch("/api/v1/operations/owner-decisions/" + did, { status: valOf("dcStatus" + did) })
-            .then(function () { toast(dual("تم تحديث القرار.", "Decision updated."), "ok"); return renderDecisionsView(); })
-            .catch(domainError);
-        });
-      });
-      host.querySelectorAll('[data-act="dec-reply"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var did = btn.getAttribute("data-id");
-          var note = valOf("dcReply" + did);
-          if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
-          post("/api/v1/operations/owner-decisions/" + did + "/respond", { note: note })
-            .then(function () { toast(dual("تم إرسال الرد.", "Reply sent."), "ok"); return renderDecisionsView(); })
-            .catch(domainError);
-        });
-      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Deck slide 28 — تفاصيل القرار. A unified read of the request, its history
+  // and the decision options, opened from [فتح القرار] on the list (slide 27).
+  // It renders only fields the decision row already carries; the status change
+  // and the executor reply are the same endpoints the list already calls, so no
+  // new business rule or permission path is introduced. Acting on a decision
+  // still requires owner_decision.manage; the executor reply still requires the
+  // decision to name the signed-in user (S22).
+  function openDecision(d) {
+    var canManage = has("owner_decision.manage");
+    var canReply = USER && d.executor_user_id === USER.id;
+    var history = (d.history || []).slice().sort(function (a, b) {
+      return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+    });
+    var statusMap = {
+      open: ["مفتوح", "Open", "warn"],
+      in_progress: ["قيد التنفيذ", "In progress", "warn"],
+      done: ["منجز", "Done", "ok"],
+      cancelled: ["ملغى", "Cancelled", "miss"],
+    };
+    var historyBlock = history.length
+      ? '<div class="sec-title">' + dual("سجل العمل", "Work log") + "</div>" +
+        '<div class="kv">' +
+        history
+          .map(function (h) {
+            var who = h.actor_id ? "#" + plainNum(h.actor_id) : "—";
+            var st = h.status
+              ? escapeHtml(STATE.lang === "ar" ? statusMap[h.status][0] : statusMap[h.status][1])
+              : "—";
+            return kv(fmtDateTime(h.created_at), st + " · " + escapeHtml(h.note || who));
+          })
+          .join("") +
+        "</div>"
+      : "";
+
+    var actions = "";
+    if (canManage) {
+      actions =
+        '<div class="sec-title">' + dual("خيارات القرار", "Decision options") + "</div>" +
+        // Deck slide 28 names the four outcomes verbatim: [اعتماد] [رفض]
+        // [طلب معلومات] [تأجيل]. Each maps to a status the model already
+        // carries; the three that need an explanation are refused without one.
+        '<div class="av-user-controls" data-stop="1">' +
+        '<button class="btn-solid gold" data-act="dec-detail-outcome" data-id="' + d.id + '" data-outcome="done">' +
+        dual("اعتماد القرار", "Approve decision") + "</button>" +
+        '<button class="btn-outline danger" data-act="dec-detail-outcome" data-id="' + d.id + '" data-outcome="cancelled">' +
+        dual("رفض", "Reject") + "</button>" +
+        '<button class="btn-outline" data-act="dec-detail-outcome" data-id="' + d.id + '" data-outcome="in_progress">' +
+        dual("طلب معلومات", "Request info") + "</button>" +
+        '<button class="btn-outline" data-act="dec-detail-outcome" data-id="' + d.id + '" data-outcome="open">' +
+        dual("تأجيل", "Defer") + "</button></div>" +
+        '<div class="av-field" style="margin-top:10px">' +
+        '<textarea class="av-textarea" id="decOpenNote"' +
+        phAttr("ph.comment") + "></textarea>" +
+        '<button class="btn-outline" data-act="dec-detail-note" data-id="' + d.id + '" style="margin-top:8px">' +
+        dual("إضافة ملاحظة للمتابعة", "Add follow-up note") + "</button></div>";
+    } else if (canReply) {
+      actions =
+        '<div class="sec-title">' + dual("رد المنفّذ", "Executor reply") + "</div>" +
+        '<div class="av-field">' +
+        '<textarea class="av-textarea" id="decOpenNote"' +
+        phAttr("ph.comment") + "></textarea>" +
+        '<button class="btn-solid" data-act="dec-detail-reply" data-id="' + d.id + '" style="margin-top:8px">' +
+        dual("إرسال تحديث التنفيذ", "Send execution update") + "</button></div>";
+    }
+
+    openModal({
+      title: dual("تفاصيل القرار", "Decision detail"),
+      wide: true,
+      body:
+        '<div class="kv">' +
+        kv(dual("الرقم", "Number"), escapeHtml(d.number)) +
+        kv(dual("العنوان", "Title"), escapeHtml(d.title)) +
+        kv(dual("الجهة", "Entity"), d.company_id ? escapeHtml(companyNameById(d.company_id)) : dual("القابضة", "Holding")) +
+        kv(dual("الحالة", "Status"), statusBadgeFromMap(d.status, statusMap)) +
+        kv(dual("المسؤول", "Executor"),
+           escapeHtml(personName(d, "executor_name_ar", "executor_name_en") || (d.executor_user_id ? "#" + plainNum(d.executor_user_id) : "—"))) +
+        kv(dual("الاستحقاق", "Due"), escapeHtml(dateStr(d.due_date))) +
+        (d.follow_up_note ? kv(dual("ملاحظة المتابعة", "Follow-up note"), escapeHtml(d.follow_up_note)) : "") +
+        "</div>" +
+        (d.body ? '<div class="sec-title">' + dual("التفاصيل", "Details") + '</div><p class="note-block">' + escapeHtml(d.body) + "</p>" : "") +
+        historyBlock +
+        actions,
+      onMount: function (root) {
+        // Deck slide 28: the four named outcomes. Approve closes the decision;
+        // reject, request-info and defer all need the reason typed below.
+        var outcomeNote = { cancelled: "سبب الرفض مطلوب.", in_progress: "بيّن المعلومات المطلوبة.", open: "سبب التأجيل مطلوب." };
+        var outcomeNoteEn = { cancelled: "A rejection reason is required.", in_progress: "State the information needed.", open: "A deferral reason is required." };
+        root.querySelectorAll('[data-act="dec-detail-outcome"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var outcome = btn.getAttribute("data-outcome");
+            var note = valOf("decOpenNote");
+            if (outcomeNote[outcome] && !note) {
+              toast(dual(outcomeNote[outcome], outcomeNoteEn[outcome]), "warn");
+              return;
+            }
+            var payload = { status: outcome };
+            if (note) payload.follow_up_note = note;
+            busy(btn, true);
+            patch("/api/v1/operations/owner-decisions/" + d.id, payload)
+              .then(function () {
+                closeModal();
+                toast(dual("تم تحديث القرار.", "Decision updated."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(btn, false); });
+          });
+        });
+        var noteBtn = root.querySelector('[data-act="dec-detail-note"]');
+        if (noteBtn) {
+          noteBtn.addEventListener("click", function () {
+            var note = valOf("decOpenNote");
+            if (!note) { toast(dual("الملاحظة مطلوبة.", "A note is required."), "warn"); return; }
+            busy(noteBtn, true);
+            patch("/api/v1/operations/owner-decisions/" + d.id, { follow_up_note: note })
+              .then(function () {
+                closeModal();
+                toast(dual("تم حفظ الملاحظة.", "Note saved."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(noteBtn, false); });
+          });
+        }
+        var replyBtn = root.querySelector('[data-act="dec-detail-reply"]');
+        if (replyBtn) {
+          replyBtn.addEventListener("click", function () {
+            var note = valOf("decOpenNote");
+            if (!note) { toast(dual("الرد مطلوب.", "A reply note is required."), "warn"); return; }
+            busy(replyBtn, true);
+            post("/api/v1/operations/owner-decisions/" + d.id + "/respond", { note: note })
+              .then(function () {
+                closeModal();
+                toast(dual("تم إرسال الرد.", "Reply sent."), "ok");
+                return renderDecisionsView();
+              })
+              .catch(function (err) { domainError(err); busy(replyBtn, false); });
+          });
+        }
+      },
+    });
   }
 
   // ======================================================================
@@ -6749,13 +10033,208 @@
     return '<span class="badge rev">' + escapeHtml(STATE.lang === "ar" ? m[0] : m[1]) + "</span>";
   }
 
+  // ---- Feedback (التغذية الراجعة) -------------------------------------
+  //
+  // The brief's "Feedback & Reporting" section. It aggregates the feedback
+  // channels the platform already stores -- weekly reports, management briefs
+  // and monthly reports -- into one review queue with classification and
+  // follow-up. It is deliberately read-first: every row opens the record that
+  // owns it, and all writes still go through the existing endpoints and their
+  // permissions. No new table and no new business rule.
+  var FB_SOURCES = {
+    weekly_report: {
+      ar: "تقرير أسبوعي",
+      en: "Weekly report",
+      perm: ["weekly_report.read_own", "weekly_report.read_all"],
+      view: "operations",
+    },
+    management_brief: {
+      ar: "تقرير إداري",
+      en: "Management brief",
+      perm: ["management_brief.read"],
+      view: "operations",
+    },
+    monthly_report: {
+      ar: "تقرير شهري",
+      en: "Monthly report",
+      perm: ["monthly_report.read_own", "monthly_report.read_all"],
+      view: "reports",
+    },
+  };
+
+  function fbAllowed(source) {
+    return (FB_SOURCES[source].perm || []).some(has);
+  }
+
+  function fbStatusClass(status) {
+    var s = String(status || "").toLowerCase();
+    if (s.indexOf("approv") >= 0 || s === "done" || s === "complete") return "ok";
+    if (s.indexOf("reject") >= 0 || s.indexOf("cancel") >= 0 || s.indexOf("return") >= 0) return "miss";
+    if (s.indexOf("review") >= 0 || s.indexOf("progress") >= 0 || s.indexOf("submit") >= 0) return "warn";
+    return "";
+  }
+
+  function fbStatusLabel(status) {
+    var s = String(status || "");
+    if (!s) return dual("—", "—");
+    return escapeHtml(s.replace(/_/g, " "));
+  }
+
+  function renderFeedbackView() {
+    var host = byId("feedbackList");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    bindFeedbackControls();
+
+    var canMonthly =
+      has("monthly_report.read_own") || has("monthly_report.read_all");
+    return Promise.all([
+      ensureCompanies(),
+      fbAllowed("weekly_report")
+        ? softGet("/api/v1/operations/weekly-reports")
+        : Promise.resolve([]),
+      fbAllowed("management_brief")
+        ? softGet("/api/v1/operations/management-briefs")
+        : Promise.resolve([]),
+      canMonthly
+        ? softGet("/api/v1/monthly-reports")
+        : Promise.resolve([]),
+    ]).then(function (res) {
+      var rows = [];
+      (res[1] || []).forEach(function (r) {
+        rows.push(fbRow("weekly_report", r, {
+          title: r.summary || opt("تقرير أسبوعي", "Weekly report"),
+          sub: opt("الأسبوع", "Week") + " " + periodPart(r.period_week) +
+               " · " + periodPart(r.period_year),
+          status: r.status,
+          date: r.created_at,
+          id: r.id,
+        }));
+      });
+      (res[2] || []).forEach(function (r) {
+        rows.push(fbRow("management_brief", r, {
+          title: r.executive_summary || opt("تقرير إداري", "Management brief"),
+          sub: opt("الفترة", "Period") + " " +
+               periodPart(r.period_month) + "/" + periodPart(r.period_year),
+          status: r.status,
+          date: r.created_at,
+          id: r.id,
+        }));
+      });
+      (res[3] || []).forEach(function (r) {
+        rows.push(fbRow("monthly_report", r, {
+          title: (STATE.lang === "ar" ? r.company_name_ar : r.company_name_en) ||
+                 opt("تقرير شهري", "Monthly report"),
+          sub: opt("الفترة", "Period") + " " +
+               periodPart(r.period_month) + "/" + periodPart(r.period_year),
+          status: r.status,
+          date: r.updated_at || r.created_at,
+          id: r.id,
+        }));
+      });
+
+      // Newest first; rows with no date sort last.
+      rows.sort(function (a, b) {
+        return String(b.sort_date || "").localeCompare(String(a.sort_date || ""));
+      });
+
+      renderFeedbackSummary(rows);
+      var filter = (byId("fbSourceFilter") || {}).value || "";
+      var shown = filter
+        ? rows.filter(function (r) { return r.source === filter; })
+        : rows;
+      var spec = feedbackFilterSpec();
+      shown = applyListFilters(shown, "feedback", spec);
+      host.innerHTML = "";
+      renderPaged(host, "feedback", shown, fbRowHtml, function (h) {
+        h.querySelectorAll("[data-fb-source]").forEach(function (el) {
+          el.addEventListener("click", function () {
+            var src = el.getAttribute("data-fb-source");
+            navTo((FB_SOURCES[src] || {}).view || "operations");
+          });
+        });
+      }, spec);
+    });
+  }
+
+  function fbRow(source, raw, meta) {
+    return {
+      source: source,
+      raw: raw,
+      title: meta.title,
+      sub: meta.sub,
+      status: meta.status,
+      id: meta.id,
+      sort_date: meta.date,
+    };
+  }
+
+  function fbRowHtml(r) {
+    var src = FB_SOURCES[r.source];
+    var cls = fbStatusClass(r.status);
+    var badge = src
+      ? '<span class="attn-badge' + (cls ? " " + cls : "") + '">' +
+        escapeHtml(STATE.lang === "ar" ? src.ar : src.en) + "</span>"
+      : "";
+    return (
+      '<div class="av-row" data-fb-source="' + escapeHtml(r.source) + '" style="align-items:flex-start">' +
+      '<div class="grow">' +
+      '<div class="t">' + escapeHtml(r.title || "") + "</div>" +
+      '<div class="s">' + escapeHtml(r.sub || "") + " · " + fbStatusLabel(r.status) + "</div>" +
+      "</div>" + badge + "</div>"
+    );
+  }
+
+  function renderFeedbackSummary(rows) {
+    var host = byId("fbSummary");
+    if (!host) return;
+    var bySource = {};
+    rows.forEach(function (r) {
+      bySource[r.source] = (bySource[r.source] || 0) + 1;
+    });
+    var openish = rows.filter(function (r) {
+      var s = String(r.status || "").toLowerCase();
+      return s.indexOf("approv") < 0 && s !== "done" && s !== "complete";
+    }).length;
+    var cards = [
+      { ar: "إجمالي المدخلات", en: "Total entries", v: rows.length },
+      { ar: "قيد المعالجة", en: "Open", v: openish },
+      { ar: "تقارير أسبوعية", en: "Weekly reports", v: bySource.weekly_report || 0 },
+      { ar: "تقارير إدارية", en: "Management briefs", v: bySource.management_brief || 0 },
+      { ar: "تقارير شهرية", en: "Monthly reports", v: bySource.monthly_report || 0 },
+    ];
+    host.innerHTML = cards.map(function (c) {
+      return (
+        '<div class="av-panel"><h3>' + dual(c.ar, c.en) + "</h3>" +
+        '<div class="kpi-val num" style="font-size:22px">' + plainNum(c.v) + "</div></div>"
+      );
+    }).join("");
+  }
+
+  function bindFeedbackControls() {
+    var refresh = byId("fbRefresh");
+    if (refresh && !refresh.getAttribute("data-bound")) {
+      refresh.setAttribute("data-bound", "1");
+      refresh.addEventListener("click", function () {
+        renderFeedbackView();
+      });
+    }
+    var filter = byId("fbSourceFilter");
+    if (filter && !filter.getAttribute("data-bound")) {
+      filter.setAttribute("data-bound", "1");
+      filter.addEventListener("change", function () {
+        renderFeedbackView();
+      });
+    }
+  }
+
   function renderProjectsView() {
     var host = byId("projContent");
     if (!host) return Promise.resolve();
     host.innerHTML = loadingHtml();
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/operations/projects").catch(function () { return []; }),
+      softGet("/api/v1/operations/projects"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("project.manage");
@@ -6765,7 +10244,7 @@
             { value: "opportunity", label: opt("فرصة", "Opportunity") },
             { value: "project", label: opt("مشروع", "Project") },
           ], "opportunity")) +
-          field("الاسم", "Name", textInput("prName", "")) +
+          field("الاسم", "Name", textInput("prName", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("prCompany", companySelectOptions(true), "")) +
           field("الفترة من", "Period from", dateInput("prFrom", "")) +
           field("الفترة إلى", "Period to", dateInput("prTo", "")) +
@@ -6776,41 +10255,57 @@
           field("الوصف", "Description", textInput("prDescription", "")) +
           field("مرتبط بقرار المالك (رقم)", "Linked owner decision (id)", numInput("prDecision", "")) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
-          dual("إضافة سجل", "Add record") + "</button></div></form>"
+          dual("إضافة فرصة", "Add opportunity") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (r) {
-            var est = r.estimated_value !== null && r.estimated_value !== undefined
-              ? escapeHtml(plainNum(r.estimated_value) + " " + (r.currency || ""))
-              : dual("—", "—");
-            var controls = canManage
-              ? '<div class="av-user-controls" data-stop="1">' +
-                selectInput("prStatus" + r.id, [
-                  { value: "open", label: opt("مفتوح", "Open") },
-                  { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
-                  { value: "on_hold", label: opt("معلّق", "On hold") },
-                  { value: "closed", label: opt("مغلق", "Closed") },
-                  { value: "cancelled", label: opt("ملغى", "Cancelled") },
-                ], r.status) +
-                '<button class="btn-outline" data-act="proj-status" data-id="' + r.id + '">' + dual("تحديث", "Update") + "</button></div>"
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(r.name) + "</div>" +
-              '<div class="s">' + projectTypeBadge(r.record_type) + " " +
-              (r.company_id ? escapeHtml(companyNameById(r.company_id)) + " · " : "") +
-              (r.period_start || r.period_end
-                ? dual("الفترة", "Period") + " " + escapeHtml(dateStr(r.period_start)) + " – " + escapeHtml(dateStr(r.period_end)) + " · "
-                : "") +
-              dual("تقدير", "Estimate") + " " + est +
-              (r.resource_estimate ? " · " + escapeHtml(r.resource_estimate) : "") +
-              "</div>" +
-              (r.objective ? '<div class="s">' + escapeHtml(r.objective) + "</div>" : "") +
-              "</div>" +
-              statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
-              "</div>" + controls + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد مشاريع أو فرص.", "No projects or opportunities.");
-      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create + list);
+      STATE.projects = rows;
+      var spec = projectsFilterSpec();
+      var filtered = applyListFilters(scopeFilter(rows), "projects", spec);
+      filtered.sort(function (a, b) {
+        return String(b.created_at || "").localeCompare(String(a.created_at || "")) || byIdAsc(a, b);
+      });
+      var projectRow = function (r) {
+        var est = r.estimated_value !== null && r.estimated_value !== undefined
+          ? escapeHtml(plainNum(r.estimated_value) + " " + (r.currency || ""))
+          : dual("—", "—");
+        var controls = canManage
+          ? '<div class="av-user-controls" data-stop="1">' +
+            selectInput("prStatus" + r.id, [
+              { value: "open", label: opt("مفتوح", "Open") },
+              { value: "in_progress", label: opt("قيد التنفيذ", "In progress") },
+              { value: "on_hold", label: opt("معلّق", "On hold") },
+              { value: "closed", label: opt("مغلق", "Closed") },
+              { value: "cancelled", label: opt("ملغى", "Cancelled") },
+            ], r.status) +
+            '<button class="btn-outline" data-act="proj-status" data-id="' + r.id + '">' + dual("تحديث", "Update") + "</button></div>"
+          : "";
+        return '<div class="av-row" data-proj="' + escAttr(JSON.stringify(r)) + '" style="flex-direction:column;align-items:stretch;cursor:pointer"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(r.name) + "</div>" +
+          '<div class="s">' + projectTypeBadge(r.record_type) + " " +
+          (r.stage ? statusBadgeFromMap(r.stage, PROJECT_STAGE_LABEL) + " " : "") +
+          (r.company_id ? escapeHtml(companyNameById(r.company_id)) + " · " : "") +
+          (r.period_start || r.period_end
+            ? dual("الفترة", "Period") + " " + escapeHtml(dateStr(r.period_start)) + " – " + escapeHtml(dateStr(r.period_end)) + " · "
+            : "") +
+          dual("تقدير", "Estimate") + " " + est +
+          (r.resource_estimate ? " · " + escapeHtml(r.resource_estimate) : "") +
+          "</div>" +
+          (r.objective ? '<div class="s">' + escapeHtml(r.objective) + "</div>" : "") +
+          "</div>" +
+          statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL) +
+          "</div>" + controls + "</div>";
+      };
+      host.innerHTML = panel("المشاريع والفرص", "Projects & opportunities", create + '<div id="projList"></div>');
+      renderPaged(byId("projList"), "projects", filtered, projectRow, function (h) {
+        bindRowClicks(h, "proj", function (r) { openProjectStudy(r); });
+        h.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var rid = btn.getAttribute("data-id");
+            patch("/api/v1/operations/projects/" + rid, { status: valOf("prStatus" + rid) })
+              .then(function () { toast(dual("تم تحديث السجل.", "Record updated."), "ok"); return renderProjectsView(); })
+              .catch(domainError);
+          });
+        });
+      }, spec);
       var form = byId("projectForm");
       if (form) {
         form.addEventListener("submit", function (ev) {
@@ -6832,20 +10327,443 @@
             .catch(function (err) { domainError(err); busy(form.querySelector("button"), false); });
         });
       }
-      host.querySelectorAll('[data-act="proj-status"]').forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var rid = btn.getAttribute("data-id");
-          patch("/api/v1/operations/projects/" + rid, { status: valOf("prStatus" + rid) })
-            .then(function () { toast(dual("تم تحديث السجل.", "Record updated."), "ok"); return renderProjectsView(); })
-            .catch(domainError);
-        });
-      });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Deck slides 25-26: the opportunity pipeline and its study. The four stages
+  // are a label the BD manager sets (spec §7: no automatic transition); the
+  // study fields are free text -- the deck's "no feasibility engine" rule means
+  // nothing here is computed. [حفظ الدراسة] persists them and
+  // [رفع للمالك عند الحاجة] opens an owner decision topic linked to the record.
+  var PROJECT_STAGE_LABEL = {
+    new: ["جديدة", "New", "rev"],
+    initial_review: ["تقييم أولي", "Initial review", "warn"],
+    feasibility: ["دراسة جدوى", "Feasibility study", "gold"],
+    decision: ["قرار / تنفيذ", "Decision / execution", "ok"],
+  };
+
+  function openProjectStudy(r) {
+    var stageOpts = [
+      { value: "", label: opt("—", "—") },
+      { value: "new", label: opt("جديدة", "New") },
+      { value: "initial_review", label: opt("تقييم أولي", "Initial review") },
+      { value: "feasibility", label: opt("دراسة جدوى", "Feasibility study") },
+      { value: "decision", label: opt("قرار / تنفيذ / إغلاق", "Decision / execution / close") },
+    ];
+    var studyField = function (id, ar, en, value) {
+      return '<div class="av-field"><label>' + dual(ar, en) + "</label>" +
+        textArea(id, value || "", "") + "</div>";
+    };
+    var canManage = has("project.manage");
+    var body =
+      '<div class="kv">' +
+      kv(dual("النوع", "Type"), projectTypeBadge(r.record_type)) +
+      kv(dual("الشركة", "Company"), escapeHtml(r.company_id ? companyNameById(r.company_id) : "—")) +
+      kv(dual("الحالة", "Status"), statusBadgeFromMap(r.status, PROJECT_STATUS_LABEL)) +
+      (r.owner_decision_id
+        ? kv(dual("موضوع القرار", "Decision topic"), "#" + plainNum(r.owner_decision_id))
+        : "") +
+      "</div>" +
+      (r.objective ? '<div class="sec-title">' + dual("الهدف", "Objective") + '</div><p>' + escapeHtml(r.objective) + "</p>" : "") +
+      (canManage
+        ? '<div class="sec-title">' + dual("تقييم الفرصة", "Opportunity study") + "</div>" +
+          field("مرحلة الفرصة", "Opportunity stage", selectInput("psStage", stageOpts, r.stage || "")) +
+          studyField("psMarket", "السوق والعملاء", "Market & customers", r.market_customers) +
+          studyField("psSource", "مصدر المعلومات", "Information source", r.information_source) +
+          studyField("psRevenue", "الإيراد المتوقع", "Expected revenue", r.expected_revenue) +
+          studyField("psRisks", "المخاطر الرئيسية", "Key risks", r.key_risks) +
+          studyField("psAlt", "البدائل", "Alternatives", r.alternatives) +
+          studyField("psRec", "التوصية", "Recommendation", r.recommendation) +
+          studyField("psSources", "مصادر الدراسة", "Study sources", r.study_sources) +
+          '<p class="note-block">' + dual(
+            "الحقائق والافتراضات والمخاطر والتوصية تُعرض قبل رفع القرار؛ لا يوجد محرك جدوى آلي.",
+            "Facts, assumptions, risks and a recommendation are shown before the decision is raised; there is no automatic feasibility engine.") + "</p>"
+        : "");
+    openModal({
+      title: dual("تفاصيل وتقييم الفرصة", "Opportunity details & study"),
+      wide: true,
+      body: body,
+      footer: canManage
+        ? '<button class="btn-outline" id="psCancel">' + dual("إغلاق", "Close") + "</button>" +
+          '<button class="btn-outline" id="psRaise">' + dual("رفع للمالك عند الحاجة", "Raise to owner") + "</button>" +
+          '<button class="btn-solid" id="psSave">' + dual("حفظ الدراسة", "Save study") + "</button>"
+        : '<button class="btn-outline" id="psCancel">' + dual("إغلاق", "Close") + "</button>",
+      onMount: function () {
+        byId("psCancel").addEventListener("click", closeModal);
+        var save = byId("psSave");
+        if (save) {
+          save.addEventListener("click", function () {
+            var btn = this;
+            busy(btn, true);
+            patch("/api/v1/operations/projects/" + r.id, {
+              stage: valOf("psStage") || null,
+              market_customers: valOf("psMarket") || null,
+              information_source: valOf("psSource") || null,
+              expected_revenue: valOf("psRevenue") || null,
+              key_risks: valOf("psRisks") || null,
+              alternatives: valOf("psAlt") || null,
+              recommendation: valOf("psRec") || null,
+              study_sources: valOf("psSources") || null,
+            }).then(function () {
+              toast(dual("تم حفظ الدراسة.", "Study saved."), "ok");
+              closeModal();
+              renderProjectsView();
+            }).catch(function (err) { domainError(err); busy(btn, false); });
+          });
+        }
+        var raise = byId("psRaise");
+        if (raise) {
+          raise.addEventListener("click", function () {
+            var btn = this;
+            busy(btn, true);
+            post("/api/v1/operations/projects/" + r.id + "/raise-to-owner", {})
+              .then(function () {
+                toast(dual("رُفع الموضوع للمالك.", "Topic raised to the owner."), "ok");
+                closeModal();
+                renderProjectsView();
+              }).catch(function (err) { domainError(err); busy(btn, false); });
+          });
+        }
+      },
+    });
   }
 
   // ======================================================================
   // S04/S26/S27/S28 -- Holding accounting (D01/D07/D08)
   // ======================================================================
+
+  // ---- Advisory (prototype tab "advisory") -------------------------------
+  // Advisor sessions and monthly advisor reports, exactly the two records the
+  // prototype's advisory tab lists. Both endpoints already scope rows by the
+  // caller, so the view adds no data access.
+  function renderAdvisoryView() {
+    var host = byId("advContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.advBound) {
+      STATE.advBound = true;
+      bindSimpleTabs("data-adv-tab", "advTab", renderAdvisoryView);
+    }
+    host.innerHTML = loadingHtml();
+    return Promise.all([
+      softGet("/api/v1/operations/advisory-sessions"),
+      softGet("/api/v1/operations/advisor-reports"),
+    ]).then(function (res) {
+      var sessions = res[0] || [];
+      var reports = res[1] || [];
+      var tab = STATE.advTab || "sessions";
+      if (tab === "reports") {
+        host.innerHTML = panel("تقارير المستشار", "Advisor reports",
+          reports.length
+            ? '<div class="av-list">' + reports.map(function (r) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(r.title || dual("تقرير المستشار", "Advisor report")) + '</div>' +
+                  '<div class="s">' + escapeHtml((r.period_year || "") + "-" + String(r.period_month || "").padStart(2, "0") + " · " + (r.status || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد تقارير بعد.", "No reports yet."));
+      } else {
+        host.innerHTML = panel("جلسات المستشار", "Advisor sessions",
+          sessions.length
+            ? '<div class="av-list">' + sessions.map(function (s) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(s.specialty || s.advisor_name || dual("جلسة استشارية", "Advisory session")) + '</div>' +
+                  '<div class="s">' + escapeHtml((s.scheduled_at || s.date || "") + " · " + (s.status || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد جلسات مسجّلة.", "No sessions recorded."));
+      }
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- HR movements (prototype tab "hr") --------------------------------
+  // HR movements (leave, custody, warning, …) across the employees the caller
+  // may see, with the approve/reject action the prototype's HR tab offers.
+  function renderHrView() {
+    var host = byId("hrContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.hrBound) {
+      STATE.hrBound = true;
+      bindSimpleTabs("data-hr-tab", "hrTab", renderHrView);
+    }
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/employees").then(function (emps) {
+      emps = emps || [];
+      if ((STATE.hrTab || "movements") === "employees") {
+        STATE.hr = STATE.hr || {};
+        STATE.hr.employees = emps;
+        host.innerHTML = panel("الموظفون", "Employees",
+          emps.length
+            ? '<div id="hrEmpList"></div>'
+            : noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope."));
+        if (emps.length) {
+          renderPaged(byId("hrEmpList"), "hrEmployees", emps, employeeRow, function (h) {
+            bindRowClicks(h, "emp", openEmployee);
+          }, employeesFilterSpec());
+        }
+        return;
+      }
+      if (!emps.length) {
+        host.innerHTML = panel("حركات الموظفين", "Employee movements",
+          noticeHtml("لا يوجد موظفون في نطاقك.", "No employees in your scope."));
+        return;
+      }
+      return Promise.all(emps.slice(0, 50).map(function (e) {
+        return softGet("/api/v1/employees/" + e.id + "/movements").then(function (rows) {
+          return (rows || []).map(function (m) { m._emp = e; return m; });
+        });
+      })).then(function (lists) {
+        var all = [];
+        lists.forEach(function (l) { all = all.concat(l); });
+        all.sort(function (a, b) { return (b.id || 0) - (a.id || 0); });
+        host.innerHTML = panel("حركات الموظفين", "Employee movements",
+          all.length
+            ? '<div class="av-list">' + all.map(function (m) {
+                var emp = m._emp;
+                var canDecide = has("employee.movement.approve") && (m.status === "pending" || m.status === "submitted");
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml((emp ? (STATE.lang === "ar" ? emp.full_name_ar : emp.full_name_en || emp.full_name_ar) : "") + " · " + (m.movement_type || "")) + '</div>' +
+                  '<div class="s">' + escapeHtml((m.start_date || m.effective_date || "") + " · " + (m.status || "")) + '</div>' +
+                  '</div>' +
+                  (canDecide
+                    ? '<button class="chip" data-hr-approve="' + m.id + '">' + dual("اعتماد", "Approve") + '</button>' +
+                      '<button class="chip" data-hr-reject="' + m.id + '">' + dual("رفض", "Reject") + '</button>'
+                    : "") +
+                  '</div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد حركات.", "No movements."));
+        host.querySelectorAll("[data-hr-approve],[data-hr-reject]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var approve = btn.hasAttribute("data-hr-approve");
+            var id = parseInt(btn.getAttribute(approve ? "data-hr-approve" : "data-hr-reject"), 10);
+            post("/api/v1/employees/movements/" + id + "/decision", { approve: approve, note: null })
+              .then(function () { toast(dual("تم تحديث الحركة.", "Movement updated."), "ok"); return renderHrView(); })
+              .catch(function (err) { domainError(err); });
+          });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- Holding assets (prototype tab "assets") --------------------------
+  // The holding's own assets (gold, property, …), totalled per currency --
+  // the prototype never converts between currencies.
+  function renderAssetsView() {
+    var host = byId("assetsContent");
+    if (!host) return Promise.resolve();
+    host.innerHTML = loadingHtml();
+    return get("/api/v1/accounting/assets").then(function (rows) {
+      rows = rows || [];
+      var totals = {};
+      rows.forEach(function (a) {
+        var c = a.currency || "BHD";
+        var v = Number(a.current_value || a.purchase_value || 0);
+        totals[c] = (totals[c] || 0) + v;
+      });
+      var totalHtml = Object.keys(totals).length
+        ? '<div class="av-list">' + Object.keys(totals).map(function (c) {
+            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+              dec(totals[c]) + " " + escapeHtml(c) + '</div><div class="s">' +
+              dual("إجمالي قيمة الأصول", "Total asset value") + '</div></div></div>';
+          }).join("") + "</div>"
+        : noticeHtml("لا توجد أصول مسجّلة.", "No assets recorded.");
+      host.innerHTML =
+        panel("قيمة أصول القابضة", "Holding asset value", totalHtml) +
+        panel("سجل الأصول", "Asset register",
+          rows.length
+            ? '<div class="av-list">' + rows.map(function (a) {
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(a.name || a.type || "") + '</div>' +
+                  '<div class="s">' + escapeHtml((a.type || "") + " · " + dec(a.current_value || a.purchase_value) + " " + (a.currency || "")) + '</div>' +
+                  '</div></div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد أصول مسجّلة.", "No assets recorded."));
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // ---- Website management (prototype tab "site") ------------------------
+  // The platform side of the site: submitted listings to review/publish and the
+  // CMS overview. Submitter contact details are shown here only (the site never
+  // publishes them), which is why this view needs website/lead permissions.
+  function renderSiteView() {
+    var host = byId("siteContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.siteBound) {
+      STATE.siteBound = true;
+      bindSimpleTabs("data-site-tab", "siteTab", renderSiteView);
+    }
+    host.innerHTML = loadingHtml();
+    var canLeads = has("website_lead.read");
+    var canCms = has("website.content.read");
+    var tab = STATE.siteTab || "listings";
+    return Promise.all([
+      canLeads ? softGet("/api/v1/leads/opportunities") : Promise.resolve(null),
+      canCms ? softGet("/api/v1/website/overview") : Promise.resolve(null),
+      canCms && tab === "content" ? softGet("/api/v1/website/pages") : Promise.resolve(null),
+    ]).then(function (res) {
+      var opps = res[0] || [];
+      var cms = res[1];
+      var pages = res[2] || [];
+      var html = "";
+      if (tab === "content") {
+        if (!canCms) {
+          host.innerHTML = noticeHtml("ليست لديك صلاحية عرض محتوى الموقع.", "You cannot view website content.");
+          return;
+        }
+        html += siteContentPanel(cms, pages);
+      } else {
+        if (canLeads) {
+          html += panel("العروض المقدَّمة من الموقع", "Listings submitted from the site",
+            opps.length
+              ? '<div class="av-list">' + opps.map(function (o) {
+                  return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                    '<div class="t">' + escapeHtml(o.description ? o.description.slice(0, 80) : dual("عرض", "Listing")) + '</div>' +
+                    '<div class="s">' + escapeHtml((o.sector || "") + " · " + (o.market || "") + " · " + (o.currency || "") + " " + dec(o.value_max)) + '</div>' +
+                    '</div></div>';
+                }).join("") + "</div>"
+              : noticeHtml("لا توجد عروض مقدَّمة.", "No listings submitted."));
+        }
+        if (canCms && cms) {
+          html += panel("نظرة عامة على الموقع", "Website overview",
+            '<div class="av-list">' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.visible_companies) + " / " + dec(cms.companies) + '</div><div class="s">' + dual("الشركات الظاهرة", "Visible companies") + '</div></div></div>' +
+            '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
+            '</div>');
+        }
+      }
+      host.innerHTML = html || noticeHtml("ليست لديك صلاحية عرض بيانات الموقع.", "You cannot view website data.");
+      if (tab === "content") bindSiteContent(host, pages);
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
+  // Website content (CMS) tab: the page register with a publish/unpublish
+  // control per page. Editing bodies/settings stays in Group Administration →
+  // Website; this tab is the day-to-day content overview the prototype shows.
+  function siteContentPanel(cms, pages) {
+    var canPublish = has("website.content.publish");
+    var list = pages.length
+      ? '<div class="av-list">' + pages.map(function (p) {
+          var published = (p.status || "") === "published";
+          return '<div class="av-row" style="cursor:default"><div class="grow">' +
+            '<div class="t">' + escapeHtml(p.title_ar || p.title_en || p.route_key || "") + '</div>' +
+            '<div class="s">' + escapeHtml((p.route_key || "") + " · " + (p.status || "")) + '</div>' +
+            '</div>' +
+            (canPublish
+              ? '<button class="chip" data-site-publish="' + p.id + '" data-published="' + (published ? "1" : "0") + '">' +
+                dual(published ? "إلغاء النشر" : "نشر", published ? "Unpublish" : "Publish") + '</button>'
+              : "") +
+            '</div>';
+        }).join("") + "</div>"
+      : noticeHtml("لا توجد صفحات.", "No pages.");
+    var overview = cms
+      ? panel("نظرة عامة على الموقع", "Website overview",
+          '<div class="av-list">' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.published_pages) + " / " + dec(cms.pages) + '</div><div class="s">' + dual("الصفحات المنشورة", "Published pages") + '</div></div></div>' +
+          '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' + dec(cms.active_slides) + " / " + dec(cms.slides) + '</div><div class="s">' + dual("الشرائح النشطة", "Active slides") + '</div></div></div>' +
+          '</div>')
+      : "";
+    return overview + panel("صفحات الموقع", "Website pages", list);
+  }
+
+  function bindSiteContent(host, pages) {
+    host.querySelectorAll("[data-site-publish]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = parseInt(btn.getAttribute("data-site-publish"), 10);
+        var published = btn.getAttribute("data-published") === "1";
+        var verb = published ? "unpublish" : "publish";
+        post("/api/v1/website/pages/" + id + "/" + verb, {})
+          .then(function () {
+            toast(dual(published ? "تم إلغاء نشر الصفحة." : "تم نشر الصفحة.", published ? "Page unpublished." : "Page published."), "ok");
+            return renderSiteView();
+          })
+          .catch(function (err) { domainError(err); });
+      });
+    });
+  }
+
+  // ---- Assistant learning (prototype tab "aiReview") --------------------
+  // Owner-only review of what the assistant proposes to learn plus the approved
+  // knowledge base. Approval is what moves a proposal into the KB, exactly the
+  // prototype's aiReview control.
+  function renderAiReviewView() {
+    var host = byId("aiRevContent");
+    if (!host) return Promise.resolve();
+    if (!STATE.aiRevBound) {
+      STATE.aiRevBound = true;
+      bindSimpleTabs("data-airev-tab", "aiRevTab", renderAiReviewView);
+    }
+    host.innerHTML = loadingHtml();
+    var canApprove = has("ai.knowledge.approve");
+    var canManage = has("ai.knowledge.manage");
+    // Listing proposals is a manage-only endpoint; a read-only viewer (a
+    // company-scoped role that holds ``ai.knowledge.read`` but not ``manage``)
+    // would get a 403. They open on the knowledge base and the proposals tab is
+    // not offered, so the view never fires a request it cannot make.
+    var tab = canManage ? (STATE.aiRevTab || "proposals") : "documents";
+    STATE.aiRevTab = tab;
+    document.querySelectorAll("[data-airev-tab]").forEach(function (b) {
+      var t = b.getAttribute("data-airev-tab");
+      b.classList.toggle("perm-hidden", t === "proposals" && !canManage);
+      b.classList.toggle("on", t === tab);
+    });
+    return Promise.all([
+      canManage ? softGet("/api/v1/ai/knowledge/proposals") : Promise.resolve(null),
+      softGet("/api/v1/ai/knowledge/documents"),
+    ]).then(function (res) {
+      var proposals = res[0] || [];
+      var docs = res[1] || [];
+      if (tab === "documents") {
+        host.innerHTML = panel("قاعدة المعرفة المعتمدة", "Approved knowledge base",
+          docs.length
+            ? '<div class="av-list">' + docs.map(function (d) {
+                var archived = (d.status || "") === "archived";
+                return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                  '<div class="t">' + escapeHtml(d.title || d.name || "") + '</div>' +
+                  '<div class="s">' + escapeHtml(d.status || "") + '</div>' +
+                  '</div>' +
+                  (canManage && !archived
+                    ? '<button class="chip" data-kb-archive="' + d.id + '">' + dual("أرشفة", "Archive") + '</button>'
+                    : "") +
+                  '</div>';
+              }).join("") + "</div>"
+            : noticeHtml("لا توجد مستندات معتمدة بعد.", "No approved documents yet."));
+        host.querySelectorAll("[data-kb-archive]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = parseInt(btn.getAttribute("data-kb-archive"), 10);
+            post("/api/v1/ai/knowledge/documents/" + id + "/archive", {})
+              .then(function () { toast(dual("تمت أرشفة المستند.", "Document archived."), "ok"); return renderAiReviewView(); })
+              .catch(function (err) { domainError(err); });
+          });
+        });
+        return;
+      }
+      host.innerHTML = panel("مقترحات المساعد", "Assistant proposals",
+        proposals.length
+          ? '<div class="av-list">' + proposals.map(function (p) {
+              var pending = (p.status || "pending") === "pending";
+              return '<div class="av-row" style="cursor:default"><div class="grow">' +
+                '<div class="t">' + escapeHtml(p.title || p.question || dual("مقترح", "Proposal")) + '</div>' +
+                '<div class="s">' + escapeHtml(p.status || "") + '</div>' +
+                '</div>' +
+                (canApprove && pending
+                  ? '<button class="chip" data-kb-approve="' + p.id + '">' + dual("اعتماد", "Approve") + '</button>' +
+                    '<button class="chip" data-kb-reject="' + p.id + '">' + dual("رفض", "Reject") + '</button>'
+                  : "") +
+                '</div>';
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مقترحات بانتظار الاعتماد.", "No proposals awaiting approval."));
+      host.querySelectorAll("[data-kb-approve],[data-kb-reject]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var approve = btn.hasAttribute("data-kb-approve");
+          var id = parseInt(btn.getAttribute(approve ? "data-kb-approve" : "data-kb-reject"), 10);
+          post("/api/v1/ai/knowledge/proposals/" + id + "/resolve", { decision: approve ? "approve" : "reject" })
+            .then(function () { toast(dual("تم تحديث المقترح.", "Proposal updated."), "ok"); return renderAiReviewView(); })
+            .catch(function (err) { domainError(err); });
+        });
+      });
+    }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
+  }
+
   function renderAccountingView() {
     var host = byId("acctContent");
     if (!host) return Promise.resolve();
@@ -6988,22 +10906,51 @@
       finalised: ["معتمد", "Finalised", "ok"],
       archived: ["مؤرشف", "Archived", "rev"],
     };
-    return get("/api/v1/accounting/financial-reports").catch(function () { return []; }).then(function (reports) {
-      var list = reports.length
-        ? '<div class="av-list">' + reports.map(function (r) {
-            return '<div class="av-row" style="cursor:default"><div class="grow">' +
-              '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
-              dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
-              '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
-              statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد تقارير مالية بعد.", "No financial reports yet.");
+    // A user may reach this section through `dashboard.holding` alone, which
+    // the group-summary panel needs but the report archive does not.
+    var canReadReports = has("financial_report.read");
+    return (canReadReports
+      ? softGet("/api/v1/accounting/financial-reports")
+      : Promise.resolve([])
+    ).then(function (reports) {
       var group = has("dashboard.holding") ? groupReportPanel() : "";
       host.innerHTML = panel(
         "ماليات الشركات (المقارنة والملخص المالي للمجموعة)",
         "Subsidiary finance (comparison and group financial summary)",
-        group + list
+        group + '<div id="finReportsList"></div>'
       );
+      var listHost = byId("finReportsList");
+      if (listHost) {
+        // Slides 134-136: the financial-report archive carries the deck's
+        // company / period / status / currency filters, the apply / save /
+        // clear / export cluster, and "الفترة الأحدث" as the default sort.
+        var finSpec = [
+          { key: "q", type: "search", ar: "الشركة", en: "Company",
+            fields: ["company_name_ar", "company_name_en", "currency"] },
+          companyFilterOption(),
+          { key: "period", ar: "الفترة", en: "Period",
+            resolve: function (r) { return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : ""; },
+            options: distinctOptions(reports, function (r) {
+              return r.period_year ? r.period_year + "-" + String(r.period_month).padStart(2, "0") : "";
+            }) },
+          { key: "status", ar: "الحالة", en: "Status", field: "status",
+            options: distinctOptions(reports, function (r) { return r.status; },
+              function (v) { return { ar: (FIN_MAP[v] || [v])[0], en: (FIN_MAP[v] || [v, v])[1] }; }) },
+          { key: "currency", ar: "العملة", en: "Currency", field: "currency",
+            options: distinctOptions(reports, function (r) { return r.currency; }) },
+        ];
+        var finRows = applyListFilters(scopeFilter(reports), "financialReports", finSpec);
+        finRows.sort(function (a, b) {
+          return (b.period_year - a.period_year) || (b.period_month - a.period_month) || byIdAsc(a, b);
+        });
+        renderPaged(listHost, "financialReports", finRows, function (r) {
+          return '<div class="av-row" style="cursor:default"><div class="grow">' +
+            '<div class="t">' + escapeHtml(companyNameById(r.company_id)) + " · " +
+            dec(r.period_month) + "/" + dec(r.period_year) + "</div>" +
+            '<div class="s">' + escapeHtml(r.currency || "") + "</div></div>" +
+            statusBadgeFromMap(r.status, FIN_MAP) + "</div>";
+        }, null, finSpec);
+      }
       if (has("dashboard.holding")) bindHost(host, onAcctAct);
       return null;
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
@@ -7012,9 +10959,14 @@
   // AC-28 "المهام والطلبات": the accountant's tasks and service requests.
   function renderTasksRegistry() {
     var host = byId("acctContent");
+    // The tab is reachable through `support_request.read_*` as well as
+    // `task.read_*`, so only ask for tasks when the caller may read them.
+    var canReadTasks = has("task.read_own") || has("task.read_all");
     return Promise.all([
-      get("/api/v1/operations/tasks").catch(function () { return []; }),
-      get("/api/v1/support-requests").catch(function () { return []; }),
+      canReadTasks
+        ? softGet("/api/v1/operations/tasks")
+        : Promise.resolve([]),
+      softGet("/api/v1/support-requests"),
     ]).then(function (res) {
       var tasks = res[0] || [];
       var tlist = tasks.length
@@ -7029,7 +10981,9 @@
           }).join("") + "</div>"
         : noticeHtml("لا توجد طلبات.", "No requests.");
       host.innerHTML =
-        panel("الطلبات الجديدة", "New tasks & requests", tlist) +
+        (canReadTasks
+          ? panel("الطلبات الجديدة", "New tasks & requests", tlist)
+          : "") +
         panel("سجل الطلبات", "Requests registry", rlist);
       return null;
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
@@ -7037,7 +10991,7 @@
 
   function renderOpeningBalances() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/opening-balances").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/opening-balances")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("opening_balance.manage");
       var create = canManage
@@ -7080,7 +11034,7 @@
 
   function renderAccounts() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/accounts").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/accounts")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("account.manage");
       var create = canManage
@@ -7099,20 +11053,21 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة حساب", "Add account") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (a) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(a.code + " · " + (STATE.lang === "ar" ? a.name_ar : a.name_en || a.name_ar)) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " + escapeHtml(a.account_type) + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد حسابات.", "No accounts.");
-      host.innerHTML = panel("دليل الحسابات (D01)", "Chart of accounts (D01)", create + list);
+      STATE.acctAccounts = rows;
+      host.innerHTML = panel("دليل الحسابات (D01)", "Chart of accounts (D01)", create + '<div id="acctAccountsList"></div>');
+      mountList("acctAccountsList", "accounts", rows, function (a) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(a.code + " · " + (STATE.lang === "ar" ? a.name_ar : a.name_en || a.name_ar)) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " + escapeHtml(a.account_type) + "</div></div></div>";
+      }, accountsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by account code.
+        byTextAsc(function (a) { return a.code; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderJournals() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/journals").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/journals")]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("journal.create");
       var create = canCreate
@@ -7126,24 +11081,27 @@
           '<div id="jnLines"></div>' +
           '<div class="av-form-actions"><button class="btn-outline" type="button" data-act="jn-add-line">' +
           dual("إضافة سطر", "Add line") + '</button><button class="btn-solid" type="submit">' +
-          dual("حفظ القيد", "Save journal") + "</button></div></form>"
+          dual("إضافة عملية", "Add transaction") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (j) {
-            var controls = (j.status === "draft" && has("journal.post")
-              ? actBtn("journal.post", "jn-post", j.id, "ترحيل", "Post")
-              : "") + (j.status === "posted" && has("journal.reverse")
-              ? actBtn("journal.reverse", "jn-reverse", j.id, "عكس القيد", "Reverse")
-              : "");
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(j.number || ("#" + j.id)) + " · " + escapeHtml(dateStr(j.entry_date)) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(j.company_id)) +
-              " · " + dual("مدين", "Debit") + " " + dec(j.total_debit) + " · " + dual("دائن", "Credit") + " " + dec(j.total_credit) + "</div></div>" +
-              statusBadgeFromMap(j.status, { draft: ["مسودة", "Draft", "warn"], posted: ["مُرحّل", "Posted", "ok"], reversed: ["معكوس", "Reversed", "miss"] }) +
-              "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد قيود.", "No journals.");
-      host.innerHTML = panel("القيود (D01: غير قابلة للتعديل بعد الترحيل — التصحيح بالعكس)", "Journals (D01: immutable once posted — correction by reversal)", create + list);
+      STATE.acctJournals = rows;
+      host.innerHTML = panel("القيود (D01: غير قابلة للتعديل بعد الترحيل — التصحيح بالعكس)", "Journals (D01: immutable once posted — correction by reversal)", create + '<div id="acctJournalsList"></div>');
+      mountList("acctJournalsList", "journals", rows, function (j) {
+        var controls = (j.status === "draft" && has("journal.post")
+          ? actBtn("journal.post", "jn-post", j.id, "ترحيل", "Post")
+          : "") + (j.status === "posted" && has("journal.reverse")
+          ? actBtn("journal.reverse", "jn-reverse", j.id, "عكس القيد", "Reverse")
+          : "");
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(j.number || ("#" + j.id)) + " · " + escapeHtml(dateStr(j.entry_date)) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(j.company_id)) +
+          " · " + dual("مدين", "Debit") + " " + dec(j.total_debit) + " · " + dual("دائن", "Credit") + " " + dec(j.total_credit) + "</div></div>" +
+          statusBadgeFromMap(j.status, { draft: ["مسودة", "Draft", "warn"], posted: ["مُرحّل", "Posted", "ok"], reversed: ["معكوس", "Reversed", "miss"] }) +
+          "</div>" + (controls ? '<div class="av-user-controls" data-stop="1">' + controls + "</div>" : "") + "</div>";
+      }, journalsFilterSpec(), null,
+        // Slide 135 "القيود": newest entry date first, stable by ID.
+        function (a, b) {
+          return String(b.entry_date || "").localeCompare(String(a.entry_date || "")) || byIdAsc(a, b);
+        });
       if (create) {
         addJournalLine();
         host.querySelector('[data-act="jn-add-line"]').addEventListener("click", addJournalLine);
@@ -7395,7 +11353,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/invoices").catch(function () { return []; }),
+      softGet("/api/v1/accounting/invoices"),
       get("/api/v1/accounting/receivables").catch(function () { return null; }),
     ]).then(function (res) {
       var rows = res[1] || [];
@@ -7426,23 +11384,25 @@
           moneyBlock("مستحق علينا (فواتير واردة)", "Payable (received)", summary.payables) +
           "</div>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (iv) {
-            var settle = iv.status !== "settled" && has("settlement.manage")
-              ? '<div class="av-user-controls" data-stop="1">' +
-                numInput("stAmt" + iv.id, "") +
-                '<button class="btn-outline" data-act="iv-settle" data-id="' + iv.id + '">' + dual("تسجيل تسوية", "Record settlement") + "</button></div>"
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
-              dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
-              dirBadge(iv.direction) +
-              statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
-              "</div>" + settle + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد فواتير.", "No invoices.");
-      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + list);
+      STATE.acctInvoices = rows;
+      host.innerHTML = panel("الفواتير والمستحقات (D01/D09: لا يوجد إجراء تحويل بنكي)", "Invoices & receivables (D01/D09: no bank-transfer action)", totals + create + '<div id="acctInvoicesList"></div>');
+      mountList("acctInvoicesList", "invoices", rows, function (iv) {
+        var settle = iv.status !== "settled" && has("settlement.manage")
+          ? '<div class="av-user-controls" data-stop="1">' +
+            numInput("stAmt" + iv.id, "") +
+            '<button class="btn-outline" data-act="iv-settle" data-id="' + iv.id + '">' + dual("تسجيل تسوية", "Record settlement") + "</button></div>"
+          : "";
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(iv.number + " · " + iv.party_name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(iv.company_id)) + " · " +
+          dual("الإجمالي", "Total") + " " + dec(iv.total) + " · " + dual("المسدد", "Settled") + " " + dec(iv.settled_amount) + " · " + dual("المتبقي", "Outstanding") + " " + dec(iv.outstanding) + "</div></div>" +
+          dirBadge(iv.direction) +
+          statusBadgeFromMap(iv.status, { draft: ["مسودة", "Draft", "warn"], issued: ["صادرة", "Issued", "warn"], partially_settled: ["مسددة جزئيًا", "Partially settled", "warn"], settled: ["مسددة", "Settled", "ok"], cancelled: ["ملغاة", "Cancelled", "miss"] }) +
+          "</div>" + settle + "</div>";
+      }, invoicesFilterSpec(), null,
+        // Slide 135 "إيرادات / مصروفات / ذمم": default sort "الاستحقاق تصاعديًا
+        // للذمم" -- earliest due date first.
+        byDateAsc(function (iv) { return iv.due_date; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -7464,7 +11424,7 @@
 
   function renderParties() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/parties").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/parties")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("party.manage");
       var create = canManage
@@ -7477,22 +11437,21 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة طرف", "Add party") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (p) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(p.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
-              escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
-              " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا يوجد عملاء أو موردون.", "No customers or suppliers.");
-      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + list);
+      STATE.acctParties = rows;
+      host.innerHTML = panel("العملاء والموردون (S27: دليل واحد للفواتير الصادرة والواردة)", "Customers & suppliers (S27: one directory for issued and received invoices)", create + '<div id="acctPartiesList"></div>');
+      mountList("acctPartiesList", "parties", rows, function (p) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(p.name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(p.company_id)) + " · " +
+          escapeHtml(p.party_type === "supplier" ? opt("مورد", "Supplier") : opt("عميل", "Customer")) +
+          " · " + escapeHtml(p.currency) + (p.contact ? " · " + escapeHtml(p.contact) : "") + "</div></div></div>";
+      }, partiesFilterSpec());
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderInterbalances() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/interbalances").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/interbalances")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("interbalance.manage");
       var create = canManage
@@ -7520,7 +11479,7 @@
 
   function renderAssets() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/assets").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/assets")]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("asset.manage");
       var create = canManage
@@ -7533,21 +11492,22 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة أصل", "Add asset") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (a) {
-            return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
-              escapeHtml(a.name) + "</div>" +
-              '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
-              dual("التكلفة", "Cost") + " " + dec(a.cost) + " · " + escapeHtml(a.category || "") + "</div></div></div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد أصول.", "No assets.");
-      host.innerHTML = panel("الأصول (D01)", "Assets (D01)", create + list);
+      STATE.acctAssets = rows;
+      host.innerHTML = panel("الأصول (D01)", "Assets (D01)", create + '<div id="acctAssetsList"></div>');
+      mountList("acctAssetsList", "assets", rows, function (a) {
+        return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t">' +
+          escapeHtml(a.name) + "</div>" +
+          '<div class="s">' + escapeHtml(companyNameById(a.company_id)) + " · " +
+          dual("التكلفة", "Cost") + " " + dec(a.cost) + " · " + escapeHtml(a.category || "") + "</div></div></div>";
+      }, assetsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by asset name.
+        byTextAsc(function (a) { return a.name; }));
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
   function renderBudgets() {
     var host = byId("acctContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/accounting/budgets").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/accounting/budgets")]).then(function (res) {
       var rows = res[1] || [];
       STATE.budgetRows = rows;
       var canManage = has("budget.manage");
@@ -7560,24 +11520,28 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إنشاء موازنة", "Create budget") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (b) {
-            var approve = b.status !== "approved" && has("budget.approve")
-              ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
-              : "";
-            var utilBtn = b.status === "approved" && has("budget.read")
-              ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
-              : "";
-            return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
-              '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
-              " · v" + dec(b.version) + "</div>" +
-              '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
-              " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
-              statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
-              "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد موازنات.", "No budgets.");
-      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + list);
+      STATE.acctBudgets = rows;
+      host.innerHTML = panel("الموازنات (D07: المصدر والإصدار محفوظان، والاعتماد لا يستبدل القيم)", "Budgets (D07: source + version preserved; approval does not overwrite)", create + budgetUtilPanel() + '<div id="acctBudgetsList"></div>');
+      mountList("acctBudgetsList", "budgets", rows, function (b) {
+        var approve = b.status !== "approved" && has("budget.approve")
+          ? actBtn("budget.approve", "bg-approve", b.id, "اعتماد", "Approve")
+          : "";
+        var utilBtn = b.status === "approved" && has("budget.read")
+          ? actBtn("budget.read", "bg-util", b.id, "عرض الفروق", "View variances")
+          : "";
+        return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
+          '<div class="grow"><div class="t">' + escapeHtml(companyNameById(b.company_id)) + " · " + dec(b.fiscal_year) +
+          " · v" + dec(b.version) + "</div>" +
+          '<div class="s">' + dual("الإجمالي", "Total") + " " + dec(b.total_amount) +
+          " · " + dual("المصدر", "Source") + " " + escapeHtml(b.source || "—") + "</div></div>" +
+          statusBadgeFromMap(b.status, { draft: ["مسودة", "Draft", "warn"], approved: ["معتمدة", "Approved", "ok"], superseded: ["مستبدلة", "Superseded", "rev"] }) +
+          "</div>" + (approve || utilBtn ? '<div class="av-user-controls" data-stop="1">' + approve + utilBtn + "</div>" : "") + "</div>";
+      }, budgetsFilterSpec(), null,
+        // Slide 135 "حسابات / ميزانية / مراكز": default sort by budget period,
+        // newest year first (a later year supersedes an earlier one).
+        function (a, b) {
+          return (b.fiscal_year - a.fiscal_year) || byIdAsc(a, b);
+        });
     }).catch(function (err) { handleLoadError(err); host.innerHTML = errorHtml(errText(err)); });
   }
 
@@ -7625,11 +11589,12 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/kpis").catch(function () { return []; }),
-      get("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()).catch(function () { return []; }),
+      softGet("/api/v1/accounting/kpis"),
+      softGet("/api/v1/accounting/kpis/evaluations?" + finPeriodQuery()),
     ]).then(function (res) {
       var rows = res[1] || [];
       var evals = res[2] || [];
+      STATE.kpis = rows;
       var canManage = has("kpi.manage");
       var create = canManage
         ? '<form class="av-form av-form-inline" id="kpiForm">' +
@@ -7643,8 +11608,14 @@
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("إضافة مؤشر", "Add KPI") + "</button></div></form>"
         : "";
-      var list = rows.length
-        ? '<div class="av-list">' + rows.map(function (k) {
+      var kpiSpec = kpisFilterSpec();
+      var kpiList = applyListFilters(rows, "kpis", kpiSpec);
+      // Slide 136 "المؤشرات / العملات": default sort by effective date (the
+      // KPI's approval timestamp), newest first, stable by ID.
+      kpiList.sort(function (a, b) {
+        return String(b.approved_at || "").localeCompare(String(a.approved_at || "")) || byIdAsc(a, b);
+      });
+      var kpiRow = function (k) {
             var toggle = canManage
               ? actBtn("kpi.manage", k.is_active ? "kpi-deactivate" : "kpi-activate", k.id,
                   k.is_active ? "إيقاف" : "اعتماد", k.is_active ? "Deactivate" : "Approve")
@@ -7657,8 +11628,7 @@
               (k.target_value != null ? '<span class="status rev"><i></i>' + dual("المستهدف", "Target") + " " + dec(k.target_value) + "</span>" : "") +
               toggle +
               "</div>";
-          }).join("") + "</div>"
-        : noticeHtml("لا توجد مؤشرات.", "No KPIs.");
+      };
       var evaluations = evals.length
         ? '<div class="av-list">' + evals.map(function (ev) {
             return '<div class="av-row" data-kpi-open="' + ev.id + '"><div class="grow"><div class="t">' +
@@ -7677,8 +11647,10 @@
               dual("اختر مؤشرًا لعرض السجلات المصدر خلف النتيجة.",
                    "Select a KPI to see the source records behind its result.") + "</div>") +
         panel("تعريفات المؤشرات (D02: مصدر + طريقة + فترة)",
-              "KPI definitions (D02: source + method + period)", create + list);
+              "KPI definitions (D02: source + method + period)",
+              create + '<div id="kpiDefs"></div>');
       host.innerHTML = body;
+      renderPaged(byId("kpiDefs"), "kpis", kpiList, kpiRow, null, kpiSpec);
       host.querySelectorAll("[data-kpi-open]").forEach(function (row) {
         row.addEventListener("click", function (e) {
           if (e.target.closest && e.target.closest("[data-stop]")) return;
@@ -7763,7 +11735,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/policies").catch(function () { return []; }),
+      softGet("/api/v1/accounting/policies"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("accounting_policy.manage");
@@ -7818,7 +11790,7 @@
     var host = byId("acctContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/accounting/financial-reports").catch(function () { return []; }),
+      softGet("/api/v1/accounting/financial-reports"),
     ]).then(function (res) {
       var rows = res[1] || [];
       var canManage = has("financial_report.manage");
@@ -8201,15 +12173,15 @@
 
   function renderComplaints() {
     var host = byId("confContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/operations/complaints").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/operations/complaints")]).then(function (res) {
       var rows = res[1] || [];
       var canCreate = has("complaint.create");
       var create = canCreate
         ? '<form class="av-form av-form-inline" id="complaintForm">' +
-          field("الموضوع", "Subject", textInput("coSubject", "")) +
+          field("الموضوع", "Subject", textInput("coSubject", "", "", true), null, null, true) +
           field("الشركة (اختياري)", "Company (optional)", selectInput("coCompany", companySelectOptions(true), "")) +
           field("مجهولة؟", "Anonymous?", selectInput("coAnon", [{ value: "0", label: opt("لا", "No") }, { value: "1", label: opt("نعم", "Yes") }], "0")) +
-          field("النص", "Body", textArea("coBody", "", "")) +
+          field("النص", "Body", textArea("coBody", "", "", true), null, null, true) +
           '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
           dual("رفع شكوى", "Submit complaint") + "</button></div></form>"
         : "";
@@ -8217,7 +12189,9 @@
       var list = rows.length
         ? '<div class="av-list">' + rows.map(function (c) {
             var decide = has("complaint.decide")
-              ? '<div class="av-user-controls" data-stop="1">' +
+              ? '<div class="av-field" style="margin-top:8px"><input class="av-input" id="coNote' + c.id + '" placeholder="' +
+                dual("السبب أو الملاحظة (مطلوب عند الإحالة أو التأجيل)", "Reason or note (required to refer or defer)") + '"></div>' +
+                '<div class="av-user-controls" data-stop="1">' +
                 selectInput("coStatus" + c.id, [
                   { value: "under_review", label: opt("قيد المراجعة", "Under review") },
                   { value: "routed", label: opt("محوّلة", "Routed") },
@@ -8225,7 +12199,13 @@
                   { value: "postponed", label: opt("مؤجلة", "Postponed") },
                   { value: "closed", label: opt("مغلقة", "Closed") },
                 ], c.status) +
-                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '">' + dual("قرار", "Decide") + "</button></div>"
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '">' + dual("تسجيل إجراء", "Record action") + "</button></div>" +
+                // Deck slide 31: the owner's four explicit actions on a complaint.
+                '<div class="av-user-controls" data-stop="1" style="margin-top:8px">' +
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '" data-status="routed">' + dual("إحالة", "Refer") + "</button>" +
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '" data-status="handled">' + dual("اتخاذ إجراء", "Take action") + "</button>" +
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '" data-status="under_review">' + dual("طلب معلومات", "Request info") + "</button>" +
+                '<button class="btn-outline" data-act="conf-decide" data-id="' + c.id + '" data-status="postponed">' + dual("تأجيل مع سبب", "Defer with reason") + "</button></div>"
               : "";
             return '<div class="av-row" style="flex-direction:column;align-items:stretch;cursor:default"><div style="display:flex;align-items:center;gap:11px">' +
               '<div class="grow"><div class="t">' + escapeHtml(c.subject) + "</div>" +
@@ -8241,9 +12221,24 @@
 
   function decideComplaint(el) {
     var cid = el.getAttribute("data-id");
+    // A quick-action button carries its own status; the select is the fallback.
+    var status = el.getAttribute("data-status") || valOf("coStatus" + cid);
+    var noteEl = byId("coNote" + cid);
+    var note = noteEl ? noteEl.value.trim() : "";
+    // Deck slide 31: "الإجراء | قرار / إحالة / تأجيل". Referring and deferring
+    // are the two outcomes that must carry a reason, so refuse an empty one
+    // rather than writing an unexplained decision.
+    if ((status === "routed" || status === "postponed") && !note) {
+      toast(
+        dual("أدخل سبب الإحالة أو التأجيل.", "Enter a reason to refer or defer."),
+        "err"
+      );
+      return Promise.resolve();
+    }
     busy(el, true);
     return post("/api/v1/operations/complaints/" + cid + "/decision", {
-      status: valOf("coStatus" + cid),
+      status: status,
+      decision: note || null,
     }).then(function () { toast(dual("تم تسجيل القرار.", "Decision recorded."), "ok"); return renderComplaints(); })
       .catch(function (err) { domainError(err); busy(el, false); });
   }
@@ -8293,7 +12288,7 @@
       .catch(function (err) { domainError(err); busy(el, false); });
   }
 
-  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "positions", "users", "roles", "motivation", "website", "builder", "workflows", "integrations", "audit"];
+  var ADMIN_TABS = ["structure", "companies", "departments", "sectors", "positions", "users", "roles", "motivation", "website", "builder", "workflows", "integrations", "knowledge", "audit"];
   var ADMIN_TAB_PERM = {
     structure: ["company.read", "ownership.read"],
     companies: ["company.read"],
@@ -8307,6 +12302,7 @@
     builder: ["form.read", "form.create"],
     workflows: ["workflow.read"],
     integrations: ["integration.read"],
+    knowledge: ["ai.knowledge.read", "ai.admin"],
     audit: ["audit.read"],
   };
 
@@ -8368,6 +12364,7 @@
     if (tab === "builder") return renderAdminBuilder();
     if (tab === "workflows") return renderAdminWorkflows();
     if (tab === "integrations") return renderAdminIntegrations();
+    if (tab === "knowledge") return renderAdminKnowledge();
     if (tab === "audit") return renderAdminAudit();
     return Promise.resolve();
   }
@@ -8378,15 +12375,19 @@
     );
   }
 
-  function field(labelAr, labelEn, inputHtml) {
+  function field(labelAr, labelEn, inputHtml, hintAr, hintEn, required) {
+    var hint = hintAr
+      ? '<span class="hint">' + dual(hintAr, hintEn || hintAr) + "</span>"
+      : "";
     return (
-      '<div class="av-field"><label>' + dual(labelAr, labelEn) + "</label>" +
-      inputHtml +
+      '<div class="av-field"><label>' + dual(labelAr, labelEn) +
+      (required ? ' <span class="req">*</span>' : "") + "</label>" +
+      inputHtml + hint +
       "</div>"
     );
   }
 
-  function textInput(id, value, placeholder) {
+  function textInput(id, value, placeholder, required) {
     // A placeholder that matches an I18N key is emitted bilingually so it
     // follows the language switch; anything else is a literal example token.
     var ph =
@@ -8395,7 +12396,7 @@
         : ' placeholder="' + escAttr(placeholder || "") + '"';
     return (
       '<input class="av-input" id="' + id + '" type="text" value="' +
-      escAttr(value || "") + '"' + ph + ">"
+      escAttr(value || "") + '"' + ph + reqAttr(required) + ">"
     );
   }
 
@@ -8419,10 +12420,10 @@
     return Promise.all([ensureCompanies(), get("/api/v1/admin/holding").catch(function () { return null; })]).then(function (res) {
       var holding = res[1];
       var structureP = has("ownership.read")
-        ? get("/api/v1/admin/holding/structure").catch(function () { return []; })
+        ? softGet("/api/v1/admin/holding/structure")
         : Promise.resolve([]);
       var ownershipP = has("ownership.read")
-        ? get("/api/v1/admin/ownerships").catch(function () { return []; })
+        ? softGet("/api/v1/admin/ownerships")
         : Promise.resolve([]);
       return Promise.all([structureP, ownershipP]).then(function (r2) {
         host.innerHTML =
@@ -8531,10 +12532,10 @@
       '<div class="av-tree">' + roots.map(function (n) { return branch(n, 0); }).join("") + "</div>" +
       (has("ownership.manage")
         ? '<form class="av-form av-form-inline" id="stakeForm">' +
-          field("الشركة المملوكة", "Owned company", selectInput("stOwned", companyOptions(nodes), "")) +
+          field("الشركة المملوكة", "Owned company", selectInput("stOwned", companyOptions(nodes), ""), null, null, true) +
           field("المالك", "Owner", selectInput("stOwner", [{ value: "", label: "—" }].concat(companyOptions(nodes)), "")) +
-          field("النسبة %", "Percentage %", '<input class="av-input" id="stPct" type="number" min="0" max="100" step="0.01">') +
-          field("من تاريخ", "Effective from", '<input class="av-input" id="stFrom" type="date">') +
+          field("النسبة %", "Percentage %", '<input class="av-input" id="stPct" type="number" min="0" max="100" step="0.01" required>', null, null, true) +
+          field("من تاريخ", "Effective from", '<input class="av-input" id="stFrom" type="date" required>', null, null, true) +
           '<div class="av-form-actions"><button class="btn-outline" type="submit" data-admin-action="add-stake">' +
           dual("إضافة حصة", "Add stake") + "</button></div></form>"
         : "") +
@@ -8580,49 +12581,493 @@
   // ---- tab: companies ----
   function renderAdminCompanies() {
     var host = byId("adminContent");
-    return ensureCompanies().then(function (rows) {
-      var create = has("company.manage")
-        ? adminPanel("إضافة شركة", "Add company",
-            '<form class="av-form av-form-inline" id="companyCreateForm">' +
-            field("الكود", "Code", textInput("ccCode", "")) +
-            field("الاسم (عربي)", "Name (AR)", textInput("ccNameAr", "")) +
-            field("الاسم (إنجليزي)", "Name (EN)", textInput("ccNameEn", "")) +
-            field("القطاع", "Sector", textInput("ccSector", "")) +
-            field("تاريخ التأسيس", "Founded on", dateInput("ccFounded", "")) +
-            field("بداية المتابعة", "Monitoring start", dateInput("ccTracking", "")) +
-            field("العملة", "Currency", textInput("ccCurrency", "SAR")) +
-            field("الدولة", "Country", textInput("ccCountry", "")) +
-            '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
-            dual("تسجيل شركة", "Register company") + "</button></div></form>")
-        : "";
+    return Promise.all([
+      ensureCompanies(),
+      wizardUserOptions(),
+      has("ownership.read")
+        ? softGet("/api/v1/admin/holding/structure")
+        : Promise.resolve([]),
+    ]).then(function (res) {
+      var rows = res[0];
+      var users = res[1];
+      var nodes = res[2] || [];
+      var create = has("company.manage") ? companyWizardPanel(rows, users) : "";
       var list = rows.length
         ? rows.map(function (c) { return adminPanel("شركة", "Company", companyAdminCard(c)); }).join("")
         : '<p class="av-empty">' + dual("لا توجد شركات.", "No companies.") + "</p>";
       host.innerHTML = create + list;
-      var form = byId("companyCreateForm");
-      if (form) {
-        form.addEventListener("submit", function (ev) {
-          ev.preventDefault();
-          var btn = form.querySelector("button");
-          busy(btn, true);
-          post("/api/v1/companies", {
-            code: valOf("ccCode"),
-            name_ar: valOf("ccNameAr"),
-            name_en: valOf("ccNameEn") || null,
-            sector: valOf("ccSector"),
-            founded_on: valOf("ccFounded") || null,
-            tracking_start_date: valOf("ccTracking") || null,
-            currency: valOf("ccCurrency") || "SAR",
-            country: valOf("ccCountry") || null,
-          }).then(function () {
-            STATE.loaded.companies = false;
-            toast(dual("تم تسجيل الشركة.", "Company registered."), "ok");
-            return renderAdminCompanies();
-          }).catch(function (err) { adminError(err); busy(btn, false); });
-        });
-      }
+      if (create) bindCompanyWizard(rows, nodes);
     });
   }
+
+  // The wizard's manager picker and linked-users list need real users. Deck
+  // slide 51: "مدير الشركة *: مستخدم مدعو أو نشط" and "المستخدمون المرتبطون:
+  // اختيار متعدد مع الدور والنطاق". Gated on user.read so a role that cannot
+  // list users simply gets an empty picker instead of a 403.
+  function wizardUserOptions() {
+    if (!has("user.read")) return Promise.resolve([]);
+    return softGet("/api/v1/admin/users?limit=200").then(function (data) {
+      var items = (data && data.items) || [];
+      return items
+        .filter(function (u) { return u.is_active; })
+        .map(function (u) {
+          var name = STATE.lang === "ar" ? u.full_name_ar : u.full_name_en || u.full_name_ar;
+          return { value: u.id, label: name + " · " + u.role_code };
+        });
+    });
+  }
+
+  // ---- tab: companies -- setup wizard (deck slides 50-52) ----
+  // The deck specifies a three-step wizard, not a flat form: [الهوية والقطاع] →
+  // [الملكية والمتابعة] → [القالب والتفعيل]. Each step offers [السابق] [حفظ
+  // مسودة] [التالي]; only the last step's [تفعيل الشركة] writes the record.
+  // Deck slide 52: "الحفظ لا ينشئ أرصدة أو استثمارًا أو مستخدمين بأرقام
+  // افتراضية" -- a draft invents no balance, investment or user.
+  var CO_WIZ_STEPS = [
+    { ar: "الهوية والقطاع", en: "Identity & sector" },
+    { ar: "الملكية والمتابعة", en: "Ownership & monitoring" },
+    { ar: "القالب والتفعيل", en: "Template & activation" },
+  ];
+  // Slide 51 names the status set verbatim: "إعداد / نشطة / معلقة / مؤرشفة".
+  var CO_WIZ_STATUSES = [
+    { value: "setup", ar: "إعداد", en: "Setup" },
+    { value: "active", ar: "نشطة", en: "Active" },
+    { value: "inactive", ar: "معلقة", en: "Inactive" },
+    { value: "archived", ar: "مؤرشفة", en: "Archived" },
+  ];
+  var CO_WIZ_LANGS = [
+    { value: "ar", ar: "العربية", en: "Arabic" },
+    { value: "en", ar: "English", en: "English" },
+    { value: "both", ar: "ثنائية", en: "Bilingual" },
+  ];
+  var CO_WIZ_SCOPES = [
+    { value: "single_company", ar: "شركة واحدة", en: "One company" },
+    { value: "linked_roles", ar: "أدوار مرتبطة", en: "Linked roles" },
+  ];
+  var CO_WIZ_CURRENCIES = ["SAR", "AED", "QAR", "USD", "EUR", "KWD", "BHD", "OMR"];
+  // The right-hand rail notes, verbatim and per step: slide 50 carries the
+  // first pair, slide 51 the second, slide 52 the last three.
+  var CO_WIZ_RAIL = [
+    [
+      { ar: "جميع القيم هنا وصف للحقول", en: "All values here describe the fields" },
+      { ar: "لا شركة فعلية منشأة", en: "No company is actually created" },
+    ],
+    [
+      { ar: "لا تمنح الملكية صلاحية تقنية تلقائية", en: "Ownership grants no automatic technical access" },
+      { ar: "لا يستبدل الملف تسجيل الشركة رسميًا", en: "The file does not replace official registration" },
+    ],
+    [
+      { ar: "ينشأ ملف الشركة ومعرف ثابت", en: "The company file and a stable id are created" },
+      { ar: "تنشأ مسودات الفترات فقط", en: "Only period drafts are created" },
+      { ar: "دعوات المستخدمين لا تمنح وصولًا حتى التفعيل", en: "User invitations grant no access until activation" },
+    ],
+  ];
+
+  function coWizL(ar, en) { return STATE.lang === "ar" ? ar : en; }
+
+  function coMonthOptions() {
+    return AR_MONTHS.map(function (m, i) {
+      return { value: i + 1, label: m + " / " + EN_MONTHS[i] };
+    });
+  }
+
+  function companyWizardPanel(rows, users) {
+    var sectors = STATE.sectors || [];
+    var sectorOptions = sectors.length
+      ? sectors.map(function (s) {
+          return { value: s.code, label: s.name_ar + " / " + (s.name_en || s.name_ar) };
+        })
+      : Object.keys(SECTOR).map(function (k) {
+          return { value: k, label: SECTOR[k].ar + " / " + SECTOR[k].en };
+        });
+    var managers = users.length
+      ? users
+      : [{ value: "", label: coWizL("لا مستخدمون متاحون", "No users available") }];
+    var railNotes = CO_WIZ_RAIL[0].map(function (n) {
+      return '<li class="co-wiz-railnote">' + dual(n.ar, n.en) + "</li>";
+    }).join("");
+    var step1 =
+      '<fieldset class="co-wiz-pane" data-pane="1">' +
+      field("الاسم القانوني *", "Legal name *", textInput("cwNameAr", ""), "نص مطابق للتسجيل", "Text matching the registration") +
+      field("الاسم التجاري", "Trade name", textInput("cwTradeName", ""), "نص اختياري", "Optional text") +
+      field("الدولة *", "Country *", textInput("cwCountry", ""), "قائمة الدول", "Country list") +
+      field("رقم التسجيل *", "Registration number *", textInput("cwRegistration", ""), "نص، فريد داخل الدولة", "Unique within the country") +
+      field("النشاط *", "Activity *", textInput("cwActivity", ""), "وصف النشاط", "Activity description") +
+      field("القطاع *", "Sector *", selectInput("cwSector", sectorOptions, ""), "قطاع من قائمة القطاعات المعتمدة", "A sector from the approved catalogue") +
+      field("العملة الأساسية *", "Base currency *", selectInput(
+        "cwCurrency",
+        CO_WIZ_CURRENCIES.map(function (c) { return { value: c, label: c }; }),
+        "SAR"
+      ), "قائمة العملات", "Currency list") +
+      field("السنة المالية *", "Fiscal year *",
+        '<div class="co-wiz-inline">' +
+        selectInput("cwFyStart", coMonthOptions(), 1) +
+        selectInput("cwFyEnd", coMonthOptions(), 12) +
+        "</div>",
+        "شهر ويوم بداية ونهاية", "Start and end month/day") +
+      "</fieldset>";
+    var step2 =
+      '<fieldset class="co-wiz-pane" data-pane="2" hidden>' +
+      field("نسبة ملكية القابضة *", "Holding ownership % *", textInput("cwOwnership", "100"), "رقم من 0 إلى 100", "A number from 0 to 100") +
+      field("رأس المال *", "Capital *", textInput("cwCapital", ""), "مبلغ بعملة الجهة", "Amount in the entity currency") +
+      field("تاريخ الاستثمار", "Investment date", dateInput("cwInvestDate", ""), "تاريخ عند وجود استثمار", "Date when an investment exists") +
+      field("مدير الشركة *", "Company manager *", selectInput("cwManager", managers, ""), "مستخدم مدعو أو نشط", "Invited or active user") +
+      field("بدء المتابعة *", "Monitoring start *", dateInput("cwTracking", ""), "تاريخ يحدد أول فترة", "Date setting the first period") +
+      field("حالة الشركة *", "Company status *", selectInput(
+        "cwStatus",
+        CO_WIZ_STATUSES.map(function (s) { return { value: s.value, label: coWizL(s.ar, s.en) }; }),
+        "setup"
+      ), "إعداد / نشطة / معلقة / مؤرشفة", "Setup / active / inactive / archived") +
+      field(
+        "المستخدمون المرتبطون",
+        "Linked users",
+        '<select class="av-input" id="cwLinkedUsers" multiple size="4">' +
+        managers.map(function (m) {
+          return '<option value="' + m.value + '">' + escapeHtml(m.label) + "</option>";
+        }).join("") +
+        "</select>",
+        "اختيار متعدد مع الدور والنطاق",
+        "Multi-select with role and scope"
+      ) +
+      field("اللغة *", "Language *", selectInput(
+        "cwLanguage",
+        CO_WIZ_LANGS.map(function (l) { return { value: l.value, label: coWizL(l.ar, l.en) }; }),
+        "ar"
+      ), "العربية / English / ثنائية", "Arabic / English / bilingual") +
+      "</fieldset>";
+    var step3 =
+      '<fieldset class="co-wiz-pane" data-pane="3" hidden>' +
+      field("نموذج القطاع *", "Sector template *", selectInput("cwTemplate", sectorOptions, ""), "نسخة منشورة من قالب القطاع", "A published copy of the sector template") +
+      field("المؤشرات المختارة *", "Selected indicators *", textInput(
+        "cwKpis",
+        coWizL("المؤشرات المشتركة + مؤشرات القطاع", "Shared + sector indicators")
+      ), "مؤشرات مشتركة + القطاع", "Shared indicators + sector") +
+      field("مستوى الوصول *", "Access level *", selectInput(
+        "cwAccessScope",
+        CO_WIZ_SCOPES.map(function (s) { return { value: s.value, label: coWizL(s.ar, s.en) }; }),
+        "single_company"
+      ), "شركة واحدة / أدوار مرتبطة", "One company / linked roles") +
+      field("مراجعة الإعداد", "Setup review", '<div class="co-wiz-review" id="cwReview"></div>',
+        "الدولة والعملة والمدير والدورية", "Country, currency, manager and periodicity") +
+      field("تاريخ نفاذ القالب *", "Template effective date *", dateInput("cwTemplateDate", ""), "لا يسبق بدء المتابعة", "Cannot precede the monitoring start") +
+      field("إقرار المراجعة *", "Review confirmation *",
+        '<label class="co-wiz-confirm"><input type="checkbox" id="cwConfirm"></label>',
+        "تأكيد المالك قبل التفعيل", "Owner confirmation before activation") +
+      "</fieldset>";
+    var actions =
+      '<div class="co-wiz-actions">' +
+      '<button type="button" class="btn-outline" data-wiz="prev" hidden>' + dual("السابق", "Previous") + "</button>" +
+      '<button type="button" class="btn-outline" data-wiz="draft">' + dual("حفظ مسودة", "Save draft") + "</button>" +
+      '<button type="button" class="btn-solid" data-wiz="next">' + dual("التالي", "Next") + "</button>" +
+      '<button type="button" class="btn-solid" data-wiz="activate" hidden>' + dual("تفعيل الشركة", "Activate company") + "</button>" +
+      "</div>";
+    var footer =
+      '<p class="co-wiz-footer">' +
+      dual(
+        "الحفظ لا ينشئ أرصدة أو استثمارًا أو مستخدمين بأرقام افتراضية. تنسخ تعريفات القالب والمؤشرات بإصدار مؤرخ، وتطبق صلاحيات الشركة المختارة.",
+        "Saving invents no balances, investment or users. Template and indicator definitions are copied with a dated version, and the selected company's permissions apply."
+      ) +
+      "</p>";
+    return adminPanel(
+      "معالج إضافة شركة",
+      "Company setup wizard",
+      '<div class="co-wiz" id="companyWizard">' +
+        '<div class="co-wiz-body">' +
+          '<aside class="co-wiz-rail">' +
+            '<div class="co-wiz-railcard">' +
+              '<h4>' + dual("ملف الجهة", "Entity file") + "</h4>" +
+              '<p class="co-wiz-railstep" id="cwRailStep">' +
+                dual("الخطوة 1 من 3", "Step 1 of 3") + "</p>" +
+              '<p class="co-wiz-railname" id="cwRailName">' +
+                dual(CO_WIZ_STEPS[0].ar, CO_WIZ_STEPS[0].en) + "</p>" +
+            "</div>" +
+            '<ul class="co-wiz-railnotes" id="cwRailNotes">' + railNotes + "</ul>" +
+          "</aside>" +
+          '<form class="av-form co-wiz-form" id="companyWizardForm" novalidate>' +
+          step1 + step2 + step3 + actions +
+          "</form>" +
+        "</div>" +
+        footer +
+      "</div>"
+    );
+  }
+
+  function bindCompanyWizard(rows, nodes) {
+    var root = byId("companyWizard");
+    if (!root) return;
+    var state = { step: 1, draftId: null, code: null };
+    nodes = nodes || [];
+    var nextBtn = root.querySelector('[data-wiz="next"]');
+    var prevBtn = root.querySelector('[data-wiz="prev"]');
+    var draftBtn = root.querySelector('[data-wiz="draft"]');
+    var actBtn = root.querySelector('[data-wiz="activate"]');
+
+    function draftCode() {
+      if (!state.code) state.code = "CW-" + Date.now().toString(36).toUpperCase();
+      return state.code;
+    }
+
+    function collect() {
+      var own = valOf("cwOwnership");
+      var cap = valOf("cwCapital");
+      var mgr = valOf("cwManager");
+      var linkedSel = byId("cwLinkedUsers");
+      var linked = linkedSel
+        ? Array.prototype.slice.call(linkedSel.selectedOptions).map(function (o) { return Number(o.value); })
+        : [];
+      return {
+        name_ar: (valOf("cwNameAr") || "").trim(),
+        name_en: (valOf("cwNameEn") || "").trim() || null,
+        trade_name_ar: (valOf("cwTradeName") || "").trim() || null,
+        country: (valOf("cwCountry") || "").trim() || null,
+        commercial_registration: (valOf("cwRegistration") || "").trim() || null,
+        activity: (valOf("cwActivity") || "").trim() || null,
+        sector: valOf("cwSector") || "",
+        currency: valOf("cwCurrency") || "SAR",
+        fiscal_year_start_month: valOf("cwFyStart") ? Number(valOf("cwFyStart")) : null,
+        fiscal_year_end_month: valOf("cwFyEnd") ? Number(valOf("cwFyEnd")) : null,
+        ownership_pct: own === "" ? null : own,
+        capital_amount: cap === "" ? null : cap,
+        investment_date: valOf("cwInvestDate") || null,
+        manager_user_id: mgr || null,
+        linked_user_ids: linked,
+        tracking_start_date: valOf("cwTracking") || null,
+        status: valOf("cwStatus") || "active",
+        default_language: valOf("cwLanguage") || "ar",
+        sector_template: valOf("cwTemplate") || "",
+        template_effective_from: valOf("cwTemplateDate") || null,
+        access_scope: valOf("cwAccessScope") || "",
+        confirmed: !!(byId("cwConfirm") && byId("cwConfirm").checked),
+      };
+    }
+
+    function renderReview() {
+      var d = collect();
+      var sector = sectorLabel(d.sector);
+      var mgr = byId("cwManager");
+      var mgrLabel = mgr && mgr.selectedIndex >= 0 ? mgr.options[mgr.selectedIndex].text : "—";
+      var out = [
+        [dual("الدولة والعملة", "Country & currency"), (d.country || "—") + " · " + d.currency],
+        [dual("المدير", "Manager"), mgrLabel],
+        [dual("الدورية (السنة المالية)", "Fiscal year"), (d.fiscal_year_start_month || "—") + " → " + (d.fiscal_year_end_month || "—")],
+        [dual("القطاع", "Sector"), coWizL(sector.ar, sector.en)],
+        [dual("رأس المال", "Capital"), d.capital_amount == null ? "—" : d.capital_amount],
+        [dual("نسبة ملكية القابضة", "Holding ownership"), d.ownership_pct == null ? "—" : d.ownership_pct + "%"],
+        [dual("تاريخ نفاذ القالب", "Template effective"), d.template_effective_from || "—"],
+      ];
+      byId("cwReview").innerHTML = out.map(function (r) {
+        return '<div class="co-wiz-rrow"><span>' + r[0] + "</span><b>" + escapeHtml(String(r[1])) + "</b></div>";
+      }).join("");
+    }
+
+    function show(step) {
+      state.step = step;
+      root.querySelectorAll(".co-wiz-pane").forEach(function (p) {
+        p.hidden = Number(p.getAttribute("data-pane")) !== step;
+      });
+      // Deck slides 50-52: the right-hand rail carries "الخطوة N من 3" and the
+      // step's own name; it is the only step indicator in the deck.
+      var railStep = byId("cwRailStep");
+      var railName = byId("cwRailName");
+      var s = CO_WIZ_STEPS[step - 1] || CO_WIZ_STEPS[0];
+      if (railStep) {
+        railStep.innerHTML = dual(
+          "الخطوة " + step + " من 3",
+          "Step " + step + " of 3"
+        );
+      }
+      if (railName) railName.innerHTML = dual(s.ar, s.en);
+      // Each slide in the deck shows only its own notes on the rail.
+      var notesHost = byId("cwRailNotes");
+      if (notesHost) {
+        notesHost.innerHTML = (CO_WIZ_RAIL[step - 1] || []).map(function (n) {
+          return '<li class="co-wiz-railnote">' + dual(n.ar, n.en) + "</li>";
+        }).join("");
+      }
+      prevBtn.hidden = step === 1;
+      nextBtn.hidden = step === 3;
+      actBtn.hidden = step !== 3;
+      if (step === 3) renderReview();
+    }
+
+    function missingFor(step) {
+      var d = collect();
+      var need = [];
+      if (step === 1) {
+        if (!d.name_ar) need.push(coWizL("الاسم القانوني", "legal name"));
+        if (!d.country) need.push(coWizL("الدولة", "country"));
+        if (!d.commercial_registration) need.push(coWizL("رقم التسجيل", "registration number"));
+        if (!d.activity) need.push(coWizL("النشاط", "activity"));
+        if (!d.sector) need.push(coWizL("القطاع", "sector"));
+      } else if (step === 2) {
+        if (d.ownership_pct == null) need.push(coWizL("نسبة الملكية", "ownership %"));
+        if (d.capital_amount == null) need.push(coWizL("رأس المال", "capital"));
+        if (!d.manager_user_id) need.push(coWizL("مدير الشركة", "company manager"));
+        if (!d.tracking_start_date) need.push(coWizL("بدء المتابعة", "monitoring start"));
+        if (!d.status) need.push(coWizL("حالة الشركة", "company status"));
+        if (!d.default_language) need.push(coWizL("اللغة", "language"));
+      } else {
+        if (!d.sector_template) need.push(coWizL("نموذج القطاع", "sector template"));
+        if (!d.template_effective_from) need.push(coWizL("تاريخ نفاذ القالب", "template effective date"));
+        if (!d.access_scope) need.push(coWizL("مستوى الوصول", "access level"));
+        if (!d.confirmed) need.push(coWizL("إقرار المراجعة", "review confirmation"));
+        // Slide 52: "تاريخ نفاذ القالب *: لا يسبق بدء المتابعة".
+        if (d.template_effective_from && d.tracking_start_date &&
+            d.template_effective_from < d.tracking_start_date) {
+          need.push(coWizL("تاريخ نفاذ القالب ≥ بدء المتابعة", "template date ≥ monitoring start"));
+        }
+      }
+      return need;
+    }
+
+    function checkStep(step) {
+      var need = missingFor(step);
+      if (need.length) {
+        toast(coWizL("أكمل الحقول الإلزامية: ", "Complete required fields: ") + need.join(coWizL("، ", ", ")), "warn");
+        return false;
+      }
+      return true;
+    }
+
+    function draftPayload(d) {
+      var payload = {
+        code: draftCode(),
+        name_ar: d.name_ar,
+        name_en: d.name_en,
+        trade_name_ar: d.trade_name_ar,
+        country: d.country,
+        commercial_registration: d.commercial_registration,
+        activity: d.activity,
+        sector: d.sector,
+        currency: d.currency,
+        fiscal_year_start_month: d.fiscal_year_start_month,
+        fiscal_year_end_month: d.fiscal_year_end_month,
+        capital_amount: d.capital_amount,
+        tracking_start_date: d.tracking_start_date,
+        default_language: d.default_language,
+        template_effective_from: d.template_effective_from,
+        access_scope: d.access_scope,
+      };
+      if (d.status) payload.status = d.status;
+      return payload;
+    }
+
+    // Step 3's activation links the manager and the ownership stake the deck
+    // names, plus any extra linked users from step 2 (slide 51: "المستخدمون
+    // المرتبطون"). Each write is gated on the permission its endpoint enforces,
+    // so no call is made that would 403, and every failure is surfaced not
+    // swallowed. Slide 52: "دعوات المستخدمين لا تمنح وصولًا حتى التفعيل" -- this
+    // runs only on activation, never on draft save.
+    function applyWizardLinks(companyId, d) {
+      if (!companyId) return Promise.resolve();
+      var tasks = [];
+      var seen = {};
+      var grants = [];
+      if (d.manager_user_id) {
+        seen[d.manager_user_id] = true;
+        grants.push({ id: d.manager_user_id, primary: true });
+      }
+      (d.linked_user_ids || []).forEach(function (uid) {
+        if (uid && !seen[uid]) {
+          seen[uid] = true;
+          grants.push({ id: uid, primary: false });
+        }
+      });
+      if (has("company.access.manage")) {
+        grants.forEach(function (g) {
+          tasks.push(post("/api/v1/users/" + g.id + "/company-access", {
+            company_id: companyId,
+            can_read: true,
+            can_write: true,
+            is_primary: g.primary,
+          }));
+        });
+      }
+      var holding = groupOwnerCompany(rows, nodes);
+      if (d.ownership_pct != null && holding && has("ownership.manage")) {
+        tasks.push(post("/api/v1/admin/ownerships", {
+          owned_company_id: companyId,
+          owner_company_id: holding.id,
+          ownership_percentage: d.ownership_pct,
+          effective_from: d.tracking_start_date || new Date().toISOString().slice(0, 10),
+        }));
+      }
+      return Promise.all(tasks);
+    }
+
+    // Deck slide 51 names only "نسبة ملكية القابضة" -- the holding is implicit.
+    // The data model splits owner from percentage, so resolve the group root:
+    // an explicit holding-type company, else the root of the ownership tree
+    // (a parent-less node that owns children), else the first company. The tree
+    // node carries the parent edge that the company row does not.
+    function groupOwnerCompany(rows, nodes) {
+      var explicit = rows.filter(function (c) { return c.company_type === "holding"; })[0];
+      if (explicit) return explicit;
+      var parentIds = {};
+      (nodes || []).forEach(function (n) {
+        if (n.parent_company_id) parentIds[n.parent_company_id] = true;
+      });
+      var root = (nodes || []).filter(function (n) {
+        return !n.parent_company_id && parentIds[n.company_id];
+      })[0];
+      if (root) {
+        var match = rows.filter(function (c) { return c.id === root.company_id; })[0];
+        if (match) return match;
+      }
+      return rows[0] || null;
+    }
+
+    function saveDraft() {
+      var d = collect();
+      if (!d.name_ar || !d.sector) {
+        toast(coWizL("يتطلب حفظ المسودة الاسم القانوني والقطاع.", "A draft needs the legal name and sector."), "warn");
+        return;
+      }
+      busy(draftBtn, true);
+      var req = state.draftId
+        ? patch("/api/v1/companies/" + state.draftId, draftPayload(d))
+        : post("/api/v1/companies", draftPayload(d)).then(function (row) {
+            state.draftId = row.id;
+            return row;
+          });
+      req.then(function () {
+        STATE.loaded.companies = false;
+        toast(dual("تم حفظ المسودة.", "Draft saved."), "ok");
+        busy(draftBtn, false);
+      }).catch(function (err) { adminError(err); busy(draftBtn, false); });
+    }
+
+    function activate() {
+      if (!checkStep(3)) return;
+      var d = collect();
+      busy(actBtn, true);
+      var req = state.draftId
+        ? patch("/api/v1/companies/" + state.draftId, draftPayload(d)).then(function () {
+            return { id: state.draftId };
+          })
+        : post("/api/v1/companies", draftPayload(d));
+      req.then(function (row) {
+        var companyId = row && row.id ? row.id : state.draftId;
+        return applyWizardLinks(companyId, d);
+      }).then(function () {
+        STATE.loaded.companies = false;
+        toast(dual("تم تفعيل الشركة.", "Company activated."), "ok");
+        return renderAdminCompanies();
+      }).catch(function (err) { adminError(err); busy(actBtn, false); });
+    }
+
+    nextBtn.addEventListener("click", function () {
+      if (!checkStep(state.step)) return;
+      if (state.step < 3) show(state.step + 1);
+    });
+    prevBtn.addEventListener("click", function () {
+      if (state.step > 1) show(state.step - 1);
+    });
+    draftBtn.addEventListener("click", function () { saveDraft(); });
+    actBtn.addEventListener("click", function () { activate(); });
+    show(1);
+  }
+
 
   function companyAdminCard(c) {
     var sector = sectorLabel(c.sector);
@@ -8649,7 +13094,7 @@
   // ---- tab: departments ----
   function renderAdminDepartments() {
     var host = byId("adminContent");
-    return Promise.all([ensureCompanies(), get("/api/v1/admin/departments").catch(function () { return []; })]).then(function (res) {
+    return Promise.all([ensureCompanies(), softGet("/api/v1/admin/departments")]).then(function (res) {
       var companies = res[0];
       var departments = res[1];
       var createForm = has("department.manage")
@@ -8690,7 +13135,7 @@
   // of the admin UI.
   function renderAdminSectors() {
     var host = byId("adminContent");
-    return get("/api/v1/admin/sectors").catch(function () { return []; }).then(function (sectors) {
+    return softGet("/api/v1/admin/sectors").then(function (sectors) {
       var create = has("sector.manage")
         ? adminPanel("إضافة قطاع", "Add sector",
             '<form class="av-form av-form-inline" id="sectorForm">' +
@@ -8752,8 +13197,8 @@
     var host = byId("adminContent");
     return Promise.all([
       ensureCompanies(),
-      get("/api/v1/admin/positions").catch(function () { return []; }),
-      get("/api/v1/admin/departments").catch(function () { return []; }),
+      softGet("/api/v1/admin/positions"),
+      softGet("/api/v1/admin/departments"),
     ]).then(function (res) {
       var companies = res[0];
       var positions = res[1];
@@ -8838,18 +13283,75 @@
 
 
   // ---- tab: users ----
+  // Slide 136 fixes the user list's filters (company, owner, type, status,
+  // date, version) and search fields (name / email / role; record id / action).
+  // The directory is server-paged, so the search and role/status selects map to
+  // the API's own ``search`` / ``role_code`` / ``is_active`` parameters rather
+  // than filtering a client-side page. Authorization is unchanged.
+  function adminUsersPageState() {
+    return STATE.adminUsers || (STATE.adminUsers = {
+      limit: 25, offset: 0, total: 0, search: "", role_code: "", is_active: "",
+    });
+  }
+
+  function adminUserFiltersHtml(page, roles) {
+    var roleOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "كل الأدوار" : "All roles") + "</option>";
+    roles.forEach(function (r) {
+      roleOpts += '<option value="' + escAttr(r.code) + '"' + (r.code === page.role_code ? " selected" : "") + ">" +
+        escapeHtml(STATE.lang === "ar" ? r.name_ar : r.name_en) + "</option>";
+    });
+    var statusOpts = [
+      { value: "", ar: "كل الحالات", en: "All statuses" },
+      { value: "true", ar: "نشط", en: "Active" },
+      { value: "false", ar: "موقوف", en: "Inactive" },
+    ].map(function (o) {
+      return '<option value="' + o.value + '"' + (o.value === page.is_active ? " selected" : "") + ">" +
+        escAttr(STATE.lang === "ar" ? o.ar : o.en) + "</option>";
+    }).join("");
+    var sizes = PAGE_SIZES.map(function (s) {
+      return '<option value="' + s + '"' + (s === page.limit ? " selected" : "") + ">" +
+        plainNum(s) + "</option>";
+    }).join("");
+    return (
+      '<div class="list-filters" id="listFilter-adminUsers">' +
+      '<label class="lf-field lf-search">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+      '<input class="av-input" id="adminUsersSearch" value="' + escAttr(page.search) + '" placeholder="' +
+      escAttr(STATE.lang === "ar" ? "الاسم / البريد / الدور" : "Name / email / role") + '" aria-label="' +
+      escAttr(STATE.lang === "ar" ? "بحث" : "Search") + '"></label>' +
+      '<select class="av-select lf-select" id="adminUsersRole" aria-label="' + escAttr(STATE.lang === "ar" ? "الدور" : "Role") + '">' + roleOpts + "</select>" +
+      '<select class="av-select lf-select" id="adminUsersStatus" aria-label="' + escAttr(STATE.lang === "ar" ? "الحالة" : "Status") + '">' + statusOpts + "</select>" +
+      '<label class="pager-size">' + dual("لكل صفحة", "Per page") +
+      '<select class="av-select" id="adminUsersSize">' + sizes + "</select></label>" +
+      '<div class="lf-actions">' +
+      '<button type="button" class="lf-btn primary" data-admin-action="users-apply">' + dual("تطبيق", "Apply") + "</button>" +
+      '<button type="button" class="lf-btn" data-admin-action="users-clear">' + dual("مسح", "Clear") + "</button>" +
+      "</div></div>"
+    );
+  }
+
   function renderAdminUsers() {
     var host = byId("adminContent");
-    var page = STATE.adminUsers || (STATE.adminUsers = { limit: 25, offset: 0, total: 0 });
+    var page = adminUsersPageState();
+    var query = "/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset;
+    if (page.search) query += "&search=" + encodeURIComponent(page.search);
+    if (page.role_code) query += "&role_code=" + encodeURIComponent(page.role_code);
+    if (page.is_active) query += "&is_active=" + encodeURIComponent(page.is_active);
     return Promise.all([
-      get("/api/v1/admin/users?limit=" + page.limit + "&offset=" + page.offset),
-      get("/api/v1/admin/roles").catch(function () { return []; }),
+      get(query),
+      softGet("/api/v1/admin/roles"),
       ensureCompanies(),
-      get("/api/v1/admin/departments").catch(function () { return []; }),
+      softGet("/api/v1/admin/departments"),
+      softGet("/api/v1/admin/users?limit=1&is_active=true"),
+      softGet("/api/v1/admin/users?limit=1&is_active=false"),
+      softGet("/api/v1/admin/audit-logs?limit=1"),
     ]).then(function (res) {
       var data = res[0];
       var roles = res[1];
       var departments = res[3];
+      var activeUsers = res[4] && typeof res[4].total === "number" ? res[4].total : null;
+      var pendingUsers = res[5] && typeof res[5].total === "number" ? res[5].total : null;
+      var workLog = res[6] && typeof res[6].total === "number" ? res[6].total : null;
       page.total = data.total;
       var roleOptions = roles.map(function (r) { return { value: r.code, label: STATE.lang === "ar" ? r.name_ar : r.name_en }; });
       var deptOptions = [{ value: "", label: "—" }].concat(departments.map(function (d) { return { value: d.id, label: d.code + " · " + (STATE.lang === "ar" ? d.name_ar : d.name_en) }; }));
@@ -8861,6 +13363,7 @@
             selectInput("uRole" + u.id, roleOptions, u.role_code) +
             selectInput("uDept" + u.id, deptOptions, u.department_id || "") +
             '<button class="btn-outline" data-admin-action="save-user" data-id="' + u.id + '">' + dual("حفظ", "Save") + "</button>" +
+            '<button class="btn-outline" data-admin-action="reset-user-password" data-id="' + u.id + '">' + dual("تعيين كلمة مرور", "Set password") + "</button>" +
             '<button class="btn-outline" data-admin-action="toggle-user" data-id="' + u.id + '" data-active="' + (u.is_active ? "1" : "0") + '">' +
             (u.is_active ? dual("إيقاف", "Deactivate") : dual("تفعيل", "Activate")) + "</button>" +
             "</div>"
@@ -8876,13 +13379,166 @@
         );
       }).join("");
 
+      var pages = Math.max(1, Math.ceil(page.total / page.limit));
+      var curPage = Math.floor(page.offset / page.limit) + 1;
       var pager =
         '<div class="av-pager">' +
         '<button class="btn-outline" data-admin-action="users-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
-        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
+        '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) +
+        " · " + plainNum(curPage) + " / " + plainNum(pages) + "</span>" +
         '<button class="btn-outline" data-admin-action="users-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
 
-      host.innerHTML = adminPanel("المستخدمون", "Users", (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
+      var addAction = has("user.manage")
+        ? '<div class="av-actions"><button class="btn-solid" data-admin-action="user-create">' +
+          dual("إضافة مستخدم", "Add user") + "</button></div>"
+        : "";
+      // Deck slide 37 draws a four-tile summary above the user table. Each tile
+      // is a live count, never a hard-coded figure; a metric the caller cannot
+      // read (e.g. the work log without audit.read) shows "—" rather than 0.
+      var customRoles = roles.filter(function (r) { return !r.is_system; }).length;
+      var statTile = function (ar, en, v) {
+        return (
+          '<div class="av-panel"><h3>' + dual(ar, en) + "</h3>" +
+          '<div class="kpi-val num" style="font-size:22px">' +
+          (v === null ? "—" : plainNum(v)) + "</div></div>"
+        );
+      };
+      var stats =
+        '<div class="av-grid cols-4" style="margin-bottom:12px">' +
+        statTile("المستخدمون النشطون", "Active users", activeUsers) +
+        statTile("الدعوات المعلقة", "Pending invites", pendingUsers) +
+        statTile("أدوار مخصصة", "Custom roles", customRoles) +
+        statTile("سجل العمل", "Work log", workLog) +
+        "</div>";
+      host.innerHTML = adminPanel("المستخدمون", "Users", addAction + adminUserFiltersHtml(page, roles) + stats + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا يوجد مستخدمون.", "No users.") + "</p>") + pager);
+    });
+  }
+
+  // Deck slide 37 [إضافة مستخدم]: the owner names the role and the data scope.
+  // The same rule the POST /api/v1/users endpoint enforces is mirrored here:
+  // the role is required, the password is at least 8 characters, and company
+  // access is granted only for the companies ticked.
+  function openCreateUserForm() {
+    return Promise.all([softGet("/api/v1/admin/roles"), ensureCompanies()]).then(function (res) {
+      var roles = res[0] || [];
+      var companies = res[1] || [];
+      var roleOptions = roles.map(function (r) {
+        return { value: r.code, label: STATE.lang === "ar" ? r.name_ar : r.name_en };
+      });
+      var companyChecks = companies.length
+        ? companies.map(function (c) {
+            return '<label class="av-check"><input type="checkbox" class="cuCompany" value="' + c.id + '"> ' +
+              escapeHtml(STATE.lang === "ar" ? c.name_ar : (c.name_en || c.name_ar)) + "</label>";
+          }).join("")
+        : '<p class="hint">' + dual("لا توجد شركات متاحة.", "No companies available.") + "</p>";
+      openModal({
+        title: dual("إضافة مستخدم", "Add user"),
+        wide: true,
+        body:
+          '<div class="av-form av-grid cols-2">' +
+          field("الاسم (عربي)", "Name (AR)", textInput("cuNameAr", "", "")) +
+          field("الاسم (إنجليزي)", "Name (EN)", textInput("cuNameEn", "", "")) +
+          field("البريد الإلكتروني", "Email", textInput("cuEmail", "", "name@example.com")) +
+          field("الدور", "Role", selectInput("cuRole", roleOptions, roleOptions.length ? roleOptions[0].value : "")) +
+          field("كلمة المرور", "Password", '<input class="av-input" id="cuPassword" type="password" autocomplete="new-password">') +
+          "</div>" +
+          field("نطاق الشركات", "Company scope", '<div class="av-checklist">' + companyChecks + "</div>"),
+        footer:
+          '<button class="btn-outline" id="cuCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+          '<button class="btn-solid" id="cuSave">' + dual("حفظ", "Save") + "</button>",
+        onMount: function (root) {
+          root.querySelector("#cuCancel").addEventListener("click", closeModal);
+          root.querySelector("#cuSave").addEventListener("click", function () {
+            var btn = this;
+            var email = root.querySelector("#cuEmail").value.trim();
+            var password = root.querySelector("#cuPassword").value;
+            var nameAr = root.querySelector("#cuNameAr").value.trim();
+            var nameEn = root.querySelector("#cuNameEn").value.trim();
+            var roleCode = root.querySelector("#cuRole").value;
+            if (!nameAr) {
+              toast(STATE.lang === "ar" ? "الاسم بالعربي مطلوب." : "The Arabic name is required.", "err");
+              return;
+            }
+            if (!email) {
+              toast(STATE.lang === "ar" ? "البريد الإلكتروني مطلوب." : "Email is required.", "err");
+              return;
+            }
+            if (password.length < 8) {
+              toast(STATE.lang === "ar" ? "كلمة المرور 8 أحرف على الأقل." : "Password must be at least 8 characters.", "err");
+              return;
+            }
+            var companyIds = Array.prototype.slice
+              .call(root.querySelectorAll(".cuCompany:checked"))
+              .map(function (c) { return parseInt(c.value, 10); });
+            busy(btn, true);
+            post("/api/v1/users", {
+              email: email,
+              password: password,
+              full_name_ar: nameAr,
+              full_name_en: nameEn || null,
+              role_code: roleCode,
+              company_ids: companyIds,
+            })
+              .then(function () {
+                toast(STATE.lang === "ar" ? "تمت إضافة المستخدم." : "User added.", "ok");
+                closeModal();
+                return renderAdminUsers();
+              })
+              .catch(function (err) {
+                toast(errText(err), "err");
+                busy(btn, false);
+              });
+          });
+        },
+      });
+    });
+  }
+
+  // Owner/administrator sets a temporary password for a locked-out account
+  // (deck slide 37/38: user management). The actor never sees the old password;
+  // the target can change it again from their own profile block.
+  function openAdminSetPasswordForm(userId) {
+    openModal({
+      title: dual("تعيين كلمة مرور", "Set password"),
+      body:
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور المؤقتة الجديدة", "New temporary password") +
+        '</label><input class="av-input" type="password" id="spNew" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("تأكيد كلمة المرور", "Confirm password") +
+        '</label><input class="av-input" type="password" id="spConfirm" style="width:100%"></div>' +
+        '<p class="note-block">' +
+        dual("٨ أحرف على الأقل. سلّمها للمستخدم ليقوم بتغييرها.", "At least 8 characters. Hand it to the user to change.") +
+        "</p>",
+      footer:
+        '<button class="btn-outline" id="spCancel">' + dual("إلغاء", "Cancel") + "</button>" +
+        '<button class="btn-solid" id="spSave">' + dual("حفظ", "Save") + "</button>",
+      onMount: function (root) {
+        root.querySelector("#spCancel").addEventListener("click", closeModal);
+        root.querySelector("#spSave").addEventListener("click", function () {
+          var btn = this;
+          var next = root.querySelector("#spNew").value;
+          var confirm = root.querySelector("#spConfirm").value;
+          if (!next || next.length < 8) {
+            toast(dual("كلمة المرور ٨ أحرف على الأقل.", "Password must be at least 8 characters."), "warn");
+            return;
+          }
+          if (next !== confirm) {
+            toast(dual("كلمتا المرور غير متطابقتين.", "The passwords do not match."), "warn");
+            return;
+          }
+          busy(btn, true);
+          post("/api/v1/users/" + userId + "/password", { new_password: next })
+            .then(function () {
+              toast(dual("تم تعيين كلمة المرور.", "Password set."), "ok");
+              closeModal();
+            })
+            .catch(function (err) {
+              toast(errText(err), "err");
+              busy(btn, false);
+            });
+        });
+      },
     });
   }
 
@@ -9321,8 +13977,7 @@
   // row). Reads need motivation.read, writes need motivation.manage.
   function renderAdminMotivation() {
     var host = byId("adminContent");
-    return get("/api/v1/admin/motivation-texts?include_inactive=true")
-      .catch(function () { return []; })
+    return softGet("/api/v1/admin/motivation-texts?include_inactive=true")
       .then(function (items) {
         var editable = has("motivation.manage");
         var createForm = editable
@@ -9403,10 +14058,10 @@
     return Promise.all([
       get("/api/v1/website/overview").catch(function () { return null; }),
       get("/api/v1/website/settings").catch(function () { return null; }),
-      get("/api/v1/website/pages").catch(function () { return []; }),
-      get("/api/v1/website/slides").catch(function () { return []; }),
-      get("/api/v1/website/companies").catch(function () { return []; }),
-      get("/api/v1/website/media").catch(function () { return []; }),
+      softGet("/api/v1/website/pages"),
+      softGet("/api/v1/website/slides"),
+      softGet("/api/v1/website/companies"),
+      softGet("/api/v1/website/media"),
     ]).then(function (res) {
       st.data = {
         overview: res[0],
@@ -9671,11 +14326,13 @@
   // ---- tab: audit ----
   function renderAdminAudit() {
     var host = byId("adminContent");
-    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0, action: "", entity_type: "" });
+    var page = STATE.adminAudit || (STATE.adminAudit = { limit: 40, offset: 0, total: 0, action: "", entity_type: "", company_id: "" });
     var query = "/api/v1/admin/audit-logs?limit=" + page.limit + "&offset=" + page.offset;
     if (page.action) query += "&action=" + encodeURIComponent(page.action);
     if (page.entity_type) query += "&entity_type=" + encodeURIComponent(page.entity_type);
-    return get(query).then(function (data) {
+    if (page.company_id) query += "&company_id=" + encodeURIComponent(page.company_id);
+    return Promise.all([ensureCompanies(), get(query)]).then(function (res) {
+      var data = res[1];
       page.total = data.total;
       var rows = data.items.map(function (e) {
         var actor = STATE.lang === "ar" ? e.actor_name_ar || "—" : e.actor_name_en || e.actor_name_ar || "—";
@@ -9691,18 +14348,46 @@
         '<button class="btn-outline" data-admin-action="audit-prev"' + (page.offset === 0 ? " disabled" : "") + ">" + dual("السابق", "Previous") + "</button>" +
         '<span class="av-pager-info">' + plainNum(page.offset + 1) + " – " + plainNum(Math.min(page.offset + page.limit, page.total)) + " / " + plainNum(page.total) + "</span>" +
         '<button class="btn-outline" data-admin-action="audit-next"' + (page.offset + page.limit >= page.total ? " disabled" : "") + ">" + dual("التالي", "Next") + "</button></div>";
+      // Slide 136 "المستخدمون / النشاط": search plus company, type, status and
+      // date filters, with the deck's apply / save / clear / export cluster.
+      // The audit read gate is unchanged; the export is gated on analytics.export
+      // exactly as the deck's "عند سماح التصدير" requires.
+      var companyOpts = '<option value="">' + escAttr(STATE.lang === "ar" ? "كل الشركات" : "All companies") + "</option>" +
+        (STATE.companies || []).map(function (c) {
+          return '<option value="' + escAttr(c.id) + '"' + (String(c.id) === String(page.company_id) ? " selected" : "") + ">" +
+            escapeHtml(STATE.lang === "ar" ? c.name_ar : c.name_en || c.name_ar) + "</option>";
+        }).join("");
+      var saved = savedFilters("audit");
+      var savedSel = saved.length
+        ? '<select class="av-select lf-select" id="auditSaved" aria-label="' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + '">' +
+          '<option value="">' + escAttr(STATE.lang === "ar" ? "مرشحاتي المحفوظة" : "My saved filters") + "</option>" +
+          saved.map(function (s) { return '<option value="' + escAttr(s.name) + '">' + escapeHtml(s.name) + "</option>"; }).join("") +
+          "</select>"
+        : "";
+      var exportBtn = has("analytics.export")
+        ? '<button type="button" class="lf-btn" id="auditExport">' + dual("تصدير النتائج", "Export results") + "</button>"
+        : "";
       var filters =
-        '<div class="av-toolbar" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">' +
-        '<input class="av-input" id="auditAction" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بالإجراء (مثال: journal.posted)" : "Filter by action (e.g. journal.posted)") + '" value="' + escAttr(page.action) + '">' +
-        '<input class="av-input" id="auditEntity" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بنوع الكيان" : "Filter by entity type") + '" value="' + escAttr(page.entity_type) + '">' +
-        '<button class="btn-outline" id="auditApply">' + dual("تطبيق", "Apply") + "</button>" +
-        '<button class="btn-outline" id="auditClear">' + dual("مسح", "Clear") + "</button></div>";
+        '<div class="list-filters" id="listFilter-audit">' +
+        '<label class="lf-field lf-search">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>' +
+        '<input class="av-input" id="auditAction" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بالإجراء (مثال: journal.posted)" : "Filter by action (e.g. journal.posted)") + '" value="' + escAttr(page.action) + '"></label>' +
+        '<input class="av-input lf-select" id="auditEntity" placeholder="' + escAttr(STATE.lang === "ar" ? "تصفية بنوع الكيان" : "Filter by entity type") + '" value="' + escAttr(page.entity_type) + '">' +
+        '<select class="av-select lf-select" id="auditCompany" aria-label="' + escAttr(STATE.lang === "ar" ? "الشركة" : "Company") + '">' + companyOpts + "</select>" +
+        savedSel +
+        '<div class="lf-actions">' +
+        '<button type="button" class="lf-btn primary" id="auditApply">' + dual("تطبيق", "Apply") + "</button>" +
+        '<button type="button" class="lf-btn" id="auditSave">' + dual("حفظ المرشح باسمي", "Save filter") + "</button>" +
+        '<button type="button" class="lf-btn" id="auditClear">' + dual("مسح", "Clear") + "</button>" +
+        exportBtn +
+        "</div></div>";
       host.innerHTML = adminPanel("سجل النشاط", "Audit trail", filters + (rows ? '<div class="av-list">' + rows + "</div>" : '<p class="av-empty">' + dual("لا توجد سجلات.", "No entries.") + "</p>") + pager);
       var apply = byId("auditApply");
       if (apply) {
         apply.addEventListener("click", function () {
           page.action = valOf("auditAction");
           page.entity_type = valOf("auditEntity");
+          page.company_id = valOf("auditCompany");
           page.offset = 0;
           renderAdminAudit();
         });
@@ -9712,10 +14397,43 @@
         clear.addEventListener("click", function () {
           page.action = "";
           page.entity_type = "";
+          page.company_id = "";
           page.offset = 0;
           renderAdminAudit();
         });
       }
+      var save = byId("auditSave");
+      if (save) {
+        save.addEventListener("click", function () {
+          var values = { action: page.action, entity_type: page.entity_type, company_id: page.company_id };
+          if (!values.action && !values.entity_type && !values.company_id) {
+            toast(dual("لا يوجد مرشح لحفظه.", "Nothing to save yet."), "err");
+            return;
+          }
+          var name = window.prompt(dual("اسم المرشح:", "Filter name:"),
+            dual("مرشح ", "Filter ") + new Date().toLocaleDateString());
+          if (!name) return;
+          var list = savedFilters("audit").filter(function (s) { return s.name !== name; });
+          list.push({ name: name, values: values });
+          try { localStorage.setItem("safir.filters.v1.audit", JSON.stringify(list)); } catch (e) { /* storage disabled */ }
+          toast(dual("تم حفظ المرشح: " + name, "Filter saved: " + name), "ok");
+          renderAdminAudit();
+        });
+      }
+      var savedSelect = byId("auditSaved");
+      if (savedSelect) {
+        savedSelect.addEventListener("change", function () {
+          var found = savedFilters("audit").filter(function (s) { return s.name === savedSelect.value; })[0];
+          if (!found) return;
+          page.action = found.values.action || "";
+          page.entity_type = found.values.entity_type || "";
+          page.company_id = found.values.company_id || "";
+          page.offset = 0;
+          renderAdminAudit();
+        });
+      }
+      var exp = byId("auditExport");
+      if (exp) exp.addEventListener("click", function () { exportListCsv("audit", data.items); });
     });
   }
 
@@ -9953,13 +14671,12 @@
       '<div class="av-form av-form-inline" style="margin-top:10px">' +
       field("المفتاح", "Key", textInput("afKey", "", "ph.fieldKey")) +
       field("النوع", "Type", selectInput("afType", [
-        { value: "short_text", label: "Short text" },
-        { value: "long_text", label: "Long text" },
-        { value: "decimal", label: "Decimal" },
-        { value: "integer", label: "Integer" },
-        { value: "date", label: "Date" },
-        { value: "boolean", label: "Boolean" },
-        { value: "select", label: "Select (JSON options)" },
+        { value: "integer", label: dual("رقم", "Number") },
+        { value: "short_text", label: dual("نص/سؤال", "Text / question") },
+        { value: "decimal", label: dual("مبلغ", "Amount") },
+        { value: "date", label: dual("تاريخ", "Date") },
+        { value: "select", label: dual("قائمة", "List") },
+        { value: "url", label: dual("رابط خارجي", "External link") },
       ], "short_text")) +
       field("التسمية (عربي)", "Label (AR)", textInput("afLabelAr", "")) +
       field("التسمية (إنجليزي)", "Label (EN)", textInput("afLabelEn", "")) +
@@ -10033,7 +14750,7 @@
   function renderAdminWorkflows() {
     var host = byId("adminContent");
     return Promise.all([
-      get("/api/v1/workflows").catch(function () { return []; }),
+      softGet("/api/v1/workflows"),
       ensureForms(),
     ]).then(function (res) {
       var workflows = res[0];
@@ -10073,7 +14790,7 @@
     Promise.all([
       get("/api/v1/workflows/" + workflowId),
       get("/api/v1/workflows/" + workflowId + "/current").catch(function () { return null; }),
-      get("/api/v1/admin/roles").catch(function () { return []; }),
+      softGet("/api/v1/admin/roles"),
     ]).then(function (res) {
       var workflow = res[0];
       var version = res[1];
@@ -10184,6 +14901,176 @@
     );
   }
 
+  // ---- tab: AI knowledge base (RAG) ----
+  // The curated knowledge base and the AI provider/usage monitor. Everything is
+  // read from the API: a document is retrievable only once its version is
+  // approved, and the usage panel is a counter, never a second copy of a
+  // conversation. A role without `ai.knowledge.*` still reaches the provider
+  // status if it holds `ai.admin`, so the two panels degrade independently.
+  function knowledgeSensitivityLabel(value) {
+    var map = {
+      public: ["عام", "Public"],
+      company: ["الشركة", "Company"],
+      holding: ["القابضة", "Holding"],
+      confidential: ["سري", "Confidential"],
+    };
+    var pair = map[value] || [value, value];
+    return STATE.lang === "ar" ? pair[0] : pair[1];
+  }
+
+  function knowledgeStatusBadge(value) {
+    var map = {
+      draft: ["مسودة", "Draft", "warn"],
+      pending: ["بانتظار المراجعة", "Pending", "warn"],
+      approved: ["معتمد", "Approved", "ok"],
+      archived: ["مؤرشف", "Archived", "miss"],
+    };
+    return statusBadgeFromMap(value, map);
+  }
+
+  function knowledgeDocumentRow(doc, canWrite, canApprove) {
+    var title = STATE.lang === "ar" ? doc.title_ar : doc.title_en || doc.title_ar;
+    var acts = "";
+    if (canApprove && doc.status !== "archived" && !doc.current_version_id) {
+      // A document with no approved version is a draft: its latest version must
+      // be approved before any of it can be retrieved.
+      acts += '<button class="btn-outline" data-admin-action="knowledge-approve" data-id="' +
+        doc.id + '">' + dual("اعتماد الإصدار", "Approve version") + "</button>";
+    }
+    if (canApprove && doc.status !== "archived") {
+      acts += '<button class="btn-outline" data-admin-action="knowledge-archive" data-id="' +
+        doc.id + '">' + dual("أرشفة", "Archive") + "</button>";
+    }
+    if (canWrite) {
+      acts += '<button class="btn-outline" data-admin-action="knowledge-newversion" data-id="' +
+        doc.id + '">' + dual("إصدار جديد", "New version") + "</button>";
+    }
+    return (
+      '<div class="av-row" style="cursor:default"><div class="grow">' +
+      '<div class="t">' + escapeHtml(title) + "</div>" +
+      '<div class="s">' + escapeHtml(doc.slug) + " · " +
+      dual("الحساسية", "Sensitivity") + ": " + escapeHtml(knowledgeSensitivityLabel(doc.sensitivity)) +
+      " · " + dual("الإصدار الحالي", "Current version") + ": " +
+      (doc.current_version_id ? "#" + plainNum(doc.current_version_id) : dual("لا يوجد", "None")) +
+      "</div></div>" +
+      knowledgeStatusBadge(doc.status) + acts + "</div>"
+    );
+  }
+
+  function renderAdminKnowledge() {
+    var host = byId("adminContent");
+    var canRead = has("ai.knowledge.read");
+    var canWrite = has("ai.knowledge.write");
+    var canApprove = has("ai.knowledge.approve");
+    var canManage = has("ai.knowledge.manage");
+    var canAdmin = has("ai.admin");
+
+    var jobs = [];
+    jobs.push(canRead ? softGet("/api/v1/ai/knowledge/categories") : Promise.resolve([]));
+    jobs.push(canRead ? softGet("/api/v1/ai/knowledge/documents") : Promise.resolve([]));
+    // The proposals list is gated on ai.knowledge.manage, the permission
+    // list_proposals enforces -- not on the read permission that made the tab
+    // reachable, otherwise a reader-only role gets a 403 in the console.
+    jobs.push(canManage ? softGet("/api/v1/ai/knowledge/proposals") : Promise.resolve([]));
+    jobs.push(canAdmin ? get("/api/v1/ai/usage").catch(function () { return null; }) : Promise.resolve(null));
+
+    return Promise.all(jobs).then(function (res) {
+      var categories = res[0] || [];
+      var documents = res[1] || [];
+      var proposals = res[2] || [];
+      var usage = res[3];
+      var panels = [];
+
+      if (canWrite) {
+        var catOptions = [{ value: "", label: opt("بدون تصنيف", "No category") }];
+        categories.forEach(function (c) {
+          catOptions.push({ value: c.id, label: STATE.lang === "ar" ? c.name_ar : c.name_en });
+        });
+        var companyOptions = [{ value: "", label: opt("القابضة", "Holding") }];
+        (STATE.companies || []).forEach(function (c) {
+          companyOptions.push({ value: c.id, label: companyName(c) });
+        });
+        var form = '<form class="av-form av-form-inline" id="knowledgeForm">' +
+          field("المعرف", "Slug", textInput("knSlug", "", "ph.knowledgeSlug")) +
+          field("العنوان (عربي)", "Title (AR)", textInput("knTitleAr", "")) +
+          field("العنوان (إنجليزي)", "Title (EN)", textInput("knTitleEn", "")) +
+          field("التصنيف", "Category", selectInput("knCategory", catOptions, "")) +
+          field("الشركة", "Company", selectInput("knCompany", companyOptions, "")) +
+          field("الحساسية", "Sensitivity", selectInput("knSensitivity", [
+            { value: "public", label: opt("عام", "Public") },
+            { value: "company", label: opt("الشركة", "Company") },
+            { value: "holding", label: opt("القابضة", "Holding") },
+            { value: "confidential", label: opt("سري", "Confidential") },
+          ], "holding")) +
+          field("المحتوى (عربي)", "Body (AR)", textArea("knBodyAr", "", "")) +
+          '<div class="av-form-actions"><button class="btn-solid" type="submit">' +
+          dual("إضافة مستند", "Add document") + "</button></div></form>";
+        panels.push(adminPanel("مستند جديد", "New document", form));
+      }
+
+      if (canRead) {
+        var list = documents.length
+          ? '<div class="av-list">' + documents.map(function (d) {
+              return knowledgeDocumentRow(d, canWrite, canApprove);
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مستندات في نطاقك.", "No documents in your scope yet.");
+        panels.push(adminPanel("المستندات المعتمدة والنشطة", "Documents", list));
+      }
+
+      if (canManage) {
+        var propList = proposals.length
+          ? '<div class="av-list">' + proposals.map(function (p) {
+              var acts = p.status === "pending"
+                ? '<button class="btn-outline" data-admin-action="knowledge-proposal-approve" data-id="' + p.id + '">' + dual("اعتماد", "Approve") + "</button>" +
+                  '<button class="btn-outline" data-admin-action="knowledge-proposal-reject" data-id="' + p.id + '">' + dual("رفض", "Reject") + "</button>"
+                : "";
+              return (
+                '<div class="av-row" style="cursor:default"><div class="grow">' +
+                '<div class="t">' + escapeHtml(p.title) + "</div>" +
+                '<div class="s">' + escapeHtml(p.rationale || "") + "</div></div>" +
+                knowledgeStatusBadge(p.status) + acts + "</div>"
+              );
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد مقترحات تعلّم.", "No learning proposals.");
+        panels.push(adminPanel("مقترحات التعلّم", "Learning proposals", propList));
+      }
+
+      if (canAdmin && usage) {
+        var totals = (usage.usage && usage.usage.totals) || {};
+        var provider = '<div class="kv">' +
+          kv(dual("المزوّد", "Provider"), escapeHtml(usage.provider)) +
+          kv(dual("النموذج", "Model"), escapeHtml(usage.model || "—")) +
+          kv(dual("المفتاح مُهيّأ", "API key present"), dual(usage.api_key_present ? "نعم" : "لا", usage.api_key_present ? "yes" : "no")) +
+          kv(dual("مجاني موثّق", "Verified free"), dual(usage.verified_free ? "نعم" : "لا", usage.verified_free ? "yes" : "no")) +
+          kv(dual("سقف التكلفة (دولار)", "Cost cap (USD)"), plainNum(usage.max_cost_usd)) +
+          kv(dual("الطلبات (٢٤س)", "Requests (24h)"), plainNum(totals.requests || 0)) +
+          kv(dual("الرموز", "Tokens"), plainNum(totals.tokens || 0)) +
+          kv(dual("التكلفة (دولار)", "Cost (USD)"), plainNum(totals.cost_usd || 0)) +
+          kv(dual("أخطاء", "Errors"), plainNum(totals.errors || 0)) +
+          kv(dual("مرفوض مدفوع", "Rejected (paid)"), plainNum(totals.rejected_paid || 0)) +
+          kv(dual("الحد اليومي", "Daily limit"), plainNum(usage.daily_limit) + " / " + plainNum(usage.daily_used)) +
+          "</div>";
+        var models = (usage.free_models || []).length
+          ? '<div class="av-list">' + usage.free_models.slice(0, 8).map(function (m) {
+              return '<div class="av-row" style="cursor:default"><div class="grow"><div class="t mono">' +
+                escapeHtml(m.id) + "</div><div class=\"s\">" + escapeHtml(m.name || "") + "</div></div></div>";
+            }).join("") + "</div>"
+          : noticeHtml("لا توجد نماذج مجانية موثّقة.", "No verified free models.");
+        panels.push(adminPanel("مزوّد الذكاء الاصطناعي والاستخدام", "AI provider & usage", provider));
+        panels.push(adminPanel("النماذج المجانية المتاحة", "Available free models",
+          models + (usage.discovery_error ? '<p class="av-empty">' + escapeHtml(usage.discovery_error) + "</p>" : "")));
+      }
+
+      if (!panels.length) {
+        panels.push(noticeHtml("لا تملك صلاحية عرض قاعدة المعرفة.", "You cannot view the knowledge base."));
+      }
+      host.className = "av-grid cols-1";
+      host.innerHTML = panels.join("");
+    }).catch(function (err) {
+      host.innerHTML = errorHtml(errText(err));
+    });
+  }
+
   // ---- admin event handling ----
   function onAdminClick(e) {
     var el = e.target.closest ? e.target.closest("[data-admin-action]") : null;
@@ -10193,9 +15080,27 @@
 
     if (action === "users-prev") { STATE.adminUsers.offset = Math.max(0, STATE.adminUsers.offset - STATE.adminUsers.limit); return renderAdminUsers(); }
     if (action === "users-next") { STATE.adminUsers.offset += STATE.adminUsers.limit; return renderAdminUsers(); }
+    if (action === "users-apply") {
+      var page = adminUsersPageState();
+      var search = byId("adminUsersSearch");
+      var roleSel = byId("adminUsersRole");
+      var statusSel = byId("adminUsersStatus");
+      var sizeSel = byId("adminUsersSize");
+      page.search = search ? search.value.trim() : "";
+      page.role_code = roleSel ? roleSel.value : "";
+      page.is_active = statusSel ? statusSel.value : "";
+      if (sizeSel) page.limit = parseInt(sizeSel.value, 10) || 25;
+      page.offset = 0;
+      return renderAdminUsers();
+    }
+    if (action === "users-clear") {
+      STATE.adminUsers = { limit: 25, offset: 0, total: 0, search: "", role_code: "", is_active: "" };
+      return renderAdminUsers();
+    }
     if (action === "audit-prev") { STATE.adminAudit.offset = Math.max(0, STATE.adminAudit.offset - STATE.adminAudit.limit); return renderAdminAudit(); }
     if (action === "audit-next") { STATE.adminAudit.offset += STATE.adminAudit.limit; return renderAdminAudit(); }
 
+    if (action === "user-create") return openCreateUserForm();
     if (action === "builder-open") return openFormBuilder(parseInt(id, 10));
     if (action === "workflow-open") return openWorkflowBuilder(parseInt(id, 10));
 
@@ -10248,6 +15153,54 @@
         toast(STATE.lang === "ar" ? "تم تعطيل نقطة النهاية." : "Endpoint disabled.", "ok");
         return renderAdminIntegrations();
       }).catch(adminError);
+    }
+
+    // ---- AI knowledge base (RAG) ----
+    if (action === "knowledge-approve") {
+      busy(el, true);
+      return get("/api/v1/ai/knowledge/documents/" + id + "/versions").then(function (versions) {
+        var latest = (versions || []).slice().sort(function (a, b) {
+          return (b.version_number || 0) - (a.version_number || 0);
+        })[0];
+        if (!latest) {
+          toast(dual("لا يوجد إصدار لاعتماده.", "No version to approve."), "warn");
+          return;
+        }
+        return post("/api/v1/ai/knowledge/versions/" + latest.id + "/approve", {})
+          .then(function () {
+            toast(dual("تم اعتماد الإصدار وأصبح قابلًا للاسترجاع.", "Version approved and retrievable."), "ok");
+            return renderAdminKnowledge();
+          });
+      }).catch(adminError);
+    }
+    if (action === "knowledge-archive") {
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/documents/" + id + "/archive", {}).then(function () {
+        toast(dual("تمت أرشفة المستند.", "Document archived."), "ok");
+        return renderAdminKnowledge();
+      }).catch(adminError);
+    }
+    if (action === "knowledge-newversion") {
+      var body = window.prompt(dual("نص الإصدار الجديد (عربي)", "New version body (AR)"));
+      if (!body) return;
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/documents/" + id + "/versions", { body_ar: body })
+        .then(function (v) {
+          return post("/api/v1/ai/knowledge/versions/" + v.id + "/approve", {})
+            .then(function () {
+              toast(dual("تم إنشاء إصدار واعتماده.", "Version created and approved."), "ok");
+              return renderAdminKnowledge();
+            });
+        }).catch(adminError);
+    }
+    if (action === "knowledge-proposal-approve" || action === "knowledge-proposal-reject") {
+      busy(el, true);
+      return post("/api/v1/ai/knowledge/proposals/" + id + "/resolve",
+        { approve: action === "knowledge-proposal-approve" })
+        .then(function () {
+          toast(dual("تمت معالجة المقترح.", "Proposal resolved."), "ok");
+          return renderAdminKnowledge();
+        }).catch(adminError);
     }
 
     // ---- website management (Phase 11 CMS) ----
@@ -10362,10 +15315,14 @@
 
     if (action === "toggle-user") {
       var active = el.getAttribute("data-active") === "1";
-      return patch("/api/v1/admin/users/" + id, { is_active: !active }).then(function () {
+      return patch("/api/v1/users/" + id, { is_active: !active }).then(function () {
         toast(STATE.lang === "ar" ? "تم تحديث المستخدم." : "User updated.", "ok");
         return renderAdminUsers();
       }).catch(adminError);
+    }
+
+    if (action === "reset-user-password") {
+      return openAdminSetPasswordForm(id);
     }
 
     if (action === "save-user") {
@@ -10374,7 +15331,7 @@
       var payload = {};
       if (roleCode) payload.role_code = roleCode.value;
       if (deptId && deptId.value) payload.department_id = parseInt(deptId.value, 10);
-      return patch("/api/v1/admin/users/" + id, payload).then(function () {
+      return patch("/api/v1/users/" + id, payload).then(function () {
         toast(STATE.lang === "ar" ? "تم الحفظ." : "Saved.", "ok");
         return renderAdminUsers();
       }).catch(adminError);
@@ -10562,6 +15519,24 @@
         })
         .catch(adminError);
     }
+    if (form.id === "knowledgeForm") {
+      e.preventDefault();
+      var knCompany = valOf("knCompany");
+      var payload = {
+        slug: valOf("knSlug"),
+        title_ar: valOf("knTitleAr"),
+        title_en: valOf("knTitleEn") || null,
+        body_ar: valOf("knBodyAr"),
+        category_id: valOf("knCategory") ? parseInt(valOf("knCategory"), 10) : null,
+        company_id: knCompany ? parseInt(knCompany, 10) : null,
+        sensitivity: valOf("knSensitivity"),
+      };
+      return post("/api/v1/ai/knowledge/documents", payload)
+        .then(function () {
+          toast(STATE.lang === "ar" ? "تمت إضافة المستند (مسودة)." : "Document added (draft).", "ok");
+          return renderAdminKnowledge();
+        }).catch(adminError);
+    }
     if (form.id === "builderForm") {
       e.preventDefault();
       return post("/api/v1/forms", {
@@ -10589,14 +15564,15 @@
     }
     if (form.id === "holdingForm") {
       e.preventDefault();
+      var optStr = function (id) { var v = valOf(id); return v === "" ? null : v; };
       return patch("/api/v1/admin/holding", {
-        legal_name_ar: byId("hLegalAr").value,
-        legal_name_en: byId("hLegalEn").value,
-        commercial_registration: byId("hCr").value,
-        tax_number: byId("hTax").value,
-        default_currency: byId("hCurrency").value,
-        contact_email: byId("hEmail").value,
-        phone: byId("hPhone").value,
+        legal_name_ar: optStr("hLegalAr"),
+        legal_name_en: optStr("hLegalEn"),
+        commercial_registration: optStr("hCr"),
+        tax_number: optStr("hTax"),
+        default_currency: optStr("hCurrency"),
+        contact_email: optStr("hEmail"),
+        phone: optStr("hPhone"),
       }).then(function () {
         toast(STATE.lang === "ar" ? "تم حفظ بيانات القابضة." : "Holding profile saved.", "ok");
         return renderAdminStructure();
@@ -10837,7 +15813,7 @@
     var change = STATE.dashboard.change_vs_previous || {};
     var rows = STATE.dashboard.companies_performance || [];
     var lines = [];
-    lines.push(["Safir Holding 2027 — Executive Report"]);
+    lines.push(["Start Upsphere Holding 2027 — Executive Report"]);
     lines.push(["Period", (STATE.year || "") + "-" + String(STATE.month || "").padStart(2, "0")]);
     lines.push(["Generated", new Date().toISOString()]);
     lines.push([]);
@@ -10956,38 +15932,54 @@
     });
     var avatar = document.querySelector(".profile .avatar");
     if (avatar) avatar.textContent = (name || "؟").trim().charAt(0);
+
+    // Mirror the identity into the sidebar user block.
+    var sbName = byId("sbUserName");
+    if (sbName) {
+      sbName.querySelectorAll(".ar").forEach(function (el) { el.textContent = name; });
+      sbName.querySelectorAll(".en").forEach(function (el) {
+        el.textContent = USER.full_name_en || name;
+      });
+    }
+    var sbRole = byId("sbUserRole");
+    if (sbRole) {
+      sbRole.querySelectorAll(".ar").forEach(function (el) { el.textContent = role; });
+      sbRole.querySelectorAll(".en").forEach(function (el) {
+        el.textContent = USER.role_name_en || role;
+      });
+    }
+    var sbAvatar = byId("sbAvatar");
+    if (sbAvatar) sbAvatar.textContent = (name || "؟").trim().charAt(0);
   }
 
   function isHolding() {
     return has("dashboard.holding");
   }
 
-  // The platform header shows the same admin-uploaded Holding logo as the
-  // public site, falling back to the static brand mark when none is set.
+  // The owner-supplied logo is the default in the header, login card and side
+  // rail (shipped as a static asset). When an admin uploads a Holding logo it
+  // replaces that default everywhere; on any failure the default asset is
+  // restored rather than falling back to the generic SVG mark.
+  var DEFAULT_LOGO = "/website/assets/holding-logo.png";
   function applyPlatformLogo() {
-    var img = byId("brandLogo");
-    var mark = byId("brandMark");
-    if (!img) return;
+    var targets = ["brandLogo", "loginBrandLogo", "sbBrandLogo"]
+      .map(byId)
+      .filter(Boolean);
+    if (!targets.length) return;
     get("/api/v1/public/branding")
       .then(function (branding) {
         var url = branding && branding.logo_url;
-        if (url) {
-          img.onload = function () {
-            img.hidden = false;
-            if (mark) mark.hidden = true;
-          };
+        if (!url) return;
+        targets.forEach(function (img) {
           img.onerror = function () {
-            img.hidden = true;
-            if (mark) mark.hidden = false;
+            img.onerror = null;
+            img.src = DEFAULT_LOGO;
           };
           img.src = url;
-        } else {
-          img.hidden = true;
-          if (mark) mark.hidden = false;
-        }
+        });
       })
       .catch(function () {
-        /* keep the static brand mark on any failure */
+        /* keep the shipped default logo on any failure */
       });
   }
 
@@ -10998,18 +15990,23 @@
   }
 
   // ---- AI --------------------------------------------------------------
-  function askAi(question) {
-    var path, payload;
+  function aiScope(question) {
     if (isHolding()) {
-      path = "/api/v1/ai/holding" + period;
-      payload = { question: question };
-    } else if (primaryCompanyId() !== null) {
-      path = "/api/v1/ai/company" + period;
-      payload = { question: question, company_id: primaryCompanyId() };
-    } else {
-      return Promise.reject(new Error("no AI scope available"));
+      return { path: "/api/v1/ai/holding" + period, payload: { question: question } };
     }
-    return post(path, payload).then(function (data) {
+    if (primaryCompanyId() !== null) {
+      return {
+        path: "/api/v1/ai/company" + period,
+        payload: { question: question, company_id: primaryCompanyId() },
+      };
+    }
+    return null;
+  }
+
+  function askAi(question) {
+    var scope = aiScope(question);
+    if (!scope) return Promise.reject(new Error("no AI scope available"));
+    return post(scope.path, scope.payload).then(function (data) {
       hydrateAiAnswer(data, question);
       return data;
     });
@@ -11048,6 +16045,63 @@
   function showAiError(message) {
     var box = document.getElementById("aiAnswerBody");
     if (box) box.innerHTML = errorHtml(message);
+  }
+
+  // Knowledge-base assistant. It posts to the dedicated /ai/knowledge scope,
+  // which retrieves only approved, in-scope chunks and returns them as sources.
+  // The answer and its sources are escaped before insertion: a hosted provider
+  // could otherwise emit markup.
+  function askKnowledge(question) {
+    return post("/api/v1/ai/knowledge", { question: question }).then(function (data) {
+      var box = document.getElementById("kbAnswer");
+      if (!box) return data;
+      box.style.display = "";
+      var q = document.getElementById("kbAnswerQ");
+      if (q) {
+        var safeQ = escapeHtml(question);
+        q.innerHTML = '<span class="ar">«' + safeQ + '»</span><span class="en">“' + safeQ + '”</span>';
+      }
+      var body = document.getElementById("kbAnswerBody");
+      if (body) {
+        var safe = escapeHtml(data.answer || "");
+        var html = '<p><span class="ar">' + safe + '</span><span class="en">' + safe + "</span></p>";
+        var sources = data.sources || [];
+        if (sources.length) {
+          html += '<div class="av-list">' + sources.map(function (s) {
+            var title = STATE.lang === "ar" ? s.title_ar : s.title_en || s.title_ar;
+            return '<div class="av-row" style="cursor:default"><div class="grow">' +
+              '<div class="t">' + escapeHtml(title) + "</div>" +
+              '<div class="s">' + escapeHtml(s.excerpt || "") + "</div></div></div>";
+          }).join("") + "</div>";
+        }
+        body.innerHTML = html;
+      }
+      return data;
+    });
+  }
+
+  function bindKnowledgeAskBox() {
+    var box = document.getElementById("kbAskBox");
+    if (!box) return;
+    var input = document.getElementById("kbInput");
+    var send = document.getElementById("kbSend");
+    if (!input || !send) return;
+    function submit() {
+      var q = (input.value || "").trim();
+      if (!q) return;
+      input.value = "";
+      var body = document.getElementById("kbAnswerBody");
+      var ans = document.getElementById("kbAnswer");
+      if (ans) ans.style.display = "";
+      if (body) body.innerHTML = loadingHtml();
+      askKnowledge(q).catch(function (err) {
+        if (body) body.innerHTML = errorHtml(errText(err));
+      });
+    }
+    send.addEventListener("click", submit);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") submit();
+    });
   }
 
   // Clear the curated demo figures immediately after sign-in so nothing is ever
@@ -11093,10 +16147,14 @@
       : "/api/v1/dashboard/company/" + primaryCompanyId() + period;
     return get(path).then(function (data) {
       STATE.dashboard = data;
+      hydrateRoleSummary(data);
       hydrateKpis(data);
       hydrateCompanies(data);
       hydratePriorities(data);
       setPeriodLabels();
+      // Deck slide 46: the manager's smart brief depends on the period's
+      // approved report, so make sure the report list is present first.
+      ensureReports().then(function () { renderSmartBrief(); });
       return data;
     });
   }
@@ -11125,18 +16183,18 @@
 
   function showDashboardErrors(message) {
     var repGrid = document.querySelector(".rep-grid");
-    if (repGrid) repGrid.innerHTML = errorHtml(message);
+    if (repGrid) repGrid.innerHTML = errorHtml(message, { retry: true });
     var subs = document.querySelector(".subs");
-    if (subs) subs.innerHTML = errorHtml(message);
+    if (subs) subs.innerHTML = errorHtml(message, { retry: true });
     var overview = document.querySelector(".ov-card .card-body");
-    if (overview) overview.innerHTML = errorHtml(message);
+    if (overview) overview.innerHTML = errorHtml(message, { retry: true });
     var list = document.getElementById("insightsList");
-    if (list) list.innerHTML = errorHtml(message);
+    if (list) list.innerHTML = errorHtml(message, { retry: true });
     showAiError(message);
     var sbody = document.getElementById("supportBody");
     if (sbody) {
       sbody.innerHTML =
-        '<tr><td colspan="5">' + errorHtml(message) + "</td></tr>";
+        '<tr><td colspan="5">' + errorHtml(message, { retry: true }) + "</td></tr>";
     }
   }
 
@@ -11147,6 +16205,8 @@
     if (screen) screen.style.display = "";
     var pw = document.getElementById("loginPassword");
     if (pw) pw.value = "";
+    setLoginError("");
+    setLoginNotice("");
   }
 
   function hideLogin() {
@@ -11166,35 +16226,76 @@
     }
   }
 
+  function setLoginNotice(message) {
+    var el = document.getElementById("loginNotice");
+    if (!el) return;
+    if (message) {
+      el.innerHTML = message;
+      el.classList.add("show");
+    } else {
+      el.classList.remove("show");
+    }
+  }
+
   function bindLogin() {
     var form = document.getElementById("loginForm");
     if (!form) return;
+    var rememberBox = document.getElementById("loginRemember");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var email = (document.getElementById("loginEmail").value || "").trim();
       var password = document.getElementById("loginPassword").value || "";
+      var remember = rememberBox ? !!rememberBox.checked : true;
       var btn = document.getElementById("loginBtn");
       setLoginError("");
+      setLoginNotice("");
       if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span>';
       }
       api
-        .login(email, password)
+        .login(email, password, remember)
         .then(function () {
           return enterApp();
         })
         .catch(function (err) {
-          setLoginError(errText(err, STATE.lang === "ar" ? "تعذّر تسجيل الدخول. تحقّق من البريد وكلمة المرور." : "Sign-in failed. Check your email and password."));
+          // On the sign-in form a 401 means the email/password pair is wrong,
+          // not that an existing session expired; the shared 401 wording would
+          // otherwise be shown here and mislead the user.
+          var credentialMsg =
+            STATE.lang === "ar"
+              ? "تعذّر تسجيل الدخول. تحقّق من البريد وكلمة المرور."
+              : "Sign-in failed. Check your email and password.";
+          var status = err && err.status;
+          var message =
+            status === 401 || status === 400 || status === 422 || !status
+              ? credentialMsg
+              : errText(err, credentialMsg);
+          setLoginError(message);
         })
         .then(function () {
           if (btn) {
             btn.disabled = false;
             btn.innerHTML =
-              '<span class="ar">دخول المنصة</span><span class="en">Sign in</span>';
+              '<span class="ar">تسجيل الدخول</span><span class="en">Sign in</span>';
           }
         });
     });
+
+    // Deck slide 6 puts [نسيت كلمة المرور؟] on the sign-in form. Recovery is
+    // handled by the Holding administrator in this phase (there is no
+    // self-service email reset endpoint), so the link explains that rather
+    // than opening a form that could not complete.
+    var forgot = document.getElementById("loginForgot");
+    if (forgot) {
+      forgot.addEventListener("click", function () {
+        setLoginNotice(
+          STATE.lang === "ar"
+            ? "لإعادة تعيين كلمة المرور، تواصل مع مسؤول القابضة (إدارة المستخدمين) لتزويدك برابط/كلمة مرور جديدة."
+            : "To reset your password, contact the Holding administrator (User management) to be issued a new one.",
+        );
+      });
+    }
   }
 
   function bindLogout() {
@@ -11208,6 +16309,91 @@
         showLogin();
         window.scrollTo(0, 0);
       });
+    });
+  }
+
+  // Self-service password change (D11 account access). Reachable from the
+  // header profile block so any signed-in user can rotate their own password
+  // without an administrator.
+  function openChangePassword() {
+    openModal({
+      title: dual("تغيير كلمة المرور", "Change password"),
+      body:
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور الحالية", "Current password") +
+        '</label><input class="av-input" type="password" id="pwCurrent" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("كلمة المرور الجديدة", "New password") +
+        '</label><input class="av-input" type="password" id="pwNew" style="width:100%"></div>' +
+        '<div class="av-field"><label>' +
+        dual("تأكيد كلمة المرور الجديدة", "Confirm new password") +
+        '</label><input class="av-input" type="password" id="pwConfirm" style="width:100%"></div>' +
+        '<p class="note-block">' +
+        dual("٨ أحرف على الأقل، و٧٢ بايت كحد أقصى.", "At least 8 characters, 72 bytes maximum.") +
+        "</p>",
+      footer:
+        '<button class="btn-outline" id="pwCancel">' +
+        dual("إلغاء", "Cancel") +
+        '</button><button class="btn-solid" id="pwSave">' +
+        dual("حفظ", "Save") +
+        "</button>",
+      onMount: function (root) {
+        root.querySelector("#pwCancel").addEventListener("click", closeModal);
+        root.querySelector("#pwSave").addEventListener("click", function () {
+          var btn = root.querySelector("#pwSave");
+          var current = valOf("pwCurrent");
+          var next = valOf("pwNew");
+          var confirm = valOf("pwConfirm");
+          if (!current || !next) {
+            toast(dual("املأ الحقول المطلوبة.", "Fill in the required fields."), "warn");
+            return;
+          }
+          if (next !== confirm) {
+            toast(dual("كلمتا المرور غير متطابقتين.", "The passwords do not match."), "warn");
+            return;
+          }
+          if (next.length < 8) {
+            toast(dual("كلمة المرور ٨ أحرف على الأقل.", "Password must be at least 8 characters."), "warn");
+            return;
+          }
+          busy(btn, true);
+          post("/api/v1/auth/change-password", {
+            current_password: current,
+            new_password: next,
+          })
+            .then(function () {
+              closeModal();
+              // Changing the password revokes every outstanding token, including
+              // the one in this tab. Drop the local session and return to the
+              // login screen so the next call is not a guaranteed 401.
+              USER = null;
+              api.logout();
+              toast(dual("تم تغيير كلمة المرور. سجّل الدخول من جديد.", "Password changed. Please sign in again."), "ok");
+              showLogin();
+              window.scrollTo(0, 0);
+            })
+            .catch(function (err) {
+              domainError(err);
+            })
+            .then(function () { busy(btn, false); });
+        });
+      },
+    });
+  }
+
+  function bindProfileMenu() {
+    var profile = document.querySelector(".profile");
+    if (!profile) return;
+    profile.style.cursor = "pointer";
+    profile.setAttribute("role", "button");
+    profile.setAttribute("tabindex", "0");
+    profile.setAttribute("title", STATE.lang === "ar" ? "الحساب" : "Account");
+    profile.addEventListener("click", openChangePassword);
+    profile.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openChangePassword();
+      }
     });
   }
 
@@ -11253,10 +16439,13 @@
         applyPlatformLogo();
         applyPermissions();
         bindAskBox();
+        bindKnowledgeAskBox();
         bindLogout();
+        bindProfileMenu();
         bindHeaderActions();
         bindNav();
         bindIndicatorDrills();
+        bindScopeSelects();
         showLoadingStates();
         return resolvePeriod();
       })
@@ -11304,6 +16493,7 @@
         return Promise.all(jobs);
       })
       .then(function () {
+        syncScopeSelects();
         navTo(STATE.view || "dashboard", false);
       })
       .catch(function (err) {

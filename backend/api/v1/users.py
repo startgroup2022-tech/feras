@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from backend.api.deps import CurrentUser, DbSession, require
 from backend.core.errors import NotFoundError
@@ -15,6 +15,7 @@ from backend.rbac.authorization import (
 from backend.rbac.permissions import Perm
 from backend.repositories.scoped import CompanyRepository
 from backend.schemas import (
+    AdminSetPasswordRequest,
     CompanyAccessRequest,
     CompanyCreateRequest,
     CompanyOut,
@@ -72,6 +73,37 @@ def update_user(
         user_agent=ctx["user_agent"],
     )
     return UserOut(**_user_payload(updated))
+
+
+@router.post(
+    "/users/{user_id}/password",
+    status_code=204,
+    response_class=Response,
+    tags=["users"],
+)
+def set_user_password(
+    user_id: int,
+    payload: AdminSetPasswordRequest,
+    request: Request,
+    db: DbSession,
+    actor: User = Depends(require(Perm.USER_MANAGE)),
+) -> Response:
+    """Set a temporary password for another account (owner/administrator).
+
+    Used when a user is locked out and cannot change their own password. The
+    change is audited; the actor never sees or sets the target's old password.
+    """
+    ctx = audit_service.request_context(request)
+    target = admin_service.get_user(db, user=actor, user_id=user_id)
+    auth_service.set_password(
+        db,
+        actor=actor,
+        target=target,
+        new_password=payload.new_password,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return Response(status_code=204)
 
 
 @router.post(
@@ -195,8 +227,19 @@ def create_user(
 def list_companies(user: CurrentUser, db: DbSession) -> list[CompanyOut]:
     """Companies the caller may see. Scope is applied in the query itself."""
     require_permission(user, Perm.COMPANY_READ)
-    companies = CompanyRepository(db).list_for_user(user)
-    return [CompanyOut.model_validate(c) for c in companies]
+    repo = CompanyRepository(db)
+    companies = repo.list_for_user(user)
+    managers = repo.managers_for([c.id for c in companies])
+    out = []
+    for c in companies:
+        item = CompanyOut.model_validate(c)
+        manager = managers.get(c.id)
+        if manager is not None:
+            item.manager_user_id = manager.id
+            item.manager_name_ar = manager.full_name_ar
+            item.manager_name_en = manager.full_name_en
+        out.append(item)
+    return out
 
 
 @router.get("/companies/{company_id}", response_model=CompanyOut, tags=["companies"])
@@ -232,6 +275,7 @@ def create_company(
         name_ar=payload.name_ar,
         name_en=payload.name_en,
         sector=payload.sector,
+        status=payload.status,
         contact_email=str(payload.contact_email) if payload.contact_email else None,
         legal_name_ar=payload.legal_name_ar,
         legal_name_en=payload.legal_name_en,
@@ -243,8 +287,37 @@ def create_company(
         phone=payload.phone,
         founded_on=payload.founded_on,
         tracking_start_date=payload.tracking_start_date,
+        trade_name_ar=payload.trade_name_ar,
+        trade_name_en=payload.trade_name_en,
+        activity=payload.activity,
+        capital_amount=payload.capital_amount,
+        fiscal_year_start_month=payload.fiscal_year_start_month,
+        fiscal_year_end_month=payload.fiscal_year_end_month,
+        default_language=payload.default_language,
+        template_effective_from=payload.template_effective_from,
+        access_scope=payload.access_scope,
+        localization_target_pct=payload.localization_target_pct,
+        localization_rule_version=payload.localization_rule_version,
+        localization_rule_effective_from=payload.localization_rule_effective_from,
     )
     db.add(company)
+    db.flush()  # assign company.id before linking the creator's grant
+
+    # The actor who registers a subsidiary must be able to operate on it.
+    # Holding-wide scope widens *reads* only -- a write needs an explicit
+    # user_company_access row (see ``can_write_company``) -- so without this the
+    # owner who just created a company is refused every write against it (403).
+    # Only COMPANY_MANAGE holders reach this endpoint, so the grant cannot
+    # escalate anyone beyond the permission they already hold.
+    db.add(
+        UserCompanyAccess(
+            user_id=actor.id,
+            company_id=company.id,
+            can_read=True,
+            can_write=True,
+            is_primary=False,
+        )
+    )
     db.commit()
     db.refresh(company)
 

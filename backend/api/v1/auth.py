@@ -9,7 +9,13 @@ from backend.core.config import settings
 from backend.core.errors import RateLimitError
 from backend.core.rate_limit import RateLimiter
 from backend.rbac.authorization import role_permissions
-from backend.schemas import LoginRequest, RefreshRequest, TokenResponse, UserOut
+from backend.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserOut,
+)
 from backend.schemas.governance import (
     TwoFactorConfirmOut,
     TwoFactorConfirmRequest,
@@ -112,6 +118,28 @@ def logout(request: Request, user: CurrentUser, db: DbSession) -> Response:
 def me(user: CurrentUser) -> UserOut:
     """Current identity, effective permissions and permitted company ids."""
     return UserOut(**_user_payload(user))
+
+
+@router.post("/change-password", status_code=204, response_class=Response)
+def change_password(
+    payload: ChangePasswordRequest, request: Request, user: CurrentUser, db: DbSession
+) -> Response:
+    """Change the signed-in user's own password.
+
+    Requires the current password so a leaked access token is not enough to
+    take over the account. The new password must be 8-72 bytes and differ from
+    the current one.
+    """
+    ctx = audit_service.request_context(request)
+    auth_service.change_password(
+        db,
+        user=user,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+        ip_address=ctx["ip_address"],
+        user_agent=ctx["user_agent"],
+    )
+    return Response(status_code=204)
 
 
 # ---- D11: two-factor authentication (self-service, any authenticated user) ----

@@ -14,7 +14,12 @@ from decimal import Decimal
 # Must happen before importing anything from ``backend``.
 _TMP_DIR = tempfile.mkdtemp(prefix="safir-tests-")
 os.environ["APP_ENV"] = "test"
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP_DIR}/test.db"
+# Default to a throwaway SQLite file. ``SAFIR_TEST_DATABASE_URL`` opts into a
+# real server (e.g. PostgreSQL) so the same suite can prove the queries and
+# constraints are not SQLite-specific.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "SAFIR_TEST_DATABASE_URL", f"sqlite:///{_TMP_DIR}/test.db"
+)
 os.environ["SECRET_KEY"] = "test-secret-key-not-used-in-production"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 
@@ -26,6 +31,7 @@ from backend.db.base import Base, utcnow  # noqa: E402
 from backend.db.models import (  # noqa: E402
     AIConversation,
     AIMessage,
+    AIUsageEvent,
     Account,
     AccountingPolicy,
     AdvisorAssignment,
@@ -64,6 +70,11 @@ from backend.db.models import (  # noqa: E402
     Journal,
     JournalLine,
     KpiDefinition,
+    KnowledgeCategory,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeProposal,
+    KnowledgeVersion,
     LeadAssignment,
     LeadNote,
     ManagementBrief,
@@ -218,6 +229,13 @@ def _clean_data(_database):
             DocumentCategory,
             AIMessage,
             AIConversation,
+            AIUsageEvent,
+            # Phase 3: AI knowledge base (children before parents)
+            KnowledgeProposal,
+            KnowledgeChunk,
+            KnowledgeVersion,
+            KnowledgeDocument,
+            KnowledgeCategory,
             AuditLog,
             # Execution 02: financial summary workflow (children before parents)
             FinancialSummaryItem,
@@ -435,7 +453,9 @@ def auth():
     """Return an ``Authorization`` header dict for a user."""
 
     def _auth(user: User) -> dict[str, str]:
-        return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+        return {
+            "Authorization": f"Bearer {create_access_token(user.id, user.token_version)}"
+        }
 
     return _auth
 

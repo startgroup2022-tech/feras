@@ -349,6 +349,31 @@ def test_platform_header_keeps_every_control_reachable_on_phones(client):
         assert control in html
 
 
+def test_missing_platform_asset_is_404_not_the_html_shell(client):
+    """A stray asset path must 404; only extensionless paths are SPA routes.
+
+    Regression: the ``/platform/{rest:path}`` catch-all returned the HTML shell
+    for *any* unknown path, so ``/platform/typo.js`` answered ``200
+    text/html``. A browser then tried to execute the document as a script
+    (MIME/parse error), and the miss was invisible to monitoring because it
+    looked like a successful request.
+    """
+    for path in ("/platform/typo.js", "/platform/typo.css",
+                 "/platform/missing.png"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert "text/html" not in response.headers.get("content-type", "")
+
+    # A hash route has no extension and must still hand back the shell so a
+    # deep link keeps working.
+    shell = client.get("/platform/leads")
+    assert shell.status_code == 200
+    assert "text/html" in shell.headers.get("content-type", "")
+
+    # And a real asset is still served.
+    assert client.get("/platform/app.js").status_code == 200
+
+
 # --------------------------------------------------------------------------
 # content integrity
 # --------------------------------------------------------------------------
@@ -419,6 +444,25 @@ def test_market_service_pages_differ_between_markets():
         for lang in ("en", "ar"):
             assert bh["intro"][lang] != sa["intro"][lang]
             assert bh["meta"][lang]["description"] != sa["meta"][lang]["description"]
+
+
+def test_faq_page_renders_every_answer_in_both_languages(public_client):
+    for path, lang in (("/faq", "en"), ("/ar/الأسئلة-الشائعة", "ar")):
+        html = public_client.get(path).text
+        assert 'class="faq"' in html
+        for question, _answer in C.FAQ_ITEMS[lang]:
+            assert question in html
+        # The FAQ page carries its own FAQPage structured data.
+        assert '"@type": "FAQPage"' in html
+        assert '"@type": "BreadcrumbList"' in html
+
+
+def test_faq_page_is_in_the_nav_and_sitemap(public_client):
+    html = public_client.get("/faq").text
+    assert 'href="/faq"' in html
+    sitemap = public_client.get("/sitemap.xml").text
+    assert "/faq" in sitemap
+    assert "/ar/الأسئلة-الشائعة" in sitemap
 
 
 def test_market_service_page_emits_service_and_faq_structured_data(public_client):
@@ -550,6 +594,9 @@ def test_home_uses_the_original_logo_and_hero_image(public_client):
     html = public_client.get("/").text
     assert "/website/assets/holding-logo.png" in html
     assert "/website/assets/bahrain-bay.jpg" in html
+    # The browser-tab icon is the same owner mark as the header/footer.
+    assert 'rel="icon" type="image/png" href="/website/assets/holding-logo.png"' in html
+    assert 'rel="apple-touch-icon" href="/website/assets/holding-logo.png"' in html
 
 
 def test_home_follows_the_approved_section_order(public_client):
@@ -589,7 +636,9 @@ def test_home_group_services_form_is_present_in_both_languages(public_client):
 
 def test_home_offers_the_two_group_cta_actions(public_client):
     html = public_client.get("/").text
-    assert "View All Opportunities" in html
+    # Approved package copy: home.opps.link "Explore opportunities" and
+    # cta.submitBusiness "Submit Your Business".
+    assert "Explore opportunities" in html
     assert "Submit Your Business" in html
 
 
@@ -601,8 +650,8 @@ def test_careers_page_has_a_cv_form_no_vacancies_list(public_client):
     assert 'data-multipart="1"' in en
     assert 'type="file"' in en
     assert "/api/v1/public/leads/careers" in en
-    assert "Join the Startup Safeer Team" in en
-    assert "انضم إلى فريق ستارت أب سفير" in ar
+    assert "Join the Start Upsphere Holding Team" in en
+    assert "انضم إلى فريق ستارت اب سفير القابضة" in ar
 
 
 def test_terms_and_privacy_pages_render_their_approved_sections(public_client):
@@ -676,9 +725,11 @@ def test_revision_brief_submit_cta_reaches_the_form_in_one_click(public_client):
 def test_revision_brief_opportunities_use_approved_copy(public_client):
     en = public_client.get("/opportunities").text
     ar = public_client.get("/ar/الفرص-التجارية").text
-    # Approved heading + intro (item 04).
+    # Approved heading + intro (item 04), aligned to the handoff package
+    # (nav.opportunities "Opportunities & Investment" / cta.submitBusiness
+    # "أرسل نشاطك").
     assert "Submit Your Business" in en
-    assert "اعرض مشروعك" in ar
+    assert "أرسل نشاطك" in ar
     assert "after review and approval" in en
     assert "بعد المراجعة والموافقة" in ar
     # Planning phrases are removed (item 04).
@@ -707,8 +758,8 @@ def test_revision_brief_careers_heading_is_not_duplicated_and_has_other_country(
     ar = public_client.get("/ar/الوظائف").text
     # Item 17: one clear section heading; the form gets a functional heading.
     # (The phrase also appears in <title>/JSON-LD, so count the rendered <h1>.)
-    assert en.count("Join the Startup Safeer Team</h1>") == 1
-    assert ar.count("انضم إلى فريق ستارت أب سفير</h1>") == 1
+    assert en.count("Join the Start Upsphere Holding Team</h1>") == 1
+    assert ar.count("انضم إلى فريق ستارت اب سفير القابضة</h1>") == 1
     assert "Application details" in en
     assert "بيانات التقديم" in ar
     # Item 13: an "other country" choice reveals a required country-name field.

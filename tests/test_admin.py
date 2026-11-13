@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from backend.db.models.enums import CompanyHealth
 
@@ -446,3 +447,289 @@ def test_user_update_is_audited(client, world, auth, db):
         json={"full_name_en": "Renamed"},
     )
     assert "user.updated" in [row.action for row in db.query(AuditLog).all()]
+
+
+def test_update_company_localization_setup(client, world, auth):
+    """Deck slides 105/106: the per-entity target and calculation rule are
+    administration data on the company, editable by the owner."""
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={
+            "localization_target_pct": "35.000",
+            "localization_rule_version": "SA-2026-v1",
+            "localization_rule_effective_from": "2026-01-01",
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["localization_target_pct"] == "35.000"
+    assert body["localization_rule_version"] == "SA-2026-v1"
+    assert body["localization_rule_effective_from"] == "2026-01-01"
+
+
+def test_update_company_localization_target_is_bounded(client, world, auth):
+    response = client.patch(
+        f"/api/v1/companies/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"localization_target_pct": "140"},
+    )
+    assert response.status_code == 422
+
+
+def test_create_company_persists_wizard_and_localization_fields(client, world, auth):
+    """Deck slides 50-52/105: the create endpoint must persist every field the
+    wizard sends. The localization setup was previously accepted by the schema
+    but silently dropped on create (regression guard)."""
+    response = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-1",
+            "name_ar": "شركة المعالج",
+            "sector": "Technology",
+            "currency": "SAR",
+            "activity": "أنشطة التقنية",
+            "capital_amount": "5000000.00",
+            "fiscal_year_start_month": 1,
+            "fiscal_year_end_month": 12,
+            "default_language": "ar",
+            "template_effective_from": "2027-01-01",
+            "access_scope": "single_company",
+            "localization_target_pct": "40.000",
+            "localization_rule_version": "SA-2027-v1",
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["activity"] == "أنشطة التقنية"
+    assert body["capital_amount"] == "5000000.00"
+    assert body["fiscal_year_start_month"] == 1
+    assert body["fiscal_year_end_month"] == 12
+    assert body["default_language"] == "ar"
+    assert body["template_effective_from"] == "2027-01-01"
+    assert body["access_scope"] == "single_company"
+    assert body["localization_target_pct"] == "40.000"
+    assert body["localization_rule_version"] == "SA-2027-v1"
+
+
+def test_create_company_grants_the_creator_write_access(client, db, world, auth):
+    """The owner who registers a subsidiary can immediately write against it.
+
+    Holding-wide scope widens reads only; a write needs an explicit
+    ``user_company_access`` row, so the create endpoint must grant the actor one
+    or every subsequent write on the new company is refused with 403.
+    """
+    from backend.db.models.identity import UserCompanyAccess
+    from backend.rbac.authorization import can_write_company
+
+    response = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={"code": "GRANT-1", "name_ar": "شركة المنحة", "sector": "Technology"},
+    )
+    assert response.status_code == 201, response.text
+    company_id = response.json()["id"]
+
+    db.expire_all()
+    grant = db.execute(
+        select(UserCompanyAccess).where(
+            UserCompanyAccess.user_id == world["owner"].id,
+            UserCompanyAccess.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    assert grant is not None, "the creator must be granted access to the new company"
+    assert grant.can_read and grant.can_write
+    assert can_write_company(world["owner"], company_id)
+
+
+def test_create_company_rejects_invalid_wizard_values(client, world, auth):
+    """The wizard's enumerated fields are validated, not stored blindly."""
+    month = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-2",
+            "name_ar": "شركة",
+            "sector": "Technology",
+            "fiscal_year_start_month": 13,
+        },
+    )
+    assert month.status_code == 422
+    language = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={
+            "code": "WIZ-3",
+            "name_ar": "شركة",
+            "sector": "Technology",
+            "default_language": "fr",
+        },
+    )
+    assert language.status_code == 422
+
+
+def test_structure_survives_a_company_without_an_english_name(client, world, auth):
+    """The English name is optional (S03), so a company created without one must
+    not break the group structure tree (regression: it returned 500)."""
+    created = client.post(
+        COMPANIES,
+        headers=auth(world["owner"]),
+        json={"code": "NOEN-1", "name_ar": "شركة بلا اسم إنجليزي", "sector": "Technology"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["name_en"] is None
+    response = client.get("/api/v1/admin/holding/structure", headers=auth(world["owner"]))
+    assert response.status_code == 200, response.text
+    assert any(n["code"] == "NOEN-1" for n in response.json())
+
+
+def _valuation_payload(**over):
+    base = {
+        "currency": "SAR",
+        "investment_date": "2026-02-01",
+        "original_value": "1000000.00",
+        "book_value": "1200000.00",
+        "book_value_date": "2026-06-30",
+        "book_value_source": "كشف معتمد",
+        "has_valuation": True,
+        "valuation_amount": "1500000.00",
+        "valuation_date": "2026-06-30",
+        "valuation_source": "تقييم معتمد",
+        "valuation_reference": "VAL-2026-07",
+        "decision_reference": "DEC-12",
+    }
+    base.update(over)
+    return base
+
+
+def test_owner_records_an_investment_valuation(client, world, auth):
+    """Deck slides 107-109: the accountant records the summary, the owner reads
+    it back; the book value is entered, never derived."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json=_valuation_payload(),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert float(body["book_value"]) == 1200000.00
+    assert body["has_valuation"] is True
+    assert body["decision_reference"] == "DEC-12"
+
+    read = client.get(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+    )
+    assert read.status_code == 200
+    assert float(read.json()["valuation_amount"]) == 1500000.00
+
+
+def test_valuation_no_must_not_carry_an_amount(client, world, auth):
+    """Deck slide 109: when the valuation choice is "no" the system stores no
+    zero -- an amount alongside has_valuation=false is rejected."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"has_valuation": False, "valuation_amount": "0.00"},
+    )
+    assert response.status_code == 422
+
+
+def test_valuation_yes_requires_amount_date_source_and_reference(client, world, auth):
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json={"has_valuation": True, "valuation_amount": "10.00"},
+    )
+    assert response.status_code == 422
+
+
+def test_company_manager_cannot_write_a_valuation(client, world, auth):
+    """The accountant/owner hold investment.manage; a company manager does not."""
+    response = client.patch(
+        f"/api/v1/admin/investment-valuations/{world['alpha'].id}",
+        headers=auth(world["alpha_mgr"]),
+        json=_valuation_payload(),
+    )
+    assert response.status_code == 403
+
+
+def test_valuation_read_is_confined_to_scope(client, world, auth):
+    """A company manager reading another company's summary gets 404, matching
+    the platform's "not yours == does not exist" rule."""
+    response = client.get(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["alpha_mgr"]),
+    )
+    assert response.status_code == 404
+
+
+def test_valuation_update_is_audited(client, world, auth, db):
+    from backend.db.models.ai import AuditLog
+
+    client.patch(
+        f"/api/v1/admin/investment-valuations/{world['beta'].id}",
+        headers=auth(world["owner"]),
+        json=_valuation_payload(),
+    )
+    actions = {
+        row.action for row in db.query(AuditLog).all()
+    }
+    assert "investment.valuation_updated" in actions
+
+
+# --------------------------------------------------------------------------
+# scheduled jobs: CV retention + report deadline scan
+# --------------------------------------------------------------------------
+CV_PURGE = "/api/v1/admin/retention/cv/purge"
+DEADLINE_SCAN = "/api/v1/admin/reports/scan-deadlines"
+
+
+def test_cv_purge_requires_group_manage(client, auth, make_user):
+    manager = make_user("mgr@corp.sa", "company_manager")
+
+    response = client.post(CV_PURGE, headers=auth(manager))
+
+    assert response.status_code == 403
+
+
+def test_cv_purge_reports_a_clean_run(client, auth, make_user, monkeypatch, tmp_path):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(CV_PURGE, headers=auth(owner))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["removed_count"] == 0
+    assert body["retention_months"] == 6
+    assert body["dry_run"] is False
+
+
+def test_deadline_scan_requires_group_manage(client, auth, make_user):
+    manager = make_user("mgr@corp.sa", "company_manager")
+
+    response = client.post(DEADLINE_SCAN, headers=auth(manager))
+
+    assert response.status_code == 403
+
+
+def test_deadline_scan_is_audited(client, auth, make_user, db):
+    from backend.db.models.ai import AuditLog
+
+    owner = make_user("owner@corp.sa", "holding_owner")
+
+    response = client.post(DEADLINE_SCAN, headers=auth(owner))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "period_year" in body and "late_count" in body
+    assert (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "monthly_report.deadline_scanned")
+        .count()
+        == 1
+    )

@@ -67,9 +67,20 @@ from backend.schemas.website import (
     GroupServiceSubmission,
     OpportunityInterestSubmission,
 )
+from backend.core import storage
 from backend.services import audit_service
 
 logger = logging.getLogger("safir.website")
+
+# Holding contact facts for the developer-package site contract. These are the
+# owner-approved public values (phone is the approved holding number); any
+# field left empty is hidden by the website rather than shown as a placeholder.
+HOLDING_NAME_AR = "شركة ستارت اب سفير القابضة ذ.م.م"
+HOLDING_NAME_EN = "START UPSPHERE HOLDING CO W.L.L"
+HOLDING_EMAIL = "Info@sup-edu.com"
+HOLDING_PHONE = "+973 17626990"
+HOLDING_ADDRESS = None
+HOLDING_HOURS = "الأحد – الخميس، ٩ صباحًا – ٥ مساءً"
 
 
 # --------------------------------------------------------------------------
@@ -265,6 +276,73 @@ def create_lead(
             "service_type": lead.service_type,
             "routed_team": lead.routed_team,
             "opportunity_id": opportunity.id if opportunity else None,
+        },
+    )
+    _notify_team(db, lead=lead)
+    _emit_lead_created(db, lead=lead)
+    return lead
+
+
+def create_internal_lead(
+    db: Session,
+    *,
+    payload,
+    actor: User,
+    request=None,
+) -> WebsiteLead:
+    """Record a lead the Holding captured itself (deck slide 14).
+
+    The public path and this one share every downstream rule -- routing,
+    priority, reference, notifications -- so an internal record behaves exactly
+    like a website one. Only two things differ, and both are deliberate:
+
+    * ``source`` is ``platform``, so the record never claims to be a website
+      submission.
+    * there is no honeypot/consent gate: the caller is an authenticated user
+      with ``website_lead.manage``, not an anonymous visitor.
+    """
+    require_permission(actor, Perm.LEAD_MANAGE)
+    service_type = payload.service_type.value
+    market = payload.market.value
+    team = routed_team_for(service_type, market)
+    ctx = audit_service.request_context(request) if request is not None else {}
+
+    lead = WebsiteLead(
+        reference=_new_reference(service_type),
+        source=WebsiteLeadSource.PLATFORM.value,
+        market=market,
+        service_type=service_type,
+        locale="ar",
+        full_name=payload.full_name.strip(),
+        email=str(payload.email).strip().lower(),
+        phone=(payload.phone or "").strip() or None,
+        company_name=(payload.company_name or "").strip() or None,
+        message=(payload.message or "").strip() or None,
+        consent_given=False,
+        status=LeadStatus.NEW.value,
+        priority=(payload.priority.value if payload.priority else _initial_priority(service_type)),
+        routed_team=team,
+        ip_address=ctx.get("ip_address"),
+        user_agent=(ctx.get("user_agent") or "")[:255] or None,
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    audit_service.record(
+        db,
+        action=AuditAction.WEBSITE_LEAD_CREATED,
+        actor_user_id=actor.id,
+        entity_type="website_lead",
+        entity_id=lead.id,
+        ip_address=ctx.get("ip_address"),
+        user_agent=ctx.get("user_agent"),
+        metadata={
+            "reference": lead.reference,
+            "market": lead.market,
+            "service_type": lead.service_type,
+            "routed_team": lead.routed_team,
+            "source": lead.source,
         },
     )
     _notify_team(db, lead=lead)
@@ -1067,6 +1145,46 @@ def lead_stats(db: Session, *, user: User) -> dict:
     }
 
 
+async def persist_public_uploads(
+    db: Session,
+    *,
+    lead: WebsiteLead,
+    files,
+    validator=storage.validate_upload,
+    is_public: bool = False,
+) -> None:
+    """Validate and store public attachments for a persisted lead.
+
+    Shared by every public form that carries files (business listing, careers,
+    and the developer-package site contract) so the upload discipline -- count
+    cap, content-type allow-list, opaque storage key -- cannot diverge between
+    transports. ``validator`` selects the allow-list and size cap for the
+    purpose; ``is_public`` marks photos that may be shown once a listing is
+    published. A honeypot-dropped lead has no id and stores nothing.
+    """
+    if lead.id is None:
+        return
+    for upload in files:
+        if not upload.filename:
+            continue
+        content = await upload.read()
+        extension = validator(
+            filename=upload.filename,
+            content_type=upload.content_type,
+            size=len(content),
+        )
+        key = storage.store_bytes(data=content, extension=extension)
+        add_attachment(
+            db,
+            lead=lead,
+            original_filename=upload.filename,
+            storage_key=key,
+            content_type=upload.content_type,
+            size_bytes=len(content),
+            is_public=is_public,
+        )
+
+
 def add_attachment(
     db: Session,
     *,
@@ -1093,6 +1211,7 @@ def add_attachment(
 
 __all__ = [
     "create_lead",
+    "create_internal_lead",
     "list_leads",
     "get_lead",
     "update_lead",
@@ -1102,6 +1221,7 @@ __all__ = [
     "list_public_opportunities",
     "public_opportunity_photo",
     "add_attachment",
+    "persist_public_uploads",
     "list_lead_notes",
     "add_lead_note",
     "routed_team_for",

@@ -18,7 +18,7 @@ from backend.website import content as C
 from backend.website.content import PageMeta
 
 # Brand suffix appended to every page title, per language.
-_BRAND = {"ar": "ستارت أب سفير القابضة", "en": "Start Upsphere Holding"}
+_BRAND = {"ar": "ستارت اب سفير القابضة", "en": "Start Upsphere Holding"}
 
 # Localized top-level path -> (page key, language).
 _TOP_LEVEL: dict[str, tuple[str, str]] = {}
@@ -41,8 +41,8 @@ for _market, _slug in C.all_market_service_pages():
 _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     "home": {
         "ar": {
-            "title": "ستارت أب سفير القابضة — شركة قابضة في مملكة البحرين",
-            "description": "شركة ستارت أب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من الشركات والاستثمارات في قطاعات متعددة.",
+            "title": "ستارت اب سفير القابضة — شركة قابضة في مملكة البحرين",
+            "description": "شركة ستارت اب سفير القابضة ذ.م.م، مقرها مملكة البحرين، تمتلك محفظة من الشركات والاستثمارات في قطاعات متعددة.",
         },
         "en": {
             "title": "Start Upsphere Holding — A holding company in the Kingdom of Bahrain",
@@ -51,68 +51,78 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     },
     "opportunities": {
         "ar": {
-            "title": "الفرص التجارية | ستارت أب سفير القابضة",
+            "title": "الفرص والاستثمار | ستارت اب سفير القابضة",
             "description": "استكشف مشاريع قائمة معروضة للبيع في دول الخليج، أو قدّم مشروعك للمراجعة والنشر.",
         },
         "en": {
-            "title": "Business Opportunities | Start Upsphere Holding",
+            "title": "Opportunities & Investment | Start Upsphere Holding",
             "description": "Explore existing businesses offered for sale across the Gulf, or submit your project for review and publication.",
         },
     },
     "services": {
         "ar": {
-            "title": "خدمات الأعمال | سفير القابضة",
+            "title": "خدمات الأعمال | ستارت اب سفير القابضة",
             "description": "تأسيس الشركات، دراسات الجدوى، الشراكات والاستثمار في البحرين والسعودية.",
         },
         "en": {
-            "title": "Business Services | Safir Holding",
+            "title": "Business Services | Start Upsphere Holding",
             "description": "Company formation, feasibility studies, partnerships and investment in Bahrain and Saudi Arabia.",
         },
     },
     "group": {
         "ar": {
-            "title": "شركات المجموعة | سفير القابضة",
-            "description": "شركات المجموعة والكيانات المرتبطة بسفير القابضة.",
+            "title": "شركات المجموعة | ستارت اب سفير القابضة",
+            "description": "شركات المجموعة والكيانات المرتبطة بستارت اب سفير القابضة.",
         },
         "en": {
-            "title": "Group Companies | Safir Holding",
-            "description": "The group companies and entities associated with Safir Holding.",
+            "title": "Group Companies | Start Upsphere Holding",
+            "description": "The group companies and entities associated with Start Upsphere Holding.",
         },
     },
     "about": {
         "ar": {
-            "title": "عن سفير القابضة",
-            "description": "سفير القابضة طبقة تنسيق تربط المستثمرين والشركات والفرص والخدمات في البحرين والسعودية.",
+            "title": "عن ستارت اب سفير القابضة",
+            "description": "ستارت اب سفير القابضة طبقة تنسيق تربط المستثمرين والشركات والفرص والخدمات في البحرين والسعودية.",
         },
         "en": {
-            "title": "About Safir Holding",
-            "description": "Safir Holding is an orchestration layer connecting investors, companies, opportunities and services across Bahrain and Saudi Arabia.",
+            "title": "About Start Upsphere Holding",
+            "description": "Start Upsphere Holding is an orchestration layer connecting investors, companies, opportunities and services across Bahrain and Saudi Arabia.",
         },
     },
     "contact": {
         "ar": {
-            "title": "تواصل معنا | سفير القابضة",
-            "description": "تواصل مع سفير القابضة بشأن الفرص والخدمات في البحرين والسعودية.",
+            "title": "تواصل معنا | ستارت اب سفير القابضة",
+            "description": "تواصل مع ستارت اب سفير القابضة بشأن الفرص والخدمات في البحرين والسعودية.",
         },
         "en": {
-            "title": "Contact | Safir Holding",
-            "description": "Contact Safir Holding about opportunities and services in Bahrain and Saudi Arabia.",
+            "title": "Contact | Start Upsphere Holding",
+            "description": "Contact Start Upsphere Holding about opportunities and services in Bahrain and Saudi Arabia.",
         },
     },
     "list-your-business": {
         "ar": {
-            "title": "اعرض شركتك أو مشروعك | سفير القابضة",
-            "description": "قدّم شركتك أو مشروعك للبيع أو الشراكة أو الاستثمار عبر سفير القابضة.",
+            "title": "أرسل نشاطك | ستارت اب سفير القابضة",
+            "description": "قدّم شركتك أو مشروعك للبيع أو الشراكة أو الاستثمار عبر ستارت اب سفير القابضة.",
         },
         "en": {
-            "title": "List Your Business | Safir Holding",
-            "description": "Offer your business or project for sale, partnership or investment through Safir Holding.",
+            "title": "Submit Your Business | Start Upsphere Holding",
+            "description": "Offer your business or project for sale, partnership or investment through Start Upsphere Holding.",
+        },
+    },
+    "faq": {
+        "ar": {
+            "title": "الأسئلة الشائعة | ستارت اب سفير القابضة",
+            "description": "أجوبة عن أكثر الأسئلة تكرارًا حول شركة ستارت اب سفير القابضة وشركات المجموعة والفرص والخدمات والوظائف.",
+        },
+        "en": {
+            "title": "Frequently Asked Questions | Start Upsphere Holding",
+            "description": "Answers to the questions most often asked about Start Upsphere Holding, its group companies, opportunities, services and careers.",
         },
     },
     "careers": {
         "ar": {
-            "title": "الوظائف | ستارت أب سفير القابضة",
-            "description": "انضم إلى فريق ستارت أب سفير القابضة وشركات المجموعة، وأرسل سيرتك الذاتية للنظر فيها عند توفر فرصة مناسبة.",
+            "title": "الوظائف | ستارت اب سفير القابضة",
+            "description": "انضم إلى فريق ستارت اب سفير القابضة وشركات المجموعة، وأرسل سيرتك الذاتية للنظر فيها عند توفر فرصة مناسبة.",
         },
         "en": {
             "title": "Careers | Start Upsphere Holding",
@@ -121,8 +131,8 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     },
     "terms": {
         "ar": {
-            "title": "الشروط والأحكام | ستارت أب سفير القابضة",
-            "description": "شروط استخدام موقع ستارت أب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع على الموقع.",
+            "title": "الشروط والأحكام | ستارت اب سفير القابضة",
+            "description": "شروط استخدام موقع ستارت اب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع على الموقع.",
         },
         "en": {
             "title": "Terms & Conditions | Start Upsphere Holding",
@@ -131,8 +141,8 @@ _PAGE_COPY: dict[str, dict[str, dict[str, str]]] = {
     },
     "privacy": {
         "ar": {
-            "title": "سياسة الخصوصية | ستارت أب سفير القابضة",
-            "description": "كيف تتعامل ستارت أب سفير القابضة مع البيانات المقدمة عبر النماذج على موقعها.",
+            "title": "سياسة الخصوصية | ستارت اب سفير القابضة",
+            "description": "كيف تتعامل ستارت اب سفير القابضة مع البيانات المقدمة عبر النماذج على موقعها.",
         },
         "en": {
             "title": "Privacy Policy | Start Upsphere Holding",
@@ -182,9 +192,9 @@ def resolve_route(path: str) -> PageMeta | None:
             description = content["meta"][lang]["description"]
         else:
             title = (
-                f"{service_name} في {market_name} | سفير القابضة"
+                f"{service_name} في {market_name} | ستارت اب سفير القابضة"
                 if lang == "ar"
-                else f"{service_name} in {market_name} | Safir Holding"
+                else f"{service_name} in {market_name} | Start Upsphere Holding"
             )
             description = C.MARKET_CONTENT[market]["meta"][lang]["description"]
         return PageMeta(
@@ -230,7 +240,7 @@ def not_found_meta(lang: str = "ar") -> PageMeta:
     return PageMeta(
         route="not-found",
         lang=lang,
-        title="الصفحة غير موجودة | سفير القابضة" if lang == "ar" else "Page not found | Safir Holding",
+        title="الصفحة غير موجودة | ستارت اب سفير القابضة" if lang == "ar" else "Page not found | Start Upsphere Holding",
         description="",
         canonical_path="/404",
         robots="noindex, follow",

@@ -56,6 +56,10 @@ class ReportStatus(str, enum.Enum):
     # ---- D03 additions ----
     RETURNED = "returned"  # أُعيد للتصحيح
     CANCELLED = "cancelled"  # ملغى (owner only)
+    # Developer-package parity: the terminal state after the owner approves.
+    # ``reviewed`` is the approved-but-open state; ``locked`` is final and is
+    # never editable again (business rule 1: "المقفل لا يُعدَّل").
+    LOCKED = "locked"  # مقفل
 
 
 class ReportApprovalStatus(str, enum.Enum):
@@ -84,6 +88,7 @@ class ReportLifecycleAction(str, enum.Enum):
     RETURNED = "returned"
     APPROVED = "approved"
     CANCELLED = "cancelled"
+    LOCKED = "locked"
 
 
 class FinancialReviewStatus(str, enum.Enum):
@@ -173,10 +178,16 @@ class SupportStatus(str, enum.Enum):
 
 
 class AIScope(str, enum.Enum):
-    """Two AI contexts: Holding-level and per-company."""
+    """The AI contexts a conversation may belong to.
+
+    ``HOLDING`` and ``COMPANY`` answer from the live dashboard figures;
+    ``KNOWLEDGE`` answers from the retrieved knowledge base. Keeping them
+    distinct means a conversation can never pivot between scopes.
+    """
 
     HOLDING = "holding"
     COMPANY = "company"
+    KNOWLEDGE = "knowledge"
 
 
 class AIMessageRole(str, enum.Enum):
@@ -186,6 +197,7 @@ class AIMessageRole(str, enum.Enum):
 
 
 class CompanyStatus(str, enum.Enum):
+    SETUP = "setup"
     ACTIVE = "active"
     INACTIVE = "inactive"
     ARCHIVED = "archived"
@@ -422,7 +434,11 @@ class NotificationType(str, enum.Enum):
     REPORT_RETURNED = "report.returned"
     REPORT_RESUBMITTED = "report.resubmitted"
     REPORT_APPROVED = "report.approved"
+    REPORT_LOCKED = "report.locked"
     REPORT_CANCELLED = "report.cancelled"
+    # Business rule 1: the expected-period report passed its deadline while
+    # still missing or editable. Raised by the deadline scan, not by a user.
+    REPORT_DEADLINE_MISSED = "report.deadline_missed"
     SYSTEM = "system"
 
 
@@ -773,6 +789,34 @@ class ProjectRecordType(str, enum.Enum):
     PROJECT = "project"
 
 
+class ProjectStage(str, enum.Enum):
+    """S20 / deck slide 25-26: the opportunity pipeline stage.
+
+    The deck names four stages ("مراحل الفرصة": جديدة، تقييم أولي، دراسة جدوى،
+    قرار/تنفيذ/إغلاق). The stage is a label the BD manager sets; the deck's
+    "no automatic transition" rule (spec §7) means moving a record to a project
+    is still an explicit ``record_type`` change, never derived from the stage.
+    """
+
+    NEW = "new"  # جديدة
+    INITIAL_REVIEW = "initial_review"  # تقييم أولي
+    FEASIBILITY = "feasibility"  # دراسة جدوى
+    DECISION = "decision"  # قرار / تنفيذ / إغلاق
+
+
+class PlanRequestStatus(str, enum.Enum):
+    """Deck slide 46: the manager's plan request, answered by BD by hand.
+
+    Not an approval: the AI's role ends at the summary, so the request is a
+    plain hand-off that BD either answers (``answered``) or dismisses
+    (``declined``). It never blocks the manager.
+    """
+
+    REQUESTED = "requested"
+    ANSWERED = "answered"
+    DECLINED = "declined"
+
+
 class ManagementBriefStatus(str, enum.Enum):
     """S21: the BD monthly management brief lifecycle.
 
@@ -911,5 +955,66 @@ class CurrencyChangeStatus(str, enum.Enum):
     REJECTED = "rejected"
     SCHEDULED = "scheduled"
     APPLIED = "applied"
+
+
+# --------------------------------------------------------------------------
+# AI knowledge base
+# --------------------------------------------------------------------------
+class KnowledgeSensitivity(str, enum.Enum):
+    """How widely a knowledge document may be retrieved.
+
+    Sensitivity is a retrieval gate, not a label: it is evaluated *before* any
+    chunk is scored, so a confidential document can never contribute text to an
+    answer the caller is not entitled to see. The ladder is deliberately coarse
+    so a rule can be stated in one sentence.
+    """
+
+    PUBLIC = "public"        # any authenticated user
+    COMPANY = "company"      # users with read access to the owning company
+    HOLDING = "holding"      # holding-wide roles only
+    CONFIDENTIAL = "confidential"  # owner (or an explicit delegated grant)
+
+
+class KnowledgeDocumentStatus(str, enum.Enum):
+    """Lifecycle of a knowledge document.
+
+    Only ``APPROVED`` documents are retrievable. A draft or a pending document
+    exists so a reviewer can see it, but it contributes nothing to an answer
+    until it is approved -- that is what keeps an unreviewed draft out of the
+    owner's executive assistant.
+    """
+
+    DRAFT = "draft"
+    PENDING = "pending"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class KnowledgeChunkSource(str, enum.Enum):
+    """How a retrieval hit was found, surfaced to the caller for transparency."""
+
+    SEMANTIC = "semantic"
+    FULLTEXT = "fulltext"
+    LEXICAL = "lexical"
+    HYBRID = "hybrid"
+
+
+class KnowledgeProposalStatus(str, enum.Enum):
+    """A learning proposal waits for the owner; it never self-applies."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class AIUsageOutcome(str, enum.Enum):
+    """Outcome of one metered provider call, for the usage monitor."""
+
+    SUCCESS = "success"
+    RATE_LIMITED = "rate_limited"
+    TIMEOUT = "timeout"
+    PROVIDER_ERROR = "provider_error"
+    REJECTED_PAID = "rejected_paid"
+    BLOCKED_BUDGET = "blocked_budget"
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -118,6 +120,37 @@ class Company(Base, TimestampMixin):
     founded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     tracking_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # ---- localization setup (deck slides 105/106) ----
+    # The per-entity localization target and the calculation-rule edition are
+    # administration data. Nullable: when unset the board shows غير مُعدّ and
+    # raises no below-target alert (the deck only alerts against an approved
+    # target).
+    localization_target_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(6, 3), nullable=True
+    )
+    localization_rule_version: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    localization_rule_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # ---- company setup wizard (deck slides 50-52) ----
+    # Fields the deck's three-step wizard collects that the record previously
+    # had no home for. All nullable/additive so no existing row is disturbed.
+    trade_name_ar: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    trade_name_en: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    activity: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    capital_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    # The fiscal year is stored as a start/end month pair (1..12); the deck
+    # requires a start and end month, not a full date.
+    fiscal_year_start_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fiscal_year_end_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_language: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="ar", server_default="ar"
+    )
+    # Step 3 of the wizard: the sector template's effective date and the access
+    # scope (one company / linked roles). Both are captured at activation so the
+    # chosen configuration is recorded and audited.
+    template_effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    access_scope: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
     users: Mapped[list["UserCompanyAccess"]] = relationship(
         back_populates="company", cascade="all, delete-orphan"
     )
@@ -165,6 +198,14 @@ class User(Base, TimestampMixin):
     is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # Server-side session generation. Every access and refresh token carries the
+    # value that was current when it was minted (claim ``tv``); a request whose
+    # token predates the current value is refused. Logout, password change and
+    # an admin password reset all increment this counter, which invalidates every
+    # outstanding token for the account without a per-token denylist.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
 
     role: Mapped[Role] = relationship(back_populates="users", lazy="joined")

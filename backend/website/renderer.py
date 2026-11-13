@@ -30,13 +30,21 @@ from backend.website import group_companies
 from backend.website import seo
 from backend.website.content import PageMeta
 
-BRAND_AR = "ستارت أب سفير القابضة"
+BRAND_AR = "ستارت اب سفير القابضة"
 BRAND_EN = "Start Upsphere Holding"
 
 # The original owner-supplied logo, shipped as a static asset (handoff §1,
 # assets/ASSETS.md). It is never recoloured or re-proportioned; the header
 # constrains it with ``object-fit: contain`` so no display size distorts it.
 BRAND_LOGO_URL = "/website/assets/holding-logo.png"
+
+# The same owner mark is the browser-tab icon, so the public site and the
+# platform share one identity (handoff §1: no recolour, no redraw).
+FAVICON_HTML = (
+    f'<link rel="icon" type="image/png" href="{BRAND_LOGO_URL}">'
+    f'<link rel="apple-touch-icon" href="{BRAND_LOGO_URL}">'
+    '<meta name="theme-color" content="#0A1730">'
+)
 
 # The owner-selected visual reference for the hero (handoff assets/ASSETS.md).
 # Used as a background image only; the layout must remain legible if it fails
@@ -309,6 +317,7 @@ def render_page(meta: PageMeta, body: str, branding: dict | None = None, cms=Non
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/website/assets/styles.css">
 {jsonld_html}
+{FAVICON_HTML}
 </head>
 <body class="site lang-{e(lang)}">
 <a class="skip-link" href="#main">{e(_t('تخطَّ إلى المحتوى', 'Skip to content', lang))}</a>
@@ -510,14 +519,14 @@ def _home_body(lang: str, cms_companies=None) -> str:
 
 <section class="section section-alt" id="opportunities">
   <div class="container">
-    <h2 class="section-title">{e(_t('الفرص التجارية', 'Business Opportunities', lang))}</h2>
+    <h2 class="section-title">{e(_t('الفرص والاستثمار', 'Opportunities & Investment', lang))}</h2>
     <p class="section-lead">{e(C.PAGE_TEXT['opportunities']['intro'][lang])}</p>
     <div class="opp-list" data-opportunities data-limit="3">
       <p class="state">{e(_t('جارٍ تحميل الفرص…', 'Loading opportunities…', lang))}</p>
     </div>
     <div class="opp-cta">
-      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('عرض جميع الفرص', 'View All Opportunities', lang))}</a>
-      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+      <a class="btn btn-primary" href="{e(C.PAGE_PATHS['opportunities'][lang])}">{e(_t('اكتشف الفرص', 'Explore opportunities', lang))}</a>
+      <a class="btn btn-ghost" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</a>
     </div>
   </div>
 </section>
@@ -798,7 +807,7 @@ def _form_section(
     action = f"/api/v1/public/leads/{form_key}"
     titles = {
         "group-service": _t("كيف يمكننا مساعدتك؟", "How Can We Help?", lang),
-        "careers": _t("انضم إلى فريق ستارت أب سفير", "Join the Startup Safeer Team", lang),
+        "careers": _t("انضم إلى فريق ستارت اب سفير القابضة", "Join the Start Upsphere Holding Team", lang),
     }
     title = heading or titles.get(form_key) or _t("أكمل الطلب", "Complete your request", lang)
 
@@ -1041,7 +1050,7 @@ def _opportunities_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
-    <h1>{e(_t('الفرص والمشاريع', 'Opportunities & Projects', lang))}</h1>
+    <h1>{e(_t('الفرص والاستثمار', 'Opportunities & Investment', lang))}</h1>
     <p>{e(_t('استعرض المشاريع المعروضة للبيع في دول الخليج.', 'Browse businesses offered for sale across the Gulf.', lang))}</p>
   </div>
 </section>
@@ -1055,10 +1064,10 @@ def _opportunities_body(lang: str) -> str:
 </section>
 <section class="section section-alt">
   <div class="container">
-    <h2 class="section-title">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</h2>
-    <p class="section-sub">{e(_t('أرسل بيانات مشروعك لعرضه للبيع في دول الخليج، بعد المراجعة والموافقة.',
-                                 'Send your project details to be listed for sale in the Gulf, after review and approval.', lang))}</p>
-    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('اعرض مشروعك', 'Submit Your Business', lang))}</a>
+    <h2 class="section-title">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</h2>
+    <p class="section-sub">{e(_t('شاركنا تفاصيل نشاطك أو فرصتك، وسنعرضها للبيع في دول الخليج بعد المراجعة والموافقة.',
+                                 'Send your business or opportunity details to be listed for sale in the Gulf, after review and approval.', lang))}</p>
+    <a class="btn btn-primary" href="{e(C.PAGE_PATHS['list-your-business'][lang])}">{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</a>
   </div>
 </section>"""
 
@@ -1083,9 +1092,9 @@ def _list_body(lang: str) -> str:
     return f"""
 <section class="page-hero">
   <div class="container">
-    <h1>{e(_t('اعرض شركتك أو مشروعك', 'List your business or project', lang))}</h1>
-    <p>{e(_t('مسار لجذب المستثمرين وأصحاب الشركات والوسطاء إلى القابضة.',
-             'A path bringing investors, business owners and intermediaries to the Holding.', lang))}</p>
+    <h1>{e(_t('أرسل نشاطك', 'Submit Your Business', lang))}</h1>
+    <p>{e(_t('شاركنا تفاصيل نشاطك أو فرصتك لمراجعتها، وقد نعرضها للبيع في دول الخليج.',
+             'Share your business or opportunity details for review; we may list it for sale across the Gulf.', lang))}</p>
   </div>
 </section>
 
@@ -1507,6 +1516,32 @@ def _careers_body(lang: str) -> str:
 {_form_section(lang, "careers", "gulf", None, heading=_t('بيانات التقديم', 'Application details', lang))}"""
 
 
+def _faq_body(lang: str) -> str:
+    """The standalone FAQ page: one collapsible answer per approved question."""
+    items = "".join(
+        f"""<details class="faq-item">
+  <summary>{e(question)}<span class="faq-caret" aria-hidden="true"></span></summary>
+  <p>{e(answer)}</p>
+</details>"""
+        for question, answer in C.FAQ_ITEMS[lang]
+    )
+    return f"""
+<section class="page-hero page-hero-intro">
+  <div class="container narrow">
+    <h1>{e(_t('الأسئلة الشائعة', 'Frequently asked questions', lang))}</h1>
+    <p class="section-lead">{e(_t(
+        'أجوبة عن أكثر الأسئلة تكرارًا حول القابضة وشركات المجموعة والفرص والخدمات والوظائف.',
+        'Answers to the questions most often asked about the Holding, its group companies, opportunities, services and careers.',
+        lang))}</p>
+  </div>
+</section>
+<section class="section">
+  <div class="container narrow">
+    <div class="faq">{items}</div>
+  </div>
+</section>"""
+
+
 def _legal_sections(lang: str, sections: list[dict]) -> str:
     blocks = []
     for section in sections:
@@ -1543,7 +1578,7 @@ def _privacy_body(lang: str) -> str:
         lang,
         title_ar="سياسة الخصوصية",
         title_en="Privacy Policy",
-        intro_ar="توضح هذه السياسة كيفية تعامل شركة ستارت أب سفير القابضة ذ.م.م مع البيانات الشخصية المقدمة عبر الموقع.",
+        intro_ar="توضح هذه السياسة كيفية تعامل شركة ستارت اب سفير القابضة ذ.م.م مع البيانات الشخصية المقدمة عبر الموقع.",
         intro_en="This policy explains how START UPSPHERE HOLDING CO W.L.L handles personal data submitted through this website.",
         sections=C.PRIVACY_SECTIONS,
     )
@@ -1554,7 +1589,7 @@ def _terms_body(lang: str) -> str:
         lang,
         title_ar="الشروط والأحكام",
         title_en="Terms and Conditions",
-        intro_ar="شروط استخدام موقع شركة ستارت أب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع.",
+        intro_ar="شروط استخدام موقع شركة ستارت اب سفير القابضة، وطلبات الخدمات والتوظيف، وعرض المشاريع.",
         intro_en="The terms of use for the START UPSPHERE HOLDING website, covering service and career requests and the listing of businesses.",
         sections=C.TERMS_SECTIONS,
     )
@@ -1582,6 +1617,7 @@ def maintenance_page(lang: str, message: str | None = None) -> str:
 <meta name="robots" content="noindex, nofollow">
 <title>{e(title)} — {e(_brand(lang))}</title>
 <link rel="stylesheet" href="/website/assets/styles.css">
+{FAVICON_HTML}
 </head>
 <body class="site lang-{e(lang)}">
 <main id="main" tabindex="-1">
@@ -1710,6 +1746,8 @@ def _body_for(meta: PageMeta, cms=None) -> str:
         body = _about_body(lang)
     elif route == "careers":
         body = _careers_body(lang)
+    elif route == "faq":
+        body = _faq_body(lang)
     elif route == "terms":
         body = _terms_body(lang)
     elif route == "privacy":

@@ -1,0 +1,20 @@
+# Safir Holding 2027 — daily trigger for the scheduled jobs.
+#
+#   sudo install -m 644 deploy/systemd/safir-jobs.timer /etc/systemd/system/
+#   sudo systemctl enable --now safir-jobs.timer
+#
+# Once a day is enough: the report deadline scan is per-period idempotent and
+# the CV purge only needs to keep up with the calendar, not the second.
+
+[Unit]
+Description=Run the Safir scheduled jobs daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# If the host was down at 02:30, run shortly after it comes back.
+Persistent=true
+RandomizedDelaySec=15m
+Unit=safir-jobs.service
+
+[Install]
+WantedBy=timers.target

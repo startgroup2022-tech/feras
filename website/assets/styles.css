@@ -12,31 +12,32 @@
    ========================================================================== */
 
 :root {
-  /* brand */
-  --navy: #0A1730;
-  --navy-800: #0D1E3D;
-  --navy-700: #12224A;
-  --navy-600: #1B2F5E;
-  --gold: #C8A24A;
-  --gold-strong: #B08A33;
-  --gold-soft: #DCBE72;
-  --gold-tint: rgba(200, 162, 74, .12);
-  --gold-line: rgba(200, 162, 74, .34);
+  /* brand — teal ramp per the developer package design tokens
+     (01-platform/design/tokens.css, 02-website/design/tokens.css) */
+  --navy: #0B2F36;
+  --navy-800: #0F3F48;
+  --navy-700: #12505B;
+  --navy-600: #155F6C;
+  --gold: #BC8840;
+  --gold-strong: #8A6320;
+  --gold-soft: #CFA062;
+  --gold-tint: rgba(188, 136, 64, .12);
+  --gold-line: rgba(188, 136, 64, .34);
 
   /* neutrals */
   --paper: #FFFFFF;
-  --mist: #F5F6F8;
-  --mist-2: #EDEFF3;
-  --line: #E1E4EA;
-  --line-strong: #D2D7E0;
-  --ink: #0F1B33;
-  --ink-2: #3C4761;
-  --muted: #6B7488;
+  --mist: #F4F7F9;
+  --mist-2: #EAF0F3;
+  --line: #DBE4E9;
+  --line-strong: #CBD8DE;
+  --ink: #152B3A;
+  --ink-2: #2B4250;
+  --muted: #607382;
 
   /* semantic */
-  --ok: #1E8E5A;
-  --warn: #B7791F;
-  --danger: #B23B3B;
+  --ok: #24764A;
+  --warn: #BC8840;
+  --danger: #A54343;
 
   /* shape & elevation */
   --radius-sm: 10px;
@@ -73,7 +74,7 @@ body.site {
   margin: 0;
   font-family: var(--font);
   font-size: 16px;
-  line-height: 1.7;
+  line-height: 1.6;
   color: var(--ink);
   background: var(--paper);
   -webkit-font-smoothing: antialiased;

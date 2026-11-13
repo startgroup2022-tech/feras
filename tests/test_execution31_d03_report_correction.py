@@ -392,6 +392,118 @@ def test_report_detail_embeds_lifecycle_and_versions(client, d03_world, auth):
 
 
 # --------------------------------------------------------------------------
+# owner locking: the terminal, immutable state (developer-package rule 1)
+# --------------------------------------------------------------------------
+def _approve(client, world, auth):
+    return client.post(
+        f"/api/v1/monthly-reports/{world['alpha_report'].id}/approve",
+        headers=auth(world["owner"]),
+    )
+
+
+def test_owner_locks_an_approved_report(client, d03_world, auth, db):
+    assert _approve(client, d03_world, auth).status_code == 200
+    response = client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == ReportStatus.LOCKED.value
+    assert body["locked_at"] is not None
+    assert body["lifecycle"][-1]["action"] == "locked"
+
+    from backend.db.models.report import MonthlyReport
+
+    db.expire_all()
+    stored = db.get(MonthlyReport, d03_world["alpha_report"].id)
+    assert stored.status == ReportStatus.LOCKED.value
+    assert stored.locked_by_id == d03_world["owner"].id
+    assert stored.locked_at is not None
+
+
+def test_cannot_lock_a_report_that_is_not_approved(client, d03_world, auth):
+    """A merely submitted report has no owner approval yet, so it cannot lock."""
+    response = client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    assert response.status_code == 409
+
+
+def test_bd_cannot_lock_a_report(client, d03_world, auth):
+    assert _approve(client, d03_world, auth).status_code == 200
+    response = client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["bd"]),
+    )
+    assert response.status_code == 403
+
+
+def test_locked_report_cannot_be_edited(client, d03_world, auth):
+    assert _approve(client, d03_world, auth).status_code == 200
+    client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    response = client.patch(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}",
+        headers=auth(d03_world["alpha_mgr"]),
+        json={"revenue": "1"},
+    )
+    assert response.status_code == 409
+
+
+def test_locked_report_cannot_be_cancelled(client, d03_world, auth):
+    assert _approve(client, d03_world, auth).status_code == 200
+    client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    response = client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/cancel",
+        headers=auth(d03_world["owner"]),
+        json={"reason": "محاولة إلغاء بعد القفل"},
+    )
+    assert response.status_code == 409
+
+
+def test_locked_report_is_counted_as_filed(client, d03_world, auth, db):
+    """A locked report is a filed report: the company is not 'missing' one."""
+    assert _approve(client, d03_world, auth).status_code == 200
+    client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    from backend.repositories.scoped import MonthlyReportRepository
+
+    missing = MonthlyReportRepository(db).companies_missing_report(
+        d03_world["owner"], 2027, d03_world["alpha_report"].period_month
+    )
+    assert d03_world["alpha"].id not in {c.id for c in missing}
+
+
+def test_locked_action_is_audited(client, d03_world, auth, db):
+    assert _approve(client, d03_world, auth).status_code == 200
+    client.post(
+        f"/api/v1/monthly-reports/{d03_world['alpha_report'].id}/lock",
+        headers=auth(d03_world["owner"]),
+    )
+    from backend.db.models.ai import AuditLog
+
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == AuditAction.REPORT_LOCKED)
+        .all()
+    )
+    assert any(
+        log.entity_type == "monthly_report"
+        and str(log.entity_id) == str(d03_world["alpha_report"].id)
+        for log in logs
+    )
+
+
+# --------------------------------------------------------------------------
 # frontend contract (vanilla JS, asserted statically like the other views)
 # --------------------------------------------------------------------------
 def test_frontend_exposes_the_d03_workflow():
@@ -400,12 +512,13 @@ def test_frontend_exposes_the_d03_workflow():
     root = Path(__file__).resolve().parent.parent
     app_js = (root / "frontend" / "app.js").read_text(encoding="utf-8")
 
-    # The four transition calls the workflow needs (versions/lifecycle are
+    # The five transition calls the workflow needs (versions/lifecycle are
     # embedded in the report detail, so they are read, not fetched separately).
     for endpoint in (
         "/return",
         "/correction",
         "/approve",
+        "/lock",
         "/cancel",
     ):
         assert '"/api/v1/monthly-reports/" + id + "' + endpoint in app_js, (
@@ -415,6 +528,7 @@ def test_frontend_exposes_the_d03_workflow():
         "returnReportForm",
         "correctReportForm",
         "approveReport",
+        "lockReport",
         "cancelReportForm",
         "reportVersionsBlock",
         "reportLifecycleBlock",

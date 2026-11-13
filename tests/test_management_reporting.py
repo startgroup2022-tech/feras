@@ -363,3 +363,79 @@ def test_urgent_brief_reaches_the_owner_before_month_end(client, mgmt_world, aut
         "/api/v1/notifications", headers=auth(mgmt_world["alpha_mgr"])
     ).json()
     assert all("عاجل" not in n["title_ar"] for n in mgr_inbox["items"])
+
+
+# --------------------------------------------------------------------------
+# deck slide 46: the manager's smart-brief plan request
+# --------------------------------------------------------------------------
+def _approve_alpha_report(client, mgmt_world, auth):
+    resp = client.post(
+        f"/api/v1/monthly-reports/{mgmt_world['alpha_report'].id}/approve",
+        json={},
+        headers=auth(mgmt_world["owner"]),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["approval_status"] == "approved"
+
+
+def test_plan_request_requires_an_approved_report(client, mgmt_world, auth):
+    """The brief only appears after approval, so the request is refused before it."""
+    refused = client.post(
+        "/api/v1/operations/plan-requests",
+        json={"period_year": 2027, "period_month": 10},
+        headers=auth(mgmt_world["alpha_mgr"]),
+    )
+    assert refused.status_code in (400, 409, 422), refused.text
+
+
+def test_manager_requests_a_plan_after_approval(client, mgmt_world, auth, db):
+    from backend.db.models import PlanRequest
+
+    _approve_alpha_report(client, mgmt_world, auth)
+
+    created = client.post(
+        "/api/v1/operations/plan-requests",
+        json={"period_year": 2027, "period_month": 10},
+        headers=auth(mgmt_world["alpha_mgr"]),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["status"] == "requested"
+    assert body["company_id"] == mgmt_world["alpha"].id
+    # The summary/advice are rebuilt server-side from the approved report, so a
+    # client cannot fabricate the figures BD is asked to plan against.
+    assert body["summary"]
+    assert body["advice"]
+
+    # Asking again returns the same open request rather than a duplicate.
+    again = client.post(
+        "/api/v1/operations/plan-requests",
+        json={"period_year": 2027, "period_month": 10},
+        headers=auth(mgmt_world["alpha_mgr"]),
+    )
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] == body["id"]
+    assert db.query(PlanRequest).count() == 1
+
+    # Business Development -- the deck's intended owner of the hand-off -- sees
+    # it, and the request notified BD.
+    bd_inbox = client.get(
+        "/api/v1/notifications", headers=auth(mgmt_world["bd"])
+    ).json()
+    assert any("خطة" in n["title_ar"] for n in bd_inbox["items"]), bd_inbox["items"]
+
+
+def test_plan_request_is_refused_for_another_company(client, mgmt_world, auth):
+    """The manager is scoped to alpha; a request naming beta is refused."""
+    refused = client.post(
+        "/api/v1/operations/plan-requests",
+        json={"period_year": 2027, "period_month": 10, "company_id": mgmt_world["beta"].id},
+        headers=auth(mgmt_world["alpha_mgr"]),
+    )
+    assert refused.status_code in (403, 404), refused.text
+
+
+def test_marketer_cannot_read_plan_requests(client, mgmt_world, auth, make_user):
+    marketer = make_user("mkt.plans@corp.sa", "marketing", [mgmt_world["alpha"]])
+    refused = client.get("/api/v1/operations/plan-requests", headers=auth(marketer))
+    assert refused.status_code == 403, refused.text

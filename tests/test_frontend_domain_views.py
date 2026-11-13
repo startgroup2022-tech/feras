@@ -30,9 +30,32 @@ NEW_VIEWS = [
     "employees",
     "operations",
     "decisions",
-    "projects",
+    "opportunities",
     "accounting",
     "confidential",
+    "advisory",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+]
+
+# The prototype's thirteen rail sections, in order: twelve under the main list
+# plus the owner-only group section. These carry a sidebar nav item.
+RAIL_VIEWS = [
+    "dashboard",
+    "leads",
+    "requests",
+    "advisory",
+    "opportunities",
+    "decisions",
+    "reports",
+    "employees",
+    "hr",
+    "assets",
+    "site",
+    "aiReview",
+    "group",
 ]
 
 NEW_ENDPOINTS = [
@@ -82,7 +105,9 @@ def test_every_new_view_section_is_gated():
 
 
 def test_every_new_nav_item_is_gated():
-    for view in NEW_VIEWS:
+    # Rail views carry a gated nav item; legacy views are reached by deep link
+    # only, so they are checked at the section level instead.
+    for view in RAIL_VIEWS:
         item = re.search(
             r'class="nav-item[^"]*"[^>]*data-view="' + view + r'"[^>]*>', INDEX
         )
@@ -135,6 +160,10 @@ def test_platform_header_renders_the_admin_logo():
     assert "/api/v1/public/branding" in APP_JS
     # It must be wired into the post-login boot so it appears on first paint.
     assert "applyPlatformLogo();" in APP_JS
+    # The browser-tab icon is the same owner mark, not a redrawn SVG glyph.
+    assert 'rel="icon" type="image/png" href="/website/assets/holding-logo.png"' in INDEX
+    assert 'rel="apple-touch-icon" href="/website/assets/holding-logo.png"' in INDEX
+    assert "data:image/svg+xml" not in INDEX
 
 
 def test_platform_nav_is_responsive_and_never_clipped():
@@ -187,14 +216,9 @@ def test_confidential_grant_requires_an_expiry():
 
 def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
     # `GET /ai/insights` is gated by `dashboard.*`, so the Business Intelligence
-    # nav/section must use the same gate. Gating on `ai.*` let a custom role
-    # with AI-only access see the view and then receive a 403.
-    bi_nav = re.search(
-        r'class="nav-item[^"]*"[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
-    )
-    assert bi_nav, "BI nav item not found"
-    assert set(bi_nav.group(1).split()) == {"dashboard.holding", "dashboard.company"}
-
+    # section must use the same gate. Gating on `ai.*` let a custom role
+    # with AI-only access see the view and then receive a 403. BI is a legacy
+    # view (not in the prototype rail), reached by deep link.
     bi_section = re.search(
         r'<section[^>]*data-view="bi"[^>]*data-perm="([^"]+)"', INDEX
     )
@@ -207,6 +231,32 @@ def test_bi_view_gate_matches_the_permission_its_endpoint_enforces():
         "dashboard.holding",
         "dashboard.company",
     }
+
+
+def test_ai_review_gate_matches_the_permission_its_endpoints_enforce():
+    # `GET /ai/knowledge/proposals` is gated by `ai.knowledge.manage`, but the
+    # Assistant Learning *view* is reachable by any read-only role that holds
+    # `ai.knowledge.read` (e.g. a company manager). Opening the view must not
+    # fire the manage-only proposals request, or the role gets a 403 on a screen
+    # it is allowed to open. The proposals tab is therefore gated on
+    # approve/manage, and the renderer falls back to the knowledge base.
+    section = re.search(
+        r'<section[^>]*data-view="aiReview"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert section, "aiReview section not found"
+    assert "ai.knowledge.read" in section.group(1).split()
+
+    tab = re.search(
+        r'<button[^>]*data-airev-tab="proposals"[^>]*data-perm="([^"]+)"', INDEX
+    )
+    assert tab, "proposals tab not found"
+    assert "ai.knowledge.read" not in tab.group(1).split()
+    assert {"ai.knowledge.approve", "ai.knowledge.manage"} & set(tab.group(1).split())
+
+    # The renderer must only call the manage-only endpoint when the role can
+    # manage; a read-only viewer opens on the documents tab.
+    assert 'canManage ? softGet("/api/v1/ai/knowledge/proposals")' in APP_JS
+    assert 'has("ai.knowledge.manage")' in APP_JS
 
 
 # --------------------------------------------------------------------------
@@ -345,7 +395,7 @@ def test_document_title_follows_the_active_language_and_view():
     # switch and kept in sync with the view, including an English brand.
     assert "function applyDocTitle" in APP_JS
     assert "VIEW_TITLES" in APP_JS
-    assert "Safir Holding 2027" in APP_JS  # English brand present
+    assert "Start Upsphere Holding 2027" in APP_JS  # English brand present
     assert re.search(r"applyI18n\(\);\s*\n\s*applyDocTitle\(\);", APP_JS)
     assert re.search(r"applyDocTitle\(\);\s*\n\s*var board", APP_JS)
 
@@ -393,6 +443,22 @@ def test_s01_indicator_drilldown_is_wired():
         "open_support_requests",
     ):
         assert 'data-drill="' + kpi + '"' in INDEX, kpi
+
+
+def test_role_dashboard_strip_is_wired():
+    # Deck slides 7-11: each primary role gets its own KPI strip, not the
+    # holding one. The markup carries the container and the bridge renders it
+    # from the live role_summary payload.
+    assert 'id="roleKpis"' in INDEX
+    assert 'id="holdingKpis"' in INDEX
+    # The role's own heading/greeting replaces the holding one (deck slides 7-11).
+    assert 'id="pageTitle"' in INDEX
+    assert 'id="pageSub"' in INDEX
+    assert "function hydrateRoleSummary(" in APP_JS
+    assert "hydrateRoleSummary(data)" in APP_JS  # called from loadDashboard
+    assert "role_summary" in APP_JS
+    assert 'byId("pageTitle")' in APP_JS
+    assert "summary.title_ar" in APP_JS
 
 
 def test_d01_accounting_policies_tab_is_wired():
@@ -486,3 +552,630 @@ def test_s23_owner_secret_note_is_wired_to_the_owner_note_endpoint():
     assert 'post("/api/v1/employees/assessments/" + a.id + "/owner-note"' in APP_JS
     # The panel is gated on the confidential owner and a leadership assessment.
     assert 'a.assessment_type === "leadership" && isConfidentialOwner()' in APP_JS
+
+
+# --------------------------------------------------------------------------
+# Executive UX redesign: sidebar shell, simplified nav, attention panel,
+# Feedback view.
+# --------------------------------------------------------------------------
+
+
+def test_executive_shell_uses_a_sidebar_with_the_content_area():
+    # The brief asks for a dark navy sidebar beside a white content area. The
+    # shell must carry the sidebar and keep the board as the content region.
+    assert 'class="stage-body with-sidebar"' in INDEX
+    assert 'class="sidebar"' in INDEX
+    assert '<nav class="sb-nav" id="mainNav">' in INDEX
+    assert 'id="board"' in INDEX
+
+
+def test_sidebar_shows_the_thirteen_prototype_sections():
+    # The rail mirrors the approved prototype literally: twelve sections under
+    # "القائمة الرئيسية" plus "إدارة المجموعة" under "إدارة المالك", in the
+    # prototype's order. Legacy views stay reachable by deep link but are not in
+    # the rail.
+    primary = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S)
+    assert primary, "sidebar primary nav not found"
+    for view in ("dashboard", "leads", "requests", "advisory", "opportunities",
+                 "decisions", "reports", "employees", "hr", "assets", "site",
+                 "aiReview"):
+        assert f'data-view="{view}"' in primary.group(1), f"{view} is not a primary section"
+    owner = re.search(r'<nav class="sb-nav" id="ownerNav">(.*?)</nav>', INDEX, re.S)
+    assert owner, "owner nav not found"
+    assert 'data-view="group"' in owner.group(1)
+    # The rail carries exactly the thirteen prototype sections.
+    rail = re.findall(r'class="nav-item[^"]*"[^>]*data-view="([^"]+)"', primary.group(1) + owner.group(1))
+    assert rail == ["dashboard", "leads", "requests", "advisory", "opportunities",
+                    "decisions", "reports", "employees", "hr", "assets", "site",
+                    "aiReview", "group"]
+
+
+def test_every_sidebar_nav_item_keeps_its_permission_gate():
+    # Restructuring the nav must never drop a data-perm token: that token is
+    # what hides an unusable section from the client.
+    sidebar = re.search(r'<aside class="sidebar".*?</aside>', INDEX, re.S)
+    assert sidebar, "sidebar not found"
+    items = re.findall(r'<div class="nav-item[^"]*"[^>]*data-view="([^"]+)"[^>]*>', sidebar.group(0))
+    # Every rail item is a known view.
+    views = set(re.findall(r'"([A-Za-z]+)"', re.search(r"var VIEWS = \[(.*?)\];", APP_JS, re.S).group(1)))
+    assert set(items).issubset(views)
+    assert len(items) == 13
+    for item in re.finditer(r'<div class="nav-item[^"]*"[^>]*>', sidebar.group(0)):
+        assert "data-perm=" in item.group(0), f"ungated nav item: {item.group(0)[:80]}"
+
+
+def test_sidebar_rail_matches_the_prototype_labels():
+    # The rail mirrors the prototype's thirteen sections. Each label is
+    # bilingual (Arabic + English) so the language switch reaches the rail too;
+    # the Arabic text is the prototype's own wording, in its order.
+    rail = re.search(r'<nav class="sb-nav" id="mainNav">(.*?)</nav>', INDEX, re.S).group(1)
+    labels = re.findall(
+        r'<span class="sb-txt"><span class="ar">([^<]+)</span><span class="en">[^<]+</span></span>',
+        rail,
+    )
+    assert labels == [
+        "لوحة القيادة", "العملاء المحتملون", "الطلبات", "التوصيات والاستشارات",
+        "الفرص الاستثمارية", "القرارات", "التقارير الشهرية", "ملفات الموظفين",
+        "الموارد البشرية", "أصول القابضة", "إدارة الموقع", "تعلّم المساعد",
+    ]
+
+
+def test_attention_panel_uses_the_brief_title_and_direct_actions():
+    # Brief §4: a prominent "ماذا يحتاج اهتمامك اليوم؟" with a direct action on
+    # every row. The panel must be a real, hydrated section, not a static card.
+    assert 'class="attention' in INDEX
+    assert "ماذا يحتاج اهتمامك اليوم؟" in INDEX
+    assert 'id="attnCount"' in INDEX
+    assert "attn-card" in APP_JS
+    assert "attn-act" in APP_JS
+    # Each priority kind resolves to a concrete destination.
+    assert "PRIORITY_ACTION" in APP_JS
+    assert "function priorityAction(" in APP_JS
+
+
+def test_feedback_view_is_gated_rendered_and_wired():
+    # Brief §8. The view aggregates existing feedback channels; it must exist as
+    # a gated section, have a renderer, be dispatched by loadView, and be listed
+    # in VIEWS/NAV_PERM.
+    section = re.search(r'<section[^>]*data-view="feedback"[^>]*>', INDEX)
+    assert section, "feedback section missing"
+    assert 'data-perm="' in section.group(0)
+    assert "function renderFeedbackView(" in APP_JS
+    assert 'view === "feedback"' in APP_JS
+    assert '"feedback"' in APP_JS
+    # It reads only endpoints that already exist, each behind its own read perm.
+    for endpoint in (
+        "/api/v1/operations/weekly-reports",
+        "/api/v1/operations/management-briefs",
+        "/api/v1/monthly-reports",
+    ):
+        assert endpoint in APP_JS, f"feedback never reads {endpoint}"
+    assert "FB_SOURCES" in APP_JS
+    assert 'id="feedbackList"' in INDEX
+
+
+def test_feedback_view_gate_matches_the_permissions_its_endpoints_enforce():
+    # The view calls weekly-report, management-brief and monthly-report reads;
+    # its gate must be exactly those read permissions, or a role could see the
+    # section and then get a 403 from one of the calls. Feedback is a legacy view
+    # (not in the prototype rail) reached by deep link, so the gate lives on the
+    # section and in NAV_PERM.
+    expected = {
+        "weekly_report.read_own", "weekly_report.read_all",
+        "management_brief.read",
+        "monthly_report.read_own", "monthly_report.read_all",
+    }
+    nav_perm = re.search(r'feedback: \[(.*?)\]', APP_JS, re.S)
+    assert nav_perm, "NAV_PERM.feedback not found"
+    assert set(re.findall(r'"([^"]+)"', nav_perm.group(1))) == expected
+    section = re.search(r'<section[^>]*data-view="feedback"[^>]*data-perm="([^"]+)"', INDEX)
+    assert section, "feedback section missing"
+    assert set(section.group(1).split()) == expected
+
+
+def test_feedback_renderer_escapes_server_strings():
+    # The list mixes server text (summaries, company names) into innerHTML; it
+    # must be escaped like every other live renderer.
+    body = re.search(r"function fbRowHtml\(r\) \{(.*?)\n  \}", APP_JS, re.S)
+    assert body, "fbRowHtml not found"
+    assert "escapeHtml(r.title" in body.group(1)
+    assert "escapeHtml(r.sub" in body.group(1)
+
+
+def test_sidebar_sits_on_the_right_in_rtl():
+    # The brief puts the rail on the right. RTL flows right-to-left, so the
+    # rail needs the lowest order to land there; LTR then mirrors it left.
+    rule = re.search(r"\.sidebar\{(.*?)\}", CSS, re.S)
+    assert rule, ".sidebar rule not found"
+    assert "order:-1" in rule.group(1)
+    body = re.search(r"\.stage-body\.with-sidebar\{(.*?)\}", CSS, re.S)
+    assert body and "flex-direction:row" in body.group(1)
+
+
+def test_sidebar_collapses_to_a_drawer_on_narrow_screens():
+    # Deck slides 39/89/90 put the rail behind a ☰ button on a phone: the
+    # sidebar slides in as an off-canvas drawer over a scrim rather than
+    # wrapping into a horizontal bar (which would claim a row per item).
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?\.sidebar\{[^}]*position:fixed",
+        CSS, re.S,
+    ), "sidebar must become a fixed drawer on narrow screens"
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?body\.nav-open \.sidebar\{transform:translateX\(0\);\}",
+        CSS, re.S,
+    ), "the drawer must open when body.nav-open is set"
+    assert re.search(
+        r"@media \(max-width:1180px\)\{[^@]*?\.stage-body\.with-sidebar\{flex-direction:column;\}",
+        CSS, re.S,
+    ), "sidebar must stack above the content on narrow screens"
+    assert re.search(r"<button[^>]*id=\"navToggle\"", INDEX), "header needs the ☰ toggle"
+    assert "bindNavDrawer" in APP_JS, "app.js must wire the drawer toggle"
+
+
+def test_header_no_longer_carries_the_full_top_nav():
+    # The 20-item top nav was the core "complicated ERP" problem; it moved into
+    # the sidebar. The header keeps a breadcrumb instead.
+    header = re.search(r"<header class=\"header\".*?</header>", INDEX, re.S)
+    assert header, "header not found"
+    assert 'class="nav"' not in header.group(0)
+    assert 'id="crumb"' in header.group(0)
+
+
+
+# --- Phase 3 functional audit regressions ---------------------------------
+#
+# An all-role crawl of the 21 views found two panels that fetched an endpoint
+# the caller's role could not read, so a legitimate 403 rendered as an empty
+# section. Both are now gated on the permission the endpoint enforces.
+
+
+def _fn_body(name: str) -> str:
+    """Return the source of a top-level ``function name(...)`` in app.js."""
+    start = APP_JS.index("function " + name + "(")
+    nxt = APP_JS.find("\n  function ", start + 1)
+    return APP_JS[start : nxt if nxt != -1 else len(APP_JS)]
+
+
+def test_company_finance_panel_gates_the_report_archive_on_its_permission():
+    # marketing holds `dashboard.holding` (group summary) but not
+    # `financial_report.read` (report archive); the archive call must be gated.
+    body = _fn_body("renderCompanyFinanceComparison")
+    assert 'has("financial_report.read")' in body
+    assert "softGet(\"/api/v1/accounting/financial-reports\")" in body
+    # The unguarded fetch must be gone: every occurrence sits inside the gate.
+    assert body.count("/api/v1/accounting/financial-reports") == 1
+
+
+def test_tasks_registry_gates_the_task_fetch_on_task_read():
+    # business_development reaches this tab through `support_request.read_all`
+    # but has no `task.read_*`, so the task call must be gated.
+    body = _fn_body("renderTasksRegistry")
+    assert 'has("task.read_own") || has("task.read_all")' in body
+    assert 'softGet("/api/v1/operations/tasks")' in body
+
+
+def test_optional_panel_fetches_do_not_swallow_server_errors():
+    # 52 call sites used to be `get(...).catch(function () { return []; })`,
+    # which turned a 500 or a network drop into "no data". softGet must
+    # re-surface anything that is not an expected 401/403/404.
+    assert "function softGet(" in APP_JS
+    body = _fn_body("softGet")
+    assert "toast(errText(err), \"err\")" in body
+    for expected in ("401", "403", "404"):
+        assert expected in body
+    assert APP_JS.count(".catch(function () { return []; })") == 0
+
+
+def test_every_export_stamps_the_period_entity_and_state():
+    # Deck slides 130-132: "كل مخرج يحمل: الفترة والجهة والعملة وحالة البيانات
+    # وآخر تحديث ومسودة/معتمد ورقم النسخة." The CSV preamble carries the period,
+    # the entity, the state and the generation time.
+    assert "function exportMeta(" in APP_JS
+    meta = _fn_body("exportMeta")
+    for token in ("الفترة", "الجهة", "آخر تحديث", "الحالة"):
+        assert token in meta, f"export preamble must carry {token}"
+    body = _fn_body("exportListCsv")
+    assert "exportMeta(key)" in body, "the CSV must be stamped with its metadata"
+
+
+def test_employee_report_control_is_gated_and_wired():
+    # Deck slide 101 names [تقرير الموظفين] beside [موظف جديد] and [فتح الملف].
+    assert 'id="empReport"' in APP_JS
+    body = _fn_body("renderEmployees")
+    assert 'has("employee.read")' in body, "the report is gated on employee.read"
+    assert 'exportListCsv("employees", list)' in body
+
+
+def test_every_role_that_can_open_a_view_can_read_its_primary_endpoint():
+    # Guard against the class of bug fixed above: if a view's navigation gate
+    # admits a role that cannot read the endpoint the panel fetches, the fetch
+    # must be gated behind the permission the endpoint enforces.
+    from backend.rbac.permissions import ROLE_PERMISSIONS
+
+    # section -> (nav gate, renderer, endpoint, endpoint permission)
+    sections = {
+        "subsidiary_finance": (
+            ["financial_summary.read_own", "financial_summary.read_all", "dashboard.holding"],
+            "renderCompanyFinanceComparison",
+            "/api/v1/accounting/financial-reports",
+            "financial_report.read",
+        ),
+        "tasks_requests": (
+            [
+                "task.read_own",
+                "task.read_all",
+                "support_request.read_own",
+                "support_request.read_all",
+            ],
+            "renderTasksRegistry",
+            "/api/v1/operations/tasks",
+            "task.read_own",
+        ),
+        "knowledge_admin": (
+            ["ai.knowledge.read", "ai.admin"],
+            "renderAdminKnowledge",
+            "/api/v1/ai/knowledge/proposals",
+            "ai.knowledge.manage",
+        ),
+    }
+    for role, perms in ROLE_PERMISSIONS.items():
+        for section, (gate, renderer, endpoint, perm) in sections.items():
+            if not any(p in perms for p in gate):
+                continue  # role cannot open the section at all
+            if perm in perms:
+                continue  # role may read the endpoint directly
+            # Otherwise the renderer must not fetch it unconditionally.
+            body = _fn_body(renderer)
+            guard = 'has("%s")' % perm
+            assert guard in body, (
+                f"{role} can open {section} but lacks {perm}; {renderer} "
+                f"fetches {endpoint} unguarded and would 403"
+            )
+
+
+def test_phase3_knowledge_base_admin_tab_is_gated_and_wired():
+    """Phase 3: the RAG knowledge base has a real admin surface.
+
+    The tab is reachable only with a knowledge/admin permission, its renderer
+    calls the real knowledge endpoints (not a stub), and the provider/usage
+    monitor is fetched only by an ``ai.admin`` holder.
+    """
+    tab = re.search(r'data-admin-tab="knowledge"[^>]*data-perm="([^"]+)"', INDEX)
+    assert tab, "knowledge admin tab not found"
+    for token in tab.group(1).split():
+        assert token in ALL_PERMISSIONS, f"unknown permission on knowledge tab: {token}"
+    assert '"knowledge"' in APP_JS
+    assert 'knowledge: ["ai.knowledge.read", "ai.admin"]' in APP_JS
+    body = _fn_body("renderAdminKnowledge")
+    assert "/api/v1/ai/knowledge/documents" in body
+    assert "/api/v1/ai/knowledge/proposals" in body
+    assert 'has("ai.admin")' in body
+    assert 'has("ai.knowledge.write")' in body
+
+
+def test_phase3_knowledge_assistant_is_wired_to_its_scope():
+    """The knowledge assistant posts to the dedicated /ai/knowledge scope.
+
+    It is a separate surface from the figures assistant, its answer and sources
+    are escaped, and the box is gated on ``ai.knowledge.ask``.
+    """
+    assert 'id="kbAsk"' in INDEX
+    assert 'data-perm="ai.knowledge.ask"' in INDEX
+    assert "function askKnowledge(" in APP_JS
+    assert 'post("/api/v1/ai/knowledge", { question: question })' in APP_JS
+    body = _fn_body("askKnowledge")
+    assert "escapeHtml(data.answer" in body
+    assert "escapeHtml(s.excerpt" in body
+    assert "bindKnowledgeAskBox" in APP_JS
+
+
+def test_employee_restricted_tab_matches_the_deck_slide_103():
+    """The employee file carries the deck's restricted-fields tab.
+
+    The tab is gated on the same ``employee.salary.read`` permission as the
+    salary block, and it names the fields the deck lists: identity/residence
+    (masked), work location, wage effective date, document links and the
+    localization inclusion decision with its reason and applied rule.
+    """
+    body = _fn_body("employeeDetail")
+    assert 'has("employee.salary.read")' in body
+    for label in (
+        "الهوية أو الإقامة",
+        "موقع العمل",
+        "تاريخ نفاذ البيانات",
+        "المستندات أو الروابط الأساسية",
+        "يحتسب ضمن التوطين؟",
+        "سبب عدم الاحتساب",
+        "الوظيفة المحتسبة",
+        "قاعدة الاحتساب المطبقة",
+        "المراجع وتاريخ القرار",
+    ):
+        assert label in body, f"restricted field label missing: {label}"
+    # The masked identity number comes from the server payload.
+    assert "e.national_id_masked" in body
+
+
+def test_localization_board_carries_target_rule_and_below_target_alert():
+    """Deck slide 105: the board shows the current rate, the target, the applied
+    calculation rule, and a below-target follow-up flag; the target/rule are
+    editable administration data (slide 106)."""
+    body = _fn_body("renderLocalizationBoard")
+    assert 'dual("المستهدف", "Target")' in body
+    assert 'dual("قاعدة الاحتساب", "Calculation rule")' in body
+    assert "localization_target_pct" in body
+    assert "Below target" in body
+    assert "data-loc-edit" in APP_JS
+    edit = _fn_body("openLocalizationEdit")
+    assert 'patch("/api/v1/companies/"' in edit
+    assert "localization_target_pct" in edit
+
+
+def test_investment_detail_reads_the_valuation_model_not_a_placeholder():
+    """Deck slides 108/109: the detail shows the recorded figures and the yes/no
+    valuation; when no valuation is recorded it says so rather than showing a
+    zero, and the editor writes to the valuation endpoint."""
+    body = _fn_body("openInvestment")
+    assert "/api/v1/admin/investment-valuations/" in body
+    assert "has_valuation" in body
+    assert "No approved valuation" in body
+    assert 'has("investment.manage")' in body
+    # The old "await an approved valuation model" placeholder is gone.
+    assert "تنتظر نموذج تقييم" not in APP_JS
+    edit = _fn_body("openInvestmentEdit")
+    assert 'patch("/api/v1/admin/investment-valuations/"' in edit
+    assert "book_value" in edit
+    assert "valuation_reference" in edit
+
+
+def test_investment_register_carries_the_deck_slide_107_actions():
+    """Deck slide 107 names [إضافة استثمار], [فتح التفاصيل], [رفع قرار] and
+    [تقرير المحفظة] on the ownership/investment register. Each action appears
+    only when the role holds the permission the endpoint it calls enforces, and
+    the portfolio report exports the register the caller is already reading."""
+    body = _fn_body("loadInvestmentPortfolio")
+    assert "portfolioActionsHtml()" in body
+    assert "bindPortfolioActions(list)" in body
+    # The register carries the deck's own list machinery (slides 134-136):
+    # search + filters + paging over the rows the caller may already read.
+    assert 'applyListFilters(rows, "investments", spec)' in body
+    assert 'renderPaged(listHost, "investments", list' in body
+    assert '{ key: "q", type: "search"' in body
+
+    acts = _fn_body("portfolioActionsHtml")
+    assert 'dual("إضافة استثمار", "Add investment")' in acts
+    assert 'dual("رفع قرار", "Raise decision")' in acts
+    assert 'dual("تقرير المحفظة", "Portfolio report")' in acts
+    # gated on the permission each action's endpoint enforces
+    assert 'has("ownership.manage")' in acts
+    assert 'has("owner_decision.manage")' in acts
+
+    create = _fn_body("openInvestmentCreate")
+    assert 'post("/api/v1/admin/ownerships"' in create
+    decision = _fn_body("openPortfolioDecision")
+    assert 'post("/api/v1/operations/owner-decisions"' in decision
+
+    bind = _fn_body("bindPortfolioActions")
+    assert 'exportListCsv("investments", rows)' in bind
+
+
+def test_admin_users_carries_the_deck_slide_37_add_user_control():
+    """Deck slide 37 names [إضافة مستخدم] on the Users & Permissions screen.
+    The control appears only for a role that holds ``user.manage`` (the
+    permission the POST /api/v1/users endpoint enforces) and opens a form that
+    posts the deck's fields to that endpoint."""
+    users = _fn_body("renderAdminUsers")
+    assert 'dual("إضافة مستخدم", "Add user")' in users
+    assert 'has("user.manage")' in users
+    assert 'data-admin-action="user-create"' in users
+
+    form = _fn_body("openCreateUserForm")
+    assert 'post("/api/v1/users"' in form
+    for fld in ("full_name_ar", "full_name_en", "role_code", "company_ids", "password"):
+        assert fld in form, f"create-user payload missing {fld}"
+
+    # The action is wired into the admin dispatcher.
+    assert 'action === "user-create"' in APP_JS
+
+
+# --- Deck slides 7-11: the board must not stack two strips in one area ------
+#
+# An all-role browser sweep of the live board found two overlap bugs, both
+# invisible to a text-only check because each element's *own* box is correct:
+#
+#  1. ``#roleKpis`` and ``#holdingKpis`` both claim grid-area "kpis". Exactly
+#     one is meant to be visible, but ``.kpis{display:grid}`` outranks the UA
+#     ``[hidden]`` rule, so the hidden strip painted on top of the visible one
+#     (``elementsFromPoint`` returned ``holdingKpis`` over ``roleKpis``).
+#  2. ``#roleSection`` and ``#smartBriefSection`` both carried ``.role-section``
+#     and therefore both claimed grid-area "role"; for a company manager (who
+#     sees both) they overlapped on the exact same 1602x73 box.
+
+
+def test_hidden_kpi_strip_does_not_render():
+    # A class that sets display must not beat [hidden], or the hidden strip
+    # paints over the visible one.
+    assert re.search(r"\.kpis\[hidden\]\{display:none;\}", CSS), \
+        ".kpis[hidden] must force display:none"
+    assert re.search(r"\.role-kpis\[hidden\]\{display:none;\}", CSS)
+
+
+def test_role_sections_share_one_grid_band_and_never_both_claim_the_area():
+    # The two role sections are wrapped in a single band that owns grid-area
+    # "role"; the sections themselves must not claim a grid area, or two
+    # visible siblings overlap.
+    assert re.search(r"\.role-band\{[^}]*grid-area:role", CSS), \
+        ".role-band must own grid-area role"
+    assert not re.search(r"\.role-section\{[^}]*grid-area", CSS), \
+        ".role-section must not claim a grid area of its own"
+    band = re.search(r'<div class="role-band[^"]*"[^>]*id="roleBand">(.*?)</div>\s*\n\s*<!-- =+ KPI STRIP', INDEX, re.S)
+    assert band, "role band not found in index.html"
+    assert 'id="roleSection"' in band.group(1)
+    assert 'id="smartBriefSection"' in band.group(1)
+
+
+def test_role_band_collapses_when_both_sections_are_hidden():
+    # The band is a grid child; when neither section is visible it must not
+    # leave an empty row on the board.
+    assert re.search(
+        r"\.role-band:not\(:has\(\.role-section:not\(\[hidden\]\)\)\)\{display:none;\}",
+        CSS,
+    ), "the role band must collapse when it holds no visible section"
+
+
+# --- Deck lists: renderPaged must not wipe the panel header -----------------
+#
+# ``renderPaged(host, ...)`` sets ``host.innerHTML`` to the rows. When the same
+# element that carries the panel chrome (title, [عميل محتمل]/[موظف جديد]/... add
+# button) is passed as ``host``, the first render deletes that chrome -- the
+# list still shows rows, so a text check passes, but the deck's named action is
+# gone. Each of these views must render its rows into a dedicated child, not
+# into the panel element itself.
+
+
+def test_paged_domain_lists_do_not_overwrite_their_panel_header():
+    for key, host_id in [
+        ("leads", "leadList"),
+        ("employees", "empList"),
+        ("tasks", "taskList"),
+        ("campaigns", "campaignList"),
+        ("decisions", "decList"),
+        ("opportunities", "projList"),
+    ]:
+        # The rows go into an element with the id the panel created...
+        assert re.search(
+            r"renderPaged\(byId\(\"%s\"\)" % host_id, APP_JS
+        ), f"{key} must page into #{host_id}, not the panel element"
+        # ...and that id is created inside the panel body alongside the action.
+        assert re.search(
+            r'panel\([^;]*?' + re.escape('id="%s"' % host_id), APP_JS, re.S
+        ), f"{key}: the panel body must contain #{host_id}"
+        # Passing the panel element itself would erase the header on re-render.
+        assert not re.search(
+            r"renderPaged\(host, \"%s\"" % key, APP_JS
+        ), f"{key} must not page into the panel element (header would be lost)"
+
+
+# --------------------------------------------------------------------------
+# frontend -> backend route contract
+# --------------------------------------------------------------------------
+# The admin Users screen used to PATCH ``/api/v1/admin/users/{id}`` while the
+# route that exists is ``/api/v1/users/{id}``; the button rendered fine and the
+# matrix passed, but every Save/Activate click returned 405. These tests parse
+# the literal ``/api/v1/...`` calls in ``app.js`` and require each one to match
+# a mounted route with the same method, so a drifted path fails in CI instead
+# of silently at runtime.
+
+_METHOD_MAP = {
+    "get": "get",
+    "softGet": "get",
+    "post": "post",
+    "softPost": "post",
+    "patch": "patch",
+    "put": "put",
+    "del": "delete",
+}
+
+_CALL_RE = re.compile(
+    r'\b(get|post|patch|put|del|softGet|softPost)\("(/api/v1/[^"]*)"'
+)
+
+
+def _frontend_calls():
+    for fn, path in _CALL_RE.findall(APP_JS):
+        yield _METHOD_MAP[fn], path.split("?")[0]
+
+
+def test_every_frontend_api_call_matches_a_mounted_route():
+    from backend.main import app
+
+    spec = app.openapi()
+    paths = spec["paths"]
+    misses = []
+    for verb, path in _frontend_calls():
+        if path.endswith("/"):
+            # A prefix the frontend concatenates with an id at runtime.
+            family = [q for q in paths if q.startswith(path) and len(q) > len(path)]
+            if not family:
+                misses.append(f"{verb.upper()} {path} (no route family)")
+            elif not any(verb in paths[q] for q in family):
+                misses.append(f"{verb.upper()} {path} (family has no {verb})")
+            continue
+        if path in paths:
+            if verb not in paths[path]:
+                misses.append(f"{verb.upper()} {path} (path has no {verb})")
+            continue
+        # A literal path may still match a parameterised route (id inlined).
+        pattern = re.sub(r"\{[^}]+\}", "[^/]+", path)
+        matching = [q for q in paths if re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", q), pattern)]
+        if matching and any(verb in paths[q] for q in matching):
+            continue
+        misses.append(f"{verb.upper()} {path} (no matching route)")
+
+    assert misses == [], "frontend calls routes that do not exist: " + "; ".join(
+        sorted(set(misses))
+    )
+
+
+def test_admin_users_actions_use_the_real_user_routes():
+    # Regression guard for the 405: the admin Users row actions must target the
+    # mounted ``/api/v1/users`` routes, never ``/api/v1/admin/users``.
+    assert '"/api/v1/admin/users/" + id' not in APP_JS
+    assert 'patch("/api/v1/users/" + id' in APP_JS
+    assert 'post("/api/v1/users/" + userId + "/password"' in APP_JS
+
+
+def test_signin_failure_reports_credentials_not_an_expired_session():
+    # A rejected sign-in is a 401, but the shared 401 mapping says "session
+    # expired", which is wrong on the sign-in form -- there is no session yet.
+    # The login handler must special-case 401/400/422 to the credential wording.
+    handler = APP_JS.split("api\n        .login(email, password, remember)", 1)[1]
+    handler = handler.split(".then(function () {\n          if (btn)", 1)[0]
+    assert "credentialMsg" in handler
+    assert "status === 401" in handler
+    assert "كلمة المرور" in handler
+
+
+def test_submission_edit_reopens_the_detail_instead_of_a_removed_modal():
+    # Saving an edited request closes the edit dialog; the detail view must be
+    # reopened, not reloaded into the modal node closeModal() just removed.
+    assert 'openSubmission(s.id);' in APP_JS
+    assert "closeModal();\n                  toast" in APP_JS
+    assert "loadSubmissionDetail(s.id);\n                })\n                .catch" not in APP_JS
+
+
+def test_secondary_tab_groups_are_bound():
+    # The advisory, HR, website and assistant-learning views carry chip tabs.
+    # A rendered-but-unbound chip is a dead control, so each group must be wired
+    # through bindSimpleTabs with its own STATE key and re-render function.
+    for attr, state_key, renderer in (
+        ("data-adv-tab", "advTab", "renderAdvisoryView"),
+        ("data-hr-tab", "hrTab", "renderHrView"),
+        ("data-site-tab", "siteTab", "renderSiteView"),
+        ("data-airev-tab", "aiRevTab", "renderAiReviewView"),
+    ):
+        call = f'bindSimpleTabs("{attr}", "{state_key}", {renderer})'
+        assert call in APP_JS, f"{attr} chips are not bound to {state_key}"
+    assert "function bindSimpleTabs(" in APP_JS
+    # The website content tab performs a real write (publish/unpublish), not
+    # just a read, so its action must be present and permission-gated.
+    assert "/pages/" in APP_JS and "/publish" in APP_JS
+    assert 'has("website.content.publish")' in APP_JS
+
+
+def test_navigation_closes_the_mobile_drawer():
+    # The ≤1180px rail is a slide-in drawer whose .nav-scrim covers the whole
+    # viewport. If a navigation (hash link, back button, or a view with no
+    # sidebar item reached by its hash) leaves the drawer open, the scrim keeps
+    # intercepting clicks, so the header's language switch -- and every other
+    # header control -- becomes unreachable on a phone or tablet. Every
+    # navigation must therefore drop the drawer and disarm the scrim.
+    assert "function closeNavDrawer(" in APP_JS
+    assert "closeNavDrawer();" in APP_JS
+    # It must be called from the single navigation entry point, not only from
+    # the drawer's own toggle/scrim handlers.
+    nav_to = APP_JS.split("function navTo(view, push) {", 1)[1].split("\n  }", 1)[0]
+    assert "closeNavDrawer()" in nav_to
+    # And it must remove the class the scrim's pointer-events rule keys on.
+    closer = APP_JS.split("function closeNavDrawer() {", 1)[1].split("\n  }", 1)[0]
+    assert 'classList.remove("nav-open")' in closer
+    assert "scrim.hidden = true" in closer

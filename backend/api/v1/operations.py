@@ -3,7 +3,7 @@ advisors and owner decisions (D02/D03/D04/D07)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 
 from backend.api.deps import CurrentUser, DbSession
 from backend.schemas.domain import (
@@ -18,9 +18,11 @@ from backend.schemas.domain import (
     OwnerDecisionCreateRequest,
     OwnerDecisionRespondRequest,
     OwnerDecisionUpdateRequest,
+    PlanRequestCreateRequest,
     ProjectRecordCreateRequest,
     ProjectRecordUpdateRequest,
     TaskCreateRequest,
+    TaskNoteRequest,
     TaskStatusRequest,
     TaskUpdateRequest,
     WeeklyQuestionCreateRequest,
@@ -81,6 +83,19 @@ def change_task_status(
     task = operations_service.change_task_status(
         db, user=user, task_id=task_id, new_status=payload.status.value,
         note=payload.note, **ctx,
+    )
+    return operations_service.serialise_task(task)
+
+
+@router.post("/tasks/{task_id}/note")
+def note_task(
+    task_id: int, payload: TaskNoteRequest, request: Request,
+    user: CurrentUser, db: DbSession,
+) -> dict:
+    """Deck slide 20: [إضافة سؤال] logs a clarification without a transition."""
+    ctx = audit_service.request_context(request)
+    task = operations_service.note_task(
+        db, user=user, task_id=task_id, note=payload.note, **ctx
     )
     return operations_service.serialise_task(task)
 
@@ -376,6 +391,8 @@ def create_project_record(
     ctx = audit_service.request_context(request)
     data = payload.model_dump()
     data["record_type"] = payload.record_type.value
+    if payload.stage is not None:
+        data["stage"] = payload.stage.value
     record = operations_service.create_project_record(db, user=user, **data, **ctx)
     return operations_service.serialise_project_record(record)
 
@@ -389,10 +406,52 @@ def update_project_record(
     changes = payload.model_dump(exclude_unset=True)
     if changes.get("record_type") is not None:
         changes["record_type"] = changes["record_type"].value
+    if changes.get("stage") is not None:
+        changes["stage"] = changes["stage"].value
     record = operations_service.update_project_record(
         db, user=user, record_id=record_id, changes=changes, **ctx,
     )
     return operations_service.serialise_project_record(record)
+
+
+@router.post("/projects/{record_id}/raise-to-owner")
+def raise_project_to_owner(
+    record_id: int, request: Request, user: CurrentUser, db: DbSession,
+) -> dict:
+    """Deck slide 26 [رفع للمالك عند الحاجة]: open an owner decision topic for
+    an opportunity that exceeds the BD manager's authority."""
+    ctx = audit_service.request_context(request)
+    record = operations_service.raise_project_to_owner(
+        db, user=user, record_id=record_id, **ctx,
+    )
+    return operations_service.serialise_project_record(record)
+
+
+# ---- deck slide 46: the manager's smart-brief plan request ----
+@router.get("/plan-requests")
+def list_plan_requests(
+    user: CurrentUser, db: DbSession,
+    company_id: int | None = None, status_filter: str | None = Query(default=None, alias="status"),
+) -> list[dict]:
+    return [
+        operations_service.serialise_plan_request(r)
+        for r in operations_service.list_plan_requests(
+            db, user=user, company_id=company_id, status=status_filter,
+        )
+    ]
+
+
+@router.post("/plan-requests", status_code=status.HTTP_201_CREATED)
+def create_plan_request(
+    payload: PlanRequestCreateRequest, request: Request, user: CurrentUser, db: DbSession,
+) -> dict:
+    """Deck slide 46 [نعم، اطلب خطة]: hand a plan request to Business Development."""
+    ctx = audit_service.request_context(request)
+    req = operations_service.request_plan(
+        db, user=user, period_year=payload.period_year, period_month=payload.period_month,
+        company_id=payload.company_id, **ctx,
+    )
+    return operations_service.serialise_plan_request(req)
 
 
 # ---- management reports: the BD five-axis brief (S21) ----

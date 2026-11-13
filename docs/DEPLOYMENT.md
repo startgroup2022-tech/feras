@@ -1,8 +1,11 @@
 # Safir Holding 2027 — Staging Deployment Guide
 
-This guide prepares the approved Phase 2 application (`phase2-functional-v1`,
-commit `ec77588`) for a staging environment. It does not itself deploy
-anything, and it never touches production.
+This guide prepares the Phase 3/4 release candidate (`feature/phase3-functional`,
+PR #7 → `frontend-app-conversion`) for a staging environment. It does not itself
+deploy anything, and it never touches production.
+
+The release line carries **41 migrations**; its single Alembic head is
+`d04621f4f9bd` (verify with `alembic heads`, below).
 
 > **Never run `scripts/seed_demo.py` on staging.** Demo data is for local
 > development only. Use `scripts/bootstrap_owner.py` for the first real owner.
@@ -40,8 +43,8 @@ sudo chmod 750 /var/lib/safir/uploads
 ```bash
 sudo -u safir git clone https://github.com/startgroup2022-tech/feras.git /opt/safir/app
 cd /opt/safir/app
-sudo -u safir git checkout phase2-functional-v1
-sudo -u safir git rev-parse HEAD        # expect ec77588...
+sudo -u safir git checkout feature/phase3-functional
+sudo -u safir git rev-parse HEAD        # expect the release commit recorded in PR #7
 ```
 
 ---
@@ -116,7 +119,7 @@ export $(grep -v '^#' /etc/safir/staging.env | xargs)   # or: set -a; . /etc/saf
 /opt/safir/venv/bin/python -m alembic upgrade head
 
 # 4) Verify.
-/opt/safir/venv/bin/python -m alembic current   # expect 55d2d244bc1b
+/opt/safir/venv/bin/python -m alembic current   # expect d04621f4f9bd
 /opt/safir/venv/bin/python -m alembic check      # expect "No new upgrade operations detected."
 ```
 
@@ -160,9 +163,46 @@ until the in-process rate limiter is replaced with a shared store.
 
 ---
 
+## 9a. Scheduled jobs
+
+Two policies run on a clock, not on a request:
+
+* **CV retention** (`site-integration.md`): a careers CV is deleted after six
+  months. The public form promises this, so it must happen without a click.
+* **Report deadline scan** (`business-rules.md` rule 1): a period's report is due
+  on the 5th of the following month; once the deadline passes, the companies
+  still late are flagged by a notification.
+
+Install the timer (daily at 02:30, plus catch-up if the host was down):
+
+```bash
+sudo install -m 644 deploy/systemd/safir-jobs.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/safir-jobs.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now safir-jobs.timer
+systemctl list-timers safir-jobs.timer
+```
+
+Run either job by hand (add `--dry-run` to preview the CV purge):
+
+```bash
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs --dry-run
+sudo -u safir /opt/safir/venv/bin/python -m scripts.run_scheduled_jobs --only deadlines
+```
+
+Both jobs are idempotent, so a repeated or missed run is harmless. A Holding
+Owner can also trigger them through the admin API
+(`POST /api/v1/admin/retention/cv/purge`, `POST /api/v1/admin/reports/scan-deadlines`).
+
+---
+
 ## 10. Reverse proxy and HTTPS
 
 ```bash
+sudo mkdir -p /etc/nginx/snippets
+sudo cp deploy/nginx/safir-security-headers.conf \
+    /etc/nginx/snippets/safir-security-headers.conf
 sudo cp deploy/nginx/safir-staging.conf /etc/nginx/sites-available/safir-staging
 sudo ln -s /etc/nginx/sites-available/safir-staging /etc/nginx/sites-enabled/safir-staging
 # edit server_name and certificate paths, then obtain a certificate:
@@ -170,9 +210,17 @@ sudo certbot --nginx -d staging.example.com
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The proxy adds HSTS and CSP, forwards client IP (`X-Forwarded-For`), and
-**denies `/api/docs` and `/api/openapi.json` by default**. To allow authorized
-users, enable the basic-auth or IP-allow block in the config.
+The shared headers live in `safir-security-headers.conf` and are included at
+server level **and** inside any location that sets its own `add_header`. nginx
+replaces rather than merges `add_header` across levels, so a location that
+declares one would otherwise drop the security headers for its responses.
+
+The proxy adds HSTS and CSP, compresses `app.js`/`styles.css`/JSON with `gzip`,
+short-caches the platform assets (they have no content hash, so they must not be
+`immutable`), long-caches `/website/assets/`, forwards client IP
+(`X-Forwarded-For`), and **denies `/api/docs` and `/api/openapi.json` by
+default**. To allow authorized users, enable the basic-auth or IP-allow block in
+the config.
 
 ---
 
@@ -223,3 +271,4 @@ removes all tables. Prefer restoring from backup (see
 * [ ] Upload limits (allowed types, 10 MiB) are unchanged.
 * [ ] No `.env` file or credential is committed.
 * [ ] Exactly one uvicorn worker.
+* [ ] Session revocation is live: logout and password change bump `users.token_version`, so old tokens 401 immediately (verify `POST /api/v1/auth/logout` then reuse the access token → `401`).

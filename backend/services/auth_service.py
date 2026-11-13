@@ -6,10 +6,13 @@ Design notes
   email exists, so the endpoint cannot be used to enumerate accounts.
 * The user row is re-read on every request by ``get_current_user``; deactivating
   an account therefore takes effect immediately.
-* There is no server-side session store in V1: access tokens are short lived
-  and refresh tokens are exchanged for new access tokens. This keeps the
-  foundation stateless and horizontally scalable. A token revocation list can
-  be added later behind :func:`revoke` without changing callers.
+* There is no server-side *session store*, but sessions are revocable: every
+  token carries the account's ``token_version`` (claim ``tv``) and the current
+  row is compared against it on each use. :func:`revoke` bumps that counter,
+  which immediately invalidates every access and refresh token issued before the
+  bump. Logout, a password change and an administrator reset all revoke, so a
+  leaked token stops working the moment the owner acts -- no denylist, and the
+  foundation stays horizontally scalable.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from backend.core.security import (
     dummy_verify,
     hash_password,
     password_is_valid_length,
+    token_version_of,
     verify_password,
 )
 from backend.db.base import utcnow
@@ -117,7 +121,11 @@ def login(
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    return user, create_access_token(user.id), create_refresh_token(user.id)
+    return (
+        user,
+        create_access_token(user.id, user.token_version),
+        create_refresh_token(user.id, user.token_version),
+    )
 
 
 def refresh(
@@ -127,6 +135,13 @@ def refresh(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> tuple[User, str, str]:
+    """Exchange a refresh token for a fresh pair, rotating the refresh token.
+
+    A refresh token whose ``tv`` no longer matches the account has been revoked
+    (by a logout, password change or administrator reset), so it is rejected just
+    like an access token would be. The response is a *new* refresh token, so a
+    captured refresh token is single-use across the account's lifetime.
+    """
     try:
         payload = decode_token(refresh_token, expected_type="refresh")
     except TokenError as exc:
@@ -135,6 +150,8 @@ def refresh(
     user = db.get(User, int(payload["sub"]))
     if user is None or not user.is_active:
         raise AuthenticationError("Account is unavailable.")
+    if token_version_of(payload) != user.token_version:
+        raise AuthenticationError("Session has been revoked. Please sign in again.")
 
     audit_service.record(
         db,
@@ -145,7 +162,40 @@ def refresh(
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    return user, create_access_token(user.id), create_refresh_token(user.id)
+    return (
+        user,
+        create_access_token(user.id, user.token_version),
+        create_refresh_token(user.id, user.token_version),
+    )
+
+
+def revoke(
+    db: Session,
+    *,
+    user: User,
+    action: AuditAction = AuditAction.LOGOUT,
+    actor_user_id: int | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Invalidate every outstanding token for ``user`` and record the event.
+
+    Bumping ``token_version`` is the single mechanism behind logout, a
+    self-service password change and an administrator reset: each is a
+    "revoke this account's sessions" event with a different audit action.
+    """
+    user.token_version = int(user.token_version) + 1
+    db.add(user)
+    db.commit()
+    audit_service.record(
+        db,
+        action=action,
+        actor_user_id=actor_user_id if actor_user_id is not None else user.id,
+        entity_type="user",
+        entity_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
 
 
 def logout(
@@ -155,13 +205,89 @@ def logout(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> None:
-    """Record the logout. Token invalidation is a Phase 2 concern (see module docstring)."""
+    """End the caller's sessions: revoke outstanding tokens and audit it."""
+    if user is None:
+        return
+    revoke(
+        db,
+        user=user,
+        action=AuditAction.LOGOUT,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+
+def _validate_new_password(password: str) -> None:
+    """Shared policy check for every password write path."""
+    if not password_is_valid_length(password):
+        raise ValidationError("Password must not exceed 72 bytes.")
+    if len(password) < 8:
+        raise ValidationError("Password must be at least 8 characters.")
+
+
+def change_password(
+    db: Session,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Self-service password change. Verifies the current password first.
+
+    A wrong current password is an :class:`AuthenticationError` (401), so the
+    endpoint cannot be used to probe a password by holding a valid token. On
+    success every outstanding token for the account is revoked, so a stolen
+    token cannot outlive the password it was issued against.
+    """
+    if not verify_password(current_password, user.hashed_password):
+        raise AuthenticationError("Current password is incorrect.")
+    _validate_new_password(new_password)
+    if verify_password(new_password, user.hashed_password):
+        raise ValidationError("New password must differ from the current one.")
+    user.hashed_password = hash_password(new_password)
+    # Bump the session generation so any previously issued access/refresh token
+    # is refused on its next use.
+    user.token_version = int(user.token_version) + 1
+    db.add(user)
+    db.commit()
     audit_service.record(
         db,
-        action=AuditAction.LOGOUT,
-        actor_user_id=user.id if user else None,
+        action=AuditAction.PASSWORD_CHANGED,
+        actor_user_id=user.id,
         entity_type="user",
-        entity_id=user.id if user else None,
+        entity_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+
+def set_password(
+    db: Session,
+    *,
+    actor: User,
+    target: User,
+    new_password: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> None:
+    """Administrator sets a temporary password for another account.
+
+    Revokes the target's outstanding tokens as well, so an administrator reset
+    also cuts off any session the previous password authorised.
+    """
+    _validate_new_password(new_password)
+    target.hashed_password = hash_password(new_password)
+    target.token_version = int(target.token_version) + 1
+    db.add(target)
+    db.commit()
+    audit_service.record(
+        db,
+        action=AuditAction.PASSWORD_RESET,
+        actor_user_id=actor.id,
+        entity_type="user",
+        entity_id=target.id,
         ip_address=ip_address,
         user_agent=user_agent,
     )
@@ -179,10 +305,7 @@ def create_user(
 ) -> User:
     """Create a user with a hashed password. Used by admin API and seed script."""
     email = email.strip().lower()
-    if not password_is_valid_length(password):
-        raise ValidationError("Password must not exceed 72 bytes.")
-    if len(password) < 8:
-        raise ValidationError("Password must be at least 8 characters.")
+    _validate_new_password(password)
     if get_user_by_email(db, email) is not None:
         raise ConflictError("A user with this email already exists.")
 

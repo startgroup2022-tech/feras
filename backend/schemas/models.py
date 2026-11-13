@@ -84,6 +84,23 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=10)
 
 
+class ChangePasswordRequest(BaseModel):
+    """Self-service password change (D11 account access).
+
+    The current password is required so a stolen access token alone cannot be
+    used to take over the account.
+    """
+
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+class AdminSetPasswordRequest(BaseModel):
+    """Owner/administrator sets a temporary password for another account."""
+
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -162,6 +179,27 @@ class CompanyOut(BaseModel):
     phone: str | None = None
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = None
+    trade_name_en: str | None = None
+    activity: str | None = None
+    capital_amount: Decimal | None = None
+    fiscal_year_start_month: int | None = None
+    fiscal_year_end_month: int | None = None
+    default_language: str = "ar"
+    template_effective_from: date | None = None
+    access_scope: str | None = None
+    # Localization setup (deck slides 105/106): the per-entity target and the
+    # calculation-rule edition. Null means unset -> the board shows غير مُعدّ.
+    localization_target_pct: Decimal | None = None
+    localization_rule_version: str | None = None
+    localization_rule_effective_from: date | None = None
+    # The deck's portfolio list (slide 134) filters by "مدير"; the manager is
+    # derived from the company's granted company-manager user, so the picker can
+    # show a name rather than a bare id. Null when the company has no manager.
+    manager_user_id: int | None = None
+    manager_name_ar: str | None = None
+    manager_name_en: str | None = None
 
 
 class CompanyCreateRequest(BaseModel):
@@ -183,6 +221,38 @@ class CompanyCreateRequest(BaseModel):
     # AC-03: the founding date and the monitoring-start date are distinct.
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # The wizard's step 2 records the company's status (S03: نشطة/معلقة/مؤرشفة).
+    status: str = Field(default=CompanyStatus.ACTIVE.value, max_length=20)
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = Field(default=None, max_length=180)
+    trade_name_en: str | None = Field(default=None, max_length=180)
+    activity: str | None = Field(default=None, max_length=300)
+    capital_amount: Decimal | None = Field(default=None, ge=0)
+    fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    default_language: str = Field(default="ar", max_length=8)
+    template_effective_from: date | None = None
+    access_scope: str | None = Field(default=None, max_length=40)
+    # Localization setup (deck slides 105/106).
+    localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_rule_effective_from: date | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _valid_create_status(cls, value: str) -> str:
+        allowed = {s.value for s in CompanyStatus}
+        if value not in allowed:
+            raise ValueError(f"status must be one of {sorted(allowed)}")
+        return value
+
+    @field_validator("default_language")
+    @classmethod
+    def _valid_default_language(cls, value: str) -> str:
+        allowed = {"ar", "en", "both"}
+        if value not in allowed:
+            raise ValueError(f"default_language must be one of {sorted(allowed)}")
+        return value
 
     @field_validator("company_type")
     @classmethod
@@ -212,6 +282,30 @@ class CompanyUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     founded_on: date | None = None
     tracking_start_date: date | None = None
+    # ---- company setup wizard (deck slides 50-52) ----
+    trade_name_ar: str | None = Field(default=None, max_length=180)
+    trade_name_en: str | None = Field(default=None, max_length=180)
+    activity: str | None = Field(default=None, max_length=300)
+    capital_amount: Decimal | None = Field(default=None, ge=0)
+    fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    default_language: str | None = Field(default=None, max_length=8)
+    template_effective_from: date | None = None
+    access_scope: str | None = Field(default=None, max_length=40)
+    # Localization setup (deck slides 105/106).
+    localization_target_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    localization_rule_version: str | None = Field(default=None, max_length=120)
+    localization_rule_effective_from: date | None = None
+
+    @field_validator("default_language")
+    @classmethod
+    def _valid_default_language(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        allowed = {"ar", "en", "both"}
+        if value not in allowed:
+            raise ValueError(f"default_language must be one of {sorted(allowed)}")
+        return value
 
     @field_validator("health")
     @classmethod
@@ -354,6 +448,10 @@ class FinancialReviewOut(BaseModel):
     id: int
     report_id: int
     reviewer_id: int
+    # Display names for the reviewer, so a list can offer the deck's "مراجع"
+    # filter (slide 134) without resolving a bare id client-side.
+    reviewer_name_ar: str | None = None
+    reviewer_name_en: str | None = None
     status: str
     verified_revenue: Decimal | None
     verified_expenses: Decimal | None
@@ -412,6 +510,7 @@ class MonthlyReportOut(BaseModel):
     approved_at: datetime | None = None
     cancelled_at: datetime | None = None
     cancel_reason: str | None = None
+    locked_at: datetime | None = None
     revenue: Decimal | None
     expenses: Decimal | None
     net_result: Decimal | None
@@ -427,6 +526,10 @@ class MonthlyReportOut(BaseModel):
     submitted_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # Business rule 1: the period's submission deadline (day 5 of the following
+    # month) and whether the report is late. Both derived server-side.
+    due_date: date | None = None
+    is_late: bool = False
     financial_review: FinancialReviewOut | None = None
     attachments: list[AttachmentOut] = []
     financial_part: FinancialPartOut | None = None
@@ -524,6 +627,10 @@ class SupportRequestOut(BaseModel):
     responsible_department: str
     requested_by_id: int | None
     assigned_to_id: int | None
+    # Display names for the assignee, so the list view can offer the deck's
+    # "مسؤول" filter without resolving a bare id client-side.
+    assigned_to_name_ar: str | None = None
+    assigned_to_name_en: str | None = None
     platform: str | None = None
     dimensions: str | None = None
     reference_link: str | None = None
@@ -547,6 +654,41 @@ class DashboardKpis(BaseModel):
     companies_requiring_attention: int
     open_support_requests: int
     pending_financial_reviews: int
+    # Business rule 1: companies late for the expected period's day-5 deadline.
+    reports_late: int = 0
+
+
+class ReportDeadlineOut(BaseModel):
+    """The period the deadline applies to and the deadline date itself."""
+
+    period_year: int
+    period_month: int
+    deadline: date
+    is_late_period: bool
+
+
+class LateCompanyOut(BaseModel):
+    """A company late for the expected period's report deadline."""
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str | None = None
+    health: str
+    report_status: str | None = None
+    deadline: date
+    reason_ar: str
+    reason_en: str
+
+
+class RetentionRunOut(BaseModel):
+    """Result of a CV retention run (site-integration.md, 6-month policy)."""
+
+    cutoff: datetime
+    retention_months: int
+    dry_run: bool
+    removed_count: int
+    removed_attachment_ids: list[int] = []
 
 
 class AttentionCompanyOut(BaseModel):
@@ -669,6 +811,52 @@ class PeriodChangeOut(BaseModel):
     net_pct: float | None = None
 
 
+class RoleKpiOut(BaseModel):
+    """One tile on a role dashboard (deck slides 7-11)."""
+
+    key: str
+    label_ar: str
+    label_en: str
+    value: str
+    unit: str | None = None
+    delta: str | None = None
+    delta_dir: str | None = None  # "up" | "down" | None
+    tone: str = "navy"
+
+
+class RoleShortcutOut(BaseModel):
+    """One role-dashboard shortcut tile (deck slides 7-11)."""
+
+    label_ar: str
+    label_en: str
+    view: str
+
+
+class RoleSummaryOut(BaseModel):
+    """The caller's role dashboard: a titled, role-specific KPI strip.
+
+    ``None`` on the dashboard when the role has no dedicated summary, in which
+    case the holding strip is the correct presentation.
+    """
+
+    title_ar: str
+    title_en: str
+    # Deck slide 46 keys the manager's smart brief on the caller's role, so the
+    # role code travels with the summary rather than being guessed client-side.
+    role_code: str = ""
+    greeting_ar: str = ""
+    greeting_en: str = ""
+    # Deck slides 7-11: the follow-up section heading ("قرارات بانتظار الاعتماد",
+    # "مهامي المسندة إليّ", ...), the [عرض الكل] target and the role's shortcut
+    # grid. The service has always computed the section wording; it was being
+    # dropped here, so the client could not paint it.
+    section_ar: str = ""
+    section_en: str = ""
+    view_all: str | None = None
+    shortcuts: list["RoleShortcutOut"] = []
+    kpis: list[RoleKpiOut] = []
+
+
 class DashboardResponse(BaseModel):
     scope: str  # "holding" | "company"
     company_id: int | None
@@ -683,11 +871,30 @@ class DashboardResponse(BaseModel):
     companies_requiring_attention: list[AttentionCompanyOut] = []
     priorities: list[PriorityOut] = []
     motivation: "MotivationTextOut | None" = None
+    role_summary: "RoleSummaryOut | None" = None
+    # Business rule 1: the expected period's deadline and the late companies.
+    report_deadline: "ReportDeadlineOut | None" = None
+    companies_late: list[LateCompanyOut] = []
 
 
 # --------------------------------------------------------------------------
 # AI
 # --------------------------------------------------------------------------
+class AIKnowledgeSourceOut(BaseModel):
+    """One retrieved knowledge chunk cited in a knowledge-scope answer."""
+
+    document_id: int
+    version_id: int
+    title_ar: str
+    title_en: str | None = None
+    company_id: int | None = None
+    sensitivity: str
+    chunk_id: int
+    score: float
+    source: str
+    excerpt: str
+
+
 class AIAskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=2000)
     conversation_id: int | None = None
@@ -722,6 +929,11 @@ class AIAskResponse(BaseModel):
     grounded: bool = True
     ungrounded_numbers: list[str] = []
     message: AIMessageOut
+    # True when the deterministic provider answered because the configured one
+    # was unavailable, refused a non-free model, or the daily ceiling was hit.
+    degraded: bool = False
+    # Retrieved knowledge sources (knowledge scope only), for citation display.
+    sources: list["AIKnowledgeSourceOut"] = []
 
 
 class AIInsightOut(BaseModel):
@@ -750,6 +962,147 @@ class AIOrganizeFieldOut(BaseModel):
 class AIOrganizeResponse(BaseModel):
     proposals: list[AIOrganizeFieldOut]
     fields_considered: int
+
+
+# --------------------------------------------------------------------------
+# AI knowledge base (Phase 3)
+# --------------------------------------------------------------------------
+class KnowledgeCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name_ar: str
+    name_en: str
+    description: str | None = None
+    display_order: int = 0
+    is_active: bool = True
+
+
+class KnowledgeCategoryCreate(BaseModel):
+    code: str = Field(min_length=2, max_length=60)
+    name_ar: str = Field(min_length=2, max_length=160)
+    name_en: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=2000)
+    display_order: int = 0
+
+
+class KnowledgeVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int
+    version_number: int
+    body_ar: str
+    body_en: str | None = None
+    status: str
+    review_note: str | None = None
+    source_reference: str | None = None
+    created_at: datetime
+    approved_by_id: int | None = None
+
+
+class KnowledgeDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    title_ar: str
+    title_en: str | None = None
+    summary_ar: str | None = None
+    summary_en: str | None = None
+    category_id: int | None = None
+    company_id: int | None = None
+    sensitivity: str
+    status: str
+    language: str
+    current_version_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeDocumentCreate(BaseModel):
+    slug: str = Field(min_length=2, max_length=160)
+    title_ar: str = Field(min_length=2, max_length=240)
+    title_en: str | None = Field(default=None, max_length=240)
+    body_ar: str = Field(min_length=2, max_length=200000)
+    body_en: str | None = Field(default=None, max_length=200000)
+    summary_ar: str | None = Field(default=None, max_length=4000)
+    summary_en: str | None = Field(default=None, max_length=4000)
+    category_id: int | None = None
+    company_id: int | None = None
+    sensitivity: str = "holding"
+    source_reference: str | None = Field(default=None, max_length=400)
+
+
+class KnowledgeVersionCreate(BaseModel):
+    body_ar: str = Field(min_length=2, max_length=200000)
+    body_en: str | None = Field(default=None, max_length=200000)
+    source_reference: str | None = Field(default=None, max_length=400)
+
+
+class KnowledgeApproveRequest(BaseModel):
+    review_note: str | None = Field(default=None, max_length=2000)
+
+
+class KnowledgeProposalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    document_id: int | None = None
+    kind: str
+    title: str
+    proposed_body: str
+    rationale: str | None = None
+    status: str
+    resolution_note: str | None = None
+    applied_version_id: int | None = None
+    created_at: datetime
+
+
+class KnowledgeProposalCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=240)
+    proposed_body: str = Field(min_length=2, max_length=200000)
+    document_id: int | None = None
+    kind: str = "correction"
+    rationale: str | None = Field(default=None, max_length=4000)
+
+
+class KnowledgeProposalResolve(BaseModel):
+    approve: bool
+    resolution_note: str | None = Field(default=None, max_length=2000)
+
+
+class KnowledgeSearchHitOut(BaseModel):
+    document_id: int
+    version_id: int
+    title_ar: str
+    title_en: str | None = None
+    company_id: int | None = None
+    sensitivity: str
+    chunk_id: int
+    score: float
+    source: str
+    excerpt: str
+
+
+class AIProviderStatusOut(BaseModel):
+    """The AI provider's configuration and live free-model inventory."""
+
+    provider: str
+    model: str
+    fallbacks: list[str]
+    configured: bool
+    api_key_present: bool
+    base_url: str
+    max_cost_usd: float
+    verified_free: bool
+    free_models: list[dict] = []
+    discovery_error: str | None = None
+    rate_limit: dict = {}
+    daily_limit: int = 0
+    daily_used: int = 0
+    usage: dict = {}
 
 
 # --------------------------------------------------------------------------
@@ -882,7 +1235,9 @@ class GroupStructureNode(BaseModel):
     company_id: int
     code: str
     name_ar: str
-    name_en: str
+    # English name is optional (spec S03: الاسم الإنجليزي optional), so a
+    # company created without one must not break the structure tree.
+    name_en: str | None = None
     sector: str | None
     status: str
     parent_company_id: int | None
@@ -890,6 +1245,96 @@ class GroupStructureNode(BaseModel):
     parent_name_en: str | None
     ownership_percentage: float | None
     direct_children: int = 0
+
+
+class InvestmentValuationUpdateRequest(BaseModel):
+    """The documented valuation summary for one owned company (deck 107-109).
+
+    The book value is entered as approved by the accountant, not computed by
+    summing contributions/financing/distributions. The valuation is a yes/no
+    choice: with ``has_valuation`` false the record stores no zero, so the
+    amount/date/source/reference must be blank; with it true all four are
+    required (a cross-field rule, hence ``model_validator``).
+    """
+
+    currency: str | None = Field(default=None, min_length=3, max_length=8)
+    investment_date: date | None = None
+    original_value: Decimal | None = None
+    subsequent_contributions: Decimal | None = None
+    financing: Decimal | None = None
+    distributions: Decimal | None = None
+    book_value: Decimal | None = None
+    book_value_date: date | None = None
+    book_value_source: str | None = Field(default=None, max_length=200)
+    has_valuation: bool | None = None
+    valuation_amount: Decimal | None = None
+    valuation_date: date | None = None
+    valuation_source: str | None = Field(default=None, max_length=200)
+    valuation_reference: str | None = Field(default=None, max_length=200)
+    decision_reference: str | None = Field(default=None, max_length=200)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _valuation_yes_no(self) -> "InvestmentValuationUpdateRequest":
+        if self.has_valuation is True:
+            missing = [
+                name
+                for name, value in (
+                    ("valuation_amount", self.valuation_amount),
+                    ("valuation_date", self.valuation_date),
+                    ("valuation_source", self.valuation_source),
+                    ("valuation_reference", self.valuation_reference),
+                )
+                if value in (None, "")
+            ]
+            if missing:
+                raise ValueError(
+                    "has_valuation=true requires " + ", ".join(missing)
+                )
+        if self.has_valuation is False:
+            stray = [
+                name
+                for name, value in (
+                    ("valuation_amount", self.valuation_amount),
+                    ("valuation_date", self.valuation_date),
+                    ("valuation_source", self.valuation_source),
+                    ("valuation_reference", self.valuation_reference),
+                )
+                if value not in (None, "")
+            ]
+            if stray:
+                raise ValueError(
+                    "has_valuation=false must not set " + ", ".join(stray)
+                    + " (the system never stores a zero as a valuation)"
+                )
+        return self
+
+
+class InvestmentValuationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    # ``id`` is None for a company with no recorded summary yet: the detail view
+    # shows "غير مُعدّ" rather than an invented zero (deck slide 109).
+    id: int | None = None
+    owned_company_id: int
+    owned_company_name_ar: str | None = None
+    owned_company_name_en: str | None = None
+    currency: str
+    investment_date: date | None = None
+    original_value: Decimal | None = None
+    subsequent_contributions: Decimal | None = None
+    financing: Decimal | None = None
+    distributions: Decimal | None = None
+    book_value: Decimal | None = None
+    book_value_date: date | None = None
+    book_value_source: str | None = None
+    has_valuation: bool = False
+    valuation_amount: Decimal | None = None
+    valuation_date: date | None = None
+    valuation_source: str | None = None
+    valuation_reference: str | None = None
+    decision_reference: str | None = None
+    notes: str | None = None
 
 
 class DepartmentCreateRequest(BaseModel):

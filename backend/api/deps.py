@@ -14,7 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from backend.core.errors import AuthenticationError, PermissionDeniedError
-from backend.core.security import TokenError, decode_token
+from backend.core.security import TokenError, decode_token, token_version_of
 from backend.db.models.identity import User
 from backend.db.session import get_db
 from backend.rbac.authorization import (
@@ -51,6 +51,10 @@ def get_current_user(
         raise AuthenticationError("Account no longer exists.")
     if not user.is_active:
         raise AuthenticationError("Account is disabled.")
+    # Reject a token minted before the account's current session generation, so
+    # a logout or password change invalidates outstanding tokens immediately.
+    if token_version_of(payload) != user.token_version:
+        raise AuthenticationError("Session has been revoked. Please sign in again.")
     return user
 
 

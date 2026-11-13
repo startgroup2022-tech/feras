@@ -54,8 +54,12 @@ def test_new_permissions_are_catalogued_with_metadata():
     # Execution 30 added 8 permissions (D01/D04/D09/D11): lead assign,
     # policy propose, the four currency-change codes, history read and 2FA
     # enforcement. Execution 31 added 2 more for the D03 management-report
-    # workflow (report.review and report.approve).
-    assert len(ALL_PERMISSIONS) == 179
+    # workflow (report.review and report.approve). Phase 3 added 6 for the
+    # OpenRouter AI subsystem and the knowledge base (knowledge ask/read/
+    # write/approve/manage plus provider administration). Deck v3 slides
+    # 107-109 added 2 more for the investment valuation summary
+    # (investment.read and investment.manage).
+    assert len(ALL_PERMISSIONS) == 187
 
 
 def test_external_consultant_role_is_not_holding_wide():
@@ -686,7 +690,9 @@ def test_campaign_round_trip_records_results_and_is_audited(client, domain_world
 
     actions = {
         row.action for row in db.query(AuditLog)
-        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == body["id"])
+        # ``entity_id`` is a string column; compare as text so the filter is
+        # portable to PostgreSQL (which rejects varchar = integer).
+        .filter(AuditLog.entity_type == "campaign", AuditLog.entity_id == str(body["id"]))
     }
     assert {"campaign.created", "campaign.updated"} <= actions
 
@@ -733,3 +739,55 @@ def _make_employee(domain_world, which: str) -> Employee:
         db.refresh(emp)
         db.expunge(emp)
         return emp
+
+
+def test_restricted_employee_fields_follow_the_salary_gate(client, domain_world, auth):
+    """Deck slide 103: the restricted tab sits behind the same gate as salary.
+
+    A company manager (employee.manage, no employee.salary.read) must not
+    receive identity/residence, work location, wage date, document links or the
+    localization inclusion fields; the owner (employee.salary.read) does, with
+    the identity number masked.
+    """
+    from backend.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        emp = Employee(
+            company_id=domain_world["alpha"].id,
+            full_name_ar="موظف مقيد",
+            national_id="1234567890",
+            base_salary=10000,
+            work_location="الرياض",
+            counts_toward_localization=True,
+            localization_job_title="محلل",
+        )
+        db.add(emp)
+        db.commit()
+        db.refresh(emp)
+        emp_id = emp.id
+
+    restricted = {
+        "work_location",
+        "wage_effective_date",
+        "document_links",
+        "counts_toward_localization",
+        "localization_exclusion_reason",
+        "localization_job_title",
+        "localization_rule_version",
+        "localization_reference",
+        "national_id_masked",
+    }
+    mgr = client.get(f"/api/v1/employees/{emp_id}", headers=auth(domain_world["alpha_mgr"]))
+    assert mgr.status_code == 200
+    for field in restricted:
+        assert field not in mgr.json(), f"{field} leaked to a caller without employee.salary.read"
+
+    owner = client.get(f"/api/v1/employees/{emp_id}", headers=auth(domain_world["owner_all"]))
+    assert owner.status_code == 200
+    body = owner.json()
+    assert body["work_location"] == "الرياض"
+    assert body["counts_toward_localization"] is True
+    assert body["localization_job_title"] == "محلل"
+    # The identity number is masked: only the last four digits are revealed.
+    assert body["national_id_masked"].endswith("7890")
+    assert body["national_id_masked"].startswith("*")

@@ -32,6 +32,28 @@ APP_ENV=development DATABASE_URL="sqlite:///./safir_dev.db" python -m alembic ch
 `alembic.ini` deliberately does not hardcode `sqlalchemy.url`; `alembic/env.py`
 reads `DATABASE_URL` from the environment. Always pass it explicitly.
 
+## CI
+
+`.github/workflows/ci.yml` runs on every pull request (whatever the target
+branch) and on pushes to `frontend-app-conversion` and `master`. Seven jobs:
+
+- `pytest` on **3.11, 3.12 and 3.13** — the supported range. Keep new code
+  working on all three; a 3.13-only idiom will break the build.
+- `migrations` — `alembic upgrade head` → `check` → `downgrade base` →
+  `upgrade head` against a **PostgreSQL 16 service**, then the demo seed. A
+  migration that only works on SQLite fails here, so keep using
+  `batch_alter_table` and avoid raw SQL.
+- `security acceptance sweep` — boots a seeded server on port 12099, waits on
+  `/ready`, then runs `scripts/acceptance/security_sweep.py`.
+- `frontend contract` — the frontend contract tests plus `node --check` on
+  `frontend/app.js` and `frontend/auth.js`.
+- `dependency audit` — `pip-audit` on both requirement files; **any known
+  advisory fails the build**. Fix by bumping the pin, not by relaxing the check.
+
+Actions are pinned to Node 24-era majors (`checkout@v5`, `setup-python@v6`,
+`setup-node@v5`, `upload-artifact@v6`). Lint changes with `actionlint` before
+pushing.
+
 ## Architecture
 
 Request flow: `api/v1/*` (thin routers) → `services/*` (all business rules) →
@@ -67,6 +89,11 @@ Request flow: `api/v1/*` (thin routers) → `services/*` (all business rules) �
   See `tests/test_schemas.py`.
 - **SQLAlchemy gotcha**: do not add a single-column `Index(...)` that duplicates
   `index=True` on the same column — the duplicate name breaks `create_all`.
+- **Portable-SQL gotcha**: never use SQLite-only date functions (`strftime`,
+  `julianday`) in a query — PostgreSQL raises `UndefinedFunction`. Filter on a
+  half-open `datetime` range instead; `_leads_created` in
+  `services/role_summary_service.py` is the reference. Tests run on SQLite, so
+  this only surfaces against a live PostgreSQL.
 - **Arabic-first**: user-facing strings, seeded data, and AI output are Arabic.
   `full_name_ar` is required; `full_name_en` is optional.
 - Money is `Decimal`/`Numeric(18, 2)`; losses are negative and allowed.
@@ -80,7 +107,30 @@ scenario; do not widen `world` for a single test — build the extra rows locall
 
 Suites: `test_auth`, `test_isolation`, `test_rbac`, `test_reports`, `test_support`,
 `test_dashboard`, `test_ai`, `test_admin`, `test_schemas`, `test_ai_providers`,
-`test_insights`.
+`test_insights`, `test_report_deadline`, `test_retention_cv`,
+`test_frontend_domain_views`.
+
+`test_frontend_domain_views` also holds the **frontend→backend route contract**:
+it parses every literal `/api/v1/...` call in `frontend/app.js` and requires each
+one to match a mounted route with the same HTTP method. This exists because the
+Admin ▸ Users Save/Activate buttons once PATCHed `/api/v1/admin/users/{id}`
+(which does not exist) instead of `/api/v1/users/{id}` — the buttons rendered and
+the text matrix passed, but every click returned 405. A drifted path now fails in
+CI rather than silently at runtime.
+
+**Password management (D11 account access):** the signed-in user changes their
+own password via `POST /api/v1/auth/change-password` (current password required);
+an owner/administrator sets a temporary one via `POST /api/v1/users/{id}/password`
+(`user.manage`). Both validate length (8–72 bytes) and write an audit row
+(`auth.password_changed` / `auth.password_reset`). Covered by `test_auth`.
+
+Browser harnesses live in `scripts/` (`e2e_smoke.py`, `e2e_roles.py`) and
+`scripts/audit/`; they drive a locally served app with Playwright, not pytest.
+Any harness that mutates server state must be **self-healing**: restore from the
+static catalogue (`ROLE_PERMISSIONS`) rather than a run-time snapshot, so it
+repairs a role a previous run left short instead of trusting it. `e2e_roles.py`
+is the reference — it edits a **non-actor** role because the server's
+anti-escalation guard blocks an actor granting a permission to itself.
 
 ## Known gaps
 
@@ -92,6 +142,24 @@ Add these in a later phase rather than papering over them in tests:
 - Frontend is still the approved static dashboard plus `frontend/app.js`, which
   hydrates it from the real APIs when served by the backend. There is no login
   screen or write flows in the browser yet.
+
+## Phase 3 additions
+
+- `backend/services/report_deadline.py` — business rule 1. `deadline_for_period`
+  returns day `REPORT_DEADLINE_DAY` (5) of the following month; `is_report_late`
+  treats a missing/draft/returned report past that date as late; `late_companies`
+  is company-scoped; `scan_report_deadlines` raises one `report.deadline_missed`
+  notification per recipient per period (deduped) and never edits a report.
+  Surfaced on the dashboard as `report_deadline`, `companies_late` and the
+  `reports_late` KPI; each report also carries derived `due_date` / `is_late`.
+- `backend/services/retention_service.py` — the six-month CV retention policy
+  (`CV_RETENTION_MONTHS`). Deletes only careers CVs (file + row) past the window;
+  the lead and every non-careers attachment are untouched. Best-effort file
+  removal, per-removal audit rows, and a `dry_run` preview.
+- `scripts/run_scheduled_jobs.py` + `deploy/systemd/safir-jobs.{service,timer}`
+  — the daily trigger for both jobs. Both are idempotent.
+- Admin endpoints: `POST /api/v1/admin/retention/cv/purge` and
+  `POST /api/v1/admin/reports/scan-deadlines` (both `group.manage`).
 
 ## Phase 2 additions
 
@@ -111,6 +179,47 @@ Built on top of the Phase 1 foundation (do not rebuild Phase 1):
 - Dashboard now returns `change_vs_previous` and `companies_performance`
   (per-company revenue/expenses/net, growth vs. previous month, report status).
 - `PATCH /support-requests/{id}/assign` (owner-only).
+- `backend/services/role_summary_service.py` — per-role dashboard (`role_summary`
+  on the dashboard response), giving each of the deck's five primary roles its
+  own four-tile strip (deck slides 7–11). Tiles are computed from the same
+  scoped queries and gated on the caller's own read permission; a role with no
+  deck dashboard returns `None` and keeps the holding strip. Presentation only.
+
+## Audit harness (`scripts/audit/`)
+
+- `build_deck_compliance.py` — regenerates `docs/audit/PPTX_V3_COMPLIANCE_MATRIX.md`
+  (138 slides) from the deck OOXML text layer, the live SPA inventory, the
+  endpoint probe and the browser probes. Regenerate rather than hand-edit.
+- `visual_parity.py` — pixel/DOM comparison of the rendered deck PNGs against
+  the live app frame (`artifacts/visual_parity.json`); needs Pillow.
+- `deck_visual_parity.py` — per-slide visual parity: for every slide the matrix
+  maps to a screen, compares the deck's rendered PNG frame (light surface, RTL
+  rail where the deck draws one, non-empty content, multi-tile KPI strip on the
+  role slides) against that screen's rendered pixels
+  (`artifacts/deck/visual_parity_slides.json`). Text extraction cannot prove
+  this; the matrix carries the result as its **Visual** column. Needs Pillow and
+  an Arabic (`--lang ar`) `view_audit.py` run for the screenshots.
+- `view_audit.py --lang ar|en` — crawls every view per role, records
+  `dir`/`lang`, writes `view_audit.json` + `view_audit_<lang>.json`.
+- `role_dashboard_probe.py` — signs in per role, screenshots the dashboard, and
+  records the rendered strip labels and page title.
+- `deck_controls_probe.py` — drives the browser to each data state the deck's
+  bracketed controls need, then reads the rendered label; 31/31 named controls
+  verified. `company_wizard_probe.py` / `company_file_probe.py` cover slides
+  50-52 and the company file.
+- `verify_functional.py` — end-to-end browser→API→PostgreSQL proof that each
+  primary write commits a row (15/15 operations, including the self-service
+  password change, the admin temporary-password set, and their audit rows).
+  Needs a live PG and the
+  `--pg-dsn` URL; asserts the row, not just the HTTP status. This is the
+  "rendered button ≠ working button, 200 ≠ committed row" check.
+- `scripts/verify_journeys.py` — the edit/approve journeys `verify_functional.py`
+  does not cover: the sign-in gate plus edit/save and approve/reject for
+  companies, users, reports, support requests, leads and owner decisions, and a
+  self-provisioning approvals journey. Drives the rendered control, then reads
+  PostgreSQL to confirm the change landed. Needs a live PG (`--pg-dsn`); the
+  `user.edit.save` journey restores the seed user's role in a `finally` so a run
+  never leaves the role probe contaminated.
 
 ## Frontend: real app (auth-gated, live data)
 
@@ -123,6 +232,11 @@ a failure shows an explicit error/empty state.
   transparent single refresh on 401, and `get/post/patch`. Tokens live in
   `localStorage` under `safir.session.v1`; they are never put in the URL or
   HTML. `setBase()` exists but the app runs same-origin (empty base).
+- Sessions are server-revocable without a session store: every token carries a
+  `tv` claim = `users.token_version`. Logout, a self-service password change and
+  an admin reset bump that column (`auth_service.revoke`), so all tokens issued
+  before the bump 401 on next use. A password change also signs the tab out
+  locally, since its own token is now stale.
 - Login gate: `.login-screen` (fixed, z-index 1000) covers the app until the
   backend authenticates the user; `.stage-wrap` is hidden via
   `body:not(.authed)`. `#loginForm`, `#loginEmail`, `#loginPassword`,
@@ -545,3 +659,233 @@ slice has been implemented; the full matrix and the conflict analysis live in
   Still gated: the original spec has not arrived; D01-D11 stay drafts.
   No deployment was performed.
 
+## Executive UX redesign (Phase 2, `feature/executive-ux-redesign`)
+
+The 20-item horizontal top nav (the "complicated ERP" look) is replaced by a
+dark-navy RTL **sidebar** over the white content area.
+
+- Shell: `<aside class="sidebar">` inside `.stage-body.with-sidebar`, beside
+  `#board`. `.sidebar{order:-1}` puts the rail on the **right in RTL** and
+  mirrors it to the left in LTR (the flex main axis reverses with `dir`).
+- Nav: six primary sections (`dashboard · leads · requests · feedback ·
+  projects · decisions`); the other 14 views live in a collapsible `#sbMore`
+  group (`#sbMoreToggle`, `aria-expanded`). `syncMoreGroup(view)` auto-opens
+  the group when the active view is inside it. Header keeps a breadcrumb
+  (`#crumb`) synced by `navTo`/`applyDocTitle`.
+- Dashboard: the small priorities card became a prominent `section.attention`
+  ("ماذا يحتاج اهتمامك اليوم؟", `#prioritiesList`, `#attnCount`) with a direct
+  action per row via `PRIORITY_ACTION`/`priorityAction()`.
+- `feedback` view aggregates existing endpoints only (weekly reports,
+  management briefs, monthly reports). Its `data-perm` is exactly the union of
+  those endpoints' read permissions — never a superset, or a role sees the
+  section and then gets a 403.
+- Responsive: at ≤1180px the rail becomes a wrapping horizontal bar;
+  `.sidebar .nav-item{width:auto}` is required there, otherwise each rail item
+  (full-width in the rail) claims a row of its own. ≤560px hides the crumb.
+- Contract tests in `tests/test_frontend_domain_views.py` pin all of the above
+  (sidebar shell, six primary sections, every item still `data-perm`-gated,
+  More-group behaviour, attention panel, feedback gate = endpoint perms).
+
+**PPTX parity is claimed for the interface controls, not for pixels.**
+`Platform Interface Design v3.pptx` **is** in this repository: commit `8f7dc23`
+("تصميم المنصة"), 929 928 bytes, **138 slides**, on branch `phase2-functional-v1`.
+It is *not* an ancestor of `feature/phase3-functional` or
+`frontend-app-conversion`, so a working-tree search finds nothing — read it out of
+git instead:
+
+```bash
+git show 8f7dc23:"Platform Interface Design v3.pptx" > /tmp/deck.pptx
+```
+
+The deck's text layer (`ppt/slides/slideN.xml`) preserves the Arabic runs; slides
+137–138 are the acceptance checklist, slide 49 the screen registry and slides
+134–136 the list/filter/pagination spec. Parity is scored against those; pixel
+comparison is not asserted (LibreOffice/poppler are not installed here to render
+slides). See `docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`. Word-spec
+business rules and security controls are unchanged.
+
+## Phase 3 — lead pipeline seed and D04 assignment UI
+
+- **Demo lead pipeline** — `_seed_leads` in `scripts/seed_demo.py` creates five
+  website leads through `website_lead_service.create_lead` (never raw inserts),
+  so the demo carries the service's own routing, reference format and
+  validation. It walks two of them along the pipeline (`in_progress`,
+  `qualified`, `converted`), assigns the first and adds a manager note, then
+  reviews and publishes the business-listing opportunity. Idempotent: it skips
+  when a demo lead already exists. Seeded visitor emails use
+  `DEMO_LEAD_DOMAIN` (`demo.safir.example`), not `DEMO_EMAIL_DOMAIN`: the
+  address is validated as a real one and the validator rejects the reserved
+  `.local` TLD, and a lead has no demo *user* row to match on (the visitor is
+  external). `_demo_lead_clause()` is the single matcher both the seed guard
+  and `_reset` use, so a lead submitted through the real public site is never
+  mistaken for a demo row. `_reset` deletes the dependents (`LeadAssignment`,
+  `WebsiteOpportunity`, `WebsiteLeadAttachment`) before the leads.
+- **D04 assignment UI** — `assignmentBlock` / `outcomeBlock` in `frontend/app.js`
+  render the current assignee, routed company, the append-only history and the
+  closed-out fields inside the lead modal. `openLead` loads the history from
+  `GET /leads/{id}/assignments` (only when `website_lead.read`) and the user
+  directory from `/users` (only when `website_lead.assign` and `user.read`).
+  The save action posts to `POST /leads/{id}/assign` and sends **only** fields
+  that actually changed, because the API treats an omitted field as "unchanged"
+  and re-saving the same company would re-notify its manager. There is no
+  unassign operation, so an empty picker option reads "no change", never
+  "unassigned". Regression: `tests/test_lead_assignment_ui.py`.
+- **Error envelope** — the API reports expected failures as
+  `{"error": {"code", "message"}}` and schema failures as
+  `{"error": {"message", "fields": [{"message"}]}}` (`backend/core/errors.py`).
+  `messageFor` in `frontend/auth.js` reads that envelope first, so a service's
+  own wording reaches the user instead of a bare "Request failed (422)".
+- **Plain date-time helper** — `stampText` returns a plain string in the active
+  language. `fmtDateTime` returns `dual()` markup, so escaping it inside an
+  `escapeHtml` context leaks `<span>` tags. Use `stampText` wherever a timestamp
+  will be escaped.
+- **Calendar parts are not quantities** — `periodPart` (not `plainNum`) renders
+  a year/month/week, otherwise `NUM.format` turns 2027 into "2,027".
+
+## Phase 3 — full functional audit (21 views × 7 roles)
+
+`scripts/audit/view_audit.py` drives the real SPA in headless Chromium, signs in
+as each specification role, walks every navigation entry and opens every tab
+(including the two-level accounting section → sub-tab nesting), recording HTTP
+status, console errors and rendered text per panel. Options: `--roles`,
+`--lang ar|en`, `--viewport WxH`. Output is `artifacts/view_audit.json` plus
+screenshots; both are generated and git-ignored. Report:
+`docs/audit/PHASE3_FUNCTIONAL_AUDIT.md`.
+
+- **Optional panel fetches go through `softGet`** (`frontend/app.js`). It stays
+  quiet only for the expected `401`/`403`/`404` — where the caller simply has no
+  access to that slice — and toasts anything else. Do **not** write
+  `get(...).catch(function () { return []; })`: that turns a 500 or a dropped
+  connection into "no data", indistinguishable from a legitimate empty state.
+- **A tab's fetch must be gated on the permission its endpoint enforces**, not
+  on the permission that made the tab reachable. Two bugs came from this gap:
+  `marketing` opens accounting › subsidiary finance via `dashboard.holding` but
+  the archive needs `financial_report.read`; `business_development` opens
+  accounting › tasks via `support_request.read_all` but the registry needs
+  `task.read_*`. `tests/test_frontend_domain_views.py` checks this data-driven
+  over `ROLE_PERMISSIONS`.
+- **The seven specification roles are** `holding_owner`, `business_development`,
+  `company_manager`, `accountant`, `marketing`, `designer`,
+  `external_consultant` (see `docs/audit/SAFIR_ROLE_PERMISSION_MATRIX.md` §1).
+  The other `RoleCode` values are Phase-2 administration roles. The seed
+  creates a demo user for each specification role;
+  `external_consultant` is deliberately **not** holding-wide and sees only
+  granted data (D04), so its eight nav entries are grant-scoped.
+- **Demo empty panels are not bugs.** `assets`, `employees`, `complaints` and
+  some task views have no seeded rows; verify by rendering the same panel as a
+  role that holds the read permission (the owner) before treating emptiness as
+  a defect.
+
+## Phase 4 — verification and acceptance
+
+Phase 4 changes no feature behaviour; it verifies Phase 3 and fixes what the
+verification surfaced. Report: `docs/audit/PHASE4_VERIFICATION_AUDIT.md`.
+
+```bash
+# all three need a running instance
+APP_ENV=development DATABASE_URL="sqlite:///./acc.db" \
+  python -m uvicorn backend.main:app --host 127.0.0.1 --port 12099
+
+python -m scripts.acceptance.security_sweep   --base http://127.0.0.1:12099
+python -m scripts.acceptance.perf_reliability --base http://127.0.0.1:12099
+python -m scripts.acceptance.ui_responsive    --base http://127.0.0.1:12099
+```
+
+Each writes JSON to `artifacts/phase4/` (git-ignored).
+
+- **`security_sweep.py`** — sweeps every parameterless `GET` with no token, then
+  probes cross-company isolation and the privilege boundary of each of the seven
+  roles. `/api/v1/public/*` is public **by design** and is allow-listed; any
+  *other* endpoint answering `200` without a token is a failure.
+- **`perf_reliability.py`** — latency budget and `5xx` check over every
+  parameterless `GET`, plus frontend shell timing. Each endpoint is run twice;
+  the second run is reported so a cold-cache cost is not read as a slow endpoint.
+- **`ui_responsive.py`** — all 21 views × `ar`/`en` × 4 viewports. Per cell it
+  asserts the view rendered, `dir` matches the language, the document does not
+  overflow horizontally, navigation is present and no console error fired.
+- **`scripts/backup.py`** is a three-step CLI: `create --dest`, `verify
+  --source`, `drill --source --scratch`. `drill` always restores into a fresh
+  scratch directory and never over a live database.
+- **`/platform/{rest:path}` serves the shell only for extensionless paths.** A
+  path with a file extension is an asset request and must `404` when absent —
+  answering with the shell handed a `<script>` a `200 text/html` body and hid
+  the miss from monitoring. Keep the distinction when editing `_mount_platform`.
+- **Production `SECRET_KEY` must be ≥ 32 characters** and not a placeholder that
+  ships in the repo (`backend/core/config.py`). Development and test are
+  unaffected. Generate one with `secrets.token_urlsafe(64)`.
+- **`deploy/nginx/safir-security-headers.conf` is included, not duplicated.**
+  nginx *replaces* rather than merges `add_header` across levels, so any
+  `location` that sets its own `add_header` must re-`include` that snippet or it
+  silently drops HSTS/CSP/nosniff/frame/referrer for its responses.
+  `tests/test_staging_security.py` asserts this invariant.
+
+## PPTX v3 parity pass — header scope/period, list filters, pagination
+
+Closes the two interface gaps the deck (`Platform Interface Design v3.pptx`,
+138 slides) leaves open in the prototype. Presentation only — no business rule,
+permission or scope check changed. Report:
+`docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`.
+
+- **Header carries the entity + period selector on every screen** (deck slides
+  4/48). `#scopeCtl` → `#scopeCompany` (المجموعة + the entities the user may
+  already see) and `#scopePeriod` (periods present in the reports the user may
+  already see). Both option sets are built from already-scoped data, so the
+  control cannot offer an entity the user cannot reach. Choosing one narrows the
+  **view** via `scopeFilter(rows, key)`; the backend still enforces row-level
+  scope, so an out-of-scope pick returns nothing rather than leaking rows.
+  Retires below 980 px, matching the deck's mobile frame (slide 39).
+- **Lists carry the deck's filter cluster** (slides 134–136):
+  `[تطبيق] [حفظ المرشح باسمي] [مسح] [تصدير النتائج]` plus one search field and
+  the per-family selects. `[تصدير النتائج]` renders **only** when the role holds
+  `analytics.export` (the deck's "عند سماح التصدير"). Saved filters persist in
+  `localStorage` under `safir.filters.v1.<list>`.
+- **Every list pages at 25 with a 10/25/50/100 selector** and prev/next. The
+  deck mandates a secondary sort by ID, so ties keep a deterministic order
+  across page renders — `byIdAsc` exists for that. Note the name: a helper
+  called `byId` would shadow the DOM `byId()` lookup and break every view.
+- **Filters narrow only rows the user was already served**, so the deck's
+  "البحث لا يوسع نطاق المستخدم" holds by construction. Filtering is client-side
+  over the scoped payload; it is never a substitute for a server scope check.
+- **Wiring a new list:** `renderPaged(host, key, rows, rowFn, bindFn, spec)`
+  where `spec` is a list of `{key, ar, en, options}` / `{key, type:"search",
+  fields:[...]}` entries. Filter values are per-list state in `STATE.filters`.
+  An option's `label` callback must return the `{ar, en}` pair (not `.ar`) or the
+  English reader sees Arabic choices, and a select with no options is dropped
+  rather than shown empty.
+- **Extending:** the deck also specs filter sets for العملاء/الحملات,
+  المؤشرات/العملات, المستخدمون/النشاط and جلسات المستشار. The machinery is
+  generic, so each is a per-view spec entry once the view exists. Those families
+  are now wired; the same pass added the deck's per-family default sorts (see
+  the sort table in `docs/audit/PPTX_V3_VISUAL_PARITY_GAP_ANALYSIS.md`).
+- **Only add a filter the payload can back.** Dimensions the deck names but the
+  row has no column for (a cost centre on an invoice, احتساب on an employee row,
+  a month/quarter on a budget) are omitted rather than shown as dead controls.
+
+## Prototype nav parity — thirteen sections (`feature/phase3-functional`)
+
+The sidebar rail now mirrors the approved prototype
+(`.agent_tmp/pkg/01-platform/prototype/platform_prototype_v15.html`) literally:
+**thirteen** Arabic-only sections, in the prototype's order and with its own
+glyphs.
+
+- **Rail:** twelve items under "القائمة الرئيسية" — لوحة القيادة، العملاء
+  المحتملون، الطلبات، التوصيات والاستشارات، الفرص الاستثمارية، القرارات،
+  التقارير الشهرية، ملفات الموظفين، الموارد البشرية، أصول القابضة، إدارة
+  الموقع، تعلّم المساعد — plus the owner-only "إدارة المجموعة" under
+  "إدارة المالك" (`<nav id="ownerNav">`). The old "المزيد" disclosure group is
+  gone; `bindMoreGroup`/`syncMoreGroup` no-op safely when its markup is absent.
+- **View keys:** `projects → opportunities` and `admin → group` were renamed so
+  the rail, `VIEWS`, `NAV_PERM`, `loadView` and the section ids agree.
+- **Five new views** back the new tabs, each gated by the read permission its
+  endpoint enforces and reading only already-scoped rows: `advisory`
+  (advisor sessions/reports), `hr` (employee movements + decision), `assets`
+  (holding assets totalled per currency), `site` (submitted listings + CMS
+  overview) and `aiReview` (knowledge proposals + approved documents).
+- **Legacy views** (`feedback`, `subsidiaries`, `financial`, `investments`,
+  `support`, `approvals`, `documents`, `bi`, `analytics`, `inbox`,
+  `operations`, `accounting`, `confidential`) stay in `VIEWS` and keep their
+  sections, so deep links and internal shortcuts still work; they are simply no
+  longer in the rail. Do not delete their renderers.
+- **Contract test:** `tests/test_frontend_domain_views.py` pins the rail to the
+  prototype's exact order and labels (`RAIL_VIEWS`); legacy views are asserted
+  at the section level only.

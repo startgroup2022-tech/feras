@@ -48,6 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     drill = sub.add_parser("drill", help="restore into an isolated scratch location")
     drill.add_argument("--source", required=True)
     drill.add_argument("--scratch", required=True)
+    drill.add_argument(
+        "--scratch-database-url",
+        default=None,
+        help="Empty PostgreSQL database to restore into (proves the dump loads).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -70,7 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result["ok"] else 1
 
     if args.command == "drill":
-        result = backup.run_restore_drill(args.source, args.scratch)
+        result = backup.run_restore_drill(
+            args.source,
+            args.scratch,
+            scratch_database_url=args.scratch_database_url,
+        )
         print(json.dumps(result, indent=2))
         return 0 if result["ok"] else 1
 

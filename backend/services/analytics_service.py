@@ -204,7 +204,9 @@ def _reporting_compliance(db: Session, *, user: User, year: int, month: int) -> 
                 select(func.count(func.distinct(MonthlyReport.company_id))).where(
                     MonthlyReport.period_year == year,
                     MonthlyReport.period_month == month,
-                    MonthlyReport.status == ReportStatus.REVIEWED.value,
+                    MonthlyReport.status.in_(
+                        [ReportStatus.REVIEWED.value, ReportStatus.LOCKED.value]
+                    ),
                 ),
                 MonthlyReport.company_id,
                 user,
@@ -530,7 +532,7 @@ def investment_report(db: Session, *, user: User, year: int, month: int) -> dict
             & (MonthlyReport.period_month == month)
             & (MonthlyReport.status != ReportStatus.DRAFT.value),
         )
-        .order_by(Company.name_en)
+        .order_by(Company.name_en.is_(None), Company.name_en, Company.name_ar)
     )
     stmt = _scope(stmt, Company.id, user)
     rows = list(db.execute(stmt))

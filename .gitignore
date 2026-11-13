@@ -24,3 +24,12 @@ safir-holding-2027.zip
 # Agent/editor scratch
 .agent_tmp/
 .obs/
+
+# View-audit output (screenshots + JSON) is generated, not source
+artifacts/
+
+# Developer package (scratch reference bundle, not source)
+holding_developer_package.zip
+
+# Local server scratch
+nohup.out

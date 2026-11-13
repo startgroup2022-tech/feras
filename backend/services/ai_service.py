@@ -29,11 +29,11 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from backend.ai import AIAnswer, AIProvider, find_ungrounded, get_provider
-from backend.ai.base import ProviderError
+from backend.ai.base import PaidModelError, ProviderError
 from backend.core.config import settings
-from backend.core.errors import NotFoundError
+from backend.core.errors import NotFoundError, RateLimitError
 from backend.db.models.audit_actions import AuditAction
-from backend.db.models.enums import AIScope, ReportStatus
+from backend.db.models.enums import AIUsageOutcome, AIScope, ReportStatus
 from backend.db.models.ai import AIConversation, AIMessage
 from backend.db.models.identity import User
 from backend.rbac.authorization import require_company_access, require_permission
@@ -43,7 +43,12 @@ from backend.repositories.scoped import (
     MonthlyReportRepository,
     SupportRequestRepository,
 )
-from backend.services import audit_service, dashboard_service
+from backend.services import (
+    ai_usage_service,
+    audit_service,
+    dashboard_service,
+    knowledge_service,
+)
 
 
 # --------------------------------------------------------------------------
@@ -139,7 +144,13 @@ def ask(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> dict:
-    """Answer a question within an enforced scope."""
+    """Answer a question within an enforced scope.
+
+    Isolation is applied *before* the provider is reached, in every scope: the
+    holding/company contexts are built from scoped dashboard reads, and the
+    knowledge context is retrieved with the sensitivity and company filters in
+    SQL. A provider therefore never sees data the caller could not have read.
+    """
     if scope == AIScope.HOLDING.value:
         require_permission(user, Perm.AI_HOLDING)
         context = build_holding_context(db, user, year, month)
@@ -150,6 +161,14 @@ def ask(
 
             raise ValidationError("company_id is required for company-scoped AI.")
         context = build_company_context(db, user, company_id, year, month)
+    elif scope == AIScope.KNOWLEDGE.value:
+        require_permission(user, Perm.AI_KNOWLEDGE_ASK)
+        if company_id is not None:
+            # Narrow to one company, but only one the caller may access.
+            require_company_access(user, company_id)
+        context = knowledge_service.build_knowledge_context(
+            db, user, question=question, company_id=company_id
+        )
     else:
         from backend.core.errors import ValidationError
 
@@ -169,16 +188,7 @@ def ask(
     )
     db.commit()
 
-    provider = get_provider()
-    try:
-        result: AIAnswer = provider.answer(question=question, context=context)
-    except ProviderError:
-        # A configured-but-unreachable provider degrades to the deterministic
-        # answer rather than failing the request: the executive still gets a
-        # grounded summary, and the audit record shows which provider was used.
-        from backend.ai.providers import NullProvider
-
-        result = NullProvider().answer(question=question, context=context)
+    result, provider_name, degraded = _run_provider(db, user=user, question=question, context=context)
 
     # Verify the answer against the scoped context before it reaches the user.
     ungrounded = find_ungrounded(result.text, context)
@@ -191,7 +201,7 @@ def ask(
         role="assistant",
         content=result.text,
         context_company_ids=json.dumps(grounded),
-        model=settings.AI_MODEL or result.provider,
+        model=result.model or settings.AI_MODEL or result.provider,
     )
     db.add(message)
     db.commit()
@@ -209,7 +219,8 @@ def ask(
         metadata={
             "scope": scope,
             "grounded_on": grounded,
-            "provider": result.provider,
+            "provider": provider_name,
+            "degraded": degraded,
             "grounded": result.grounded and not ungrounded,
         },
     )
@@ -220,11 +231,104 @@ def ask(
         "company_id": company_id,
         "answer": result.text,
         "grounded_on_company_ids": grounded,
-        "provider": result.provider,
+        "provider": provider_name,
         "grounded": not ungrounded,
         "ungrounded_numbers": ungrounded,
         "message": message,
+        "degraded": degraded,
+        "sources": context.get("knowledge", []) if scope == AIScope.KNOWLEDGE.value else [],
     }
+
+
+def _run_provider(
+    db: Session, *, user: User, question: str, context: dict
+) -> tuple[AIAnswer, str, bool]:
+    """Run the configured provider under the application-level limits.
+
+    Returns ``(answer, provider_name, degraded)``. ``degraded`` is True when the
+    deterministic provider was used because the configured one was unavailable,
+    refused a non-free model, or the daily ceiling was reached -- so the caller
+    and the audit trail can always tell whether a real model answered.
+    """
+    from backend.ai.providers import NullProvider
+
+    provider = get_provider()
+    provider_name = provider.name
+
+    # The deterministic provider is offline and free; it is never rate limited
+    # and never metered.
+    if provider_name == "none":
+        return provider.answer(question=question, context=context), provider_name, False
+
+    if ai_usage_service.rate_limit_exceeded(db, user):
+        raise RateLimitError(
+            "You have reached the AI request limit for now. Please try again later."
+        )
+
+    if ai_usage_service.daily_budget_exceeded(db):
+        ai_usage_service.record_usage(
+            db,
+            user_id=user.id,
+            provider=provider_name,
+            model=settings.OPENROUTER_MODEL or "",
+            outcome=AIUsageOutcome.BLOCKED_BUDGET.value,
+            detail="daily ceiling reached",
+        )
+        return NullProvider().answer(question=question, context=context), "none", True
+
+    try:
+        result = provider.answer(question=question, context=context)
+    except PaidModelError as exc:
+        # A refusal, not an outage: record it distinctly, then degrade.
+        ai_usage_service.record_usage(
+            db,
+            user_id=user.id,
+            provider=provider_name,
+            model=settings.OPENROUTER_MODEL or "",
+            outcome=AIUsageOutcome.REJECTED_PAID.value,
+            is_free=False,
+            detail=str(exc)[:400],
+        )
+        audit_service.record(
+            db,
+            action=AuditAction.AI_PROVIDER_REJECTED_PAID_MODEL,
+            actor_user_id=user.id,
+            entity_type="ai_provider",
+            metadata={"provider": provider_name, "detail": str(exc)[:200]},
+        )
+        return NullProvider().answer(question=question, context=context), "none", True
+    except ProviderError as exc:
+        ai_usage_service.record_usage(
+            db,
+            user_id=user.id,
+            provider=provider_name,
+            model=settings.OPENROUTER_MODEL or "",
+            outcome=_error_outcome(exc),
+            detail=str(exc)[:400],
+        )
+        return NullProvider().answer(question=question, context=context), "none", True
+
+    ai_usage_service.record_usage(
+        db,
+        user_id=user.id,
+        provider=provider_name,
+        model=result.model or settings.OPENROUTER_MODEL or provider_name,
+        outcome=AIUsageOutcome.SUCCESS.value,
+        tokens_used=result.tokens_used,
+        cost_usd=result.cost_usd,
+        latency_ms=result.latency_ms,
+        is_free=result.cost_usd == 0,
+    )
+    return result, provider_name, False
+
+
+def _error_outcome(exc: ProviderError) -> str:
+    message = str(exc).lower()
+    if "rate" in message or "429" in message:
+        return AIUsageOutcome.RATE_LIMITED.value
+    if "timeout" in message or "timed out" in message:
+        return AIUsageOutcome.TIMEOUT.value
+    return AIUsageOutcome.PROVIDER_ERROR.value
 
 
 def _resolve_conversation(

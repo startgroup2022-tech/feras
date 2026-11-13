@@ -66,12 +66,21 @@ def create_employee(
     email: str | None = None,
     phone: str | None = None,
     hire_date=None,
+    nationality: str | None = None,
     currency: str = "SAR",
     base_salary: Decimal | None = None,
     housing_allowance: Decimal | None = None,
     transport_allowance: Decimal | None = None,
     leave_balance_days: Decimal | None = None,
     advance_balance: Decimal | None = None,
+    work_location: str | None = None,
+    wage_effective_date=None,
+    document_links: str | None = None,
+    counts_toward_localization: bool | None = None,
+    localization_exclusion_reason: str | None = None,
+    localization_job_title: str | None = None,
+    localization_rule_version: str | None = None,
+    localization_reference: str | None = None,
     notes: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
@@ -89,6 +98,7 @@ def create_employee(
         email=email,
         phone=phone,
         hire_date=hire_date,
+        nationality=nationality,
         status=EmployeeStatus.ACTIVE.value,
         currency=currency,
         base_salary=base_salary,
@@ -96,6 +106,14 @@ def create_employee(
         transport_allowance=transport_allowance,
         leave_balance_days=leave_balance_days,
         advance_balance=advance_balance,
+        work_location=work_location,
+        wage_effective_date=wage_effective_date,
+        document_links=document_links,
+        counts_toward_localization=counts_toward_localization,
+        localization_exclusion_reason=localization_exclusion_reason,
+        localization_job_title=localization_job_title,
+        localization_rule_version=localization_rule_version,
+        localization_reference=localization_reference,
         notes=notes,
     )
     db.add(employee)
@@ -147,8 +165,21 @@ def update_employee(
 
     # Salary fields are sensitive and need the dedicated permission.
     salary_fields = {"base_salary", "housing_allowance", "transport_allowance", "currency"}
-    if salary_fields & set(changes) and not _can_read_salary(user):
-        raise PermissionDeniedError("You may not change salary information.")
+    # Deck slide 103: the restricted tab (identity/residence, work location, wage
+    # effective date, document links, localization inclusion) sits behind the
+    # same gate as compensation.
+    restricted_fields = {
+        "work_location",
+        "wage_effective_date",
+        "document_links",
+        "counts_toward_localization",
+        "localization_exclusion_reason",
+        "localization_job_title",
+        "localization_rule_version",
+        "localization_reference",
+    }
+    if (salary_fields | restricted_fields) & set(changes) and not _can_read_salary(user):
+        raise PermissionDeniedError("You may not change restricted or salary information.")
 
     # S11 / AC-11: terminating a *subsidiary* employee is within the manager's
     # authority, but terminating a Holding employee must be approved by the owner
@@ -213,6 +244,7 @@ def serialise_employee(employee: Employee, *, include_salary: bool) -> dict:
         "department_id": employee.department_id,
         "manager_id": employee.manager_id,
         "hire_date": employee.hire_date,
+        "nationality": employee.nationality,
         "status": employee.status,
         "email": employee.email,
         "phone": employee.phone,
@@ -230,9 +262,36 @@ def serialise_employee(employee: Employee, *, include_salary: bool) -> dict:
                 "base_salary": employee.base_salary,
                 "housing_allowance": employee.housing_allowance,
                 "transport_allowance": employee.transport_allowance,
+                # Deck slide 103: the restricted tab's fields are gated exactly
+                # like compensation, so a caller without employee.salary.read
+                # never receives them. The identity/residence number is masked in
+                # the payload ("نص مقيد ومقنع في القوائم").
+                "national_id_masked": _mask_national_id(employee.national_id),
+                "work_location": employee.work_location,
+                "wage_effective_date": employee.wage_effective_date,
+                "document_links": employee.document_links,
+                "counts_toward_localization": employee.counts_toward_localization,
+                "localization_exclusion_reason": employee.localization_exclusion_reason,
+                "localization_job_title": employee.localization_job_title,
+                "localization_rule_version": employee.localization_rule_version,
+                "localization_reference": employee.localization_reference,
             }
         )
     return data
+
+
+def _mask_national_id(value: str | None) -> str | None:
+    """Mask an identity/residence number for display (deck slide 102/103).
+
+    The deck is explicit that the identity number is a restricted field shown
+    masked in lists. Only the last four characters are revealed.
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    if len(text) <= 4:
+        return "*" * len(text)
+    return "*" * (len(text) - 4) + text[-4:]
 
 
 # --------------------------------------------------------------------------

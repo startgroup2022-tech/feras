@@ -401,6 +401,11 @@ def _get_scoped_or_404(db: Session, user: User, request_id: int) -> SupportReque
 
 
 def serialise(request: SupportRequest) -> dict:
+    # The assignee's display name is added so the list can offer the deck's
+    # "مسؤول" filter (slides 134-136) without the client having to resolve a
+    # bare id. It is the same assignee the detail view already shows, so this
+    # reveals nothing the caller could not already read.
+    assignee = request.assigned_to
     return {
         "id": request.id,
         "company_id": request.company_id,
@@ -413,6 +418,8 @@ def serialise(request: SupportRequest) -> dict:
         "responsible_department": request.responsible_department,
         "requested_by_id": request.requested_by_id,
         "assigned_to_id": request.assigned_to_id,
+        "assigned_to_name_ar": assignee.full_name_ar if assignee else None,
+        "assigned_to_name_en": assignee.full_name_en if assignee else None,
         "platform": request.platform,
         "dimensions": request.dimensions,
         "reference_link": request.reference_link,

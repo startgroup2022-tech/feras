@@ -11,6 +11,8 @@ class AuditAction:
     LOGIN_FAILED = "auth.login_failed"
     LOGOUT = "auth.logout"
     TOKEN_REFRESH = "auth.token_refresh"
+    PASSWORD_CHANGED = "auth.password_changed"
+    PASSWORD_RESET = "auth.password_reset"
 
     # administration
     USER_CREATED = "user.created"
@@ -27,6 +29,7 @@ class AuditAction:
     OWNERSHIP_CREATED = "ownership.created"
     OWNERSHIP_UPDATED = "ownership.updated"
     OWNERSHIP_ENDED = "ownership.ended"
+    INVESTMENT_VALUATION_UPDATED = "investment.valuation_updated"
     DEPARTMENT_CREATED = "department.created"
     DEPARTMENT_UPDATED = "department.updated"
     DEPARTMENT_STATUS_CHANGED = "department.status_changed"
@@ -57,6 +60,7 @@ class AuditAction:
     REPORT_CORRECTION_CREATED = "monthly_report.correction_created"
     REPORT_APPROVED = "monthly_report.approved"
     REPORT_CANCELLED = "monthly_report.cancelled"
+    REPORT_LOCKED = "monthly_report.locked"
 
     # Execution 02: subsidiary financial summary workflow
     FINANCIAL_PERIOD_CREATED = "financial_period.created"
@@ -83,6 +87,16 @@ class AuditAction:
     AI_CONVERSATION_STARTED = "ai.conversation_started"
     AI_MESSAGE_SENT = "ai.message_sent"
     AI_TEXT_ORGANIZED = "ai.text_organized"
+    # Knowledge-base administration. AI actions record *what* was done and by
+    # whom; conversation content is never copied into the audit metadata.
+    AI_KNOWLEDGE_DOCUMENT_CREATED = "ai.knowledge_document_created"
+    AI_KNOWLEDGE_VERSION_ADDED = "ai.knowledge_version_added"
+    AI_KNOWLEDGE_APPROVED = "ai.knowledge_approved"
+    AI_KNOWLEDGE_ARCHIVED = "ai.knowledge_archived"
+    AI_KNOWLEDGE_PROPOSAL_RAISED = "ai.knowledge_proposal_raised"
+    AI_KNOWLEDGE_PROPOSAL_RESOLVED = "ai.knowledge_proposal_resolved"
+    AI_KNOWLEDGE_RETRIEVED = "ai.knowledge_retrieved"
+    AI_PROVIDER_REJECTED_PAID_MODEL = "ai.provider_rejected_paid_model"
 
     # Phase 3: dynamic forms builder
     FORM_CREATED = "form.created"
@@ -166,6 +180,19 @@ class AuditAction:
     WEBSITE_OPPORTUNITY_SUBMITTED = "website_opportunity.submitted"
     WEBSITE_OPPORTUNITY_REVIEWED = "website_opportunity.reviewed"
     WEBSITE_OPPORTUNITY_PUBLISHED = "website_opportunity.published"
+    # Retention job (site-integration.md): a careers CV past its 6-month
+    # retention window was deleted. One row per purged CV, so the deletion is
+    # traceable even though the CV itself is gone.
+    WEBSITE_LEAD_CV_PURGED = "website_lead.cv_purged"
+
+    # Retention job summary: one row per run, so a clean run is distinguishable
+    # from a run that removed CVs without reading the per-file rows.
+    RETENTION_CV_PURGE_RUN = "retention.cv_purge_run"
+
+    # Monthly report deadline scan (business rule 1). One row per scan run,
+    # recording how many companies were flagged late and how many notifications
+    # were raised; the scan itself never mutates a report.
+    REPORT_DEADLINE_SCANNED = "monthly_report.deadline_scanned"
 
     # public website branding (logo)
     BRANDING_LOGO_UPDATED = "branding.logo_updated"
@@ -229,6 +256,10 @@ class AuditAction:
 
     PROJECT_RECORD_CREATED = "project_record.created"
     PROJECT_RECORD_UPDATED = "project_record.updated"
+    PROJECT_RECORD_RAISED = "project_record.raised_to_owner"
+
+    # Deck slide 46: the manager's smart-brief plan request.
+    PLAN_REQUEST_CREATED = "plan_request.created"
 
     CONFIDENTIAL_ACCESS_GRANTED = "confidential_access.granted"
     CONFIDENTIAL_ACCESS_REVOKED = "confidential_access.revoked"

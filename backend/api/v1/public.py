@@ -321,36 +321,15 @@ async def _persist_uploads(
     validator=storage.validate_upload,
     is_public: bool = False,
 ) -> None:
-    """Validate and store public attachments for a persisted lead.
+    """Delegate to the shared upload discipline in the lead service.
 
-    Shared by the business-listing and careers endpoints so the upload
-    discipline (count cap, content-type allow-list, opaque storage key) cannot
-    diverge between forms. ``validator`` selects the allow-list and size cap for
-    the purpose (internal document, proof, or public photo); ``is_public``
-    marks photos that may be shown once the listing is published. A
-    honeypot-dropped lead has no id and stores nothing.
+    Kept as a thin wrapper so the business-listing and careers endpoints keep
+    their existing call sites while the actual rule lives in one place (see
+    :func:`website_lead_service.persist_public_uploads`).
     """
-    if lead.id is None:
-        return
-    for upload in files:
-        if not upload.filename:
-            continue
-        content = await upload.read()
-        extension = validator(
-            filename=upload.filename,
-            content_type=upload.content_type,
-            size=len(content),
-        )
-        key = storage.store_bytes(data=content, extension=extension)
-        website_lead_service.add_attachment(
-            db,
-            lead=lead,
-            original_filename=upload.filename,
-            storage_key=key,
-            content_type=upload.content_type,
-            size_bytes=len(content),
-            is_public=is_public,
-        )
+    await website_lead_service.persist_public_uploads(
+        db, lead=lead, files=files, validator=validator, is_public=is_public
+    )
 
 
 @router.post(
